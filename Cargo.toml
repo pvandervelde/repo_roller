@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2" # Use the latest resolver
+members = [
+    "crates/repo_roller_core",
+    "crates/github_client",
+    "crates/template_engine",
+    "crates/config_manager",
+    "crates/auth_handler",
+    "crates/repo_roller_cli",
+    "crates/repo_roller_api",
+    "crates/repo_roller_mcp",
+    "crates/repo_roller_azure_fn",
+]
+
+[workspace.dependencies]
+# Common dependencies can be added here later
