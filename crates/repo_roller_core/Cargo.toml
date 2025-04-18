@@ -1,7 +1,10 @@
 [package]
-name = "repo_roller_core"
-version = "0.1.0"
+authors.workspace = true
 edition = "2021"
+license-file.workspace = true
+name = "repo_roller_core"
+repository.workspace = true
+version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

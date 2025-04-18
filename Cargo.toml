@@ -12,5 +12,11 @@ members = [
     "crates/repo_roller_azure_fn",
 ]
 
+[workspace.package]
+authors = ["Patrick van der Velde"]
+repository = "https://github.com/pvandervelde/RepoRoller"
+version = "0.1.0"
+license-file = "LICENSE"
+
 [workspace.dependencies]
 # Common dependencies can be added here later
