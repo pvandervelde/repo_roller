@@ -1,0 +1,145 @@
+# .github/workflows/lint.yml
+# Linting and static analysis checks based on spec/cicd-pipeline-design.md
+
+name: Lint Checks
+
+on:
+  push:
+    branches:
+      - '**' # Run on pushes to all branches
+  pull_request:
+    branches:
+      - master # Run on PRs targeting master
+
+permissions:
+  contents: read # Needed for checkout
+  security-events: write # Needed for cargo-audit SARIF upload
+
+jobs:
+  audit:
+    name: Security Audit (cargo audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-audit-
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit --json -o audit.sarif || true # Continue even if vulnerabilities found
+
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: audit.sarif
+
+  check:
+    name: Compile Check (cargo check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+
+      - name: Run cargo check
+        run: cargo check --workspace --all-targets
+
+  format:
+    name: Format Check (cargo fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run cargo fmt check
+        run: cargo fmt --check --all
+
+  clippy:
+    name: Linter (cargo clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-clippy-
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings # Treat warnings as errors
+
+  deny:
+    name: License Check (cargo deny)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v1
+
+      - name: Run cargo deny check
+        run: cargo deny check
+
+  # terraform-lint: # Future scope as per design
+  #   name: Terraform Lint
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     # ... steps to setup terraform and run linters ...
+
+  # npm-lint: # Future scope as per design
+  #   name: NPM Lint
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     # ... steps to setup node and run npm lint ...

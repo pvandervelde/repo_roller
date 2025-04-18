@@ -1,0 +1,86 @@
+# .github/workflows/ci.yml
+# Continuous Integration checks (tests, coverage) based on spec/cicd-pipeline-design.md
+
+name: CI Checks
+
+on:
+  push:
+    branches:
+      - '**' # Run on pushes to all branches
+  pull_request:
+    branches:
+      - master # Run on PRs targeting master
+
+permissions: read-all # Default least privilege
+
+jobs:
+  unit-tests:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Needed for checkout
+      # Potentially write permissions needed by codecov action depending on its method
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov --no-fail-fast --workspace --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # Repository secret required
+          files: lcov.info
+          fail_ci_if_error: true # Optional: fail workflow if upload error
+
+  doc-tests:
+    name: Documentation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run doc tests
+        run: cargo test --doc --workspace
+
+  # terraform-checks: # Future scope as per design
+  #   name: Terraform Checks
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     # ... steps to setup terraform and run checks ...
