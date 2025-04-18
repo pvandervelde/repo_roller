@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read # Access repository contents
-  actions: read # Access reusable workflows if needed
 
 jobs:
   unit-tests:
