@@ -11,7 +11,9 @@ on:
     branches:
       - master # Run on PRs targeting master
 
-permissions: read-all # Default least privilege
+permissions:
+  contents: read # Access repository contents
+  actions: read # Access reusable workflows if needed
 
 jobs:
   unit-tests:
