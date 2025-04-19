@@ -17,3 +17,4 @@ target/
 #.idea/
 memory-bank/
 .roo/system-prompt-*
+.roomodes
