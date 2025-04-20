@@ -4,7 +4,6 @@
 //! and providing access to settings like template definitions, standard labels, etc.
 
 use serde::Deserialize;
-use std::collections::HashMap; // Added for potential future use like custom properties
 use std::fs;
 use std::io;
 use std::path::Path;
