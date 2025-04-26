@@ -1,24 +1,4 @@
 {
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "github_token",
-      "description": "GitHub Personal Access Token",
-      "password": true
-    },
-    {
-      "type": "promptString",
-      "id": "brave_api_key",
-      "description": "Brave Search API Key",
-      "password": true
-    },
-    {
-      "type": "promptString",
-      "id": "perplexity_api_key",
-      "description": "Perplexity API Key",
-      "password": true
-    }
-  ],
   "mcpServers": {
     "fetch": {
       "command": "docker",
@@ -41,7 +21,9 @@
       ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${input:github_token}"
-      }
+      },
+      "disabled": true,
+      "alwaysAllow": []
     },
     "memory": {
       "command": "docker",
@@ -66,7 +48,9 @@
       ],
       "env": {
         "BRAVE_API_KEY": "${input:brave_api_key}"
-      }
+      },
+      "disabled": true,
+      "alwaysAllow": []
     },
     "perplexity-ask": {
       "command": "docker",
@@ -80,7 +64,9 @@
       ],
       "env": {
         "PERPLEXITY_API_KEY": "${input:perplexity_api_key}"
-      }
+      },
+      "disabled": true,
+      "alwaysAllow": []
     },
     "sequentialthinking": {
       "command": "docker",
