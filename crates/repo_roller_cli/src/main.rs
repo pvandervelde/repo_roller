@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+use std::fs;
+use std::io::{self, Write};
 
 #[cfg(test)]
 #[path = "main_tests.rs"]
@@ -17,6 +19,10 @@ struct Cli {
 enum Commands {
     /// Create a new repository from a template
     Create {
+        /// Path to a TOML config file with repository settings
+        #[arg(long)]
+        config: Option<String>,
+
         /// Name of the new repository
         #[arg(long)]
         name: String,
@@ -52,26 +58,58 @@ fn parse_key_val(s: &str) -> Result<(String, String), String> {
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
+#[derive(serde::Deserialize)]
+struct ConfigFile {
+    name: Option<String>,
+    owner: Option<String>,
+    template: Option<String>,
+    variables: Option<Vec<(String, String)>>,
+}
+
 fn main() {
     let cli = Cli::parse();
-
     match &cli.command {
         Commands::Create {
+            config,
             name,
             owner,
             template,
             variables,
         } => {
-            // Interactive/config-driven create logic
-            use std::fs;
-            use std::io::{self, Write};
-
-            // Check for config file argument (future: add --config option)
-            // For now, if all fields are empty, prompt interactively
+            // If a config file is provided, load it and override missing fields
             let mut name = name.clone();
             let mut owner = owner.clone();
             let mut template = template.clone();
             let mut variables = variables.clone();
+
+            if let Some(config_path) = config {
+                match fs::read_to_string(config_path) {
+                    Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
+                        Ok(cfg) => {
+                            if name.trim().is_empty() {
+                                name = cfg.name.unwrap_or_default();
+                            }
+                            if owner.trim().is_empty() {
+                                owner = cfg.owner.unwrap_or_default();
+                            }
+                            if template.trim().is_empty() {
+                                template = cfg.template.unwrap_or_default();
+                            }
+                            if variables.is_empty() {
+                                variables = cfg.variables.unwrap_or_default();
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse config file: {e}");
+                            std::process::exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Failed to read config file: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
 
             if name.trim().is_empty() || owner.trim().is_empty() || template.trim().is_empty() {
                 println!("Some required information is missing. Enter values interactively:");
