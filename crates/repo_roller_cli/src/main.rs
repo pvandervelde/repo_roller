@@ -29,6 +29,16 @@ enum Commands {
         #[arg(long, value_parser = parse_key_val, num_args = 0..)]
         variables: Vec<(String, String)>,
     },
+    /// Show the CLI version
+    Version,
+    /// Show default settings
+    ShowDefaults,
+    /// List recognized template variables
+    ListVariables,
+    /// Show the status of the last operation
+    Status,
+    /// Initialize a repository config file
+    Init,
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
@@ -37,31 +47,6 @@ fn parse_key_val(s: &str) -> Result<(String, String), String> {
         .ok_or_else(|| format!("invalid KEY=VALUE: no `=` found in `{}`", s))?;
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
-
-// The CLI should have the following commands
-// - help --> returns the help text, exits with success code
-// - version --> returns the version, exits with success code
-// - create --> Creates a new repository
-// - init --> Creates a repository config file that the user can update with their data
-//
-// The create mode allows 3 different ways of functioning:
-// - The user provides a complete config file. It is assumed that this config file contains
-//   all the information required. The CLI extracts the information from the config file, puts it
-//   in a structure (defined in the core crate) and sends it to a method in the core crate for processing
-//   The core crate method checks the structure for validity and returns errors (one for every invalid setting)
-//   or creates the repository
-// - The CLI asks the user questions and creates the structure from the answers to these questions. For some questions
-//   the CLI should be able to provide guidelines or suggestions. For instance each org/personal area may have naming
-//   guidelines for repository names. The CLI will ask the user for the name and provides the naming guidelines. It can
-//   then check the name against the naming guidelines and suggest improvements if the name does not abide by the naming
-//   guidelines. This also applies to other settings
-// - The user provides a partial config file and the CLI asks the user follow up questions to obtain the rest of the
-//   information.
-//
-// The CLI should be able to tell the user what the default settings are. These will also be provided in the default
-// repository config. This may be done through a command.
-//
-// The CLI should be able to tell the user which template variables it recognises. This may be done through a command
 
 fn main() {
     let cli = Cli::parse();
@@ -73,11 +58,68 @@ fn main() {
             template,
             variables,
         } => {
-            println!(
-                "Would create repo '{}' for owner '{}' using template '{}' with variables: {:?}",
-                name, owner, template, variables
-            );
-            // TODO: Call repo_roller_core logic here
+            // Argument validation
+            if name.trim().is_empty() {
+                eprintln!("Error: --name cannot be empty");
+                std::process::exit(1);
+            }
+            if owner.trim().is_empty() {
+                eprintln!("Error: --owner cannot be empty");
+                std::process::exit(1);
+            }
+            if template.trim().is_empty() {
+                eprintln!("Error: --template cannot be empty");
+                std::process::exit(1);
+            }
+
+            // Call core logic
+            let req = repo_roller_core::CreateRepoRequest {
+                name: name.clone(),
+                owner: owner.clone(),
+                template: template.clone(),
+                variables: variables.clone(),
+            };
+            let result = repo_roller_core::create_repository(req);
+
+            if result.success {
+                println!("Repository created successfully: {}", result.message);
+                std::process::exit(0);
+            } else {
+                eprintln!("Repository creation failed: {}", result.message);
+                std::process::exit(1);
+            }
         }
+        Commands::Version => {
+            // Print version info
+            println!("repo-roller version {}", env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
+        Commands::ShowDefaults => {
+            println!("Default settings: (not yet implemented)");
+            std::process::exit(0);
+        }
+        Commands::ListVariables => {
+            println!("Recognized template variables: (not yet implemented)");
+            std::process::exit(0);
+        }
+        Commands::Status => {
+            println!("Status: (not yet implemented)");
+            std::process::exit(0);
+        }
+        Commands::Init => {
+            println!("Repository config initialization: (not yet implemented)");
+            std::process::exit(0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        Cli::command().debug_assert();
     }
 }
