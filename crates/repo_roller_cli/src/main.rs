@@ -1,5 +1,9 @@
 use clap::{Parser, Subcommand};
 
+#[cfg(test)]
+#[path = "main_tests.rs"]
+mod tests;
+
 /// RepoRoller CLI: Create new GitHub repositories from templates
 #[derive(Parser)]
 #[command(name = "repo-roller")]
@@ -110,16 +114,5 @@ fn main() {
             println!("Repository config initialization: (not yet implemented)");
             std::process::exit(0);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::CommandFactory;
-
-    #[test]
-    fn verify_cli() {
-        Cli::command().debug_assert();
     }
 }
