@@ -224,10 +224,22 @@ fn main() {
             let result = repo_roller_core::create_repository(req);
 
             if result.success {
-                println!("Repository created successfully: {}", result.message);
+                println!();
+                println!("✅ Repository created successfully!");
+                if !result.message.trim().is_empty() {
+                    println!("  Details: {}", result.message);
+                }
+                println!();
+                println!("You can now navigate to your new repository on GitHub.");
+                println!("If you provided template variables, review the generated files for correctness.");
                 std::process::exit(0);
             } else {
-                eprintln!("Repository creation failed: {}", result.message);
+                println!();
+                eprintln!("❌ Repository creation failed.");
+                if !result.message.trim().is_empty() {
+                    eprintln!("  Reason: {}", result.message);
+                }
+                eprintln!("Please check your input and try again, or consult the documentation for troubleshooting tips.");
                 std::process::exit(1);
             }
         }
