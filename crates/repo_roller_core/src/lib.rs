@@ -27,6 +27,7 @@
 //   do work after the repository is created, e.g. creating infrastructure on a SaaS cloud etc.
 
 /// Request for creating a new repository.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct CreateRepoRequest {
     pub name: String,
     pub owner: String,
