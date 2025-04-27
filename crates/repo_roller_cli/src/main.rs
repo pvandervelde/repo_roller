@@ -62,26 +62,63 @@ fn main() {
             template,
             variables,
         } => {
-            // Argument validation
-            if name.trim().is_empty() {
-                eprintln!("Error: --name cannot be empty");
-                std::process::exit(1);
-            }
-            if owner.trim().is_empty() {
-                eprintln!("Error: --owner cannot be empty");
-                std::process::exit(1);
-            }
-            if template.trim().is_empty() {
-                eprintln!("Error: --template cannot be empty");
-                std::process::exit(1);
+            // Interactive/config-driven create logic
+            use std::fs;
+            use std::io::{self, Write};
+
+            // Check for config file argument (future: add --config option)
+            // For now, if all fields are empty, prompt interactively
+            let mut name = name.clone();
+            let mut owner = owner.clone();
+            let mut template = template.clone();
+            let mut variables = variables.clone();
+
+            if name.trim().is_empty() || owner.trim().is_empty() || template.trim().is_empty() {
+                println!("Some required information is missing. Enter values interactively:");
+                if name.trim().is_empty() {
+                    print!("Repository name: ");
+                    io::stdout().flush().unwrap();
+                    io::stdin().read_line(&mut name).unwrap();
+                    name = name.trim().to_string();
+                }
+                if owner.trim().is_empty() {
+                    print!("Owner (user or org): ");
+                    io::stdout().flush().unwrap();
+                    io::stdin().read_line(&mut owner).unwrap();
+                    owner = owner.trim().to_string();
+                }
+                if template.trim().is_empty() {
+                    print!("Template type: ");
+                    io::stdout().flush().unwrap();
+                    io::stdin().read_line(&mut template).unwrap();
+                    template = template.trim().to_string();
+                }
+                // Prompt for variables if empty
+                if variables.is_empty() {
+                    println!("Enter template variables as key=value (empty line to finish):");
+                    loop {
+                        print!("Variable: ");
+                        io::stdout().flush().unwrap();
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).unwrap();
+                        let input = input.trim();
+                        if input.is_empty() {
+                            break;
+                        }
+                        match parse_key_val(input) {
+                            Ok(kv) => variables.push(kv),
+                            Err(e) => println!("  Error: {e}"),
+                        }
+                    }
+                }
             }
 
             // Call core logic
             let req = repo_roller_core::CreateRepoRequest {
-                name: name.clone(),
-                owner: owner.clone(),
-                template: template.clone(),
-                variables: variables.clone(),
+                name,
+                owner,
+                template,
+                variables,
             };
             let result = repo_roller_core::create_repository(req);
 
@@ -94,8 +131,11 @@ fn main() {
             }
         }
         Commands::Version => {
-            // Print version info
-            println!("repo-roller version {}", env!("CARGO_PKG_VERSION"));
+            // Print version info from baked-in value
+            println!(
+                "repo-roller version {}",
+                option_env!("REPO_ROLLER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+            );
             std::process::exit(0);
         }
         Commands::ShowDefaults => {
