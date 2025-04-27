@@ -113,23 +113,86 @@ fn main() {
 
             if name.trim().is_empty() || owner.trim().is_empty() || template.trim().is_empty() {
                 println!("Some required information is missing. Enter values interactively:");
-                if name.trim().is_empty() {
-                    print!("Repository name: ");
-                    io::stdout().flush().unwrap();
-                    io::stdin().read_line(&mut name).unwrap();
-                    name = name.trim().to_string();
-                }
+                // Ask for owner/org first
                 if owner.trim().is_empty() {
-                    print!("Owner (user or org): ");
-                    io::stdout().flush().unwrap();
-                    io::stdin().read_line(&mut owner).unwrap();
-                    owner = owner.trim().to_string();
+                    loop {
+                        print!("Owner (user or org, required): ");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut owner).unwrap();
+                        owner = owner.trim().to_string();
+                        if !owner.is_empty() {
+                            break;
+                        }
+                        println!("  Error: Owner cannot be empty.");
+                        owner.clear();
+                    }
+                }
+                // Fetch org-specific rules
+                let org_rules = repo_roller_core::get_org_rules(&owner);
+                // Now ask for name, applying org-specific rules if present
+                if name.trim().is_empty() {
+                    match org_rules.repo_name_regex {
+                        Some(ref regex) => {
+                            let re = regex::Regex::new(regex).unwrap();
+                            loop {
+                                print!(
+                                    "Repository name (required, must match org rules {:?}): ",
+                                    regex
+                                );
+                                io::stdout().flush().unwrap();
+                                io::stdin().read_line(&mut name).unwrap();
+                                name = name.trim().to_string();
+                                if re.is_match(&name) {
+                                    break;
+                                }
+                                println!(
+                                    "  Error: Name does not match org-specific naming rules: {:?}",
+                                    regex
+                                );
+                                name.clear();
+                            }
+                        }
+                        None => {
+                            loop {
+                                print!("Repository name (required, must be a valid GitHub repo name): ");
+                                io::stdout().flush().unwrap();
+                                io::stdin().read_line(&mut name).unwrap();
+                                name = name.trim().to_string();
+                                if !name.is_empty() {
+                                    break;
+                                }
+                                println!("  Error: Name cannot be empty.");
+                                name.clear();
+                            }
+                        }
+                    }
+                }
+                // (Removed duplicate name prompt block)
+                if owner.trim().is_empty() {
+                    loop {
+                        print!("Owner (user or org, required): ");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut owner).unwrap();
+                        owner = owner.trim().to_string();
+                        if !owner.is_empty() {
+                            break;
+                        }
+                        println!("  Error: Owner cannot be empty.");
+                        owner.clear();
+                    }
                 }
                 if template.trim().is_empty() {
-                    print!("Template type: ");
-                    io::stdout().flush().unwrap();
-                    io::stdin().read_line(&mut template).unwrap();
-                    template = template.trim().to_string();
+                    loop {
+                        print!("Template type (required, e.g., library, service, action): ");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut template).unwrap();
+                        template = template.trim().to_string();
+                        if !template.is_empty() {
+                            break;
+                        }
+                        println!("  Error: Template type cannot be empty.");
+                        template.clear();
+                    }
                 }
                 // Prompt for variables if empty
                 if variables.is_empty() {

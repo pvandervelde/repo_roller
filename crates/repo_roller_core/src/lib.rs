@@ -35,6 +35,27 @@ pub struct CreateRepoRequest {
     pub variables: Vec<(String, String)>,
 }
 
+/// Org-specific rules for repository creation (stub)
+#[derive(Debug, Clone, Default)]
+pub struct OrgRules {
+    pub repo_name_regex: Option<String>,
+    // Add more rules as needed
+}
+
+/// Get organization-specific rules (stub implementation)
+pub fn get_org_rules(org: &str) -> OrgRules {
+    // In a real implementation, this would look up org-specific rules from config, a file, or a service.
+    // For now, return a sample rule for demonstration.
+    match org {
+        "calvinverse" => OrgRules {
+            repo_name_regex: Some(r"^[a-z][a-z0-9\-]{2,30}$".to_string()),
+        },
+        _ => OrgRules {
+            repo_name_regex: Some(r"^[a-zA-Z0-9_\-]{1,50}$".to_string()),
+        },
+    }
+}
+
 /// Result of a repository creation attempt.
 pub struct CreateRepoResult {
     pub success: bool,
