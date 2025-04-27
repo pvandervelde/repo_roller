@@ -10,4 +10,5 @@ version.workspace = true
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
-# repo_roller_core = { path = "../repo_roller_core" } # Will be needed later
+repo_roller_core = { path = "../repo_roller_core" }
+# TODO: Remove comment above when core is implemented
