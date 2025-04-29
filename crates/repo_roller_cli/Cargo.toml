@@ -14,4 +14,4 @@ repo_roller_core = { path = "../repo_roller_core" }
 toml = "0.8.21"
 serde = { version = "1.0", features = ["derive"] }
 regex = "1.10.4"
-# TODO: Remove comment above when core is implemented
+thiserror = { workspace = true }

@@ -19,4 +19,4 @@ version = "0.1.0"
 license-file = "LICENSE"
 
 [workspace.dependencies]
-# Common dependencies can be added here later
+thiserror = "2.0"

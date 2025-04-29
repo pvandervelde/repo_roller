@@ -32,7 +32,6 @@ pub struct CreateRepoRequest {
     pub name: String,
     pub owner: String,
     pub template: String,
-    pub variables: Vec<(String, String)>,
 }
 
 /// Org-specific rules for repository creation (stub)

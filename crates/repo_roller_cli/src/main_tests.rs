@@ -1,5 +1,5 @@
+use super::Cli;
 use clap::CommandFactory;
-use repo_roller_cli::Cli;
 
 #[test]
 fn verify_cli() {

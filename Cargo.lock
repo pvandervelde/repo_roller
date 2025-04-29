@@ -1316,6 +1316,7 @@ dependencies = [
  "regex",
  "repo_roller_core",
  "serde",
+ "thiserror 2.0.12",
  "toml",
 ]
 
