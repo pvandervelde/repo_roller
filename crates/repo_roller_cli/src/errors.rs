@@ -15,5 +15,5 @@ pub enum Error {
     ParseTomlFile(toml::de::Error),
 
     #[error("Failed to flush the std out buffer.")]
-    StdOutFushFailed,
+    StdOutFlushFailed,
 }
