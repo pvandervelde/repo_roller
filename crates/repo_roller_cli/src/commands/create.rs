@@ -1,41 +1,68 @@
 //! Implementation of the `create` command for the RepoRoller CLI.
 //!
-//! Handles argument parsing, config loading, interactive prompts, and
-//! calls into the core orchestration logic to create a new repository.
+//! This module handles argument parsing, config loading, interactive prompts, and
+//! delegates to the core orchestration logic to create a new repository.
 
 use std::fs;
 
 use crate::errors::Error;
 
+/// Function type for prompting the user for a value interactively.
+/// Used for required fields that may be missing from config or CLI args.
 type AskUserForValue = dyn Fn(&str) -> Result<String, Error>;
 
-/// Configuration file structure for repository creation.
+/// Function type for retrieving organization-specific repository rules.
+/// Allows for dependency injection and testability.
+pub type GetOrgRulesFn = dyn Fn(&str) -> repo_roller_core::OrgRules;
+
+/// Function type for creating a repository given a request.
+/// Allows for dependency injection and testability.
+pub type CreateRepositoryFn =
+    dyn Fn(repo_roller_core::CreateRepoRequest) -> repo_roller_core::CreateRepoResult;
+
+#[cfg(test)]
+#[path = "create_tests.rs"]
+mod tests;
+
+/// Structure representing the configuration file for repository creation.
+/// All fields are optional and may be overridden by CLI arguments.
 #[derive(serde::Deserialize)]
 pub struct ConfigFile {
+    /// Optional repository name.
     pub name: Option<String>,
+    /// Optional repository owner (user or org).
     pub owner: Option<String>,
+    /// Optional template type (e.g., library, service, action).
     pub template: Option<String>,
 }
 
-/// Handles the create command logic.
+/// Handles the create command logic for the CLI.
+///
+/// This function merges configuration from a TOML file and CLI arguments,
+/// prompts the user for any missing required values, applies organization-specific
+/// naming rules, and delegates repository creation to the provided function reference.
 ///
 /// # Arguments
 /// * `config` - Optional path to a TOML config file.
-/// * `name` - Name of the new repository.
-/// * `owner` - Owner (user or org) for the new repository.
-/// * `template` - Template type (e.g., library, service, action).
-/// * `variables` - Key-value pairs for template variables.
+/// * `name` - Name of the new repository (overrides config).
+/// * `owner` - Owner (user or org) for the new repository (overrides config).
+/// * `template` - Template type (overrides config).
+/// * `ask_user_for_value` - Function to prompt the user for missing values.
+/// * `get_org_rules` - Function to retrieve org-specific rules for validation.
+/// * `create_repository` - Function to perform the actual repository creation.
 ///
 /// # Returns
-/// * `()` - Exits the process with appropriate status code.
+/// * `Result<CreateRepoResult, Error>` - The result of the repository creation attempt or an error.
 pub fn handle_create_command(
     config: &Option<String>,
     name: &Option<String>,
     owner: &Option<String>,
     template: &Option<String>,
     ask_user_for_value: &AskUserForValue,
-) -> Result<(), Error> {
-    // If a config file is provided, load it
+    get_org_rules: &GetOrgRulesFn,
+    create_repository: &CreateRepositoryFn,
+) -> Result<repo_roller_core::CreateRepoResult, Error> {
+    // Load config file if provided, otherwise start with empty values.
     let (mut final_name, mut final_owner, mut final_template) = if let Some(config_path) = config {
         match fs::read_to_string(config_path) {
             Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
@@ -45,10 +72,12 @@ pub fn handle_create_command(
                     cfg.template.unwrap_or_default(),
                 ),
                 Err(e) => {
+                    // Return error if TOML parsing fails.
                     return Err(Error::ParseTomlFile(e));
                 }
             },
             Err(e) => {
+                // Return error if file cannot be loaded.
                 return Err(Error::LoadFile(e));
             }
         }
@@ -56,20 +85,18 @@ pub fn handle_create_command(
         (String::new(), String::new(), String::new())
     };
 
-    // Overwrite the values from the config file with the values provided on the command line.
+    // Overwrite config values with CLI arguments if provided.
     if name.is_some() {
         final_name = name.clone().unwrap_or_default();
     }
-
     if owner.is_some() {
         final_owner = owner.clone().unwrap_or_default();
     }
-
     if template.is_some() {
         final_template = template.clone().unwrap_or_default();
     }
 
-    // Ask for owner/org first
+    // Prompt for owner/org if still missing.
     if final_owner.trim().is_empty() {
         loop {
             final_owner = ask_user_for_value("Owner (user or org, required): ").unwrap_or_default();
@@ -80,14 +107,13 @@ pub fn handle_create_command(
         }
     }
 
-    // Fetch org-specific rules
-    let org_rules = repo_roller_core::get_org_rules(&final_owner);
+    // Retrieve org-specific rules for validation (e.g., naming regex).
+    let org_rules = get_org_rules(&final_owner);
 
-    // Now ask for name, applying org-specific rules if present
+    // Prompt for repository name if missing or invalid per org rules.
     match org_rules.repo_name_regex {
         Some(ref regex) => {
             let re = regex::Regex::new(regex).unwrap();
-
             let request = format!(
                 "Repository name (required, must match org rules {:?}): ",
                 regex
@@ -98,7 +124,6 @@ pub fn handle_create_command(
                     if re.is_match(&final_name) {
                         break;
                     }
-
                     println!(
                         "  Error: Name does not match org-specific naming rules: {:?}",
                         regex
@@ -107,6 +132,7 @@ pub fn handle_create_command(
             }
         }
         None => {
+            // If no org rules, prompt for name if still missing.
             if final_owner.trim().is_empty() {
                 loop {
                     final_name = ask_user_for_value(
@@ -122,6 +148,7 @@ pub fn handle_create_command(
         }
     }
 
+    // Prompt for template type if missing.
     if final_template.trim().is_empty() {
         loop {
             final_template =
@@ -134,31 +161,13 @@ pub fn handle_create_command(
         }
     }
 
-    // Call core logic
+    // Construct the repository creation request and delegate to the provided function.
     let req = repo_roller_core::CreateRepoRequest {
         name: final_name,
         owner: final_owner,
         template: final_template,
     };
-    let result = repo_roller_core::create_repository(req);
+    let result = create_repository(req);
 
-    if result.success {
-        println!();
-        println!("✅ Repository created successfully!");
-        if !result.message.trim().is_empty() {
-            println!("  Details: {}", result.message);
-        }
-        println!();
-        println!("You can now navigate to your new repository on GitHub.");
-        println!("If you provided template variables, review the generated files for correctness.");
-        std::process::exit(0);
-    } else {
-        println!();
-        eprintln!("❌ Repository creation failed.");
-        if !result.message.trim().is_empty() {
-            eprintln!("  Reason: {}", result.message);
-        }
-        eprintln!("Please check your input and try again, or consult the documentation for troubleshooting tips.");
-        std::process::exit(1);
-    }
+    Ok(result)
 }

@@ -1,5 +1,5 @@
 use std::io;
-use std::io::{self, Write};
+use std::io::Write;
 
 use clap::{Parser, Subcommand};
 
@@ -85,7 +85,23 @@ fn main() {
             owner,
             template,
         } => {
-            handle_create_command(config, name, owner, template, &ask_user_for_value);
+            let result = handle_create_command(
+                config,
+                name,
+                owner,
+                template,
+                &ask_user_for_value,
+                &repo_roller_core::get_org_rules,
+                &repo_roller_core::create_repository,
+            );
+
+            if result.is_ok() {
+                println!("Repository created");
+                std::process::exit(0);
+            } else {
+                println!("Failed to create repository");
+                std::process::exit(1);
+            }
         }
         Commands::Version => {
             // Print version info from baked-in value
