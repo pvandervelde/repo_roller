@@ -62,7 +62,7 @@ enum Commands {
 fn ask_user_for_value(request: &str) -> Result<String, Error> {
     print!("{}", request);
 
-    io::stdout().flush().map_err(|e| Error::StdOutFlushFailed)?;
+    io::stdout().flush().map_err(|_| Error::StdOutFlushFailed)?;
 
     let mut temp = String::new();
     io::stdin().read_line(&mut temp).unwrap();

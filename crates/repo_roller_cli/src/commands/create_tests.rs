@@ -1,6 +1,5 @@
 use super::*;
 use crate::errors::Error;
-use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
