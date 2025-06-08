@@ -2,6 +2,7 @@ use std::io;
 use std::io::Write;
 
 use clap::{Parser, Subcommand};
+use tokio;
 
 mod commands;
 
@@ -76,7 +77,8 @@ pub fn parse_key_val(s: &str) -> Result<(String, String), String> {
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
     match &cli.command {
         Commands::Create {
@@ -85,21 +87,21 @@ fn main() {
             owner,
             template,
         } => {
-            let result = handle_create_command(
-                config,
-                name,
-                owner,
-                template,
-                &ask_user_for_value,
-                &repo_roller_core::get_org_rules,
-                &repo_roller_core::create_repository,
-            );
+            // Call the async function directly and await the result
+            let result = repo_roller_core::create_repository_from_request(
+                repo_roller_core::CreateRepoRequest {
+                    name: name.clone().unwrap_or_default(),
+                    owner: owner.clone().unwrap_or_default(),
+                    template: template.clone().unwrap_or_default(),
+                },
+            )
+            .await;
 
-            if result.is_ok() {
+            if result.success {
                 println!("Repository created");
                 std::process::exit(0);
             } else {
-                println!("Failed to create repository");
+                println!("Failed to create repository: {}", result.message);
                 std::process::exit(1);
             }
         }

@@ -63,6 +63,10 @@ pub enum ConfigError {
     #[error("Failed to read configuration file: {0}")]
     Io(#[from] io::Error),
 
+    /// Error parsing the text.
+    #[error("Failed to parse the text configuration")]
+    Text(String),
+
     /// Error parsing the TOML configuration content.
     #[error("Failed to parse TOML configuration: {0}")]
     Toml(#[from] toml::de::Error),
@@ -101,6 +105,20 @@ pub struct Config {
     /// List of available repository templates.
     pub templates: Vec<TemplateConfig>,
     // TODO: Add global settings if needed (e.g., org-wide defaults, allowed templates)
+}
+
+/// Trait for loading configuration.
+pub trait ConfigLoader {
+    fn load_config(&self, path: &str) -> Result<Config, crate::ConfigError>;
+}
+
+/// Default implementation for loading config from file.
+pub struct FileConfigLoader;
+
+impl ConfigLoader for FileConfigLoader {
+    fn load_config(&self, path: &str) -> Result<Config, crate::ConfigError> {
+        crate::load_config(path)
+    }
 }
 
 /// Loads the application configuration from the specified TOML file.
