@@ -26,6 +26,14 @@
 // - Trigger potential subsequent processes (defined by webhooks that can be provided). This allows other processes to
 //   do work after the repository is created, e.g. creating infrastructure on a SaaS cloud etc.
 
+use config_manager::ConfigLoader;
+use github_client::{RepositoryClient, RepositoryCreatePayload};
+use template_engine::{self, TemplateFetcher};
+
+#[cfg(test)]
+#[path = "lib_tests.rs"]
+mod tests;
+
 /// Request for creating a new repository.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct CreateRepoRequest {
@@ -76,9 +84,90 @@ impl CreateRepoResult {
     }
 }
 
-/// Create a new repository from a template.
-/// (Stub implementation for CLI integration)
-pub fn create_repository(_req: CreateRepoRequest) -> CreateRepoResult {
-    // TODO: Implement actual orchestration logic
-    CreateRepoResult::success("Stub: repository creation not yet implemented")
+// --- Update create_repository to be generic over RepoName ---
+/// Create a new repository from a template, with dependency injection for testability.
+pub fn create_repository(
+    req: CreateRepoRequest,
+    config_loader: &dyn ConfigLoader,
+    template_fetcher: &dyn TemplateFetcher,
+    repo_client: &dyn RepositoryClient,
+) -> CreateRepoResult {
+    // 1. Load config
+    let config_path =
+        std::env::var("REPOROLLER_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
+    let config = match config_loader.load_config(&config_path) {
+        Ok(cfg) => cfg,
+        Err(e) => return CreateRepoResult::failure(format!("Failed to load config: {e}")),
+    };
+
+    // 2. Find template config
+    let template = match config.templates.iter().find(|t| t.name == req.template) {
+        Some(t) => t,
+        None => return CreateRepoResult::failure("Template not found in config"),
+    };
+
+    // 3. Fetch template files
+    let files = match template_fetcher.fetch_template_files(&template.source_repo) {
+        Ok(f) => f,
+        Err(e) => return CreateRepoResult::failure(format!("Failed to fetch template files: {e}")),
+    };
+
+    // 4. Create a local repository
+
+    // 5. Add the template files
+
+    // 6. Commit all changes to the default branch
+
+    // 7. Create repo on github (org or user)
+    let payload = RepositoryCreatePayload {
+        name: &req.name,
+        ..Default::default()
+    };
+    let repo_result = if !req.owner.is_empty() {
+        repo_client.create_org_repository(&req.owner, &payload)
+    } else {
+        repo_client.create_user_repository(&payload)
+    };
+    let repo = match repo_result {
+        Ok(r) => r,
+        Err(e) => return CreateRepoResult::failure(format!("Failed to create repo: {e}")),
+    };
+
+    // 8. Set the origin for the local repository to the new repository
+    foobar();
+
+    // 9. Push the local repository to the origin
+
+    // 10. Update remote repository settings
+
+    CreateRepoResult::success(format!("Repository {} created successfully", repo.name()))
+}
+
+/// Production entrypoint: uses real implementations.
+pub async fn create_repository_from_request(req: CreateRepoRequest) -> CreateRepoResult {
+    let config_loader = config_manager::FileConfigLoader;
+    let template_fetcher = template_engine::DefaultTemplateFetcher;
+
+    // GitHubClient requires async construction, so we need to use a runtime
+    let app_id = match std::env::var("GITHUB_APP_ID") {
+        Ok(val) => match val.parse::<u64>() {
+            Ok(id) => id,
+            Err(e) => return CreateRepoResult::failure(format!("Invalid GITHUB_APP_ID: {e}")),
+        },
+        Err(_) => return CreateRepoResult::failure("GITHUB_APP_ID environment variable not set"),
+    };
+
+    let private_key = match std::env::var("GITHUB_APP_PRIVATE_KEY") {
+        Ok(val) => val,
+        Err(_) => {
+            return CreateRepoResult::failure("GITHUB_APP_PRIVATE_KEY environment variable not set")
+        }
+    };
+
+    let repo_client = match github_client::GitHubClient::new(app_id, private_key).await {
+        Ok(client) => client,
+        Err(e) => return CreateRepoResult::failure(format!("Failed to create GitHub client: {e}")),
+    };
+
+    create_repository(req, &config_loader, &template_fetcher, &repo_client)
 }

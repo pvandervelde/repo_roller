@@ -10,3 +10,10 @@ version.workspace = true
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+github_client = { path = "../github_client" }
+template_engine = { path = "../template_engine" }
+config_manager = { path = "../config_manager" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+octocrab.workspace = true
