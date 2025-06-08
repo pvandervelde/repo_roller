@@ -20,3 +20,4 @@ license-file = "LICENSE"
 
 [workspace.dependencies]
 thiserror = "2.0"
+octocrab = "0.38"
