@@ -19,5 +19,7 @@ version = "0.1.0"
 license-file = "LICENSE"
 
 [workspace.dependencies]
-thiserror = "2.0"
+async-trait = "0.1"
 octocrab = "0.38"
+thiserror = "2.0"
+url = "2.5.4"

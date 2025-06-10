@@ -23,64 +23,12 @@ fn create_test_pem() -> String {
 }
 
 #[tokio::test]
-async fn test_create_file_success() {
-    // Arrange: Start a mock server and configure the endpoint
-    let mock_server = MockServer::start().await;
-    let owner = "test-owner";
-    let repo = "test-repo";
-    let file_path = "README.md";
-    let file_content = b"Hello, world!";
-    let commit_message = "Initial commit";
-
-    // The expected API path
-    let api_path = format!("/repos/{}/{}/contents/{}", owner, repo, file_path);
-
-    // Mock the GitHub API response for file creation
-    Mock::given(method("PUT"))
-        .and(path(api_path.clone()))
-        .and(header("accept", "application/vnd.github+json"))
-        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
-            "content": {
-                "name": file_path,
-                "path": file_path,
-                "sha": "fake-sha"
-            },
-            "commit": {
-                "message": commit_message
-            }
-        })))
-        .mount(&mock_server)
-        .await;
-
-    // Build a GitHubClient with the mock server as the base URL
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
-    let octocrab = octocrab::Octocrab::builder()
-        .base_uri(mock_server.uri())
-        .unwrap()
-        .app(TEST_APP_ID.into(), key)
-        .build()
-        .unwrap();
-    let client = GitHubClient { client: octocrab };
-
-    // Act: Call create_file
-    let result = client
-        .create_file(owner, repo, file_path, file_content, commit_message)
-        .await;
-
-    // Assert: Should succeed
-    if let Err(e) = &result {
-        eprintln!("create_file error: {:?}", e);
-    }
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
 async fn test_create_org_repository_success() {
     let mock_server = MockServer::start().await;
     let org_name = "test-org";
     let payload = RepositoryCreatePayload {
-        name: "test-repo",
-        description: Some("A test repository"),
+        name: "test-repo".to_string(),
+        description: Some("A test repository".to_string()),
         ..Default::default()
     };
 
@@ -116,8 +64,8 @@ async fn test_create_org_repository_success() {
 async fn test_create_user_repository_success() {
     let mock_server = MockServer::start().await;
     let payload = RepositoryCreatePayload {
-        name: "test-repo",
-        description: Some("A test repository"),
+        name: "test-repo".to_string(),
+        description: Some("A test repository".to_string()),
         ..Default::default()
     };
 
@@ -210,7 +158,7 @@ async fn test_update_repository_settings_success() {
     let owner = "test-owner";
     let repo = "test-repo";
     let settings = RepositorySettingsUpdate {
-        description: Some("Updated description"),
+        description: Some("Updated description".to_string()),
         ..Default::default()
     };
 

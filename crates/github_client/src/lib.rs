@@ -9,8 +9,9 @@ use octocrab::{Error as OctocrabError, Octocrab, Result as OctocrabResult}; // A
 use serde::Serialize;
 use thiserror::Error;
 use tracing::instrument;
-
 pub mod models;
+
+use async_trait::async_trait;
 
 // Reference the tests module in the separate file
 #[cfg(test)]
@@ -36,12 +37,12 @@ pub enum Error {
 /// Represents the settings that can be updated for a repository.
 /// Use `Default::default()` and modify fields as needed.
 #[derive(Serialize, Default, Debug)]
-pub struct RepositorySettingsUpdate<'a> {
+pub struct RepositorySettingsUpdate {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<&'a str>,
+    pub description: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<&'a str>,
+    pub homepage: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private: Option<bool>,
@@ -60,14 +61,14 @@ pub struct RepositorySettingsUpdate<'a> {
 /// Represents the payload for creating a new repository via the REST API.
 /// Use `Default::default()` or builder pattern and modify fields as needed.
 #[derive(Serialize, Default, Debug, Clone)] // Added Clone
-pub struct RepositoryCreatePayload<'a> {
-    pub name: &'a str,
+pub struct RepositoryCreatePayload {
+    pub name: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<&'a str>,
+    pub description: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<&'a str>,
+    pub homepage: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private: Option<bool>, // Defaults to false if None
@@ -88,7 +89,8 @@ pub struct RepositoryCreatePayload<'a> {
 }
 
 /// Trait for repository operations (creation, file push, etc.).
-pub trait RepositoryClient {
+#[async_trait]
+pub trait RepositoryClient: Send + Sync {
     async fn create_org_repository(
         &self,
         owner: &str,
@@ -171,7 +173,7 @@ impl GitHubClient {
         &self,
         owner: &str,
         repo: &str,
-        settings: &RepositorySettingsUpdate<'_>,
+        settings: &RepositorySettingsUpdate,
     ) -> Result<Repository, Error> {
         let path = format!("/repos/{}/{}", owner, repo);
         // Use client.patch for updating repository settings via the REST API
@@ -180,6 +182,7 @@ impl GitHubClient {
     }
 }
 
+#[async_trait]
 impl RepositoryClient for GitHubClient {
     /// Creates a new repository within a specified organization using the REST API directly.
     ///
@@ -190,11 +193,10 @@ impl RepositoryClient for GitHubClient {
     ///
     /// # Errors
     /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
-    #[instrument(skip(self, payload), fields(org = %org_name, repo_name = %payload.name))]
     async fn create_org_repository(
         &self,
         org_name: &str,
-        payload: &RepositoryCreatePayload<'_>,
+        payload: &RepositoryCreatePayload,
     ) -> Result<models::Repository, Error> {
         let path = format!("/orgs/{}/repos", org_name);
         let response: OctocrabResult<Repository> = self.client.post(path, Some(payload)).await;
@@ -211,10 +213,9 @@ impl RepositoryClient for GitHubClient {
     ///
     /// # Errors
     /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
-    #[instrument(skip(self, payload), fields(repo_name = %payload.name))]
     async fn create_user_repository(
         &self,
-        payload: &RepositoryCreatePayload<'_>,
+        payload: &RepositoryCreatePayload,
     ) -> Result<models::Repository, Error> {
         let path = "/user/repos";
         let response: OctocrabResult<Repository> = self.client.post(path, Some(payload)).await;
