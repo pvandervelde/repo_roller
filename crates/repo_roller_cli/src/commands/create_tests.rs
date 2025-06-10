@@ -1,5 +1,6 @@
 use super::*;
 use crate::errors::Error;
+use repo_roller_core::OrgRules;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
@@ -36,7 +37,7 @@ fn test_happy_path_with_all_args() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
     let log_clone = log.clone();
@@ -94,7 +95,7 @@ fn test_happy_path_with_config_file() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
     let log_clone = log.clone();
@@ -136,7 +137,7 @@ fn test_happy_path_with_config_file() {
 #[test]
 fn test_config_file_missing() {
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| repo_roller_core::get_org_rules(_org);
+    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
     let create_repository =
         |_req: repo_roller_core::CreateRepoRequest| repo_roller_core::CreateRepoResult {
             success: true,
@@ -160,7 +161,7 @@ fn test_config_file_invalid_toml() {
     writeln!(file, "not valid toml").unwrap();
     let path = file.path().to_str().map(|s| s.to_string());
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| repo_roller_core::get_org_rules(_org);
+    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
     let create_repository =
         |_req: repo_roller_core::CreateRepoRequest| repo_roller_core::CreateRepoResult {
             success: true,
@@ -191,7 +192,7 @@ fn test_partial_args_prompt_for_owner() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
     let log_clone = log.clone();
@@ -243,7 +244,7 @@ fn test_partial_args_prompt_for_template() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
     let log_clone = log.clone();
@@ -286,7 +287,7 @@ fn test_partial_args_prompt_for_template() {
 fn test_create_repository_failure() {
     // Simulate create_repository returning failure
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| repo_roller_core::get_org_rules(_org);
+    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
     let create_repository =
         |_req: repo_roller_core::CreateRepoRequest| repo_roller_core::CreateRepoResult {
             success: false,
@@ -324,7 +325,7 @@ fn test_config_file_missing_fields() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
     let log_clone = log.clone();

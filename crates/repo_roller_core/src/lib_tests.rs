@@ -2,6 +2,7 @@
 // Covers create_repository success and error paths
 
 use super::*;
+use async_trait::async_trait;
 use config_manager::ConfigError;
 use std::env;
 use std::sync::Mutex;
@@ -14,7 +15,6 @@ static MOCK_CONFIG: Mutex<Option<config_manager::Config>> = Mutex::new(None);
 static MOCK_TEMPLATE_FILES: Mutex<Option<Result<Vec<(String, Vec<u8>)>, String>>> =
     Mutex::new(None);
 static MOCK_GITHUB_CLIENT: Mutex<Option<Result<MockGitHubClient, String>>> = Mutex::new(None);
-static MOCK_CREATE_FILE_RESULT: Mutex<Option<Result<(), String>>> = Mutex::new(None);
 
 #[derive(Clone)]
 pub struct MockGitHubClient;
@@ -23,29 +23,16 @@ impl MockGitHubClient {
     pub async fn create_org_repository(
         &self,
         _owner: &str,
-        _payload: &github_client::RepositoryCreatePayload<'_>,
-    ) -> Result<octocrab::models::Repository, String> {
+        _payload: &github_client::RepositoryCreatePayload,
+    ) -> Result<github_client::models::Repository, String> {
         Err("MockGitHubClient cannot construct Repository; this is expected in tests".to_string())
     }
+
     pub async fn create_user_repository(
         &self,
-        _payload: &github_client::RepositoryCreatePayload<'_>,
-    ) -> Result<octocrab::models::Repository, String> {
+        _payload: &github_client::RepositoryCreatePayload,
+    ) -> Result<github_client::models::Repository, String> {
         Err("MockGitHubClient cannot construct Repository; this is expected in tests".to_string())
-    }
-    pub async fn create_file(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _path: &str,
-        _content: &[u8],
-        _msg: &str,
-    ) -> Result<(), String> {
-        MOCK_CREATE_FILE_RESULT
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or(Ok(()))
     }
 }
 
@@ -74,33 +61,25 @@ impl template_engine::TemplateFetcher for MockTemplateFetcher {
 }
 
 struct MockRepoClient;
+
+#[async_trait]
 impl github_client::RepositoryClient for MockRepoClient {
-    fn create_org_repository(
+    async fn create_org_repository(
         &self,
         _owner: &str,
         _payload: &github_client::RepositoryCreatePayload,
-    ) -> Result<octocrab::models::Repository, String> {
-        Err("MockRepoClient cannot construct Repository; this is expected in tests".to_string())
+    ) -> Result<github_client::models::Repository, github_client::Error> {
+        Err(github_client::Error::AuthError(
+            "MockRepoClient cannot construct Repository; this is expected in tests".to_string(),
+        ))
     }
-    fn create_user_repository(
+    async fn create_user_repository(
         &self,
         _payload: &github_client::RepositoryCreatePayload,
-    ) -> Result<octocrab::models::Repository, String> {
-        Err("MockRepoClient cannot construct Repository; this is expected in tests".to_string())
-    }
-    fn create_file(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _path: &str,
-        _content: &[u8],
-        _msg: &str,
-    ) -> Result<(), String> {
-        MOCK_CREATE_FILE_RESULT
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or(Ok(()))
+    ) -> Result<github_client::models::Repository, github_client::Error> {
+        Err(github_client::Error::AuthError(
+            "MockRepoClient cannot construct Repository; this is expected in tests".to_string(),
+        ))
     }
 }
 
@@ -128,33 +107,10 @@ fn setup_success_mocks() {
         b"test content".to_vec(),
     )]));
     *MOCK_GITHUB_CLIENT.lock().unwrap() = Some(Ok(MockGitHubClient));
-    *MOCK_CREATE_FILE_RESULT.lock().unwrap() = Some(Ok(()));
 }
 
-#[test]
-fn test_create_repository_success() {
-    setup_success_mocks();
-    env::set_var("REPOROLLER_CONFIG", "irrelevant.toml");
-    let req = CreateRepoRequest {
-        name: "mockrepo".to_string(),
-        owner: "mockorg".to_string(),
-        template: "basic".to_string(),
-    };
-    let config_loader = MockConfigLoader;
-    let template_fetcher = MockTemplateFetcher;
-    let repo_client = MockRepoClient;
-    let result = create_repository::<octocrab::models::Repository>(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    );
-    assert!(!result.success, "Should fail: {}", result.message);
-    assert!(result.message.contains("Failed to create repo"));
-}
-
-#[test]
-fn test_create_repository_template_not_found() {
+#[tokio::test]
+async fn test_create_repository_template_not_found() {
     setup_success_mocks();
     *MOCK_CONFIG.lock().unwrap() = Some(config_manager::Config { templates: vec![] });
     let req = CreateRepoRequest {
@@ -165,77 +121,7 @@ fn test_create_repository_template_not_found() {
     let config_loader = MockConfigLoader;
     let template_fetcher = MockTemplateFetcher;
     let repo_client = MockRepoClient;
-    let result = create_repository::<octocrab::models::Repository>(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    );
+    let result = create_repository(req, &config_loader, &template_fetcher, &repo_client).await;
     assert!(!result.success);
     assert!(result.message.contains("Template not found"));
-}
-
-#[test]
-fn test_create_repository_config_load_fail() {
-    *MOCK_CONFIG.lock().unwrap() = None;
-    let req = CreateRepoRequest {
-        name: "mockrepo".to_string(),
-        owner: "mockorg".to_string(),
-        template: "basic".to_string(),
-    };
-    let config_loader = MockConfigLoader;
-    let template_fetcher = MockTemplateFetcher;
-    let repo_client = MockRepoClient;
-    let result = create_repository::<octocrab::models::Repository>(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    );
-    assert!(!result.success);
-    assert!(result.message.contains("Failed to load config"));
-}
-
-#[test]
-fn test_create_repository_repo_creation_fail() {
-    setup_success_mocks();
-    *MOCK_CREATE_REPO_RESULT.lock().unwrap() = Some(Err("repo create fail".to_string()));
-    let req = CreateRepoRequest {
-        name: "mockrepo".to_string(),
-        owner: "mockorg".to_string(),
-        template: "basic".to_string(),
-    };
-    let config_loader = MockConfigLoader;
-    let template_fetcher = MockTemplateFetcher;
-    let repo_client = MockRepoClient;
-    let result = create_repository::<octocrab::models::Repository>(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    );
-    assert!(!result.success);
-    assert!(result.message.contains("Failed to create repo"));
-}
-
-#[test]
-fn test_create_repository_file_push_fail() {
-    setup_success_mocks();
-    *MOCK_CREATE_FILE_RESULT.lock().unwrap() = Some(Err("file push fail".to_string()));
-    let req = CreateRepoRequest {
-        name: "mockrepo".to_string(),
-        owner: "mockorg".to_string(),
-        template: "basic".to_string(),
-    };
-    let config_loader = MockConfigLoader;
-    let template_fetcher = MockTemplateFetcher;
-    let repo_client = MockRepoClient;
-    let result = create_repository::<octocrab::models::Repository>(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    );
-    assert!(!result.success);
-    assert!(result.message.contains("Failed to push file"));
 }

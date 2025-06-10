@@ -28,7 +28,12 @@
 
 use config_manager::ConfigLoader;
 use github_client::{RepositoryClient, RepositoryCreatePayload};
+use temp_dir::TempDir;
 use template_engine::{self, TemplateFetcher};
+
+mod errors;
+use errors::Error;
+use url::Url;
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]
@@ -40,27 +45,6 @@ pub struct CreateRepoRequest {
     pub name: String,
     pub owner: String,
     pub template: String,
-}
-
-/// Org-specific rules for repository creation (stub)
-#[derive(Debug, Clone, Default)]
-pub struct OrgRules {
-    pub repo_name_regex: Option<String>,
-    // Add more rules as needed
-}
-
-/// Get organization-specific rules (stub implementation)
-pub fn get_org_rules(org: &str) -> OrgRules {
-    // In a real implementation, this would look up org-specific rules from config, a file, or a service.
-    // For now, return a sample rule for demonstration.
-    match org {
-        "calvinverse" => OrgRules {
-            repo_name_regex: Some(r"^[a-z][a-z0-9\-]{2,30}$".to_string()),
-        },
-        _ => OrgRules {
-            repo_name_regex: Some(r"^[a-zA-Z0-9_\-]{1,50}$".to_string()),
-        },
-    }
 }
 
 /// Result of a repository creation attempt.
@@ -84,9 +68,50 @@ impl CreateRepoResult {
     }
 }
 
+/// Org-specific rules for repository creation (stub)
+#[derive(Debug, Clone, Default)]
+pub struct OrgRules {
+    pub repo_name_regex: Option<String>,
+    // Add more rules as needed
+}
+
+impl OrgRules {
+    /// Get organization-specific rules (stub implementation)
+    pub fn new_from_text(org: &str) -> OrgRules {
+        // In a real implementation, this would look up org-specific rules from config, a file, or a service.
+        // For now, return a sample rule for demonstration.
+        match org {
+            "calvinverse" => OrgRules {
+                repo_name_regex: Some(r"^[a-z][a-z0-9\-]{2,30}$".to_string()),
+            },
+            _ => OrgRules {
+                repo_name_regex: Some(r"^[a-zA-Z0-9_\-]{1,50}$".to_string()),
+            },
+        }
+    }
+}
+
+fn commit_all_changes(local_repo_path: &TempDir, arg: &str) -> Result<(), Error> {
+    Ok(())
+}
+
+fn copy_template_files(
+    files: &Vec<(String, Vec<u8>)>,
+    local_repo_path: &TempDir,
+) -> Result<(), Error> {
+    Ok(())
+}
+
+fn create_additional_files(
+    local_repo_path: &TempDir,
+    req: &CreateRepoRequest,
+) -> Result<(), Error> {
+    Ok(())
+}
+
 // --- Update create_repository to be generic over RepoName ---
 /// Create a new repository from a template, with dependency injection for testability.
-pub fn create_repository(
+pub async fn create_repository(
     req: CreateRepoRequest,
     config_loader: &dyn ConfigLoader,
     template_fetcher: &dyn TemplateFetcher,
@@ -106,39 +131,82 @@ pub fn create_repository(
         None => return CreateRepoResult::failure("Template not found in config"),
     };
 
-    // 3. Fetch template files
+    // 3. Create a local repository
+    let local_repo_path = match TempDir::new() {
+        Ok(d) => d,
+        Err(e) => {
+            return CreateRepoResult::failure(format!(
+                "Failed to create a temporary directory: {e}"
+            ))
+        }
+    };
+
+    if let Err(e) = init_local_git_repo(&local_repo_path) {
+        return CreateRepoResult::failure(format!("Failed to initialize local git repo: {e}"));
+    }
+
+    // 4. Fetch template files
     let files = match template_fetcher.fetch_template_files(&template.source_repo) {
         Ok(f) => f,
         Err(e) => return CreateRepoResult::failure(format!("Failed to fetch template files: {e}")),
     };
 
-    // 4. Create a local repository
+    // 5. Add the template files (copy, not git clone)
+    if let Err(e) = copy_template_files(&files, &local_repo_path) {
+        return CreateRepoResult::failure(format!("Failed to copy template files: {e}"));
+    }
 
-    // 5. Add the template files
+    // 6. Replace template variables in the copied files
+    if let Err(e) = replace_template_variables(&local_repo_path, &req) {
+        return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
+    }
 
-    // 6. Commit all changes to the default branch
+    // 7. Create any additional required files (stub)
+    if let Err(e) = create_additional_files(&local_repo_path, &req) {
+        return CreateRepoResult::failure(format!("Failed to create additional files: {e}"));
+    }
 
-    // 7. Create repo on github (org or user)
+    // 8. Commit all changes to the default branch (stub commit signing)
+    if let Err(e) = commit_all_changes(&local_repo_path, "Initial commit (stub, unsigned)") {
+        return CreateRepoResult::failure(format!("Failed to commit changes: {e}"));
+    }
+
+    // 9. Create repo on github (org or user)
     let payload = RepositoryCreatePayload {
-        name: &req.name,
+        name: req.name.clone(),
         ..Default::default()
     };
     let repo_result = if !req.owner.is_empty() {
-        repo_client.create_org_repository(&req.owner, &payload)
+        repo_client
+            .create_org_repository(&req.owner, &payload)
+            .await
     } else {
-        repo_client.create_user_repository(&payload)
+        repo_client.create_user_repository(&payload).await
     };
     let repo = match repo_result {
         Ok(r) => r,
         Err(e) => return CreateRepoResult::failure(format!("Failed to create repo: {e}")),
     };
 
-    // 8. Set the origin for the local repository to the new repository
-    foobar();
+    // 10. Push the local repository to the origin (stub branch protection)
+    if let Err(e) = push_to_origin(&local_repo_path, repo.url(), "main") {
+        return CreateRepoResult::failure(format!("Failed to push to origin: {e}"));
+    }
 
-    // 9. Push the local repository to the origin
+    // 11. Update remote repository settings (stub)
+    if let Err(e) = update_remote_settings(&repo) {
+        return CreateRepoResult::failure(format!("Failed to update remote settings: {e}"));
+    }
 
-    // 10. Update remote repository settings
+    // 12. Install required GitHub apps (stub)
+    if let Err(e) = install_github_apps(&repo) {
+        return CreateRepoResult::failure(format!("Failed to install GitHub apps: {e}"));
+    }
+
+    // 13. Trigger post-creation webhooks (stub)
+    if let Err(e) = trigger_post_creation_webhooks(&repo) {
+        return CreateRepoResult::failure(format!("Failed to trigger post-creation webhooks: {e}"));
+    }
 
     CreateRepoResult::success(format!("Repository {} created successfully", repo.name()))
 }
@@ -169,5 +237,32 @@ pub async fn create_repository_from_request(req: CreateRepoRequest) -> CreateRep
         Err(e) => return CreateRepoResult::failure(format!("Failed to create GitHub client: {e}")),
     };
 
-    create_repository(req, &config_loader, &template_fetcher, &repo_client)
+    create_repository(req, &config_loader, &template_fetcher, &repo_client).await
+}
+
+fn init_local_git_repo(local_path: &TempDir) -> Result<(), Error> {
+    Ok(())
+}
+
+fn install_github_apps(repo: &github_client::models::Repository) -> Result<(), Error> {
+    Ok(())
+}
+
+fn push_to_origin(local_repo_path: &TempDir, url: Url, arg: &str) -> Result<(), Error> {
+    Ok(())
+}
+
+fn replace_template_variables(
+    local_repo_path: &TempDir,
+    req: &CreateRepoRequest,
+) -> Result<(), Error> {
+    Ok(())
+}
+
+fn trigger_post_creation_webhooks(repo: &github_client::models::Repository) -> Result<(), Error> {
+    Ok(())
+}
+
+fn update_remote_settings(repo: &github_client::models::Repository) -> Result<(), Error> {
+    Ok(())
 }
