@@ -9,6 +9,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 #[cfg(test)]
 #[path = "models_tests.rs"]
@@ -55,10 +56,36 @@ pub struct Organization {
 
 #[derive(Deserialize)]
 pub struct Repository {
-    pub full_name: String,
-    pub name: String,
-    pub node_id: String,
-    pub private: bool,
+    full_name: String,
+    name: String,
+    node_id: String,
+    private: bool,
+}
+impl Repository {
+    pub fn is_private(&self) -> bool {
+        self.private
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn new(name: String, full_name: String, node_id: String, private: bool) -> Self {
+        Self {
+            full_name,
+            name,
+            node_id,
+            private,
+        }
+    }
+
+    pub fn node_id(&self) -> &str {
+        &self.node_id
+    }
+
+    pub fn url(&self) -> Url {
+        todo!()
+    }
 }
 
 impl From<octocrab::models::Repository> for Repository {
