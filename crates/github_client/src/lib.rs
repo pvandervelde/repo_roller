@@ -3,59 +3,158 @@
 //! This crate provides a client for making authenticated requests to GitHub,
 //! authenticating as a GitHub App using its ID and private key.
 
-use jsonwebtoken::EncodingKey;
-use octocrab::models::Repository;
-use octocrab::{Error as OctocrabError, Octocrab, Result as OctocrabResult}; // Added OctocrabResult
-use serde::Serialize;
-use thiserror::Error;
-use tracing::instrument;
-pub mod models;
-
 use async_trait::async_trait;
+use jsonwebtoken::EncodingKey;
+use octocrab::{Octocrab, Result as OctocrabResult};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, instrument};
+
+pub mod errors;
+use errors::Error;
+
+pub mod models;
 
 // Reference the tests module in the separate file
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
 
-/// Custom error type for the `github_client`.
-#[derive(Error, Debug)]
-pub enum Error {
-    /// Error originating from the underlying `octocrab` client.
-    #[error("GitHub API error: {0}")]
-    Octocrab(#[from] OctocrabError),
-
-    /// Error during client authentication or initialization.
-    #[error("Failed to authenticate or initialize GitHub client: {0}")]
-    AuthError(String),
-
-    /// Error deserializing the response from GitHub.
-    #[error("Failed to deserialize GitHub response: {0}")]
-    Deserialization(#[from] serde_json::Error),
+/// A client for interacting with the GitHub API, authenticated as a GitHub App.
+#[derive(Debug)]
+pub struct GitHubClient {
+    client: Octocrab,
 }
 
-/// Represents the settings that can be updated for a repository.
-/// Use `Default::default()` and modify fields as needed.
-#[derive(Serialize, Default, Debug)]
-pub struct RepositorySettingsUpdate {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+impl GitHubClient {
+    /// Fetches details for a specific repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name).
+    /// * `repo` - The name of the repository.
+    ///
+    /// # Errors
+    /// Returns an `Error::Octocrab` if the API call fails.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
+    pub async fn get_repository(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<models::Repository, Error> {
+        let result = self.client.repos(owner, repo).get().await;
+        match result {
+            Ok(r) => Ok(models::Repository::from(r)),
+            Err(e) => {
+                log_octocrab_error("Failed to get repository", e);
+                return Err(Error::InvalidResponse);
+            }
+        }
+    }
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<String>,
+    /// Creates a new `GitHubClient` instance authenticated as a GitHub App.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_id` - The ID of the GitHub App.
+    /// * `private_key` - The private key associated with the GitHub App, in PEM format.
+    ///
+    /// # Errors
+    /// Returns an `Error::AuthError` if authentication or client building fails.
+    pub fn new(client: Octocrab) -> Self {
+        Self { client }
+    }
+}
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub private: Option<bool>,
+#[async_trait]
+impl RepositoryClient for GitHubClient {
+    /// Creates a new repository within a specified organization using the REST API directly.
+    ///
+    /// # Arguments
+    ///
+    /// * `org_name` - The name of the organization.
+    /// * `payload` - A `RepositoryCreatePayload` struct containing the repository details.
+    ///
+    /// # Errors
+    /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
+    async fn create_org_repository(
+        &self,
+        org_name: &str,
+        payload: &RepositoryCreatePayload,
+    ) -> Result<models::Repository, Error> {
+        let path = format!("/orgs/{}/repos", org_name);
+        let response: OctocrabResult<octocrab::models::Repository> =
+            self.client.post(path, Some(payload)).await;
+        match response {
+            Ok(r) => Ok(models::Repository::from(r)),
+            Err(e) => {
+                log_octocrab_error("Failed to create repository for organisation", e);
+                return Err(Error::InvalidResponse);
+            }
+        }
+    }
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_issues: Option<bool>,
+    /// Creates a new repository for the authenticated user (GitHub App) using the REST API directly.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - A `RepositoryCreatePayload` struct containing the repository details.
+    ///
+    /// # Errors
+    /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
+    async fn create_user_repository(
+        &self,
+        payload: &RepositoryCreatePayload,
+    ) -> Result<models::Repository, Error> {
+        let path = "/user/repos";
+        let response: OctocrabResult<octocrab::models::Repository> =
+            self.client.post(path, Some(payload)).await;
+        match response {
+            Ok(r) => Ok(models::Repository::from(r)),
+            Err(e) => {
+                log_octocrab_error("Failed to create repository for user", e);
+                return Err(Error::InvalidResponse);
+            }
+        }
+    }
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_projects: Option<bool>,
+    /// Updates settings for a specific repository using the REST API directly.
+    ///
+    /// Only the fields provided in the `settings` argument will be updated.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name).
+    /// * `repo` - The name of the repository.
+    /// * `settings` - A `RepositorySettingsUpdate` struct containing the desired changes.
+    ///
+    /// # Errors
+    /// Returns an `Error::Octocrab` if the API call fails.
+    #[instrument(skip(self, settings), fields(owner = %owner, repo = %repo))]
+    async fn update_repository_settings(
+        &self,
+        owner: &str,
+        repo: &str,
+        settings: &RepositorySettingsUpdate,
+    ) -> Result<models::Repository, Error> {
+        let path = format!("/repos/{}/{}", owner, repo);
+        // Use client.patch for updating repository settings via the REST API
+        let response: OctocrabResult<octocrab::models::Repository> =
+            self.client.patch(path, Some(settings)).await;
+        match response {
+            Ok(r) => Ok(models::Repository::from(r)),
+            Err(e) => {
+                log_octocrab_error("Failed to create repository for user", e);
+                return Err(Error::InvalidResponse);
+            }
+        }
+    }
+}
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_wiki: Option<bool>,
-    // Add other updatable fields like topics, default_branch etc. as needed
+#[derive(Debug, Serialize, Deserialize)]
+struct JWTClaims {
+    iat: u64,
+    exp: u64,
+    iss: u64,
 }
 
 /// Represents the payload for creating a new repository via the REST API.
@@ -101,60 +200,6 @@ pub trait RepositoryClient: Send + Sync {
         &self,
         payload: &RepositoryCreatePayload,
     ) -> Result<models::Repository, Error>;
-}
-
-/// A client for interacting with the GitHub API, authenticated as a GitHub App.
-#[derive(Debug)]
-pub struct GitHubClient {
-    client: Octocrab,
-}
-
-impl GitHubClient {
-    /// Fetches details for a specific repository.
-    ///
-    /// # Arguments
-    ///
-    /// * `owner` - The owner of the repository (user or organization name).
-    /// * `repo` - The name of the repository.
-    ///
-    /// # Errors
-    /// Returns an `Error::Octocrab` if the API call fails.
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
-    pub async fn get_repository(&self, owner: &str, repo: &str) -> Result<Repository, Error> {
-        self.client
-            .repos(owner, repo)
-            .get()
-            .await
-            .map_err(Error::Octocrab)
-    }
-
-    /// Creates a new `GitHubClient` instance authenticated as a GitHub App.
-    ///
-    /// # Arguments
-    ///
-    /// * `app_id` - The ID of the GitHub App.
-    /// * `private_key` - The private key associated with the GitHub App, in PEM format.
-    ///
-    /// # Errors
-    /// Returns an `Error::AuthError` if authentication or client building fails.
-    #[instrument(skip(private_key), fields(app_id = %app_id))]
-    pub async fn new(app_id: u64, private_key: String) -> Result<Self, Error> {
-        let key = EncodingKey::from_rsa_pem(private_key.as_bytes()).map_err(|e| {
-            Error::AuthError(format!("Failed to parse GitHub App private key: {}", e))
-        })?;
-
-        let octocrab = Octocrab::builder()
-            .app(app_id.into(), key)
-            .build()
-            .map_err(|e| {
-                Error::AuthError(format!(
-                    "Failed to build Octocrab client for GitHub App: {}",
-                    e
-                ))
-            })?;
-
-        Ok(Self { client: octocrab })
-    }
 
     /// Updates settings for a specific repository using the REST API directly.
     ///
@@ -168,59 +213,235 @@ impl GitHubClient {
     ///
     /// # Errors
     /// Returns an `Error::Octocrab` if the API call fails.
-    #[instrument(skip(self, settings), fields(owner = %owner, repo = %repo))]
-    pub async fn update_repository_settings(
+    async fn update_repository_settings(
         &self,
         owner: &str,
         repo: &str,
         settings: &RepositorySettingsUpdate,
-    ) -> Result<Repository, Error> {
-        let path = format!("/repos/{}/{}", owner, repo);
-        // Use client.patch for updating repository settings via the REST API
-        let response: OctocrabResult<Repository> = self.client.patch(path, Some(settings)).await;
-        response.map_err(Error::Octocrab)
-    }
+    ) -> Result<models::Repository, Error>;
 }
 
-#[async_trait]
-impl RepositoryClient for GitHubClient {
-    /// Creates a new repository within a specified organization using the REST API directly.
-    ///
-    /// # Arguments
-    ///
-    /// * `org_name` - The name of the organization.
-    /// * `payload` - A `RepositoryCreatePayload` struct containing the repository details.
-    ///
-    /// # Errors
-    /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
-    async fn create_org_repository(
-        &self,
-        org_name: &str,
-        payload: &RepositoryCreatePayload,
-    ) -> Result<models::Repository, Error> {
-        let path = format!("/orgs/{}/repos", org_name);
-        let response: OctocrabResult<Repository> = self.client.post(path, Some(payload)).await;
-        response
-            .map(models::Repository::from)
-            .map_err(Error::Octocrab)
-    }
+/// Represents the settings that can be updated for a repository.
+/// Use `Default::default()` and modify fields as needed.
+#[derive(Serialize, Default, Debug)]
+pub struct RepositorySettingsUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 
-    /// Creates a new repository for the authenticated user (GitHub App) using the REST API directly.
-    ///
-    /// # Arguments
-    ///
-    /// * `payload` - A `RepositoryCreatePayload` struct containing the repository details.
-    ///
-    /// # Errors
-    /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
-    async fn create_user_repository(
-        &self,
-        payload: &RepositoryCreatePayload,
-    ) -> Result<models::Repository, Error> {
-        let path = "/user/repos";
-        let response: OctocrabResult<Repository> = self.client.post(path, Some(payload)).await;
-        response
-            .map(models::Repository::from)
-            .map_err(Error::Octocrab)
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_issues: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_projects: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_wiki: Option<bool>,
+    // Add other updatable fields like topics, default_branch etc. as needed
+}
+
+/// Authenticates with GitHub using an installation access token for a specific app installation.
+///
+/// This function retrieves an access token for a GitHub App installation and creates a new
+/// `Octocrab` client authenticated with that token. It is useful for performing API operations
+/// on behalf of a GitHub App installation.
+///
+/// # Arguments
+///
+/// * `octocrab` - An existing `Octocrab` client instance.
+/// * `installation_id` - The ID of the GitHub App installation.
+/// * `repository_owner` - The owner of the repository associated with the installation.
+/// * `source_repository` - The name of the repository associated with the installation.
+///
+/// # Returns
+///
+/// A `Result` containing a new `Octocrab` client authenticated with the installation access token,
+/// or an `Error` if the operation fails.
+///
+/// # Errors
+///
+/// This function returns an `Error` in the following cases:
+/// - If the app installation cannot be found.
+/// - If the access token cannot be created.
+/// - If the new `Octocrab` client cannot be built.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use anyhow::Result;
+/// use octocrab::Octocrab;
+/// use merge_warden_developer_platforms::github::authenticate_with_access_token;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<()> {
+///     let octocrab = Octocrab::builder().build().unwrap();
+///     let installation_id = 12345678; // Replace with your installation ID
+///     let repository_owner = "example-owner";
+///     let source_repository = "example-repo";
+///
+///     let authenticated_client = authenticate_with_access_token(
+///         &octocrab,
+///         installation_id,
+///         repository_owner,
+///         source_repository,
+///     )
+///     .await?;
+///
+///     // Use `authenticated_client` to perform API operations
+///     Ok(())
+/// }
+/// ```
+#[instrument]
+pub async fn authenticate_with_access_token(
+    octocrab: &Octocrab,
+    installation_id: u64,
+    repository_owner: &str,
+    source_repository: &str,
+) -> Result<Octocrab, Error> {
+    debug!(
+        repository_owner = repository_owner,
+        repository = source_repository,
+        installation_id,
+        "Finding installation"
+    );
+
+    let (api_with_token, _) = octocrab
+        .installation_and_token(installation_id.into())
+        .await
+        .map_err(|_| {
+            error!(
+                repository_owner = repository_owner,
+                repository = source_repository,
+                installation_id,
+                "Failed to create a token for the installation",
+            );
+
+            Error::InvalidResponse
+        })?;
+
+    info!(
+        repository_owner = repository_owner,
+        repository = source_repository,
+        installation_id,
+        "Created access token for installation",
+    );
+
+    Ok(api_with_token)
+}
+
+/// Creates an `Octocrab` client authenticated as a GitHub App using a JWT token.
+///
+/// This function generates a JSON Web Token (JWT) for the specified GitHub App ID and private key,
+/// and uses it to create an authenticated `Octocrab` client. The client can then be used to perform
+/// API operations on behalf of the GitHub App.
+///
+/// # Arguments
+///
+/// * `app_id` - The ID of the GitHub App.
+/// * `private_key` - The private key associated with the GitHub App, in PEM format.
+///
+/// # Returns
+///
+/// A `Result` containing an authenticated `Octocrab` client, or an `Error` if the operation fails.
+///
+/// # Errors
+///
+/// This function returns an `Error` in the following cases:
+/// - If the private key cannot be parsed.
+/// - If the JWT token cannot be created.
+/// - If the `Octocrab` client cannot be built.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use anyhow::Result;
+/// use merge_warden_developer_platforms::github::create_app_client;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<()> {
+///     let app_id = 123456; // Replace with your GitHub App ID
+///     let private_key = r#"
+/// -----BEGIN RSA PRIVATE KEY-----
+/// ...
+/// -----END RSA PRIVATE KEY-----
+/// "#; // Replace with your GitHub App private key
+///
+///     let client = create_app_client(app_id, private_key).await?;
+///
+///     // Use `client` to perform API operations
+///     Ok(())
+/// }
+/// ```
+#[instrument(skip(private_key))]
+pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocrab, Error> {
+    //let app_id_struct = AppId::from(app_id);
+    let key = EncodingKey::from_rsa_pem(private_key.as_bytes()).map_err(|e| {
+        Error::AuthError(
+            format!("Failed to translate the private key. Error was: {}", e).to_string(),
+        )
+    })?;
+
+    let octocrab = Octocrab::builder()
+        .app(app_id.into(), key)
+        .build()
+        .map_err(|_| {
+            Error::AuthError("Failed to get a personal token for the app install.".to_string())
+        })?;
+
+    info!("Created access token for the GitHub app",);
+
+    Ok(octocrab)
+}
+
+#[instrument(skip(token))]
+pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
+    Octocrab::builder()
+        .personal_token(token.to_string())
+        .build()
+        .map_err(|_| Error::ApiError())
+}
+
+fn log_octocrab_error(message: &str, e: octocrab::Error) {
+    match e {
+        octocrab::Error::GitHub { source, backtrace } => {
+            let err = source;
+            error!(
+                error_message = err.message,
+                backtrace = backtrace.to_string(),
+                "{}. Received an error from GitHub",
+                message
+            )
+        }
+        octocrab::Error::UriParse { source, backtrace } => error!(
+            error_message = source.to_string(),
+            backtrace = backtrace.to_string(),
+            "{}. Failed to parse URI.",
+            message
+        ),
+
+        octocrab::Error::Uri { source, backtrace } => error!(
+            error_message = source.to_string(),
+            backtrace = backtrace.to_string(),
+            "{}, Failed to parse URI.",
+            message
+        ),
+        octocrab::Error::InvalidHeaderValue { source, backtrace } => error!(
+            error_message = source.to_string(),
+            backtrace = backtrace.to_string(),
+            "{}. One of the header values was invalid.",
+            message
+        ),
+        octocrab::Error::InvalidUtf8 { source, backtrace } => error!(
+            error_message = source.to_string(),
+            backtrace = backtrace.to_string(),
+            "{}. The message wasn't valid UTF-8.",
+            message,
+        ),
+        _ => error!(error_message = e.to_string(), message),
+    };
 }

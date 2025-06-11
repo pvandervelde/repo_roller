@@ -27,7 +27,7 @@
 //   do work after the repository is created, e.g. creating infrastructure on a SaaS cloud etc.
 
 use config_manager::ConfigLoader;
-use github_client::{RepositoryClient, RepositoryCreatePayload};
+use github_client::{GitHubClient, RepositoryClient, RepositoryCreatePayload};
 use temp_dir::TempDir;
 use template_engine::{self, TemplateFetcher};
 
@@ -232,10 +232,21 @@ pub async fn create_repository_from_request(req: CreateRepoRequest) -> CreateRep
         }
     };
 
-    let repo_client = match github_client::GitHubClient::new(app_id, private_key).await {
-        Ok(client) => client,
-        Err(e) => return CreateRepoResult::failure(format!("Failed to create GitHub client: {e}")),
+    let provider = match create_app_client(app_id, private_key).await {
+        Ok(p) => p,
+        Err(e) => {
+            error!(
+                repository_owner = repo_owner,
+                repository = &repository.name,
+                pull_request = pr.number,
+                error = e.to_string(),
+                "Failed to authenticate with GitHub"
+            );
+            return CreateRepoResult::failure("Failed to authenticate with GitHub");
+        }
     };
+
+    let repo_client = GitHubClient::new(provider);
 
     create_repository(req, &config_loader, &template_fetcher, &repo_client).await
 }
