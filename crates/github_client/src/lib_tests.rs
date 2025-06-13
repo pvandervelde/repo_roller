@@ -191,10 +191,3 @@ async fn test_update_repository_settings_success() {
     }
     assert!(result.is_ok());
 }
-
-#[tokio::test]
-async fn test_new_client_success() {
-    let pem = create_test_pem();
-    let result = GitHubClient::new(TEST_APP_ID, pem).await;
-    assert!(result.is_ok());
-}

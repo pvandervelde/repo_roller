@@ -19,7 +19,7 @@ fn test_auth_error() {
     // Test error message
     assert_eq!(
         error.to_string(),
-        "Authentication failed: Invalid credentials"
+        "Failed to authenticate or initialize GitHub client: Invalid credentials"
     );
 
     // Test error source

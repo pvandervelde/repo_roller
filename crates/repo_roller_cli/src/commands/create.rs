@@ -1,11 +1,6 @@
-//! Implementation of the `create` command for the RepoRoller CLI.
-//!
-//! This module handles argument parsing, config loading, interactive prompts, and
-//! delegates to the core orchestration logic to create a new repository.
-
-use std::fs;
-
 use crate::errors::Error;
+use async_trait::async_trait;
+use std::fs;
 
 /// Function type for prompting the user for a value interactively.
 /// Used for required fields that may be missing from config or CLI args.
@@ -14,11 +9,6 @@ type AskUserForValue = dyn Fn(&str) -> Result<String, Error>;
 /// Function type for retrieving organization-specific repository rules.
 /// Allows for dependency injection and testability.
 pub type GetOrgRulesFn = dyn Fn(&str) -> repo_roller_core::OrgRules;
-
-/// Function type for creating a repository given a request.
-/// Allows for dependency injection and testability.
-pub type CreateRepositoryFn =
-    dyn Fn(repo_roller_core::CreateRepoRequest) -> repo_roller_core::CreateRepoResult;
 
 #[cfg(test)]
 #[path = "create_tests.rs"]
@@ -36,7 +26,15 @@ pub struct ConfigFile {
     pub template: Option<String>,
 }
 
-/// Handles the create command logic for the CLI.
+#[async_trait]
+pub trait RepositoryCreator {
+    async fn create_repository(
+        &self,
+        request: repo_roller_core::CreateRepoRequest,
+    ) -> repo_roller_core::CreateRepoResult;
+}
+
+/// Handles the create command logic for the CLI. sch
 ///
 /// This function merges configuration from a TOML file and CLI arguments,
 /// prompts the user for any missing required values, applies organization-specific
@@ -53,14 +51,14 @@ pub struct ConfigFile {
 ///
 /// # Returns
 /// * `Result<CreateRepoResult, Error>` - The result of the repository creation attempt or an error.
-pub fn handle_create_command(
+pub async fn handle_create_command(
     config: &Option<String>,
     name: &Option<String>,
     owner: &Option<String>,
     template: &Option<String>,
     ask_user_for_value: &AskUserForValue,
     get_org_rules: &GetOrgRulesFn,
-    create_repository: &CreateRepositoryFn,
+    repository_creator: &impl RepositoryCreator,
 ) -> Result<repo_roller_core::CreateRepoResult, Error> {
     // Load config file if provided, otherwise start with empty values.
     let (mut final_name, mut final_owner, mut final_template) = if let Some(config_path) = config {
@@ -167,7 +165,7 @@ pub fn handle_create_command(
         owner: final_owner,
         template: final_template,
     };
-    let result = create_repository(req);
+    let result = repository_creator.create_repository(req).await;
 
     Ok(result)
 }

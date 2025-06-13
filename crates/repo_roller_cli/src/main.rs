@@ -1,13 +1,14 @@
 use std::io;
 use std::io::Write;
 
+use async_trait::async_trait;
 use clap::{Parser, Subcommand};
 use tokio;
 
 mod commands;
 
 mod errors;
-use commands::create::handle_create_command;
+use commands::create::{handle_create_command, RepositoryCreator};
 use errors::Error;
 
 #[cfg(test)]
@@ -60,6 +61,18 @@ enum Commands {
     Init,
 }
 
+struct RepositoryCreatorBridge {}
+
+#[async_trait]
+impl RepositoryCreator for RepositoryCreatorBridge {
+    async fn create_repository(
+        &self,
+        request: repo_roller_core::CreateRepoRequest,
+    ) -> repo_roller_core::CreateRepoResult {
+        repo_roller_core::create_repository_from_request(request).await
+    }
+}
+
 fn ask_user_for_value(request: &str) -> Result<String, Error> {
     print!("{}", request);
 
@@ -87,22 +100,33 @@ async fn main() {
             owner,
             template,
         } => {
-            // Call the async function directly and await the result
-            let result = repo_roller_core::create_repository_from_request(
-                repo_roller_core::CreateRepoRequest {
-                    name: name.clone().unwrap_or_default(),
-                    owner: owner.clone().unwrap_or_default(),
-                    template: template.clone().unwrap_or_default(),
-                },
+            // Use handle_create_command to merge config, prompt, and apply org rules
+            let creator = RepositoryCreatorBridge {};
+            let result = handle_create_command(
+                config,
+                name,
+                owner,
+                template,
+                &ask_user_for_value,
+                &|org| repo_roller_core::OrgRules::new_from_text(org),
+                &creator,
             )
             .await;
 
-            if result.success {
-                println!("Repository created");
-                std::process::exit(0);
-            } else {
-                println!("Failed to create repository: {}", result.message);
-                std::process::exit(1);
+            match result {
+                Ok(res) => {
+                    if res.success {
+                        println!("Repository created");
+                        std::process::exit(0);
+                    } else {
+                        println!("Failed to create repository: {}", res.message);
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    println!("Error: {e}");
+                    std::process::exit(2);
+                }
             }
         }
         Commands::Version => {

@@ -4,6 +4,7 @@
 use super::*;
 use async_trait::async_trait;
 use config_manager::ConfigError;
+use github_client::{models, RepositorySettingsUpdate};
 use std::env;
 use std::sync::Mutex;
 
@@ -68,16 +69,28 @@ impl github_client::RepositoryClient for MockRepoClient {
         &self,
         _owner: &str,
         _payload: &github_client::RepositoryCreatePayload,
-    ) -> Result<github_client::models::Repository, github_client::Error> {
-        Err(github_client::Error::AuthError(
+    ) -> Result<github_client::models::Repository, github_client::errors::Error> {
+        Err(github_client::errors::Error::AuthError(
             "MockRepoClient cannot construct Repository; this is expected in tests".to_string(),
         ))
     }
+
     async fn create_user_repository(
         &self,
         _payload: &github_client::RepositoryCreatePayload,
-    ) -> Result<github_client::models::Repository, github_client::Error> {
-        Err(github_client::Error::AuthError(
+    ) -> Result<github_client::models::Repository, github_client::errors::Error> {
+        Err(github_client::errors::Error::AuthError(
+            "MockRepoClient cannot construct Repository; this is expected in tests".to_string(),
+        ))
+    }
+
+    async fn update_repository_settings(
+        &self,
+        owner: &str,
+        repo: &str,
+        settings: &RepositorySettingsUpdate,
+    ) -> Result<models::Repository, github_client::errors::Error> {
+        Err(github_client::errors::Error::AuthError(
             "MockRepoClient cannot construct Repository; this is expected in tests".to_string(),
         ))
     }

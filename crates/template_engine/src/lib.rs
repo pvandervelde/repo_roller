@@ -9,7 +9,7 @@ pub fn fetch_template_files(_source_repo: &str) -> Result<Vec<(String, Vec<u8>)>
 }
 
 /// Trait for fetching template files.
-pub trait TemplateFetcher {
+pub trait TemplateFetcher: Send + Sync {
     fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String>;
 }
 

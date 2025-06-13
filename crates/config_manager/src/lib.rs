@@ -108,7 +108,7 @@ pub struct Config {
 }
 
 /// Trait for loading configuration.
-pub trait ConfigLoader {
+pub trait ConfigLoader: Send + Sync {
     fn load_config(&self, path: &str) -> Result<Config, crate::ConfigError>;
 }
 
