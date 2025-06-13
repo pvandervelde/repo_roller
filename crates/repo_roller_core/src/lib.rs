@@ -27,9 +27,10 @@
 //   do work after the repository is created, e.g. creating infrastructure on a SaaS cloud etc.
 
 use config_manager::ConfigLoader;
-use github_client::{GitHubClient, RepositoryClient, RepositoryCreatePayload};
+use github_client::{create_app_client, GitHubClient, RepositoryClient, RepositoryCreatePayload};
 use temp_dir::TempDir;
 use template_engine::{self, TemplateFetcher};
+use tracing::error;
 
 mod errors;
 use errors::Error;
@@ -232,13 +233,12 @@ pub async fn create_repository_from_request(req: CreateRepoRequest) -> CreateRep
         }
     };
 
-    let provider = match create_app_client(app_id, private_key).await {
+    let provider = match create_app_client(app_id, &private_key).await {
         Ok(p) => p,
         Err(e) => {
             error!(
-                repository_owner = repo_owner,
-                repository = &repository.name,
-                pull_request = pr.number,
+                app_id = app_id,
+                owner = &req.owner.clone(),
                 error = e.to_string(),
                 "Failed to authenticate with GitHub"
             );
