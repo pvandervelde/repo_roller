@@ -1,6 +1,7 @@
 use super::*;
 use crate::errors::Error;
 use repo_roller_core::OrgRules;
+use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
@@ -26,46 +27,6 @@ impl CallLog {
     }
 }
 
-struct TestRepositoryCreatorBridge {
-    log: Arc<Mutex<CallLog>>,
-    simulate_failure: bool, // New field to simulate failure
-}
-
-impl TestRepositoryCreatorBridge {
-    pub fn new(log: &Arc<Mutex<CallLog>>, simulate_failure: bool) -> Self {
-        Self {
-            log: log.clone(),
-            simulate_failure,
-        }
-    }
-}
-
-#[async_trait]
-impl RepositoryCreator for TestRepositoryCreatorBridge {
-    async fn create_repository(
-        &self,
-        request: repo_roller_core::CreateRepoRequest,
-    ) -> repo_roller_core::CreateRepoResult {
-        self.log
-            .lock()
-            .unwrap()
-            .create_repository_args
-            .push(request.clone());
-
-        if self.simulate_failure {
-            repo_roller_core::CreateRepoResult {
-                success: false,
-                message: "creation failed".to_string(),
-            }
-        } else {
-            repo_roller_core::CreateRepoResult {
-                success: true,
-                message: "stubbed".to_string(),
-            }
-        }
-    }
-}
-
 #[tokio::test]
 async fn test_happy_path_with_all_args() {
     let ask = make_ask_user_for_value;
@@ -81,7 +42,17 @@ async fn test_happy_path_with_all_args() {
         OrgRules::new_from_text(org)
     };
 
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
+        }
+    };
+
     let result = handle_create_command(
         &None,
         &Some("repo1".to_string()),
@@ -89,7 +60,7 @@ async fn test_happy_path_with_all_args() {
         &Some("library".to_string()),
         &ask,
         &get_org_rules,
-        &bridge,
+        create_repo,
     )
     .await;
     assert!(result.is_ok());
@@ -128,9 +99,27 @@ async fn test_happy_path_with_config_file() {
         OrgRules::new_from_text(org)
     };
 
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
-    let result =
-        handle_create_command(&path, &None, &None, &None, &ask, &get_org_rules, &bridge).await;
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
+        }
+    };
+
+    let result = handle_create_command(
+        &path,
+        &None,
+        &None,
+        &None,
+        &ask,
+        &get_org_rules,
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -151,7 +140,6 @@ async fn test_config_file_missing() {
     let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let log = Arc::new(Mutex::new(CallLog::new()));
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
     let result = handle_create_command(
         &Some("nonexistent.toml".to_string()),
         &None,
@@ -159,7 +147,7 @@ async fn test_config_file_missing() {
         &None,
         &ask,
         &get_org_rules,
-        &bridge,
+        |req| create_repository(req),
     )
     .await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
@@ -174,9 +162,10 @@ async fn test_config_file_invalid_toml() {
     let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let log = Arc::new(Mutex::new(CallLog::new()));
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
-    let result =
-        handle_create_command(&path, &None, &None, &None, &ask, &get_org_rules, &bridge).await;
+    let result = handle_create_command(&path, &None, &None, &None, &ask, &get_org_rules, |req| {
+        create_repository(req)
+    })
+    .await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
 
@@ -196,7 +185,17 @@ async fn test_partial_args_prompt_for_owner() {
         OrgRules::new_from_text(org)
     };
 
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
+        }
+    };
+
     let result = handle_create_command(
         &None,
         &Some("repo3".to_string()),
@@ -204,7 +203,7 @@ async fn test_partial_args_prompt_for_owner() {
         &Some("library".to_string()),
         &ask,
         &get_org_rules,
-        &bridge,
+        create_repo,
     )
     .await;
     assert!(result.is_ok());
@@ -237,7 +236,17 @@ async fn test_partial_args_prompt_for_template() {
         OrgRules::new_from_text(org)
     };
 
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
+        }
+    };
+
     let result = handle_create_command(
         &None,
         &Some("repo4".to_string()),
@@ -245,7 +254,7 @@ async fn test_partial_args_prompt_for_template() {
         &None,
         &ask,
         &get_org_rules,
-        &bridge,
+        create_repo,
     )
     .await;
     assert!(result.is_ok());
@@ -269,7 +278,16 @@ async fn test_create_repository_failure() {
     let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let log = Arc::new(Mutex::new(CallLog::new()));
-    let bridge = TestRepositoryCreatorBridge::new(&log, true); // Simulate failure
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::failure("creation failed")
+            }
+        }
+    };
     let result = handle_create_command(
         &None,
         &Some("repo5".to_string()),
@@ -277,7 +295,7 @@ async fn test_create_repository_failure() {
         &Some("library".to_string()),
         &ask,
         &get_org_rules,
-        &bridge,
+        create_repo,
     )
     .await;
     assert!(result.is_ok());
@@ -305,9 +323,27 @@ async fn test_config_file_missing_fields() {
         OrgRules::new_from_text(org)
     };
 
-    let bridge = TestRepositoryCreatorBridge::new(&log, false);
-    let result =
-        handle_create_command(&path, &None, &None, &None, &ask, &get_org_rules, &bridge).await;
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
+        }
+    };
+
+    let result = handle_create_command(
+        &path,
+        &None,
+        &None,
+        &None,
+        &ask,
+        &get_org_rules,
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);

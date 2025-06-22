@@ -134,7 +134,13 @@ async fn test_create_repository_template_not_found() {
     let config_loader = MockConfigLoader;
     let template_fetcher = MockTemplateFetcher;
     let repo_client = MockRepoClient;
-    let result = create_repository(req, &config_loader, &template_fetcher, &repo_client).await;
+    let result = create_repository_with_custom_settings(
+        req,
+        &config_loader,
+        &template_fetcher,
+        &repo_client,
+    )
+    .await;
     assert!(!result.success);
     assert!(result.message.contains("Template not found"));
 }

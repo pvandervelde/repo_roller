@@ -360,7 +360,7 @@ pub async fn authenticate_with_access_token(
 ///
 /// ```rust,no_run
 /// use anyhow::Result;
-/// use merge_warden_developer_platforms::github::create_app_client;
+/// use github_client::create_app_client;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<()> {

@@ -11,10 +11,20 @@ version.workspace = true
 [dependencies]
 async-trait.workspace = true
 clap = { version = "4.5.4", features = ["derive"] }
+config_manager = { path = "../config_manager" }
+github_client = { path = "../github_client" }
+keyring = { version = "3.6.2", features = [
+    "apple-native",
+    "linux-native",
+    "windows-native",
+] }
+octocrab.workspace = true
 regex = "1.10.4"
 repo_roller_core = { path = "../repo_roller_core" }
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.19.1"
+template_engine = { path = "../template_engine" }
 thiserror = { workspace = true }
 tokio = { version = "1.45.1", features = ["full"] }
 toml = "0.8.21"
+tracing.workspace = true

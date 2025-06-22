@@ -1,15 +1,16 @@
 use std::io;
 use std::io::Write;
 
-use async_trait::async_trait;
 use clap::{Parser, Subcommand};
-use tokio;
 
 mod commands;
+mod config;
 
 mod errors;
-use commands::create::{handle_create_command, RepositoryCreator};
+use commands::create_cmd::{create_repository, handle_create_command};
 use errors::Error;
+
+use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs};
 
 #[cfg(test)]
 #[path = "main_tests.rs"]
@@ -26,51 +27,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(subcommand)]
+    Auth(AuthCommands),
+
+    #[command(subcommand)]
+    Config(ConfigCommands),
+
     /// Create a new repository from a template
-    Create {
-        /// Path to a TOML config file with repository settings
-        #[arg(long)]
-        config: Option<String>,
+    #[command()]
+    Create(CreateArgs),
 
-        /// Name of the new repository
-        #[arg(long)]
-        name: Option<String>,
-
-        /// Owner (user or org) for the new repository
-        #[arg(long)]
-        owner: Option<String>,
-
-        /// Template type (e.g., library, service, action)
-        #[arg(long)]
-        template: Option<String>,
-    },
-
-    /// Show the CLI version
-    Version,
-
-    /// Show default settings
-    ShowDefaults,
+    /// Initialize a repository config file
+    Init,
 
     /// List recognized template variables
     ListVariables,
 
-    /// Show the status of the last operation
-    Status,
-
-    /// Initialize a repository config file
-    Init,
-}
-
-struct RepositoryCreatorBridge {}
-
-#[async_trait]
-impl RepositoryCreator for RepositoryCreatorBridge {
-    async fn create_repository(
-        &self,
-        request: repo_roller_core::CreateRepoRequest,
-    ) -> repo_roller_core::CreateRepoResult {
-        repo_roller_core::create_repository_from_request(request).await
-    }
+    /// Show the CLI version
+    Version,
 }
 
 fn ask_user_for_value(request: &str) -> Result<String, Error> {
@@ -94,22 +68,18 @@ pub fn parse_key_val(s: &str) -> Result<(String, String), String> {
 async fn main() {
     let cli = Cli::parse();
     match &cli.command {
-        Commands::Create {
-            config,
-            name,
-            owner,
-            template,
-        } => {
+        Commands::Auth(cmd) => {}
+        Commands::Config(cmd) => {}
+        Commands::Create(args) => {
             // Use handle_create_command to merge config, prompt, and apply org rules
-            let creator = RepositoryCreatorBridge {};
             let result = handle_create_command(
-                config,
-                name,
-                owner,
-                template,
+                &args.config,
+                &args.name,
+                &args.owner,
+                &args.template,
                 &ask_user_for_value,
                 &|org| repo_roller_core::OrgRules::new_from_text(org),
-                &creator,
+                create_repository,
             )
             .await;
 
@@ -129,28 +99,20 @@ async fn main() {
                 }
             }
         }
-        Commands::Version => {
-            // Print version info from baked-in value
-            println!(
-                "repo-roller version {}",
-                option_env!("REPO_ROLLER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
-            );
-            std::process::exit(0);
-        }
-        Commands::ShowDefaults => {
-            println!("Default settings: (not yet implemented)");
+        Commands::Init => {
+            println!("Repository config initialization: (not yet implemented)");
             std::process::exit(0);
         }
         Commands::ListVariables => {
             println!("Recognized template variables: (not yet implemented)");
             std::process::exit(0);
         }
-        Commands::Status => {
-            println!("Status: (not yet implemented)");
-            std::process::exit(0);
-        }
-        Commands::Init => {
-            println!("Repository config initialization: (not yet implemented)");
+        Commands::Version => {
+            // Print version info from baked-in value
+            println!(
+                "repo-roller version {}",
+                option_env!("REPO_ROLLER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+            );
             std::process::exit(0);
         }
     }

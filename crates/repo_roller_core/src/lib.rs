@@ -112,7 +112,7 @@ fn create_additional_files(
 
 // --- Update create_repository to be generic over RepoName ---
 /// Create a new repository from a template, with dependency injection for testability.
-pub async fn create_repository(
+async fn create_repository_with_custom_settings(
     req: CreateRepoRequest,
     config_loader: &dyn ConfigLoader,
     template_fetcher: &dyn TemplateFetcher,
@@ -212,43 +212,28 @@ pub async fn create_repository(
     CreateRepoResult::success(format!("Repository {} created successfully", repo.name()))
 }
 
-/// Production entrypoint: uses real implementations.
-pub async fn create_repository_from_request(req: CreateRepoRequest) -> CreateRepoResult {
+pub async fn create_repository(
+    request: CreateRepoRequest,
+    app_id: u64,
+    app_key: String,
+) -> CreateRepoResult {
     let config_loader = config_manager::FileConfigLoader;
     let template_fetcher = template_engine::DefaultTemplateFetcher;
 
-    // GitHubClient requires async construction, so we need to use a runtime
-    let app_id = match std::env::var("GITHUB_APP_ID") {
-        Ok(val) => match val.parse::<u64>() {
-            Ok(id) => id,
-            Err(e) => return CreateRepoResult::failure(format!("Invalid GITHUB_APP_ID: {e}")),
-        },
-        Err(_) => return CreateRepoResult::failure("GITHUB_APP_ID environment variable not set"),
-    };
-
-    let private_key = match std::env::var("GITHUB_APP_PRIVATE_KEY") {
-        Ok(val) => val,
-        Err(_) => {
-            return CreateRepoResult::failure("GITHUB_APP_PRIVATE_KEY environment variable not set")
-        }
-    };
-
-    let provider = match create_app_client(app_id, &private_key).await {
+    let provider = match create_app_client(app_id, &app_key).await {
         Ok(p) => p,
         Err(e) => {
-            error!(
-                app_id = app_id,
-                owner = &req.owner.clone(),
-                error = e.to_string(),
-                "Failed to authenticate with GitHub"
-            );
-            return CreateRepoResult::failure("Failed to authenticate with GitHub");
+            return CreateRepoResult::failure(format!(
+                "Failed to load the GitHub provider. Error was: {}",
+                e
+            ))
         }
     };
 
     let repo_client = GitHubClient::new(provider);
 
-    create_repository(req, &config_loader, &template_fetcher, &repo_client).await
+    create_repository_with_custom_settings(request, &config_loader, &template_fetcher, &repo_client)
+        .await
 }
 
 fn init_local_git_repo(local_path: &TempDir) -> Result<(), Error> {
