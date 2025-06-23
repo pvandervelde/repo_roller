@@ -23,3 +23,6 @@ memory-bank/
 .roomodes
 
 .github/instructions/
+
+# Ignore the test config file
+config.toml
