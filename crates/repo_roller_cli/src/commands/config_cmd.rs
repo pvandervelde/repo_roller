@@ -5,7 +5,7 @@ use crate::config::{get_config_path, AppConfig};
 use crate::errors::Error;
 
 /// Subcommands for the config command
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum ConfigCommands {
     /// Create initial configuration file
     Init {
@@ -47,7 +47,7 @@ pub enum ConfigCommands {
 
 /// Execute the config command
 #[instrument]
-pub async fn execute(cmd: ConfigCommands) -> Result<(), Error> {
+pub async fn execute(cmd: &ConfigCommands) -> Result<(), Error> {
     match cmd {
         ConfigCommands::Init { path } => init_config(path.as_deref()),
         ConfigCommands::Validate { path } => validate_config(path.as_deref()),

@@ -9,6 +9,8 @@ mod config;
 mod errors;
 use commands::create_cmd::{create_repository, handle_create_command};
 use errors::Error;
+use tracing::error;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs};
 
@@ -66,10 +68,26 @@ pub fn parse_key_val(s: &str) -> Result<(String, String), String> {
 
 #[tokio::main]
 async fn main() {
+    // Initialize logging
+    tracing_subscriber::registry()
+        .with(fmt::layer().pretty())
+        .with(EnvFilter::from_env("REPO_ROLLER_LOG"))
+        .init();
+
     let cli = Cli::parse();
     match &cli.command {
-        Commands::Auth(cmd) => {}
-        Commands::Config(cmd) => {}
+        Commands::Auth(cmd) => {
+            if let Err(e) = crate::commands::auth_cmd::execute(cmd).await {
+                error!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Config(cmd) => {
+            if let Err(e) = crate::commands::config_cmd::execute(cmd).await {
+                error!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
         Commands::Create(args) => {
             // Use handle_create_command to merge config, prompt, and apply org rules
             let result = handle_create_command(
