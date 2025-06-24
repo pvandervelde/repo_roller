@@ -82,9 +82,9 @@ impl Repository {
     pub fn node_id(&self) -> &str {
         &self.node_id
     }
-
     pub fn url(&self) -> Url {
-        todo!()
+        Url::parse(&format!("https://github.com/{}.git", self.full_name))
+            .expect("Valid GitHub repository URL")
     }
 }
 
