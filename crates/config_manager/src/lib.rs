@@ -4,6 +4,7 @@
 //! and providing access to settings like template definitions, standard labels, etc.
 
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -56,6 +57,19 @@ pub struct ActionPermissions {
     // Add more granular permissions later
 }
 
+/// Template variable configuration matching the specification
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct VariableConfig {
+    pub description: String,
+    pub example: Option<String>,
+    pub required: Option<bool>,
+    pub pattern: Option<String>,
+    pub min_length: Option<usize>,
+    pub max_length: Option<usize>,
+    pub options: Option<Vec<String>>,
+    pub default: Option<String>,
+}
+
 /// Errors that can occur while loading or accessing configuration.
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -93,9 +107,9 @@ pub struct TemplateConfig {
     /// Branch protection rules to apply (placeholder).
     pub branch_protection_rules: Option<Vec<BranchProtectionRule>>,
     /// Action permissions settings (placeholder).
-    pub action_permissions: Option<ActionPermissions>,
-    /// List of variable names expected by the template engine.
-    pub required_variables: Option<Vec<String>>,
+    pub action_permissions: Option<ActionPermissions>,    /// List of variable names expected by the template engine.
+    pub required_variables: Option<Vec<String>>,    /// Template variable configurations (if we need more than just names)
+    pub variable_configs: Option<HashMap<String, VariableConfig>>,
     // TODO: Add fields for custom properties, environments, discussion categories etc.
 }
 

@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use temp_dir::TempDir;
-use template_engine::{self, TemplateFetcher, TemplateProcessor, TemplateProcessingRequest};
+use template_engine::{self, TemplateFetcher, TemplateProcessingRequest, TemplateProcessor};
 use tracing::{debug, error, info};
 use walkdir::WalkDir;
 
@@ -243,10 +243,8 @@ async fn create_repository_with_custom_settings(
     // 5. Add the template files (copy, not git clone)
     if let Err(e) = copy_template_files(&files, &local_repo_path) {
         return CreateRepoResult::failure(format!("Failed to copy template files: {e}"));
-    }
-
-    // 6. Replace template variables in the copied files
-    if let Err(e) = replace_template_variables(&local_repo_path, &req) {
+    }    // 6. Replace template variables in the copied files
+    if let Err(e) = replace_template_variables(&local_repo_path, &req, template) {
         return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
     }
 
@@ -399,28 +397,44 @@ fn push_to_origin(
 fn replace_template_variables(
     local_repo_path: &TempDir,
     req: &CreateRepoRequest,
+    template: &config_manager::TemplateConfig,
 ) -> Result<(), Error> {
     debug!("Processing template variables using TemplateProcessor");
-    
+
     // Create template processor
     let processor = TemplateProcessor::new();
-    
+
     // Generate built-in variables
     let built_in_variables = processor.generate_built_in_variables(
-        &req.name,           // repo_name
-        &req.owner,          // org_name
-        &req.template,       // template_name
-        "unknown",           // template_repo (we'd need to get this from template config)
-        "reporoller-app",    // user_login (placeholder for GitHub App)
-        "RepoRoller App",    // user_name (placeholder for GitHub App)
-        "main",              // default_branch
-    );
-    
-    // For MVP, we'll use empty user variables and variable configs
-    // In a full implementation, these would come from the template configuration
+        &req.name,        // repo_name
+        &req.owner,       // org_name
+        &req.template,    // template_name
+        "unknown",        // template_repo (we'd need to get this from template config)
+        "reporoller-app", // user_login (placeholder for GitHub App)
+        "RepoRoller App", // user_name (placeholder for GitHub App)
+        "main",           // default_branch
+    );    // For MVP, we'll use empty user variables and get variable configs from template
+    // In a full implementation, these would come from user input and merged configs
     let user_variables = HashMap::new();
-    let variable_configs = HashMap::new();
     
+    // Convert config_manager::VariableConfig to template_engine::VariableConfig
+    let mut variable_configs = HashMap::new();
+    if let Some(ref template_vars) = template.variable_configs {
+        for (name, config) in template_vars {
+            let engine_config = template_engine::VariableConfig {
+                description: config.description.clone(),
+                example: config.example.clone(),
+                required: config.required,
+                pattern: config.pattern.clone(),
+                min_length: config.min_length,
+                max_length: config.max_length,
+                options: config.options.clone(),
+                default: config.default.clone(),
+            };
+            variable_configs.insert(name.clone(), engine_config);
+        }
+    }
+
     // Create processing request
     let processing_request = TemplateProcessingRequest {
         variables: user_variables,
@@ -428,14 +442,14 @@ fn replace_template_variables(
         variable_configs,
         templating_config: None, // Use default processing (all files)
     };
-      // Read all files that were copied to the local repo
+    // Read all files that were copied to the local repo
     let mut files_to_process = Vec::new();
     for entry in WalkDir::new(local_repo_path.path()) {
         let entry = entry.map_err(|e| {
             error!("Failed to read directory entry: {}", e);
             Error::FileSystem(format!("Failed to read directory entry: {}", e))
         })?;
-        
+
         if entry.file_type().is_file() {
             let file_path = entry.path();
             let relative_path = file_path
@@ -444,26 +458,28 @@ fn replace_template_variables(
                     error!("Failed to get relative path: {}", e);
                     Error::FileSystem(format!("Failed to get relative path: {}", e))
                 })?;
-            
+
             let content = fs::read(file_path).map_err(|e| {
                 error!("Failed to read file {:?}: {}", file_path, e);
                 Error::FileSystem(format!("Failed to read file {:?}: {}", file_path, e))
             })?;
-            
+
             files_to_process.push((relative_path.to_string_lossy().to_string(), content));
         }
     }
-    
+
     // Process the template files
-    let processed = processor.process_template(
-        &files_to_process,
-        &processing_request,
-        local_repo_path.path(),
-    ).map_err(|e| {
-        error!("Template processing failed: {}", e);
-        Error::TemplateProcessing(format!("Template processing failed: {}", e))
-    })?;
-    
+    let processed = processor
+        .process_template(
+            &files_to_process,
+            &processing_request,
+            local_repo_path.path(),
+        )
+        .map_err(|e| {
+            error!("Template processing failed: {}", e);
+            Error::TemplateProcessing(format!("Template processing failed: {}", e))
+        })?;
+
     // Write the processed files back to the local repo    // First, clear the directory (except .git)
     for entry in WalkDir::new(local_repo_path.path())
         .min_depth(1)
@@ -474,7 +490,7 @@ fn replace_template_variables(
             error!("Failed to read directory entry: {}", e);
             Error::FileSystem(format!("Failed to read directory entry: {}", e))
         })?;
-        
+
         if entry.file_type().is_file() {
             fs::remove_file(entry.path()).map_err(|e| {
                 error!("Failed to remove file {:?}: {}", entry.path(), e);
@@ -482,11 +498,11 @@ fn replace_template_variables(
             })?;
         }
     }
-    
+
     // Write processed files
     for (file_path, content) in processed.files {
         let target_path = local_repo_path.path().join(&file_path);
-        
+
         // Create parent directories if they don't exist
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
@@ -494,16 +510,19 @@ fn replace_template_variables(
                 Error::FileSystem(format!("Failed to create directory {:?}: {}", parent, e))
             })?;
         }
-        
+
         // Write the file content
         fs::write(&target_path, content).map_err(|e| {
             error!("Failed to write processed file {:?}: {}", target_path, e);
-            Error::FileSystem(format!("Failed to write processed file {:?}: {}", target_path, e))
+            Error::FileSystem(format!(
+                "Failed to write processed file {:?}: {}",
+                target_path, e
+            ))
         })?;
-        
+
         debug!("Wrote processed file: {}", file_path);
     }
-    
+
     info!("Template variable processing completed successfully");
     Ok(())
 }
