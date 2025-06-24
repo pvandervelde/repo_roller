@@ -29,17 +29,16 @@
 use config_manager::ConfigLoader;
 use git2::{Repository, Signature};
 use github_client::{create_app_client, GitHubClient, RepositoryClient, RepositoryCreatePayload};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
 use temp_dir::TempDir;
-use template_engine::{self, TemplateFetcher};
+use template_engine::{self, TemplateFetcher, TemplateProcessor, TemplateProcessingRequest};
 use tracing::{debug, error, info};
 use walkdir::WalkDir;
 
 mod errors;
 use errors::Error;
-use url::Url;
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]
@@ -401,50 +400,111 @@ fn replace_template_variables(
     local_repo_path: &TempDir,
     req: &CreateRepoRequest,
 ) -> Result<(), Error> {
-    debug!("Replacing template variables in repository files");
-
-    // Walk through all files in the repository
+    debug!("Processing template variables using TemplateProcessor");
+    
+    // Create template processor
+    let processor = TemplateProcessor::new();
+    
+    // Generate built-in variables
+    let built_in_variables = processor.generate_built_in_variables(
+        &req.name,           // repo_name
+        &req.owner,          // org_name
+        &req.template,       // template_name
+        "unknown",           // template_repo (we'd need to get this from template config)
+        "reporoller-app",    // user_login (placeholder for GitHub App)
+        "RepoRoller App",    // user_name (placeholder for GitHub App)
+        "main",              // default_branch
+    );
+    
+    // For MVP, we'll use empty user variables and variable configs
+    // In a full implementation, these would come from the template configuration
+    let user_variables = HashMap::new();
+    let variable_configs = HashMap::new();
+    
+    // Create processing request
+    let processing_request = TemplateProcessingRequest {
+        variables: user_variables,
+        built_in_variables,
+        variable_configs,
+        templating_config: None, // Use default processing (all files)
+    };
+      // Read all files that were copied to the local repo
+    let mut files_to_process = Vec::new();
     for entry in WalkDir::new(local_repo_path.path()) {
         let entry = entry.map_err(|e| {
             error!("Failed to read directory entry: {}", e);
             Error::FileSystem(format!("Failed to read directory entry: {}", e))
         })?;
-
-        // Skip directories and non-text files for now
-        if entry.file_type().is_dir() {
-            continue;
-        }
-
-        let file_path = entry.path();
-
-        // Read file content
-        let content = fs::read_to_string(file_path).map_err(|e| {
-            debug!("Skipping binary file {:?}: {}", file_path, e);
-            return Error::FileSystem(format!("Failed to read file {:?}: {}", file_path, e));
-        })?;
-
-        // Perform basic template variable replacement
-        let mut updated_content = content.clone();
-        updated_content = updated_content.replace("{{repo_name}}", &req.name);
-        updated_content = updated_content.replace("{{owner}}", &req.owner);
-        updated_content = updated_content.replace("{{template}}", &req.template);
-        updated_content = updated_content.replace("{{repository_name}}", &req.name);
-        updated_content = updated_content.replace("{{owner_name}}", &req.owner);
-
-        // Write back if content changed
-        if updated_content != content {
-            fs::write(file_path, updated_content).map_err(|e| {
-                error!("Failed to write updated file {:?}: {}", file_path, e);
-                Error::FileSystem(format!(
-                    "Failed to write updated file {:?}: {}",
-                    file_path, e
-                ))
+        
+        if entry.file_type().is_file() {
+            let file_path = entry.path();
+            let relative_path = file_path
+                .strip_prefix(local_repo_path.path())
+                .map_err(|e| {
+                    error!("Failed to get relative path: {}", e);
+                    Error::FileSystem(format!("Failed to get relative path: {}", e))
+                })?;
+            
+            let content = fs::read(file_path).map_err(|e| {
+                error!("Failed to read file {:?}: {}", file_path, e);
+                Error::FileSystem(format!("Failed to read file {:?}: {}", file_path, e))
             })?;
-            debug!("Updated template variables in file: {:?}", file_path);
+            
+            files_to_process.push((relative_path.to_string_lossy().to_string(), content));
         }
     }
-
-    info!("Template variable replacement completed");
+    
+    // Process the template files
+    let processed = processor.process_template(
+        &files_to_process,
+        &processing_request,
+        local_repo_path.path(),
+    ).map_err(|e| {
+        error!("Template processing failed: {}", e);
+        Error::TemplateProcessing(format!("Template processing failed: {}", e))
+    })?;
+    
+    // Write the processed files back to the local repo    // First, clear the directory (except .git)
+    for entry in WalkDir::new(local_repo_path.path())
+        .min_depth(1)
+        .into_iter()
+        .filter_entry(|e| e.file_name() != ".git")
+    {
+        let entry = entry.map_err(|e| {
+            error!("Failed to read directory entry: {}", e);
+            Error::FileSystem(format!("Failed to read directory entry: {}", e))
+        })?;
+        
+        if entry.file_type().is_file() {
+            fs::remove_file(entry.path()).map_err(|e| {
+                error!("Failed to remove file {:?}: {}", entry.path(), e);
+                Error::FileSystem(format!("Failed to remove file {:?}: {}", entry.path(), e))
+            })?;
+        }
+    }
+    
+    // Write processed files
+    for (file_path, content) in processed.files {
+        let target_path = local_repo_path.path().join(&file_path);
+        
+        // Create parent directories if they don't exist
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                error!("Failed to create directory {:?}: {}", parent, e);
+                Error::FileSystem(format!("Failed to create directory {:?}: {}", parent, e))
+            })?;
+        }
+        
+        // Write the file content
+        fs::write(&target_path, content).map_err(|e| {
+            error!("Failed to write processed file {:?}: {}", target_path, e);
+            Error::FileSystem(format!("Failed to write processed file {:?}: {}", target_path, e))
+        })?;
+        
+        debug!("Wrote processed file: {}", file_path);
+    }
+    
+    info!("Template variable processing completed successfully");
     Ok(())
 }
 
