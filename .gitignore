@@ -26,3 +26,5 @@ memory-bank/
 
 # Ignore the test config file
 config.toml
+
+.llm/
