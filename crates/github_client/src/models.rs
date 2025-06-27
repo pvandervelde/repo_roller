@@ -6,8 +6,6 @@
 //! pull requests, comments, and labels. They are designed to be serializable and
 //! deserializable to facilitate integration with Git provider APIs.
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -15,13 +13,54 @@ use url::Url;
 #[path = "models_tests.rs"]
 mod tests;
 
-#[derive(Deserialize)]
-pub struct Installation {
+/// Represents a GitHub account (user or organization).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Account {
+    /// The unique ID of the account
     pub id: u64,
-    pub slug: Option<String>,
-    pub client_id: Option<String>,
+    /// The login name of the account
+    pub login: String,
+    /// The type of account (User or Organization)
+    #[serde(rename = "type")]
+    pub account_type: String,
+    /// The node ID for GraphQL operations
     pub node_id: String,
-    pub name: Option<String>,
+}
+
+// Remove the Account conversion since octocrab::models::Account might not be available
+// We'll construct Account directly in the Installation conversion above
+
+/// Represents a GitHub App installation.
+///
+/// This struct contains information about where a GitHub App is installed,
+/// such as an organization or user account.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Installation {
+    /// The unique ID of the installation
+    pub id: u64,
+    /// The account (user or organization) where the app is installed
+    pub account: Account,
+    /// Optional repository selection details
+    pub repository_selection: Option<String>,
+    /// The node ID for GraphQL operations
+    pub node_id: String,
+}
+
+impl From<octocrab::models::Installation> for Installation {
+    fn from(value: octocrab::models::Installation) -> Self {
+        let account_node_id = value.account.node_id.clone();
+        Self {
+            id: *value.id,
+            account: Account {
+                id: *value.account.id,
+                login: value.account.login,
+                account_type: value.account.r#type,
+                node_id: value.account.node_id,
+            },
+            repository_selection: value.repository_selection,
+            node_id: account_node_id, // Use account's node_id since installation doesn't have one
+        }
+    }
 }
 
 /// Represents a label on a pull request.

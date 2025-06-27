@@ -243,7 +243,7 @@ async fn create_repository_with_custom_settings(
     // 5. Add the template files (copy, not git clone)
     if let Err(e) = copy_template_files(&files, &local_repo_path) {
         return CreateRepoResult::failure(format!("Failed to copy template files: {e}"));
-    }    // 6. Replace template variables in the copied files
+    } // 6. Replace template variables in the copied files
     if let Err(e) = replace_template_variables(&local_repo_path, &req, template) {
         return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
     }
@@ -275,8 +275,31 @@ async fn create_repository_with_custom_settings(
         Err(e) => return CreateRepoResult::failure(format!("Failed to create repo: {e}")),
     };
 
-    // 10. Push the local repository to the origin (stub branch protection)
-    if let Err(e) = push_to_origin(&local_repo_path, repo.url(), "main") {
+    // 9.5. Get installation access token for the organization/user
+    let owner = if !req.owner.is_empty() {
+        &req.owner
+    } else {
+        // For user repositories, we still need to get the token for the authenticated user
+        // This will require the user's login name - for now we'll assume the owner field
+        // is always provided. TODO: Handle user repositories properly.
+        return CreateRepoResult::failure(
+            "User repositories not yet supported - please specify an organization owner"
+                .to_string(),
+        );
+    };
+
+    let installation_token = match repo_client.get_installation_token_for_org(owner).await {
+        Ok(token) => token,
+        Err(e) => {
+            return CreateRepoResult::failure(format!(
+                "Failed to get installation token for organization '{}': {}",
+                owner, e
+            ))
+        }
+    };
+
+    // 10. Push the local repository to the origin with authentication
+    if let Err(e) = push_to_origin(&local_repo_path, repo.url(), "main", &installation_token) {
         return CreateRepoResult::failure(format!("Failed to push to origin: {e}"));
     }
 
@@ -343,6 +366,7 @@ fn push_to_origin(
     local_repo_path: &TempDir,
     repo_url: url::Url,
     branch_name: &str,
+    access_token: &str,
 ) -> Result<(), Error> {
     debug!("Pushing changes to origin: {}", repo_url);
 
@@ -357,24 +381,23 @@ fn push_to_origin(
         Error::GitOperation(format!("Failed to add remote origin: {}", e))
     })?;
 
-    // Set up authentication callbacks
+    // Set up authentication callbacks with the GitHub App installation token
     let mut callbacks = git2::RemoteCallbacks::new();
-    callbacks.credentials(|_url, _username_from_url, _allowed_types| {
-        // For MVP, we'll skip authentication - this will likely fail but provides
-        // a basic structure. In a real implementation, we'd need to:
-        // 1. Get an installation access token for the GitHub App
-        // 2. Use that token as credentials here
-        // For now, just return an error to indicate auth is needed
-        Err(git2::Error::from_str(
-            "Authentication not implemented for MVP",
-        ))
+    let token = access_token.to_string(); // Clone for move into closure
+    callbacks.credentials(move |_url, _username_from_url, allowed_types| {
+        if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            // For GitHub, use 'x-access-token' as username and the installation token as password
+            git2::Cred::userpass_plaintext("x-access-token", &token)
+        } else {
+            Err(git2::Error::from_str(
+                "No supported credential types for GitHub authentication",
+            ))
+        }
     });
 
     // Push options
     let mut push_options = git2::PushOptions::new();
-    push_options.remote_callbacks(callbacks);
-
-    // Push the branch
+    push_options.remote_callbacks(callbacks); // Push the branch
     let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
     match remote.push(&[&refspec], Some(&mut push_options)) {
         Ok(_) => {
@@ -382,14 +405,11 @@ fn push_to_origin(
             Ok(())
         }
         Err(e) => {
-            // For MVP, we'll log this as a warning but not fail the entire operation
-            // since the repository was created successfully on GitHub
-            error!(
-                "Failed to push to remote (expected for MVP without proper auth): {}",
+            error!("Failed to push to remote: {}", e);
+            Err(Error::GitOperation(format!(
+                "Failed to push to remote: {}",
                 e
-            );
-            info!("Repository created successfully on GitHub, but local push failed due to authentication");
-            Ok(()) // Return Ok for MVP - repository creation succeeded
+            )))
         }
     }
 }
@@ -413,10 +433,10 @@ fn replace_template_variables(
         "reporoller-app", // user_login (placeholder for GitHub App)
         "RepoRoller App", // user_name (placeholder for GitHub App)
         "main",           // default_branch
-    );    // For MVP, we'll use empty user variables and get variable configs from template
-    // In a full implementation, these would come from user input and merged configs
+    ); // For MVP, we'll use empty user variables and get variable configs from template
+       // In a full implementation, these would come from user input and merged configs
     let user_variables = HashMap::new();
-    
+
     // Convert config_manager::VariableConfig to template_engine::VariableConfig
     let mut variable_configs = HashMap::new();
     if let Some(ref template_vars) = template.variable_configs {

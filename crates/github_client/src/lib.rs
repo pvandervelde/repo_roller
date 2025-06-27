@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, Result as OctocrabResult};
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, instrument};
 
@@ -26,6 +27,93 @@ pub struct GitHubClient {
 }
 
 impl GitHubClient {
+    /// Gets an installation access token for a specific organization.
+    ///
+    /// This method finds the installation for the given organization and returns
+    /// an access token that can be used for git operations and API calls.
+    ///
+    /// # Arguments
+    ///
+    /// * `org_name` - The name of the organization to get the installation token for.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the installation access token as a string, or an error
+    /// if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error::InvalidResponse` if:
+    /// - The API call fails
+    /// - No installation is found for the organization
+    /// - The token cannot be retrieved
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let app_id = 123456;
+    /// #     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+    /// #     let client_octocrab = create_app_client(app_id, private_key).await?;
+    /// #     let client = GitHubClient::new(client_octocrab);
+    ///
+    ///     let token = client.get_installation_token_for_org("my-org").await?;
+    ///     println!("Got installation token: {}", &token[..8]); // Only show first 8 chars
+    ///
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org_name = %org_name))]
+    pub async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error> {
+        debug!(
+            org_name = org_name,
+            "Getting installation token for organization"
+        );
+
+        // First, list all installations to find the one for this org
+        let installations = self.list_installations().await?;
+
+        let installation = installations
+            .into_iter()
+            .find(|inst| inst.account.login.eq_ignore_ascii_case(org_name))
+            .ok_or_else(|| {
+                error!(
+                    org_name = org_name,
+                    "No installation found for organization"
+                );
+                Error::InvalidResponse
+            })?;
+
+        debug!(
+            org_name = org_name,
+            installation_id = installation.id,
+            "Found installation for organization"
+        );
+
+        // Get the installation access token
+        let (_, token) = self
+            .client
+            .installation_and_token(installation.id.into())
+            .await
+            .map_err(|e| {
+                error!(
+                    org_name = org_name,
+                    installation_id = installation.id,
+                    "Failed to get installation token"
+                );
+                log_octocrab_error("Failed to get installation token", e);
+                Error::InvalidResponse
+            })?;
+
+        info!(
+            org_name = org_name,
+            installation_id = installation.id,
+            "Successfully retrieved installation token"
+        );
+        Ok(token.expose_secret().clone())
+    }
+
     /// Fetches details for a specific repository.
     ///
     /// # Arguments
@@ -47,6 +135,67 @@ impl GitHubClient {
             Err(e) => {
                 log_octocrab_error("Failed to get repository", e);
                 return Err(Error::InvalidResponse);
+            }
+        }
+    }
+
+    /// Lists all installations for the authenticated GitHub App.
+    ///
+    /// This method retrieves all installations where the GitHub App is installed,
+    /// which can be used to find the installation ID for a specific organization.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of installation objects, or an error if the
+    /// operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error::InvalidResponse` if the API call fails or the response
+    /// cannot be parsed.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let app_id = 123456;
+    /// #     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+    /// #     let client_octocrab = create_app_client(app_id, private_key).await?;
+    /// #     let client = GitHubClient::new(client_octocrab);
+    ///
+    ///     let installations = client.list_installations().await?;
+    ///     for installation in installations {
+    ///         println!("Installation ID: {}, Account: {}", installation.id, installation.account.login);
+    ///     }
+    ///
+    /// #     Ok(())
+    /// # }
+    /// ```    #[instrument(skip(self))]
+    pub async fn list_installations(&self) -> Result<Vec<models::Installation>, Error> {
+        debug!("Listing installations for GitHub App");
+
+        // Use direct REST API call instead of octocrab's high-level method
+        let result: OctocrabResult<Vec<octocrab::models::Installation>> =
+            self.client.get("/app/installations", None::<&()>).await;
+
+        match result {
+            Ok(installations) => {
+                let converted_installations: Vec<models::Installation> = installations
+                    .into_iter()
+                    .map(models::Installation::from)
+                    .collect();
+
+                info!(
+                    count = converted_installations.len(),
+                    "Retrieved installations for GitHub App"
+                );
+
+                Ok(converted_installations)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to list installations", e);
+                Err(Error::InvalidResponse)
             }
         }
     }
@@ -124,8 +273,7 @@ impl RepositoryClient for GitHubClient {
     /// # Arguments
     ///
     /// * `owner` - The owner of the repository (user or organization name).
-    /// * `repo` - The name of the repository.
-    /// * `settings` - A `RepositorySettingsUpdate` struct containing the desired changes.
+    /// * `repo` - The name of the repository.    /// * `settings` - A `RepositorySettingsUpdate` struct containing the desired changes.
     ///
     /// # Errors
     /// Returns an `Error::Octocrab` if the API call fails.
@@ -147,6 +295,11 @@ impl RepositoryClient for GitHubClient {
                 return Err(Error::InvalidResponse);
             }
         }
+    }
+
+    async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error> {
+        // Delegate to the existing implementation
+        self.get_installation_token_for_org(org_name).await
     }
 }
 
@@ -219,6 +372,28 @@ pub trait RepositoryClient: Send + Sync {
         repo: &str,
         settings: &RepositorySettingsUpdate,
     ) -> Result<models::Repository, Error>;
+
+    /// Gets an installation access token for a specific organization.
+    ///
+    /// This method finds the installation for the given organization and returns
+    /// an access token that can be used for git operations and API calls.
+    ///
+    /// # Arguments
+    ///
+    /// * `org_name` - The name of the organization to get the installation token for.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the installation access token as a string, or an error
+    /// if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error::InvalidResponse` if:
+    /// - The API call fails
+    /// - No installation is found for the organization
+    /// - The token cannot be retrieved
+    async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error>;
 }
 
 /// Represents the settings that can be updated for a repository.
