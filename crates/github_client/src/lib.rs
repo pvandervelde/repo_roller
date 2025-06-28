@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, instrument};
 
 pub mod errors;
-use errors::Error;
+pub use errors::Error;
 
 pub mod models;
 
@@ -194,7 +194,8 @@ impl GitHubClient {
     ///
     /// #     Ok(())
     /// # }
-    /// ```    #[instrument(skip(self))]
+    /// ```
+    #[instrument(skip(self))]
     pub async fn list_installations(&self) -> Result<Vec<models::Installation>, Error> {
         info!("Listing installations for GitHub App using JWT authentication");
 
@@ -537,12 +538,11 @@ pub struct RepositorySettingsUpdate {
 /// # Example
 ///
 /// ```rust,no_run
-/// use anyhow::Result;
+/// use github_client::{authenticate_with_access_token, Error};
 /// use octocrab::Octocrab;
-/// use merge_warden_developer_platforms::github::authenticate_with_access_token;
 ///
 /// #[tokio::main]
-/// async fn main() -> Result<()> {
+/// async fn main() -> Result<(), Error> {
 ///     let octocrab = Octocrab::builder().build().unwrap();
 ///     let installation_id = 12345678; // Replace with your installation ID
 ///     let repository_owner = "example-owner";
@@ -623,11 +623,10 @@ pub async fn authenticate_with_access_token(
 /// # Example
 ///
 /// ```rust,no_run
-/// use anyhow::Result;
-/// use github_client::create_app_client;
+/// use github_client::{create_app_client, Error};
 ///
 /// #[tokio::main]
-/// async fn main() -> Result<()> {
+/// async fn main() -> Result<(), Error> {
 ///     let app_id = 123456; // Replace with your GitHub App ID
 ///     let private_key = r#"
 /// -----BEGIN RSA PRIVATE KEY-----

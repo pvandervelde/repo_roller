@@ -44,7 +44,17 @@ jobs:
         id: calc_version
         run: |
           # Use Conventional Commits Next Version to calculate the next version
-          NEXT_VERSION=$(conventional_commits_next_version --from-commit-hash $(git rev-parse $(git describe --tags --abbrev=0)) --from-version $(git describe --tags --abbrev=0) --calculation-mode "Batch")
+          # Check if there are any tags first
+          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            # There are tags, use the latest tag as starting point
+            LATEST_TAG=$(git describe --tags --abbrev=0)
+            LATEST_COMMIT=$(git rev-parse $LATEST_TAG)
+            NEXT_VERSION=$(conventional_commits_next_version --from-commit-hash $LATEST_COMMIT --from-version $LATEST_TAG --calculation-mode "Batch")
+          else
+            # No tags, start from the beginning of the repository
+            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
+            NEXT_VERSION=$(conventional_commits_next_version --from-commit-hash $FIRST_COMMIT --from-version "0.0.0" --calculation-mode "Batch")
+          fi
           echo "NEXT_VERSION=${NEXT_VERSION}" >> $GITHUB_OUTPUT
           echo "The next version is: ${NEXT_VERSION}"
 

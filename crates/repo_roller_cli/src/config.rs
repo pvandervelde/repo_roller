@@ -37,9 +37,8 @@ impl AppConfig {
         let content = fs::read_to_string(path)
             .map_err(|e| Error::Config(format!("Failed to read configuration file: {}", e)))?;
 
-        let config: AppConfig = toml::from_str(&content).map_err(|e| {
-            Error::Config(format!("Failed to parse configuration file: {}", e))
-        })?;
+        let config: AppConfig = toml::from_str(&content)
+            .map_err(|e| Error::Config(format!("Failed to parse configuration file: {}", e)))?;
 
         Ok(config)
     }
@@ -57,9 +56,8 @@ impl AppConfig {
                 .map_err(|e| Error::Config(format!("Failed to create directory: {}", e)))?;
         }
 
-        fs::write(path, content).map_err(|e| {
-            Error::Config(format!("Failed to write configuration file: {}", e))
-        })?;
+        fs::write(path, content)
+            .map_err(|e| Error::Config(format!("Failed to write configuration file: {}", e)))?;
 
         info!("Configuration saved to {:?}", path);
         Ok(())

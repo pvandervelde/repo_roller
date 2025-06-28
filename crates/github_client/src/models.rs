@@ -75,7 +75,7 @@ impl From<octocrab::models::Installation> for Installation {
 /// # Examples
 ///
 /// ```
-/// use merge_warden_developer_platforms::models::Label;
+/// use github_client::models::Label;
 ///
 /// let label = Label {
 ///     name: "bug".to_string(),
