@@ -66,13 +66,31 @@ impl GitHubClient {
     /// ```
     #[instrument(skip(self), fields(org_name = %org_name))]
     pub async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error> {
-        debug!(
+        info!(
             org_name = org_name,
             "Getting installation token for organization"
         );
 
         // First, list all installations to find the one for this org
+        info!("Calling list_installations to find organization installation");
         let installations = self.list_installations().await?;
+
+        info!(
+            org_name = org_name,
+            installation_count = installations.len(),
+            "Retrieved installations, searching for organization"
+        );
+
+        // Log all available installations for debugging
+        for (i, inst) in installations.iter().enumerate() {
+            info!(
+                index = i,
+                installation_id = inst.id,
+                account_login = inst.account.login,
+                account_type = ?inst.account.account_type,
+                "Available installation"
+            );
+        }
 
         let installation = installations
             .into_iter()
@@ -80,18 +98,23 @@ impl GitHubClient {
             .ok_or_else(|| {
                 error!(
                     org_name = org_name,
-                    "No installation found for organization"
+                    "No installation found for organization - this means the GitHub App is not installed on this organization"
                 );
                 Error::InvalidResponse
             })?;
 
-        debug!(
+        info!(
             org_name = org_name,
             installation_id = installation.id,
-            "Found installation for organization"
+            account_login = installation.account.login,
+            "Found matching installation for organization"
         );
 
         // Get the installation access token
+        info!(
+            installation_id = installation.id,
+            "Requesting installation token from GitHub API"
+        );
         let (_, token) = self
             .client
             .installation_and_token(installation.id.into())
@@ -100,7 +123,7 @@ impl GitHubClient {
                 error!(
                     org_name = org_name,
                     installation_id = installation.id,
-                    "Failed to get installation token"
+                    "Failed to get installation token from GitHub API"
                 );
                 log_octocrab_error("Failed to get installation token", e);
                 Error::InvalidResponse
@@ -173,7 +196,7 @@ impl GitHubClient {
     /// # }
     /// ```    #[instrument(skip(self))]
     pub async fn list_installations(&self) -> Result<Vec<models::Installation>, Error> {
-        debug!("Listing installations for GitHub App");
+        info!("Listing installations for GitHub App using JWT authentication");
 
         // Use direct REST API call instead of octocrab's high-level method
         let result: OctocrabResult<Vec<octocrab::models::Installation>> =
@@ -188,12 +211,15 @@ impl GitHubClient {
 
                 info!(
                     count = converted_installations.len(),
-                    "Retrieved installations for GitHub App"
+                    "Successfully retrieved installations for GitHub App"
                 );
 
                 Ok(converted_installations)
             }
             Err(e) => {
+                error!(
+                    "Failed to list installations - this likely means JWT authentication failed"
+                );
                 log_octocrab_error("Failed to list installations", e);
                 Err(Error::InvalidResponse)
             }
@@ -301,6 +327,47 @@ impl RepositoryClient for GitHubClient {
         // Delegate to the existing implementation
         self.get_installation_token_for_org(org_name).await
     }
+
+    async fn get_organization_default_branch(&self, org_name: &str) -> Result<String, Error> {
+        info!(
+            org_name = org_name,
+            "Getting default branch setting for organization"
+        );
+
+        let path = format!("/orgs/{}", org_name);
+
+        debug!("Making API call to: {}", path);
+        let response: OctocrabResult<serde_json::Value> = self.client.get(path, None::<&()>).await;
+
+        match response {
+            Ok(org_data) => {
+                debug!("Organization API response received");
+
+                // Extract the default_repository_branch field
+                let default_branch = org_data
+                    .get("default_repository_branch")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("main") // Default to "main" if not specified
+                    .to_string();
+
+                info!(
+                    org_name = org_name,
+                    default_branch = default_branch,
+                    "Successfully retrieved organization default branch"
+                );
+
+                Ok(default_branch)
+            }
+            Err(e) => {
+                error!(
+                    org_name = org_name,
+                    "Failed to get organization information: {}", e
+                );
+                log_octocrab_error("Failed to get organization information", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -394,6 +461,28 @@ pub trait RepositoryClient: Send + Sync {
     /// - No installation is found for the organization
     /// - The token cannot be retrieved
     async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error>;
+
+    /// Gets the default branch name for an organization.
+    ///
+    /// This method retrieves the organization's default branch setting which is used
+    /// for newly created repositories in that organization.
+    ///
+    /// # Arguments
+    ///
+    /// * `org_name` - The name of the organization to get the default branch for.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the default branch name as a string, or an error
+    /// if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error::InvalidResponse` if:
+    /// - The API call fails
+    /// - The organization is not found
+    /// - The default branch setting is not available
+    async fn get_organization_default_branch(&self, org_name: &str) -> Result<String, Error>;
 }
 
 /// Represents the settings that can be updated for a repository.
@@ -554,21 +643,39 @@ pub async fn authenticate_with_access_token(
 /// ```
 #[instrument(skip(private_key))]
 pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocrab, Error> {
-    //let app_id_struct = AppId::from(app_id);
+    info!(
+        app_id = app_id,
+        key_length = private_key.len(),
+        key_starts_with = &private_key[..27], // "-----BEGIN RSA PRIVATE KEY"
+        "Creating GitHub App client with provided credentials"
+    );
+
     let key = EncodingKey::from_rsa_pem(private_key.as_bytes()).map_err(|e| {
+        error!(
+            app_id = app_id,
+            error = %e,
+            "Failed to parse RSA private key - key format is invalid"
+        );
         Error::AuthError(
             format!("Failed to translate the private key. Error was: {}", e).to_string(),
         )
     })?;
 
+    info!(app_id = app_id, "Successfully parsed RSA private key");
+
     let octocrab = Octocrab::builder()
         .app(app_id.into(), key)
         .build()
-        .map_err(|_| {
+        .map_err(|e| {
+            error!(
+                app_id = app_id,
+                error = ?e,
+                "Failed to build Octocrab client with GitHub App credentials"
+            );
             Error::AuthError("Failed to get a personal token for the app install.".to_string())
         })?;
 
-    info!("Created access token for the GitHub app",);
+    info!(app_id = app_id, "Successfully created GitHub App client");
 
     Ok(octocrab)
 }

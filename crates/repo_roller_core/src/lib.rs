@@ -34,7 +34,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use temp_dir::TempDir;
 use template_engine::{self, TemplateFetcher, TemplateProcessingRequest, TemplateProcessor};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use walkdir::WalkDir;
 
 mod errors;
@@ -97,18 +97,61 @@ impl OrgRules {
 }
 
 fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result<(), Error> {
-    debug!("Committing all changes to git repository");
+    info!(
+        "Committing all changes to git repository with message: '{}'",
+        commit_message
+    );
+    debug!("Repository path: {:?}", local_repo_path.path());
 
     let repo = Repository::open(local_repo_path.path()).map_err(|e| {
         error!("Failed to open git repository: {}", e);
         Error::GitOperation(format!("Failed to open git repository: {}", e))
     })?;
 
+    debug!("Git repository opened for commit operation");
+
+    // List files in the working directory for debugging
+    let mut file_count = 0;
+    if let Ok(entries) = std::fs::read_dir(local_repo_path.path()) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() {
+                    file_count += 1;
+                    info!("Found file in working directory: {:?}", entry.file_name());
+
+                    // Log file size and first few bytes
+                    if let Ok(metadata) = entry.metadata() {
+                        info!("  File size: {} bytes", metadata.len());
+                    }
+
+                    // Try to read first 100 chars of file if it's text
+                    if let Ok(path) = entry.path().canonicalize() {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            let preview = if content.len() > 100 {
+                                format!("{}...", &content[..100])
+                            } else {
+                                content
+                            };
+                            info!("  File content preview: {}", preview.replace('\n', "\\n"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    info!("Found {} files in working directory", file_count);
+
+    if file_count == 0 {
+        warn!("No files found in working directory - repository will be empty");
+    }
+
     // Get the repository index and add all files
     let mut index = repo.index().map_err(|e| {
         error!("Failed to get repository index: {}", e);
         Error::GitOperation(format!("Failed to get repository index: {}", e))
     })?;
+
+    debug!("Repository index retrieved");
 
     // Add all files in the working directory to the index
     index
@@ -118,11 +161,24 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
             Error::GitOperation(format!("Failed to add files to index: {}", e))
         })?;
 
+    // Check how many entries are in the index
+    let index_entry_count = index.len();
+    info!("Added {} entries to git index", index_entry_count);
+
+    if index_entry_count == 0 {
+        error!("No files were added to the git index - cannot create commit");
+        return Err(Error::GitOperation(
+            "No files to commit - index is empty".to_string(),
+        ));
+    }
+
     // Write the index
     let tree_oid = index.write_tree().map_err(|e| {
         error!("Failed to write tree: {}", e);
         Error::GitOperation(format!("Failed to write tree: {}", e))
     })?;
+
+    debug!("Git tree written with OID: {}", tree_oid);
 
     let tree = repo.find_tree(tree_oid).map_err(|e| {
         error!("Failed to find tree: {}", e);
@@ -135,24 +191,54 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
         Error::GitOperation(format!("Failed to create signature: {}", e))
     })?;
 
+    debug!("Git signature created for RepoRoller");
+
     // Create the commit (this is the initial commit, so no parent)
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        commit_message,
-        &tree,
-        &[],
-    )
-    .map_err(|e| {
-        error!("Failed to create commit: {}", e);
-        Error::GitOperation(format!("Failed to create commit: {}", e))
-    })?;
+    let commit_oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            commit_message,
+            &tree,
+            &[],
+        )
+        .map_err(|e| {
+            error!("Failed to create commit: {}", e);
+            Error::GitOperation(format!("Failed to create commit: {}", e))
+        })?;
 
     info!(
-        "Changes committed successfully with message: {}",
-        commit_message
+        "Changes committed successfully with OID: {} and message: '{}'",
+        commit_oid, commit_message
     );
+
+    // Verify that the HEAD reference was created correctly
+    match repo.head() {
+        Ok(head_ref) => {
+            info!("HEAD reference exists: {:?}", head_ref.name());
+            if let Some(oid) = head_ref.target() {
+                info!("HEAD points to commit: {}", oid);
+            }
+        }
+        Err(e) => {
+            warn!("Failed to get HEAD reference after commit: {}", e);
+        }
+    }
+
+    // Check if main branch exists
+    match repo.find_branch("main", git2::BranchType::Local) {
+        Ok(branch) => {
+            info!("Main branch exists");
+            if let Some(oid) = branch.get().target() {
+                info!("Main branch points to commit: {}", oid);
+            }
+        }
+        Err(e) => {
+            warn!("Main branch not found: {}", e);
+        }
+    }
+
     Ok(())
 }
 
@@ -195,6 +281,38 @@ fn create_additional_files(
     local_repo_path: &TempDir,
     req: &CreateRepoRequest,
 ) -> Result<(), Error> {
+    info!("Creating additional files for repository initialization");
+
+    // Always create a README.md file to ensure the repository has content
+    let readme_path = local_repo_path.path().join("README.md");
+    let readme_content = format!(
+        "# {}\n\nRepository created using RepoRoller.\n\nTemplate: {}\nOwner: {}\n",
+        req.name, req.template, req.owner
+    );
+
+    debug!(
+        "Creating README.md with content length: {}",
+        readme_content.len()
+    );
+
+    std::fs::write(&readme_path, readme_content).map_err(|e| {
+        error!("Failed to create README.md: {}", e);
+        Error::FileSystem(format!("Failed to create README.md: {}", e))
+    })?;
+
+    info!("README.md created successfully at: {:?}", readme_path);
+
+    // Create a .gitignore file with common patterns
+    let gitignore_path = local_repo_path.path().join(".gitignore");
+    let gitignore_content = "# Common ignores\n.DS_Store\n*.log\n*.tmp\nnode_modules/\ntarget/\n";
+
+    std::fs::write(&gitignore_path, gitignore_content).map_err(|e| {
+        error!("Failed to create .gitignore: {}", e);
+        Error::FileSystem(format!("Failed to create .gitignore: {}", e))
+    })?;
+
+    info!(".gitignore created successfully at: {:?}", gitignore_path);
+
     Ok(())
 }
 
@@ -206,21 +324,49 @@ async fn create_repository_with_custom_settings(
     template_fetcher: &dyn TemplateFetcher,
     repo_client: &dyn RepositoryClient,
 ) -> CreateRepoResult {
+    info!(
+        "Starting repository creation: name='{}', owner='{}', template='{}'",
+        req.name, req.owner, req.template
+    );
+
     // 1. Load config
+    // TODO: Move the loading of the config to the endpoints because the endpoints need the config to determine
+    //       how to connect to github etc.
     let config_path =
         std::env::var("REPOROLLER_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
+    debug!("Loading configuration from: {}", config_path);
+
     let config = match config_loader.load_config(&config_path) {
-        Ok(cfg) => cfg,
-        Err(e) => return CreateRepoResult::failure(format!("Failed to load config: {e}")),
+        Ok(cfg) => {
+            info!("Configuration loaded successfully from: {}", config_path);
+            debug!("Found {} templates in configuration", cfg.templates.len());
+            cfg
+        }
+        Err(e) => {
+            error!("Failed to load configuration from '{}': {}", config_path, e);
+            return CreateRepoResult::failure(format!("Failed to load config: {e}"));
+        }
     };
 
     // 2. Find template config
+    debug!("Searching for template '{}' in configuration", req.template);
     let template = match config.templates.iter().find(|t| t.name == req.template) {
-        Some(t) => t,
-        None => return CreateRepoResult::failure("Template not found in config"),
+        Some(t) => {
+            info!("Template '{}' found in configuration", req.template);
+            debug!("Template source repository: {}", t.source_repo);
+            t
+        }
+        None => {
+            error!("Template '{}' not found in configuration", req.template);
+            debug!(
+                "Available templates: {:?}",
+                config.templates.iter().map(|t| &t.name).collect::<Vec<_>>()
+            );
+            return CreateRepoResult::failure("Template not found in config");
+        }
     };
 
-    // 3. Create a local repository
+    // 3. Create a local repository temporary directory
     let local_repo_path = match TempDir::new() {
         Ok(d) => d,
         Err(e) => {
@@ -229,10 +375,6 @@ async fn create_repository_with_custom_settings(
             ))
         }
     };
-
-    if let Err(e) = init_local_git_repo(&local_repo_path) {
-        return CreateRepoResult::failure(format!("Failed to initialize local git repo: {e}"));
-    }
 
     // 4. Fetch template files
     let files = match template_fetcher.fetch_template_files(&template.source_repo) {
@@ -243,7 +385,9 @@ async fn create_repository_with_custom_settings(
     // 5. Add the template files (copy, not git clone)
     if let Err(e) = copy_template_files(&files, &local_repo_path) {
         return CreateRepoResult::failure(format!("Failed to copy template files: {e}"));
-    } // 6. Replace template variables in the copied files
+    }
+
+    // 6. Replace template variables in the copied files
     if let Err(e) = replace_template_variables(&local_repo_path, &req, template) {
         return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
     }
@@ -253,53 +397,141 @@ async fn create_repository_with_custom_settings(
         return CreateRepoResult::failure(format!("Failed to create additional files: {e}"));
     }
 
-    // 8. Commit all changes to the default branch (stub commit signing)
-    if let Err(e) = commit_all_changes(&local_repo_path, "Initial commit (stub, unsigned)") {
-        return CreateRepoResult::failure(format!("Failed to commit changes: {e}"));
-    }
-
-    // 9. Create repo on github (org or user)
+    // 8. Create repo on github (org or user)
     let payload = RepositoryCreatePayload {
         name: req.name.clone(),
         ..Default::default()
     };
-    let repo_result = if !req.owner.is_empty() {
-        repo_client
-            .create_org_repository(&req.owner, &payload)
-            .await
-    } else {
-        repo_client.create_user_repository(&payload).await
-    };
-    let repo = match repo_result {
-        Ok(r) => r,
-        Err(e) => return CreateRepoResult::failure(format!("Failed to create repo: {e}")),
-    };
 
-    // 9.5. Get installation access token for the organization/user
-    let owner = if !req.owner.is_empty() {
-        &req.owner
-    } else {
-        // For user repositories, we still need to get the token for the authenticated user
-        // This will require the user's login name - for now we'll assume the owner field
-        // is always provided. TODO: Handle user repositories properly.
-        return CreateRepoResult::failure(
-            "User repositories not yet supported - please specify an organization owner"
-                .to_string(),
-        );
-    };
+    info!(
+        "Creating GitHub repository: name='{}', owner='{}'",
+        req.name, req.owner
+    );
+    debug!("Repository creation payload: {:?}", payload);
 
-    let installation_token = match repo_client.get_installation_token_for_org(owner).await {
-        Ok(token) => token,
+    // First, get installation token for the organization
+    info!("Getting installation token for organization: {}", req.owner);
+    let installation_token = match repo_client.get_installation_token_for_org(&req.owner).await {
+        Ok(token) => {
+            info!(
+                token_length = token.len(),
+                token_prefix = &token[..std::cmp::min(8, token.len())],
+                "Successfully retrieved installation token for organization: {}",
+                req.owner
+            );
+            token
+        }
         Err(e) => {
+            error!(
+                "Failed to get installation token for organization '{}': {}",
+                req.owner, e
+            );
             return CreateRepoResult::failure(format!(
                 "Failed to get installation token for organization '{}': {}",
-                owner, e
-            ))
+                req.owner, e
+            ));
         }
     };
 
+    // Create a new client using the installation token for repository operations
+    info!("Creating GitHub client with installation token");
+    let installation_client = match github_client::create_token_client(&installation_token) {
+        Ok(client) => {
+            info!("Successfully created installation token client");
+            GitHubClient::new(client)
+        }
+        Err(e) => {
+            error!("Failed to create installation token client: {}", e);
+            return CreateRepoResult::failure(format!(
+                "Failed to create installation token client: {}",
+                e
+            ));
+        }
+    };
+
+    // Get the organization's default branch setting (using installation token)
+    info!(
+        "Getting organization default branch setting for: {}",
+        req.owner
+    );
+    let default_branch = match installation_client
+        .get_organization_default_branch(&req.owner)
+        .await
+    {
+        Ok(branch) => {
+            info!(
+                org_name = req.owner,
+                default_branch = branch,
+                "Successfully retrieved organization default branch setting"
+            );
+            branch
+        }
+        Err(e) => {
+            error!(
+                "Failed to get default branch for organization '{}': {}",
+                req.owner, e
+            );
+            warn!("Falling back to 'main' as default branch");
+            "main".to_string()
+        }
+    };
+
+    // 9. Initialize the local git repository with the organization's default branch
+    if let Err(e) = init_local_git_repo(&local_repo_path, &default_branch) {
+        return CreateRepoResult::failure(format!("Failed to initialize local git repo: {e}"));
+    }
+
+    // 10. Commit all changes to the default branch (stub commit signing)
+    if let Err(e) = commit_all_changes(&local_repo_path, "Initial commit (stub, unsigned)") {
+        return CreateRepoResult::failure(format!("Failed to commit changes: {e}"));
+    }
+
+    // Now create the repository using the installation token client
+    let repo_result = if !req.owner.is_empty() {
+        info!("Creating organization repository for owner: {}", req.owner);
+        installation_client
+            .create_org_repository(&req.owner, &payload)
+            .await
+    } else {
+        info!("Creating user repository");
+        installation_client.create_user_repository(&payload).await
+    };
+
+    let repo = match repo_result {
+        Ok(r) => {
+            info!(
+                "GitHub repository created successfully: name='{}', url='{}'",
+                r.name(),
+                r.url()
+            );
+            debug!("Repository details: node_id='{}'", r.node_id());
+            r
+        }
+        Err(e) => {
+            error!("Failed to create GitHub repository: {}", e);
+            return CreateRepoResult::failure(format!("Failed to create repo: {e}"));
+        }
+    };
+
+    info!(
+        "Repository created successfully: name='{}', url='{}', id='{}'",
+        repo.name(),
+        repo.url(),
+        repo.node_id()
+    );
+
     // 10. Push the local repository to the origin with authentication
-    if let Err(e) = push_to_origin(&local_repo_path, repo.url(), "main", &installation_token) {
+    info!(
+        "Attempting to push local repository to remote origin: {}",
+        repo.url()
+    );
+    if let Err(e) = push_to_origin(
+        &local_repo_path,
+        repo.url(),
+        &default_branch,
+        &installation_token,
+    ) {
+        error!("Git push operation failed: {}", e);
         return CreateRepoResult::failure(format!("Failed to push to origin: {e}"));
     }
 
@@ -345,16 +577,37 @@ pub async fn create_repository(
         .await
 }
 
-fn init_local_git_repo(local_path: &TempDir) -> Result<(), Error> {
+fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result<(), Error> {
     debug!("Initializing git repository at {:?}", local_path.path());
 
-    // Initialize git repository
-    let repo = Repository::init(local_path.path()).map_err(|e| {
+    // Initialize git repository with custom options to set the default branch
+    let mut opts = git2::RepositoryInitOptions::new();
+    let branch_ref = format!("refs/heads/{}", default_branch);
+    opts.initial_head(&branch_ref); // Set the initial branch to the organization's default
+
+    let repo = Repository::init_opts(local_path.path(), &opts).map_err(|e| {
         error!("Failed to initialize git repository: {}", e);
         Error::GitOperation(format!("Failed to initialize git repository: {}", e))
     })?;
 
-    info!("Git repository initialized successfully");
+    info!(
+        "Git repository initialized successfully with '{}' as default branch",
+        default_branch
+    );
+
+    // Verify the HEAD reference
+    match repo.head() {
+        Ok(head_ref) => {
+            info!("Initial HEAD reference: {:?}", head_ref.name());
+        }
+        Err(e) => {
+            info!(
+                "HEAD reference not yet created (normal for empty repo): {}",
+                e
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -368,48 +621,174 @@ fn push_to_origin(
     branch_name: &str,
     access_token: &str,
 ) -> Result<(), Error> {
-    debug!("Pushing changes to origin: {}", repo_url);
+    info!(
+        "Starting git push operation to origin: {} (branch: {})",
+        repo_url, branch_name
+    );
+    debug!(
+        "Token length: {} characters, starts with: {}",
+        access_token.len(),
+        &access_token.chars().take(8).collect::<String>()
+    );
 
     let repo = Repository::open(local_repo_path.path()).map_err(|e| {
-        error!("Failed to open git repository: {}", e);
+        error!(
+            "Failed to open git repository at {:?}: {}",
+            local_repo_path.path(),
+            e
+        );
         Error::GitOperation(format!("Failed to open git repository: {}", e))
     })?;
 
+    debug!("Git repository opened successfully");
+
     // Add remote 'origin'
     let mut remote = repo.remote("origin", repo_url.as_str()).map_err(|e| {
-        error!("Failed to add remote origin: {}", e);
+        error!("Failed to add remote origin '{}': {}", repo_url, e);
         Error::GitOperation(format!("Failed to add remote origin: {}", e))
     })?;
+
+    info!("Remote 'origin' added successfully");
 
     // Set up authentication callbacks with the GitHub App installation token
     let mut callbacks = git2::RemoteCallbacks::new();
     let token = access_token.to_string(); // Clone for move into closure
-    callbacks.credentials(move |_url, _username_from_url, allowed_types| {
+
+    // Enhanced credential callback with detailed logging
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        info!(
+            "Git credential callback triggered - URL: {}, username: {:?}, allowed types: {:?}",
+            url, username_from_url, allowed_types
+        );
+
+        debug!("Credential types breakdown:");
+        debug!(
+            "  USER_PASS_PLAINTEXT: {}",
+            allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT)
+        );
+        debug!(
+            "  SSH_KEY: {}",
+            allowed_types.contains(git2::CredentialType::SSH_KEY)
+        );
+        debug!(
+            "  SSH_CUSTOM: {}",
+            allowed_types.contains(git2::CredentialType::SSH_CUSTOM)
+        );
+        debug!(
+            "  DEFAULT: {}",
+            allowed_types.contains(git2::CredentialType::DEFAULT)
+        );
+        debug!(
+            "  SSH_INTERACTIVE: {}",
+            allowed_types.contains(git2::CredentialType::SSH_INTERACTIVE)
+        );
+        debug!(
+            "  USERNAME: {}",
+            allowed_types.contains(git2::CredentialType::USERNAME)
+        );
+        debug!(
+            "  SSH_MEMORY: {}",
+            allowed_types.contains(git2::CredentialType::SSH_MEMORY)
+        );
+
         if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            // For GitHub, use 'x-access-token' as username and the installation token as password
-            git2::Cred::userpass_plaintext("x-access-token", &token)
+            info!("Using USER_PASS_PLAINTEXT credentials with 'x-access-token' username");
+            debug!(
+                "Token for authentication: {}...",
+                &token.chars().take(8).collect::<String>()
+            );
+
+            match git2::Cred::userpass_plaintext("x-access-token", &token) {
+                Ok(cred) => {
+                    info!("Successfully created git2 credentials");
+                    Ok(cred)
+                }
+                Err(e) => {
+                    error!("Failed to create git2 credentials: {}", e);
+                    Err(e)
+                }
+            }
         } else {
+            error!(
+                "No supported credential types available. Allowed types: {:?}",
+                allowed_types
+            );
             Err(git2::Error::from_str(
                 "No supported credential types for GitHub authentication",
             ))
         }
     });
 
+    // Add progress callback for detailed push progress
+    callbacks.pack_progress(|stage, current, total| {
+        debug!(
+            "Pack progress - stage: {:?}, current: {}, total: {}",
+            stage, current, total
+        );
+    });
+
+    // Add push update reference callback
+    callbacks.push_update_reference(|refname, status| match status {
+        Some(msg) => {
+            error!("Reference update failed for '{}': {}", refname, msg);
+            Err(git2::Error::from_str(&format!(
+                "Push reference update failed: {}",
+                msg
+            )))
+        }
+        None => {
+            info!("Reference '{}' updated successfully", refname);
+            Ok(())
+        }
+    });
+
     // Push options
     let mut push_options = git2::PushOptions::new();
-    push_options.remote_callbacks(callbacks); // Push the branch
+    push_options.remote_callbacks(callbacks);
+
+    // Push the branch
     let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+    info!("Attempting to push with refspec: {}", refspec);
+
     match remote.push(&[&refspec], Some(&mut push_options)) {
         Ok(_) => {
-            info!("Successfully pushed to origin");
+            info!("Successfully pushed to origin: {}", repo_url);
             Ok(())
         }
         Err(e) => {
-            error!("Failed to push to remote: {}", e);
-            Err(Error::GitOperation(format!(
-                "Failed to push to remote: {}",
-                e
-            )))
+            error!("Git push failed with error: {}", e);
+            error!("Error details:");
+            error!("  Error code: {:?}", e.code());
+            error!("  Error class: {:?}", e.class());
+            error!("  Error message: {}", e.message());
+
+            // Provide more specific error context
+            let detailed_error = match e.class() {
+                git2::ErrorClass::Net => {
+                    format!("Network error during push: {}. Check internet connection and repository URL.", e.message())
+                }
+                git2::ErrorClass::Http => {
+                    format!("HTTP error during push: {}. This may indicate authentication or permission issues.", e.message())
+                }
+                git2::ErrorClass::Callback => {
+                    format!("Authentication callback error: {}. GitHub App token may be invalid or expired.", e.message())
+                }
+                git2::ErrorClass::Reference => {
+                    format!(
+                        "Reference error during push: {}. Branch or repository state issue.",
+                        e.message()
+                    )
+                }
+                _ => {
+                    format!(
+                        "Git operation failed: {} (class: {:?})",
+                        e.message(),
+                        e.class()
+                    )
+                }
+            };
+
+            Err(Error::GitOperation(detailed_error))
         }
     }
 }
