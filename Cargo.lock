@@ -1986,9 +1986,13 @@ dependencies = [
 name = "template_engine"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "base64",
  "chrono",
+ "github_client",
  "regex",
  "serde",
+ "tempfile",
  "thiserror 2.0.12",
  "walkdir",
 ]

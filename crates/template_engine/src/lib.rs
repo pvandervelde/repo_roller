@@ -3,6 +3,7 @@
 //! This crate handles template processing, variable substitution, and file transformation
 //! according to the RepoRoller specification.
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -46,15 +47,146 @@ pub struct ProcessedTemplate {
 }
 
 /// Trait for fetching template files from a source
+#[async_trait]
 pub trait TemplateFetcher: Send + Sync {
-    fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String>;
+    async fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String>;
 }
 
-/// Default implementation for fetching template files from a source repo
+/// GitHub-based implementation for fetching template files from a repository
+pub struct GitHubTemplateFetcher {
+    github_client: github_client::GitHubClient,
+}
+
+impl GitHubTemplateFetcher {
+    /// Create a new GitHub template fetcher with the provided client
+    pub fn new(github_client: github_client::GitHubClient) -> Self {
+        Self { github_client }
+    }
+
+    /// Parse GitHub repository URL to extract owner and repo name
+    fn parse_github_url(&self, url: &str) -> Result<(String, String), String> {
+        // Handle both HTTPS and SSH GitHub URLs
+        // Examples:
+        // - https://github.com/owner/repo
+        // - https://github.com/owner/repo.git
+        // - git@github.com:owner/repo.git
+
+        let url = url.trim_end_matches(".git");
+
+        if let Some(captures) = regex::Regex::new(r"github\.com[:/]([^/]+)/([^/]+)/?$")
+            .map_err(|e| format!("Failed to create regex: {}", e))?
+            .captures(url)
+        {
+            let owner = captures
+                .get(1)
+                .ok_or("No owner found in URL")?
+                .as_str()
+                .to_string();
+            let repo = captures
+                .get(2)
+                .ok_or("No repository name found in URL")?
+                .as_str()
+                .to_string();
+
+            Ok((owner, repo))
+        } else {
+            Err(format!("Invalid GitHub URL format: {}", url))
+        }
+    }
+
+    /// Clone the repository and read all files
+    async fn fetch_repository_files(&self, url: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+        use std::process::Command;
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cloning
+        let temp_dir =
+            TempDir::new().map_err(|e| format!("Failed to create temporary directory: {}", e))?;
+
+        // Clone the repository
+        let output = Command::new("git")
+            .args(&[
+                "clone",
+                "--depth",
+                "1",
+                url,
+                temp_dir.path().to_str().unwrap(),
+            ])
+            .output()
+            .map_err(|e| format!("Failed to execute git clone: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Git clone failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        // Read all files from the cloned repository
+        let mut files = Vec::new();
+
+        for entry in walkdir::WalkDir::new(temp_dir.path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            let relative_path = path
+                .strip_prefix(temp_dir.path())
+                .map_err(|e| format!("Failed to get relative path: {}", e))?;
+
+            // Skip .git directory files
+            let path_str = relative_path.to_string_lossy();
+            if path_str.starts_with(".git/") {
+                continue;
+            }
+
+            // Read file content
+            let content = std::fs::read(path)
+                .map_err(|e| format!("Failed to read file {:?}: {}", path, e))?;
+
+            files.push((path_str.to_string(), content));
+        }
+
+        if files.is_empty() {
+            return Err(format!("No files found in repository {}", url));
+        }
+
+        Ok(files)
+    }
+}
+
+#[async_trait]
+impl TemplateFetcher for GitHubTemplateFetcher {
+    async fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+        // Fetch all files from the repository using git clone
+        let files = self.fetch_repository_files(source).await?;
+
+        // Filter out unwanted files
+        let filtered_files: Vec<(String, Vec<u8>)> = files
+            .into_iter()
+            .filter(|(path, _)| {
+                !path.starts_with(".git/") && !path.starts_with(".github/") && path != ".gitignore"
+                // We'll handle .gitignore specially
+            })
+            .collect();
+
+        if filtered_files.is_empty() {
+            return Err(format!("No template files found in repository {}", source));
+        }
+
+        Ok(filtered_files)
+    }
+}
+
+/// Default implementation for fetching template files from a source repo (legacy stub)
+/// This is kept for backwards compatibility but should be replaced with GitHubTemplateFetcher
+#[deprecated(note = "Use GitHubTemplateFetcher instead")]
 pub struct DefaultTemplateFetcher;
 
+#[async_trait]
 impl TemplateFetcher for DefaultTemplateFetcher {
-    fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+    async fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
         // For MVP, return a basic README.md file with template variables
         let readme_content = format!(
             r#"# {{{{repo_name}}}}
@@ -310,7 +442,7 @@ impl TemplateProcessor {
 }
 
 /// Legacy function for backwards compatibility - will be removed
-pub fn fetch_template_files(source_repo: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+pub async fn fetch_template_files(source_repo: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
     let fetcher = DefaultTemplateFetcher;
-    fetcher.fetch_template_files(source_repo)
+    fetcher.fetch_template_files(source_repo).await
 }

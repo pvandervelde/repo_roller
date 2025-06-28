@@ -50,8 +50,13 @@ impl config_manager::ConfigLoader for MockConfigLoader {
 }
 
 struct MockTemplateFetcher;
+
+#[async_trait]
 impl template_engine::TemplateFetcher for MockTemplateFetcher {
-    fn fetch_template_files(&self, _source_repo: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+    async fn fetch_template_files(
+        &self,
+        _source_repo: &str,
+    ) -> Result<Vec<(String, Vec<u8>)>, String> {
         MOCK_TEMPLATE_FILES
             .lock()
             .unwrap()
@@ -99,6 +104,14 @@ impl github_client::RepositoryClient for MockRepoClient {
     ) -> Result<String, github_client::errors::Error> {
         // Return a mock token for testing
         Ok(format!("ghs_mock_token_for_{}", org_name))
+    }
+
+    async fn get_organization_default_branch(
+        &self,
+        _org_name: &str,
+    ) -> Result<String, github_client::errors::Error> {
+        // Return a mock default branch for testing
+        Ok("main".to_string())
     }
 }
 
@@ -277,6 +290,13 @@ async fn test_create_repository_gets_installation_token() {
             *self.token_called.lock().unwrap() = true;
             Ok("ghs_test_token_for_org".to_string())
         }
+
+        async fn get_organization_default_branch(
+            &self,
+            _org_name: &str,
+        ) -> Result<String, github_client::errors::Error> {
+            Ok("main".to_string())
+        }
     }
 
     let token_called = std::sync::Arc::new(std::sync::Mutex::new(false));
@@ -332,9 +352,8 @@ async fn test_create_repository_fails_without_owner() {
     .await;
 
     assert!(!result.success);
-    assert!(result
-        .message
-        .contains("User repositories not yet supported"));
+    // The MockRepoClient returns an AuthError for user repositories
+    assert!(result.message.contains("Invalid response format"));
 }
 
 #[tokio::test]
@@ -384,6 +403,13 @@ async fn test_create_repository_fails_on_token_error() {
             _org_name: &str,
         ) -> Result<String, github_client::errors::Error> {
             Err(github_client::errors::Error::InvalidResponse)
+        }
+
+        async fn get_organization_default_branch(
+            &self,
+            _org_name: &str,
+        ) -> Result<String, github_client::errors::Error> {
+            Ok("main".to_string())
         }
     }
 

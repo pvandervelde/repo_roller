@@ -98,17 +98,52 @@ impl OrgRules {
 
 fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result<(), Error> {
     info!(
-        "Committing all changes to git repository with message: '{}'",
+        "Committing all changes in repository at {:?} with message: '{}'",
+        local_repo_path.path(),
         commit_message
     );
-    debug!("Repository path: {:?}", local_repo_path.path());
 
+    // Open the repository
     let repo = Repository::open(local_repo_path.path()).map_err(|e| {
-        error!("Failed to open git repository: {}", e);
-        Error::GitOperation(format!("Failed to open git repository: {}", e))
+        error!("Failed to open repository: {}", e);
+        Error::GitOperation(format!("Failed to open repository: {}", e))
     })?;
 
-    debug!("Git repository opened for commit operation");
+    debug!("Repository opened successfully");
+
+    // Debug: Check current repository state
+    debug!("Repository state check:");
+    match repo.head() {
+        Ok(head) => {
+            debug!("  HEAD exists: {:?}", head.name());
+            if let Some(oid) = head.target() {
+                debug!("  HEAD points to: {}", oid);
+                // Check if this commit exists
+                match repo.find_commit(oid) {
+                    Ok(commit) => debug!("  HEAD commit exists: {}", commit.summary().unwrap_or("no message")),
+                    Err(e) => debug!("  HEAD commit does not exist: {}", e),
+                }
+            }
+        }
+        Err(e) => debug!("  No HEAD reference yet: {}", e),
+    }
+
+    // Check for existing commits
+    let mut revwalk = repo.revwalk().map_err(|e| {
+        debug!("Failed to create revwalk: {}", e);
+        e
+    }).unwrap_or_else(|_| {
+        debug!("No commits to walk");
+        repo.revwalk().unwrap()
+    });
+
+    match revwalk.push_head() {
+        Ok(_) => {
+            let commit_count = revwalk.count();
+            debug!("  Found {} existing commits in repository", commit_count);
+        }
+        Err(_) => debug!("  No commits found in repository (expected for new repo)"),
+    }
 
     // List files in the working directory for debugging
     let mut file_count = 0;
@@ -194,18 +229,29 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
     debug!("Git signature created for RepoRoller");
 
     // Create the commit (this is the initial commit, so no parent)
+    // For initial commit, don't reference HEAD until after creation
     let commit_oid = repo
         .commit(
-            Some("HEAD"),
+            None, // Don't update any reference initially
             &signature,
             &signature,
             commit_message,
             &tree,
-            &[],
+            &[], // No parents for initial commit
         )
         .map_err(|e| {
             error!("Failed to create commit: {}", e);
             Error::GitOperation(format!("Failed to create commit: {}", e))
+        })?;
+
+    debug!("Initial commit created with OID: {}", commit_oid);
+
+    // Now set the HEAD reference to point to our new commit
+    let reference_name = "HEAD";
+    repo.reference(reference_name, commit_oid, true, "Initial commit")
+        .map_err(|e| {
+            error!("Failed to set HEAD reference: {}", e);
+            Error::GitOperation(format!("Failed to set HEAD reference: {}", e))
         })?;
 
     info!(
@@ -280,38 +326,56 @@ fn copy_template_files(
 fn create_additional_files(
     local_repo_path: &TempDir,
     req: &CreateRepoRequest,
+    template_files: &[(String, Vec<u8>)],
 ) -> Result<(), Error> {
     info!("Creating additional files for repository initialization");
 
-    // Always create a README.md file to ensure the repository has content
-    let readme_path = local_repo_path.path().join("README.md");
-    let readme_content = format!(
-        "# {}\n\nRepository created using RepoRoller.\n\nTemplate: {}\nOwner: {}\n",
-        req.name, req.template, req.owner
-    );
+    // Check what files the template already provides
+    let template_file_paths: std::collections::HashSet<String> = template_files
+        .iter()
+        .map(|(path, _)| path.clone())
+        .collect();
 
-    debug!(
-        "Creating README.md with content length: {}",
-        readme_content.len()
-    );
+    // Only create README.md if the template doesn't provide one
+    if !template_file_paths.contains("README.md") {
+        let readme_path = local_repo_path.path().join("README.md");
+        let readme_content = format!(
+            "# {}\n\nRepository created using RepoRoller.\n\nTemplate: {}\nOwner: {}\n",
+            req.name, req.template, req.owner
+        );
 
-    std::fs::write(&readme_path, readme_content).map_err(|e| {
-        error!("Failed to create README.md: {}", e);
-        Error::FileSystem(format!("Failed to create README.md: {}", e))
-    })?;
+        debug!(
+            "Creating README.md with content length: {} (template didn't provide one)",
+            readme_content.len()
+        );
 
-    info!("README.md created successfully at: {:?}", readme_path);
+        std::fs::write(&readme_path, readme_content).map_err(|e| {
+            error!("Failed to create README.md: {}", e);
+            Error::FileSystem(format!("Failed to create README.md: {}", e))
+        })?;
 
-    // Create a .gitignore file with common patterns
-    let gitignore_path = local_repo_path.path().join(".gitignore");
-    let gitignore_content = "# Common ignores\n.DS_Store\n*.log\n*.tmp\nnode_modules/\ntarget/\n";
+        info!("README.md created successfully at: {:?}", readme_path);
+    } else {
+        info!("README.md provided by template, skipping creation");
+    }
 
-    std::fs::write(&gitignore_path, gitignore_content).map_err(|e| {
-        error!("Failed to create .gitignore: {}", e);
-        Error::FileSystem(format!("Failed to create .gitignore: {}", e))
-    })?;
+    // Only create .gitignore if the template doesn't provide one
+    if !template_file_paths.contains(".gitignore") {
+        let gitignore_path = local_repo_path.path().join(".gitignore");
+        let gitignore_content =
+            "# Common ignores\n.DS_Store\n*.log\n*.tmp\nnode_modules/\ntarget/\n";
 
-    info!(".gitignore created successfully at: {:?}", gitignore_path);
+        debug!("Creating .gitignore (template didn't provide one)");
+
+        std::fs::write(&gitignore_path, gitignore_content).map_err(|e| {
+            error!("Failed to create .gitignore: {}", e);
+            Error::FileSystem(format!("Failed to create .gitignore: {}", e))
+        })?;
+
+        info!(".gitignore created successfully at: {:?}", gitignore_path);
+    } else {
+        info!(".gitignore provided by template, skipping creation");
+    }
 
     Ok(())
 }
@@ -377,7 +441,10 @@ async fn create_repository_with_custom_settings(
     };
 
     // 4. Fetch template files
-    let files = match template_fetcher.fetch_template_files(&template.source_repo) {
+    let files = match template_fetcher
+        .fetch_template_files(&template.source_repo)
+        .await
+    {
         Ok(f) => f,
         Err(e) => return CreateRepoResult::failure(format!("Failed to fetch template files: {e}")),
     };
@@ -392,8 +459,8 @@ async fn create_repository_with_custom_settings(
         return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
     }
 
-    // 7. Create any additional required files (stub)
-    if let Err(e) = create_additional_files(&local_repo_path, &req) {
+    // 7. Create any additional required files (only if not provided by template)
+    if let Err(e) = create_additional_files(&local_repo_path, &req, &files) {
         return CreateRepoResult::failure(format!("Failed to create additional files: {e}"));
     }
 
@@ -559,7 +626,6 @@ pub async fn create_repository(
     app_key: String,
 ) -> CreateRepoResult {
     let config_loader = config_manager::FileConfigLoader;
-    let template_fetcher = template_engine::DefaultTemplateFetcher;
 
     let provider = match create_app_client(app_id, &app_key).await {
         Ok(p) => p,
@@ -571,7 +637,8 @@ pub async fn create_repository(
         }
     };
 
-    let repo_client = GitHubClient::new(provider);
+    let repo_client = GitHubClient::new(provider.clone());
+    let template_fetcher = template_engine::GitHubTemplateFetcher::new(GitHubClient::new(provider));
 
     create_repository_with_custom_settings(request, &config_loader, &template_fetcher, &repo_client)
         .await
@@ -641,6 +708,19 @@ fn push_to_origin(
     })?;
 
     debug!("Git repository opened successfully");
+
+    // Check if 'origin' remote already exists and remove it
+    match repo.find_remote("origin") {
+        Ok(_) => {
+            debug!("Origin remote already exists, removing it");
+            repo.remote_delete("origin").map_err(|e| {
+                error!("Failed to delete existing origin remote: {}", e);
+                Error::GitOperation(format!("Failed to delete existing origin remote: {}", e))
+            })?;
+            info!("Existing origin remote removed");
+        }
+        Err(_) => debug!("No existing origin remote found (expected)"),
+    }
 
     // Add remote 'origin'
     let mut remote = repo.remote("origin", repo_url.as_str()).map_err(|e| {
