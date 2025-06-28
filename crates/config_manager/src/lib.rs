@@ -107,8 +107,10 @@ pub struct TemplateConfig {
     /// Branch protection rules to apply (placeholder).
     pub branch_protection_rules: Option<Vec<BranchProtectionRule>>,
     /// Action permissions settings (placeholder).
-    pub action_permissions: Option<ActionPermissions>,    /// List of variable names expected by the template engine.
-    pub required_variables: Option<Vec<String>>,    /// Template variable configurations (if we need more than just names)
+    pub action_permissions: Option<ActionPermissions>,
+    /// List of variable names expected by the template engine.
+    pub required_variables: Option<Vec<String>>,
+    /// Template variable configurations (if we need more than just names)
     pub variable_configs: Option<HashMap<String, VariableConfig>>,
     // TODO: Add fields for custom properties, environments, discussion categories etc.
 }

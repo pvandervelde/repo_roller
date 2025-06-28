@@ -54,6 +54,7 @@ pub trait TemplateFetcher: Send + Sync {
 
 /// GitHub-based implementation for fetching template files from a repository
 pub struct GitHubTemplateFetcher {
+    #[allow(dead_code)] // Will be used in future implementation
     github_client: github_client::GitHubClient,
 }
 
@@ -64,6 +65,7 @@ impl GitHubTemplateFetcher {
     }
 
     /// Parse GitHub repository URL to extract owner and repo name
+    #[allow(dead_code)] // Will be used in future implementation
     fn parse_github_url(&self, url: &str) -> Result<(String, String), String> {
         // Handle both HTTPS and SSH GitHub URLs
         // Examples:
@@ -105,7 +107,7 @@ impl GitHubTemplateFetcher {
 
         // Clone the repository
         let output = Command::new("git")
-            .args(&[
+            .args([
                 "clone",
                 "--depth",
                 "1",
@@ -179,40 +181,14 @@ impl TemplateFetcher for GitHubTemplateFetcher {
     }
 }
 
-/// Default implementation for fetching template files from a source repo (legacy stub)
-/// This is kept for backwards compatibility but should be replaced with GitHubTemplateFetcher
-#[deprecated(note = "Use GitHubTemplateFetcher instead")]
-pub struct DefaultTemplateFetcher;
-
-#[async_trait]
-impl TemplateFetcher for DefaultTemplateFetcher {
-    async fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
-        // For MVP, return a basic README.md file with template variables
-        let readme_content = format!(
-            r#"# {{{{repo_name}}}}
-
-Repository created from template: {{{{template_name}}}}
-Owner: {{{{org_name}}}}
-Created by: {{{{user_login}}}}
-Created at: {{{{timestamp}}}}
-
-## Description
-
-This repository was generated using RepoRoller from template: {source}
-
-## Getting Started
-
-TODO: Add setup instructions here
-"#,
-            source = source
-        );
-
-        Ok(vec![("README.md".to_string(), readme_content.into_bytes())])
-    }
-}
-
 /// Template processor that handles variable substitution and file processing
 pub struct TemplateProcessor;
+
+impl Default for TemplateProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TemplateProcessor {
     pub fn new() -> Self {
@@ -224,7 +200,7 @@ impl TemplateProcessor {
         &self,
         files: &[(String, Vec<u8>)],
         request: &TemplateProcessingRequest,
-        output_dir: &Path,
+        _output_dir: &Path,
     ) -> Result<ProcessedTemplate, Error> {
         // Validate variables first
         self.validate_variables(request)?;
@@ -280,26 +256,29 @@ impl TemplateProcessor {
     /// Generate built-in variables for template processing
     pub fn generate_built_in_variables(
         &self,
-        repo_name: &str,
-        org_name: &str,
-        template_name: &str,
-        template_repo: &str,
-        user_login: &str,
-        user_name: &str,
-        default_branch: &str,
+        params: &BuiltInVariablesParams,
     ) -> HashMap<String, String> {
         let mut variables = HashMap::new();
 
         let now = chrono::Utc::now();
         variables.insert("timestamp".to_string(), now.to_rfc3339());
         variables.insert("timestamp_unix".to_string(), now.timestamp().to_string());
-        variables.insert("user_login".to_string(), user_login.to_string());
-        variables.insert("user_name".to_string(), user_name.to_string());
-        variables.insert("org_name".to_string(), org_name.to_string());
-        variables.insert("repo_name".to_string(), repo_name.to_string());
-        variables.insert("template_name".to_string(), template_name.to_string());
-        variables.insert("template_repo".to_string(), template_repo.to_string());
-        variables.insert("default_branch".to_string(), default_branch.to_string());
+        variables.insert("user_login".to_string(), params.user_login.to_string());
+        variables.insert("user_name".to_string(), params.user_name.to_string());
+        variables.insert("org_name".to_string(), params.org_name.to_string());
+        variables.insert("repo_name".to_string(), params.repo_name.to_string());
+        variables.insert(
+            "template_name".to_string(),
+            params.template_name.to_string(),
+        );
+        variables.insert(
+            "template_repo".to_string(),
+            params.template_repo.to_string(),
+        );
+        variables.insert(
+            "default_branch".to_string(),
+            params.default_branch.to_string(),
+        );
 
         variables
     }
@@ -308,10 +287,11 @@ impl TemplateProcessor {
     fn validate_variables(&self, request: &TemplateProcessingRequest) -> Result<(), Error> {
         for (var_name, config) in &request.variable_configs {
             // Check if required variable is provided
-            if config.required.unwrap_or(false) {
-                if !request.variables.contains_key(var_name) && config.default.is_none() {
-                    return Err(Error::RequiredVariableMissing(var_name.clone()));
-                }
+            if config.required.unwrap_or(false)
+                && !request.variables.contains_key(var_name)
+                && config.default.is_none()
+            {
+                return Err(Error::RequiredVariableMissing(var_name.clone()));
             }
 
             // Get the actual value (from variables or default)
@@ -441,8 +421,18 @@ impl TemplateProcessor {
     }
 }
 
+/// Parameters for generating built-in template variables.
+pub struct BuiltInVariablesParams<'a> {
+    pub repo_name: &'a str,
+    pub org_name: &'a str,
+    pub template_name: &'a str,
+    pub template_repo: &'a str,
+    pub user_login: &'a str,
+    pub user_name: &'a str,
+    pub default_branch: &'a str,
+}
+
 /// Legacy function for backwards compatibility - will be removed
-pub async fn fetch_template_files(source_repo: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
-    let fetcher = DefaultTemplateFetcher;
-    fetcher.fetch_template_files(source_repo).await
+pub async fn fetch_template_files(_source_repo: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+    Err("DefaultTemplateFetcher is deprecated. Use GitHubTemplateFetcher instead.".to_string())
 }

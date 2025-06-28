@@ -10,11 +10,11 @@ mod tests;
 pub enum Error {
     /// Authentication error
     #[error("Authentication error: {0}")]
-    AuthError(String),
+    Auth(String),
 
     /// Configuration error
     #[error("Configuration error: {0}")]
-    ConfigError(String),
+    Config(String),
 
     /// Invalid arguments
     #[error("Invalid arguments: {0}")]

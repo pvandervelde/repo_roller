@@ -96,22 +96,8 @@ impl OrgRules {
     }
 }
 
-fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result<(), Error> {
-    info!(
-        "Committing all changes in repository at {:?} with message: '{}'",
-        local_repo_path.path(),
-        commit_message
-    );
-
-    // Open the repository
-    let repo = Repository::open(local_repo_path.path()).map_err(|e| {
-        error!("Failed to open repository: {}", e);
-        Error::GitOperation(format!("Failed to open repository: {}", e))
-    })?;
-
-    debug!("Repository opened successfully");
-
-    // Debug: Check current repository state
+/// Debug the current state of the repository including HEAD and commit history.
+fn debug_repository_state(repo: &Repository) -> Result<(), Error> {
     debug!("Repository state check:");
     match repo.head() {
         Ok(head) => {
@@ -120,7 +106,10 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
                 debug!("  HEAD points to: {}", oid);
                 // Check if this commit exists
                 match repo.find_commit(oid) {
-                    Ok(commit) => debug!("  HEAD commit exists: {}", commit.summary().unwrap_or("no message")),
+                    Ok(commit) => debug!(
+                        "  HEAD commit exists: {}",
+                        commit.summary().unwrap_or("no message")
+                    ),
                     Err(e) => debug!("  HEAD commit does not exist: {}", e),
                 }
             }
@@ -128,24 +117,26 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
         Err(e) => debug!("  No HEAD reference yet: {}", e),
     }
 
-    // Check for existing commits
-    let mut revwalk = repo.revwalk().map_err(|e| {
-        debug!("Failed to create revwalk: {}", e);
-        e
-    }).unwrap_or_else(|_| {
-        debug!("No commits to walk");
-        repo.revwalk().unwrap()
-    });
-
-    match revwalk.push_head() {
-        Ok(_) => {
-            let commit_count = revwalk.count();
-            debug!("  Found {} existing commits in repository", commit_count);
+    // Check for existing commits - handle the case where repository might be empty
+    match repo.revwalk() {
+        Ok(mut revwalk) => match revwalk.push_head() {
+            Ok(_) => {
+                let commit_count = revwalk.count();
+                debug!("  Found {} existing commits in repository", commit_count);
+            }
+            Err(_) => debug!("  No commits found in repository (expected for new repo)"),
+        },
+        Err(e) => {
+            debug!("Failed to create revwalk: {}", e);
+            debug!("  No commits to walk (expected for new repo)");
         }
-        Err(_) => debug!("  No commits found in repository (expected for new repo)"),
     }
 
-    // List files in the working directory for debugging
+    Ok(())
+}
+
+/// Debug files in the working directory by listing them and showing previews.
+fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize, Error> {
     let mut file_count = 0;
     if let Ok(entries) = std::fs::read_dir(local_repo_path.path()) {
         for entry in entries.flatten() {
@@ -180,6 +171,11 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
         warn!("No files found in working directory - repository will be empty");
     }
 
+    Ok(file_count)
+}
+
+/// Prepare the git index and create a tree from all files in the working directory.
+fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Error> {
     // Get the repository index and add all files
     let mut index = repo.index().map_err(|e| {
         error!("Failed to get repository index: {}", e);
@@ -215,6 +211,15 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
 
     debug!("Git tree written with OID: {}", tree_oid);
 
+    Ok(tree_oid)
+}
+
+/// Create an initial commit with the given tree and message.
+fn create_initial_commit(
+    repo: &Repository,
+    tree_oid: git2::Oid,
+    commit_message: &str,
+) -> Result<git2::Oid, Error> {
     let tree = repo.find_tree(tree_oid).map_err(|e| {
         error!("Failed to find tree: {}", e);
         Error::GitOperation(format!("Failed to find tree: {}", e))
@@ -246,6 +251,15 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
 
     debug!("Initial commit created with OID: {}", commit_oid);
 
+    Ok(commit_oid)
+}
+
+/// Set the HEAD reference and verify commit creation.
+fn set_head_reference_and_verify(
+    repo: &Repository,
+    commit_oid: git2::Oid,
+    commit_message: &str,
+) -> Result<(), Error> {
     // Now set the HEAD reference to point to our new commit
     let reference_name = "HEAD";
     repo.reference(reference_name, commit_oid, true, "Initial commit")
@@ -284,6 +298,45 @@ fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result
             warn!("Main branch not found: {}", e);
         }
     }
+
+    Ok(())
+}
+
+fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result<(), Error> {
+    info!(
+        "Committing all changes in repository at {:?} with message: '{}'",
+        local_repo_path.path(),
+        commit_message
+    );
+
+    // Open the repository
+    let repo = Repository::open(local_repo_path.path()).map_err(|e| {
+        error!("Failed to open repository: {}", e);
+        Error::GitOperation(format!("Failed to open repository: {}", e))
+    })?;
+
+    debug!("Repository opened successfully");
+
+    // Debug the repository state
+    debug_repository_state(&repo)?;
+
+    // Debug files in working directory
+    let file_count = debug_working_directory(local_repo_path)?;
+
+    if file_count == 0 {
+        return Err(Error::GitOperation(
+            "No files found in working directory - repository will be empty".to_string(),
+        ));
+    }
+
+    // Prepare index and create tree
+    let tree_oid = prepare_index_and_tree(&repo)?;
+
+    // Create the initial commit
+    let commit_oid = create_initial_commit(&repo, tree_oid, commit_message)?;
+
+    // Set HEAD reference and verify
+    set_head_reference_and_verify(&repo, commit_oid, commit_message)?;
 
     Ok(())
 }
@@ -678,7 +731,7 @@ fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result<(),
     Ok(())
 }
 
-fn install_github_apps(repo: &github_client::models::Repository) -> Result<(), Error> {
+fn install_github_apps(_repo: &github_client::models::Repository) -> Result<(), Error> {
     Ok(())
 }
 
@@ -884,16 +937,17 @@ fn replace_template_variables(
     let processor = TemplateProcessor::new();
 
     // Generate built-in variables
-    let built_in_variables = processor.generate_built_in_variables(
-        &req.name,        // repo_name
-        &req.owner,       // org_name
-        &req.template,    // template_name
-        "unknown",        // template_repo (we'd need to get this from template config)
-        "reporoller-app", // user_login (placeholder for GitHub App)
-        "RepoRoller App", // user_name (placeholder for GitHub App)
-        "main",           // default_branch
-    ); // For MVP, we'll use empty user variables and get variable configs from template
-       // In a full implementation, these would come from user input and merged configs
+    let built_in_params = template_engine::BuiltInVariablesParams {
+        repo_name: &req.name,
+        org_name: &req.owner,
+        template_name: &req.template,
+        template_repo: "unknown", // We'd need to get this from template config
+        user_login: "reporoller-app", // Placeholder for GitHub App
+        user_name: "RepoRoller App", // Placeholder for GitHub App
+        default_branch: "main",
+    };
+    let built_in_variables = processor.generate_built_in_variables(&built_in_params); // For MVP, we'll use empty user variables and get variable configs from template
+                                                                                      // In a full implementation, these would come from user input and merged configs
     let user_variables = HashMap::new();
 
     // Convert config_manager::VariableConfig to template_engine::VariableConfig
@@ -1006,10 +1060,10 @@ fn replace_template_variables(
     Ok(())
 }
 
-fn trigger_post_creation_webhooks(repo: &github_client::models::Repository) -> Result<(), Error> {
+fn trigger_post_creation_webhooks(_repo: &github_client::models::Repository) -> Result<(), Error> {
     Ok(())
 }
 
-fn update_remote_settings(repo: &github_client::models::Repository) -> Result<(), Error> {
+fn update_remote_settings(_repo: &github_client::models::Repository) -> Result<(), Error> {
     Ok(())
 }

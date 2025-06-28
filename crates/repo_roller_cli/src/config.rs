@@ -28,17 +28,17 @@ impl AppConfig {
         debug!("Loading configuration from {:?}", path);
 
         if !path.exists() {
-            return Err(Error::ConfigError(format!(
+            return Err(Error::Config(format!(
                 "Configuration file not found: {:?}",
                 path
             )));
         }
 
         let content = fs::read_to_string(path)
-            .map_err(|e| Error::ConfigError(format!("Failed to read configuration file: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Failed to read configuration file: {}", e)))?;
 
         let config: AppConfig = toml::from_str(&content).map_err(|e| {
-            Error::ConfigError(format!("Failed to parse configuration file: {}", e))
+            Error::Config(format!("Failed to parse configuration file: {}", e))
         })?;
 
         Ok(config)
@@ -49,16 +49,16 @@ impl AppConfig {
         debug!("Saving configuration to {:?}", path);
 
         let content = toml::to_string_pretty(self)
-            .map_err(|e| Error::ConfigError(format!("Failed to serialize configuration: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Failed to serialize configuration: {}", e)))?;
 
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| Error::ConfigError(format!("Failed to create directory: {}", e)))?;
+                .map_err(|e| Error::Config(format!("Failed to create directory: {}", e)))?;
         }
 
         fs::write(path, content).map_err(|e| {
-            Error::ConfigError(format!("Failed to write configuration file: {}", e))
+            Error::Config(format!("Failed to write configuration file: {}", e))
         })?;
 
         info!("Configuration saved to {:?}", path);

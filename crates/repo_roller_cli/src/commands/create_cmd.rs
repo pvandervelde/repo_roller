@@ -89,27 +89,27 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
             info!(message = "Using GitHub App authentication");
             let app_id = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_ID)
                 .map_err(|e| {
-                    Error::AuthError(format!("Failed to create an entry in the keyring: {}", e))
+                    Error::Auth(format!("Failed to create an entry in the keyring: {}", e))
                 })?
                 .get_password()
                 .map_err(|e| {
-                    Error::AuthError(format!("Failed to get app ID from the keyring: {}", e))
+                    Error::Auth(format!("Failed to get app ID from the keyring: {}", e))
                 })?;
 
             let app_key_path = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_PRIVATE_KEY_PATH)
                 .map_err(|e| {
-                    Error::AuthError(format!("Failed to create an entry in the keyring: {}", e))
+                    Error::Auth(format!("Failed to create an entry in the keyring: {}", e))
                 })?
                 .get_password()
                 .map_err(|e| {
-                    Error::AuthError(format!(
+                    Error::Auth(format!(
                         "Failed to get app key location from the keyring: {}",
                         e
                     ))
                 })?;
 
             let app_key = fs::read_to_string(app_key_path).map_err(|e| {
-                Error::ConfigError(format!(
+                Error::Config(format!(
                     "Failed to load the app key from the provided file: {}",
                     e
                 ))

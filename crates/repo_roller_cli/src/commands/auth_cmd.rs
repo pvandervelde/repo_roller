@@ -35,9 +35,6 @@ pub enum AuthCommands {
 pub async fn execute(cmd: &AuthCommands) -> Result<(), Error> {
     match cmd {
         AuthCommands::GitHub { method } => auth_github(method).await,
-        _ => Err(Error::InvalidArguments(
-            "Unknown authentication type.".to_string(),
-        )),
     }
 }
 
@@ -51,9 +48,7 @@ async fn auth_github(method: &str) -> Result<(), Error> {
         Ok(c) => c,
         Err(e) => {
             error!(message = "Failed to load configuration", path = ?config_path, error = ?e);
-            return Err(Error::ConfigError(
-                "Failed to load configuration".to_string(),
-            ));
+            return Err(Error::Config("Failed to load configuration".to_string()));
         }
     };
 
@@ -70,7 +65,7 @@ async fn auth_github(method: &str) -> Result<(), Error> {
             let mut app_id = String::new();
             std::io::stdin()
                 .read_line(&mut app_id)
-                .map_err(|e| Error::AuthError(format!("Failed to read input: {}", e)))?;
+                .map_err(|e| Error::Auth(format!("Failed to read input: {}", e)))?;
             let app_id = app_id.trim();
             debug!(message = "Read app ID from stdin", app_id = app_id);
 
@@ -79,14 +74,14 @@ async fn auth_github(method: &str) -> Result<(), Error> {
             let mut key_path = String::new();
             std::io::stdin()
                 .read_line(&mut key_path)
-                .map_err(|e| Error::AuthError(format!("Failed to read input: {}", e)))?;
+                .map_err(|e| Error::Auth(format!("Failed to read input: {}", e)))?;
             let key_path = key_path.trim();
             debug!(message = "Read key path from stdin", key_path = key_path);
 
             // Verify the key file exists
             let key_path_buf = PathBuf::from(key_path);
             if !key_path_buf.exists() {
-                let err = Error::AuthError(format!("Private key file not found: {}", key_path));
+                let err = Error::Auth(format!("Private key file not found: {}", key_path));
                 error!(message = "Private key file not found", key_path = key_path, error = ?err);
                 return Err(err);
             }
@@ -96,7 +91,7 @@ async fn auth_github(method: &str) -> Result<(), Error> {
             let mut webhook_secret = String::new();
             std::io::stdin()
                 .read_line(&mut webhook_secret)
-                .map_err(|e| Error::AuthError(format!("Failed to read input: {}", e)))?;
+                .map_err(|e| Error::Auth(format!("Failed to read input: {}", e)))?;
             let webhook_secret = webhook_secret.trim();
             debug!(
                 message = "Read webhook secret from stdin",
@@ -105,19 +100,19 @@ async fn auth_github(method: &str) -> Result<(), Error> {
 
             let keyring_app_id =
                 Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_ID).map_err(|e| {
-                    Error::AuthError(format!("Failed to create an entry in the keyring: {}", e))
+                    Error::Auth(format!("Failed to create an entry in the keyring: {}", e))
                 })?;
             keyring_app_id.set_password(app_id).map_err(|e| {
-                Error::AuthError(format!("Failed to save the app ID to the keyring: {}", e))
+                Error::Auth(format!("Failed to save the app ID to the keyring: {}", e))
             })?;
             debug!(message = "Saved app ID to keyring");
 
             let keyring_key_path = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_PRIVATE_KEY_PATH)
                 .map_err(|e| {
-                    Error::AuthError(format!("Failed to create an entry in the keyring: {}", e))
+                    Error::Auth(format!("Failed to create an entry in the keyring: {}", e))
                 })?;
             keyring_key_path.set_password(key_path).map_err(|e| {
-                Error::AuthError(format!(
+                Error::Auth(format!(
                     "Failed to save the app private key to the keyring: {}",
                     e
                 ))
@@ -126,12 +121,12 @@ async fn auth_github(method: &str) -> Result<(), Error> {
 
             let keyring_webhook_secret =
                 Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_WEB_HOOK_SECRET).map_err(|e| {
-                    Error::AuthError(format!("Failed to create an entry in the keyring: {}", e))
+                    Error::Auth(format!("Failed to create an entry in the keyring: {}", e))
                 })?;
             keyring_webhook_secret
                 .set_password(webhook_secret)
                 .map_err(|e| {
-                    Error::AuthError(format!(
+                    Error::Auth(format!(
                         "Failed to save the webhook secret to the keyring: {}",
                         e
                     ))
@@ -141,7 +136,7 @@ async fn auth_github(method: &str) -> Result<(), Error> {
             config.authentication.auth_method = "app".to_string();
             config.save(&config_path).map_err(|e| {
                 error!(error = e.to_string(), "Failed to save the configuration");
-                Error::ConfigError("Failed to save the configuration.".to_string())
+                Error::Config("Failed to save the configuration.".to_string())
             })?;
             info!(
                 message = "Updated configuration with auth method",
@@ -162,28 +157,28 @@ async fn auth_github(method: &str) -> Result<(), Error> {
             let mut token = String::new();
             std::io::stdin()
                 .read_line(&mut token)
-                .map_err(|e| Error::AuthError(format!("Failed to read input: {}", e)))?;
+                .map_err(|e| Error::Auth(format!("Failed to read input: {}", e)))?;
             let token = token.trim();
             debug!(message = "Read token from stdin");
 
             if token.is_empty() {
-                let err = Error::AuthError("Token cannot be empty".to_string());
+                let err = Error::Auth("Token cannot be empty".to_string());
                 error!(message = "Token cannot be empty", error = ?err);
                 return Err(err);
             }
 
             let keyring = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_USER_TOKEN).map_err(|e| {
-                Error::AuthError(format!("Failed to create an entry in the keyring: {}", e))
+                Error::Auth(format!("Failed to create an entry in the keyring: {}", e))
             })?;
             keyring
                 .set_password(token)
-                .map_err(|e| Error::AuthError(format!("Failed to save token to keyring: {}", e)))?;
+                .map_err(|e| Error::Auth(format!("Failed to save token to keyring: {}", e)))?;
             debug!(message = "Saved token to keyring");
 
             config.authentication.auth_method = "token".to_string();
             config.save(&config_path).map_err(|e| {
                 error!(error = e.to_string(), "Failed to save the configuration");
-                Error::ConfigError("Failed to save the configuration.".to_string())
+                Error::Config("Failed to save the configuration.".to_string())
             })?;
             info!(
                 message = "Updated configuration with auth method",

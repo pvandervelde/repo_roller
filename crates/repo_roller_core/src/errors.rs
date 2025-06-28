@@ -6,9 +6,6 @@ mod tests;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("An unknown error occurred.")]
-    Unknown,
-
     #[error("Git operation failed: {0}")]
     GitOperation(String),
 

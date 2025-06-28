@@ -52,7 +52,7 @@ pub async fn execute(cmd: &ConfigCommands) -> Result<(), Error> {
         ConfigCommands::Init { path } => init_config(path.as_deref()),
         ConfigCommands::Validate { path } => validate_config(path.as_deref()),
         ConfigCommands::Get { path, key } => get_config(path.as_deref(), key.as_deref()),
-        ConfigCommands::Set { path, key, value } => set_config(path.as_deref(), &key, &value),
+        ConfigCommands::Set { path, key, value } => set_config(path.as_deref(), key, value),
     }
 }
 
@@ -63,7 +63,7 @@ fn init_config(path: Option<&str>) -> Result<(), Error> {
     debug!(message = "Initializing configuration", path = ?config_path);
 
     if config_path.exists() {
-        let err = Error::ConfigError(format!(
+        let err = Error::Config(format!(
             "Configuration file already exists at {:?}",
             config_path
         ));
@@ -78,9 +78,7 @@ fn init_config(path: Option<&str>) -> Result<(), Error> {
     let config = AppConfig::default();
     if let Err(e) = config.save(&config_path) {
         error!(message = "Failed to save configuration", path = ?config_path, error = ?e);
-        return Err(Error::ConfigError(
-            "Failed to save configuration".to_string(),
-        ));
+        return Err(Error::Config("Failed to save configuration".to_string()));
     }
 
     info!(message = "Configuration initialized", path = ?config_path);
@@ -106,9 +104,7 @@ fn validate_config(path: Option<&str>) -> Result<(), Error> {
                 path = ?config_path,
                 error = ?e
             );
-            Err(Error::ConfigError(
-                "The configuration is invalid".to_string(),
-            ))
+            Err(Error::Config("The configuration is invalid".to_string()))
         }
     }
 }
@@ -123,7 +119,7 @@ fn get_config(path: Option<&str>, key: Option<&str>) -> Result<(), Error> {
         Ok(c) => c,
         Err(e) => {
             error!(message = "Failed to load configuration", path = ?config_path, error = ?e);
-            return Err(Error::ConfigError(
+            return Err(Error::Config(
                 "Failed to load the configuration".to_string(),
             ));
         }
@@ -136,7 +132,7 @@ fn get_config(path: Option<&str>, key: Option<&str>) -> Result<(), Error> {
     } else {
         // Print entire config
         let config_str = toml::to_string_pretty(&config)
-            .map_err(|e| Error::ConfigError(format!("Failed to serialize configuration: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Failed to serialize configuration: {}", e)))?;
         println!("{}", config_str);
     }
 
@@ -163,7 +159,7 @@ fn set_config(path: Option<&str>, key: &str, value: &str) -> Result<(), Error> {
         Ok(c) => c,
         Err(e) => {
             error!(message = "Failed to load configuration", path = ?config_path, error = ?e);
-            return Err(Error::ConfigError(
+            return Err(Error::Config(
                 "Failed to load the configuration".to_string(),
             ));
         }
@@ -178,9 +174,7 @@ fn set_config(path: Option<&str>, key: &str, value: &str) -> Result<(), Error> {
     // Save the updated config
     if let Err(e) = config.save(&config_path) {
         error!(message = "Failed to save configuration", path = ?config_path, error = ?e);
-        return Err(Error::ConfigError(
-            "Failed to save configuration".to_string(),
-        ));
+        return Err(Error::Config("Failed to save configuration".to_string()));
     }
 
     info!(message = "Configuration updated", key = key, value = value);
