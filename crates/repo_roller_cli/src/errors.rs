@@ -8,6 +8,18 @@ mod tests;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Authentication error
+    #[error("Authentication error: {0}")]
+    Auth(String),
+
+    /// Configuration error
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    /// Invalid arguments
+    #[error("Invalid arguments: {0}")]
+    InvalidArguments(String),
+
     #[error("Failed to load file.")]
     LoadFile(io::Error),
 

@@ -4,6 +4,7 @@
 //! and providing access to settings like template definitions, standard labels, etc.
 
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -56,12 +57,29 @@ pub struct ActionPermissions {
     // Add more granular permissions later
 }
 
+/// Template variable configuration matching the specification
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct VariableConfig {
+    pub description: String,
+    pub example: Option<String>,
+    pub required: Option<bool>,
+    pub pattern: Option<String>,
+    pub min_length: Option<usize>,
+    pub max_length: Option<usize>,
+    pub options: Option<Vec<String>>,
+    pub default: Option<String>,
+}
+
 /// Errors that can occur while loading or accessing configuration.
 #[derive(Error, Debug)]
 pub enum ConfigError {
     /// Error reading the configuration file.
     #[error("Failed to read configuration file: {0}")]
     Io(#[from] io::Error),
+
+    /// Error parsing the text.
+    #[error("Failed to parse the text configuration")]
+    Text(String),
 
     /// Error parsing the TOML configuration content.
     #[error("Failed to parse TOML configuration: {0}")]
@@ -92,6 +110,8 @@ pub struct TemplateConfig {
     pub action_permissions: Option<ActionPermissions>,
     /// List of variable names expected by the template engine.
     pub required_variables: Option<Vec<String>>,
+    /// Template variable configurations (if we need more than just names)
+    pub variable_configs: Option<HashMap<String, VariableConfig>>,
     // TODO: Add fields for custom properties, environments, discussion categories etc.
 }
 
@@ -101,6 +121,20 @@ pub struct Config {
     /// List of available repository templates.
     pub templates: Vec<TemplateConfig>,
     // TODO: Add global settings if needed (e.g., org-wide defaults, allowed templates)
+}
+
+/// Trait for loading configuration.
+pub trait ConfigLoader: Send + Sync {
+    fn load_config(&self, path: &str) -> Result<Config, crate::ConfigError>;
+}
+
+/// Default implementation for loading config from file.
+pub struct FileConfigLoader;
+
+impl ConfigLoader for FileConfigLoader {
+    fn load_config(&self, path: &str) -> Result<Config, crate::ConfigError> {
+        crate::load_config(path)
+    }
 }
 
 /// Loads the application configuration from the specified TOML file.

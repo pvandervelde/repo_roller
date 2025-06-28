@@ -4,10 +4,15 @@ use std::io::Write;
 use clap::{Parser, Subcommand};
 
 mod commands;
+mod config;
 
 mod errors;
-use commands::create::handle_create_command;
+use commands::create_cmd::{create_repository, handle_create_command};
 use errors::Error;
+use tracing::error;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs};
 
 #[cfg(test)]
 #[path = "main_tests.rs"]
@@ -24,39 +29,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(subcommand)]
+    Auth(AuthCommands),
+
+    #[command(subcommand)]
+    Config(ConfigCommands),
+
     /// Create a new repository from a template
-    Create {
-        /// Path to a TOML config file with repository settings
-        #[arg(long)]
-        config: Option<String>,
+    #[command()]
+    Create(CreateArgs),
 
-        /// Name of the new repository
-        #[arg(long)]
-        name: Option<String>,
-
-        /// Owner (user or org) for the new repository
-        #[arg(long)]
-        owner: Option<String>,
-
-        /// Template type (e.g., library, service, action)
-        #[arg(long)]
-        template: Option<String>,
-    },
-
-    /// Show the CLI version
-    Version,
-
-    /// Show default settings
-    ShowDefaults,
+    /// Initialize a repository config file
+    Init,
 
     /// List recognized template variables
     ListVariables,
 
-    /// Show the status of the last operation
-    Status,
-
-    /// Initialize a repository config file
-    Init,
+    /// Show the CLI version
+    Version,
 }
 
 fn ask_user_for_value(request: &str) -> Result<String, Error> {
@@ -76,32 +66,64 @@ pub fn parse_key_val(s: &str) -> Result<(String, String), String> {
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    // Initialize logging
+    tracing_subscriber::registry()
+        .with(fmt::layer().pretty())
+        .with(EnvFilter::from_env("REPO_ROLLER_LOG"))
+        .init();
+
     let cli = Cli::parse();
     match &cli.command {
-        Commands::Create {
-            config,
-            name,
-            owner,
-            template,
-        } => {
-            let result = handle_create_command(
-                config,
-                name,
-                owner,
-                template,
-                &ask_user_for_value,
-                &repo_roller_core::get_org_rules,
-                &repo_roller_core::create_repository,
-            );
-
-            if result.is_ok() {
-                println!("Repository created");
-                std::process::exit(0);
-            } else {
-                println!("Failed to create repository");
+        Commands::Auth(cmd) => {
+            if let Err(e) = crate::commands::auth_cmd::execute(cmd).await {
+                error!("Error: {e}");
                 std::process::exit(1);
             }
+        }
+        Commands::Config(cmd) => {
+            if let Err(e) = crate::commands::config_cmd::execute(cmd).await {
+                error!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Create(args) => {
+            // Use handle_create_command to merge config, prompt, and apply org rules
+            let result = handle_create_command(
+                &args.config,
+                &args.name,
+                &args.owner,
+                &args.template,
+                &ask_user_for_value,
+                &|org| repo_roller_core::OrgRules::new_from_text(org),
+                create_repository,
+            )
+            .await;
+
+            match result {
+                Ok(res) => {
+                    if res.success {
+                        println!("Repository created");
+                        std::process::exit(0);
+                    } else {
+                        println!("Failed to create repository: {}", res.message);
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    println!("Error: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
+        Commands::Init => {
+            println!("Repository config initialization: (not yet implemented)");
+            std::process::exit(0);
+        }
+        Commands::ListVariables => {
+            println!("Recognized template variables: (not yet implemented)");
+            std::process::exit(0);
         }
         Commands::Version => {
             // Print version info from baked-in value
@@ -109,22 +131,6 @@ fn main() {
                 "repo-roller version {}",
                 option_env!("REPO_ROLLER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
             );
-            std::process::exit(0);
-        }
-        Commands::ShowDefaults => {
-            println!("Default settings: (not yet implemented)");
-            std::process::exit(0);
-        }
-        Commands::ListVariables => {
-            println!("Recognized template variables: (not yet implemented)");
-            std::process::exit(0);
-        }
-        Commands::Status => {
-            println!("Status: (not yet implemented)");
-            std::process::exit(0);
-        }
-        Commands::Init => {
-            println!("Repository config initialization: (not yet implemented)");
             std::process::exit(0);
         }
     }

@@ -1,8 +1,11 @@
 use super::*;
 use crate::errors::Error;
+use repo_roller_core::OrgRules;
+use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
+use tokio;
 
 // Helper to simulate user input
 fn make_ask_user_for_value(input_text: &str) -> Result<String, Error> {
@@ -24,8 +27,8 @@ impl CallLog {
     }
 }
 
-#[test]
-fn test_happy_path_with_all_args() {
+#[tokio::test]
+async fn test_happy_path_with_all_args() {
     let ask = make_ask_user_for_value;
     let log = Arc::new(Mutex::new(CallLog::new()));
 
@@ -36,19 +39,17 @@ fn test_happy_path_with_all_args() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
-    let log_clone = log.clone();
-    let create_repository = move |req: repo_roller_core::CreateRepoRequest| {
-        log_clone
-            .lock()
-            .unwrap()
-            .create_repository_args
-            .push(req.clone());
-        repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
         }
     };
 
@@ -59,8 +60,9 @@ fn test_happy_path_with_all_args() {
         &Some("library".to_string()),
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -75,8 +77,8 @@ fn test_happy_path_with_all_args() {
     assert_eq!(req.template, "library");
 }
 
-#[test]
-fn test_happy_path_with_config_file() {
+#[tokio::test]
+async fn test_happy_path_with_config_file() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(
         file,
@@ -94,19 +96,17 @@ fn test_happy_path_with_config_file() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
-    let log_clone = log.clone();
-    let create_repository = move |req: repo_roller_core::CreateRepoRequest| {
-        log_clone
-            .lock()
-            .unwrap()
-            .create_repository_args
-            .push(req.clone());
-        repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
         }
     };
 
@@ -117,8 +117,9 @@ fn test_happy_path_with_config_file() {
         &None,
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -133,15 +134,12 @@ fn test_happy_path_with_config_file() {
     assert_eq!(req.template, "service");
 }
 
-#[test]
-fn test_config_file_missing() {
+#[tokio::test]
+async fn test_config_file_missing() {
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| repo_roller_core::get_org_rules(_org);
-    let create_repository =
-        |_req: repo_roller_core::CreateRepoRequest| repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
-        };
+    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
+
+    let log = Arc::new(Mutex::new(CallLog::new()));
     let result = handle_create_command(
         &Some("nonexistent.toml".to_string()),
         &None,
@@ -149,37 +147,30 @@ fn test_config_file_missing() {
         &None,
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        |req| create_repository(req),
+    )
+    .await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
 }
 
-#[test]
-fn test_config_file_invalid_toml() {
+#[tokio::test]
+async fn test_config_file_invalid_toml() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(file, "not valid toml").unwrap();
     let path = file.path().to_str().map(|s| s.to_string());
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| repo_roller_core::get_org_rules(_org);
-    let create_repository =
-        |_req: repo_roller_core::CreateRepoRequest| repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
-        };
-    let result = handle_create_command(
-        &path,
-        &None,
-        &None,
-        &None,
-        &ask,
-        &get_org_rules,
-        &create_repository,
-    );
+    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
+
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let result = handle_create_command(&path, &None, &None, &None, &ask, &get_org_rules, |req| {
+        create_repository(req)
+    })
+    .await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
 
-#[test]
-fn test_partial_args_prompt_for_owner() {
+#[tokio::test]
+async fn test_partial_args_prompt_for_owner() {
     // Only name and template provided, owner missing, should prompt
     let ask = |_prompt: &str| Ok("prompted_owner".to_string());
     let log = Arc::new(Mutex::new(CallLog::new()));
@@ -191,19 +182,17 @@ fn test_partial_args_prompt_for_owner() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
-    let log_clone = log.clone();
-    let create_repository = move |req: repo_roller_core::CreateRepoRequest| {
-        log_clone
-            .lock()
-            .unwrap()
-            .create_repository_args
-            .push(req.clone());
-        repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
         }
     };
 
@@ -214,8 +203,9 @@ fn test_partial_args_prompt_for_owner() {
         &Some("library".to_string()),
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -230,8 +220,8 @@ fn test_partial_args_prompt_for_owner() {
     assert_eq!(req.template, "library");
 }
 
-#[test]
-fn test_partial_args_prompt_for_template() {
+#[tokio::test]
+async fn test_partial_args_prompt_for_template() {
     // Only name and owner provided, template missing, should prompt
     let ask = |_prompt: &str| Ok("prompted_template".to_string());
     let log = Arc::new(Mutex::new(CallLog::new()));
@@ -243,19 +233,17 @@ fn test_partial_args_prompt_for_template() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
-    let log_clone = log.clone();
-    let create_repository = move |req: repo_roller_core::CreateRepoRequest| {
-        log_clone
-            .lock()
-            .unwrap()
-            .create_repository_args
-            .push(req.clone());
-        repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
         }
     };
 
@@ -266,8 +254,9 @@ fn test_partial_args_prompt_for_template() {
         &None,
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -282,17 +271,23 @@ fn test_partial_args_prompt_for_template() {
     assert_eq!(req.template, "prompted_template");
 }
 
-#[test]
-fn test_create_repository_failure() {
+#[tokio::test]
+async fn test_create_repository_failure() {
     // Simulate create_repository returning failure
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| repo_roller_core::get_org_rules(_org);
-    let create_repository =
-        |_req: repo_roller_core::CreateRepoRequest| repo_roller_core::CreateRepoResult {
-            success: false,
-            message: "creation failed".to_string(),
-        };
+    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::failure("creation failed")
+            }
+        }
+    };
     let result = handle_create_command(
         &None,
         &Some("repo5".to_string()),
@@ -300,16 +295,17 @@ fn test_create_repository_failure() {
         &Some("library".to_string()),
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(!res.success);
     assert_eq!(res.message, "creation failed");
 }
 
-#[test]
-fn test_config_file_missing_fields() {
+#[tokio::test]
+async fn test_config_file_missing_fields() {
     // Config file missing template, should prompt for it
     let mut file = NamedTempFile::new().unwrap();
     writeln!(file, "name = \"repo6\"\nowner = \"calvinverse\"").unwrap();
@@ -324,19 +320,17 @@ fn test_config_file_missing_fields() {
             .unwrap()
             .get_org_rules_args
             .push(org.to_string());
-        repo_roller_core::get_org_rules(org)
+        OrgRules::new_from_text(org)
     };
 
-    let log_clone = log.clone();
-    let create_repository = move |req: repo_roller_core::CreateRepoRequest| {
-        log_clone
-            .lock()
-            .unwrap()
-            .create_repository_args
-            .push(req.clone());
-        repo_roller_core::CreateRepoResult {
-            success: true,
-            message: "stubbed".to_string(),
+    let create_repo = {
+        let log = log.clone();
+        move |req: CreateRepoRequest| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().create_repository_args.push(req.clone());
+                CreateRepoResult::success("stubbed")
+            }
         }
     };
 
@@ -347,8 +341,9 @@ fn test_config_file_missing_fields() {
         &None,
         &ask,
         &get_org_rules,
-        &create_repository,
-    );
+        create_repo,
+    )
+    .await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
