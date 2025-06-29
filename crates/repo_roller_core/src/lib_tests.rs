@@ -47,180 +47,165 @@ fn create_mock_template_fetcher(files: Vec<(String, Vec<u8>)>) -> impl TemplateF
     MockTemplateFetcher { files }
 }
 
-/// Creates a mock repository client with successful responses
-fn create_mock_repo_client() -> impl RepositoryClient {
-    struct MockRepoClient;
+/// Configuration for mock repository client behavior
+#[derive(Clone)]
+enum MockTokenBehavior {
+    /// Return a successful token with the given string
+    Success(String),
+    /// Return an InvalidResponse error
+    InvalidResponse,
+    /// Return an AuthError with the given message
+    AuthError(String),
+}
 
-    #[async_trait]
-    impl RepositoryClient for MockRepoClient {
-        async fn create_org_repository(
-            &self,
-            _owner: &str,
-            payload: &github_client::RepositoryCreatePayload,
-        ) -> Result<models::Repository, GitHubError> {
-            Ok(models::Repository::new(
-                payload.name.clone(),
-                format!("test-org/{}", payload.name),
-                "MDEwOlJlcG9zaXRvcnkx".to_string(),
-                false,
-            ))
+/// Configuration for mock repository client behavior
+#[derive(Clone)]
+struct MockRepoClientConfig {
+    /// Token behavior for get_installation_token_for_org
+    token_behavior: MockTokenBehavior,
+    /// Optional callback to track when get_installation_token_for_org is called
+    token_call_tracker: Option<Arc<Mutex<bool>>>,
+    /// Default branch to return from get_organization_default_branch
+    default_branch: String,
+}
+
+impl Default for MockRepoClientConfig {
+    fn default() -> Self {
+        Self {
+            token_behavior: MockTokenBehavior::Success("ghs_mock_token".to_string()),
+            token_call_tracker: None,
+            default_branch: "main".to_string(),
         }
+    }
+}
 
-        async fn create_user_repository(
-            &self,
-            _payload: &github_client::RepositoryCreatePayload,
-        ) -> Result<models::Repository, GitHubError> {
-            Err(GitHubError::AuthError(
-                "User repos not supported in test".to_string(),
-            ))
-        }
+impl MockRepoClientConfig {
+    /// Create config that tracks installation token calls
+    fn with_token_tracking() -> (Self, Arc<Mutex<bool>>) {
+        let tracker = Arc::new(Mutex::new(false));
+        let config = Self {
+            token_behavior: MockTokenBehavior::Success("ghs_test_token_for_org".to_string()),
+            token_call_tracker: Some(tracker.clone()),
+            default_branch: "main".to_string(),
+        };
+        (config, tracker)
+    }
 
-        async fn update_repository_settings(
-            &self,
-            _owner: &str,
-            _repo: &str,
-            _settings: &RepositorySettingsUpdate,
-        ) -> Result<models::Repository, GitHubError> {
-            Err(GitHubError::AuthError(
-                "Not implemented in test".to_string(),
-            ))
-        }
-
-        async fn get_installation_token_for_org(
-            &self,
-            org_name: &str,
-        ) -> Result<String, GitHubError> {
-            Ok(format!("ghs_mock_token_for_{}", org_name))
-        }
-
-        async fn get_organization_default_branch(
-            &self,
-            _org_name: &str,
-        ) -> Result<String, GitHubError> {
-            Ok("main".to_string())
+    /// Create config that fails installation token retrieval
+    fn with_token_failure() -> Self {
+        Self {
+            token_behavior: MockTokenBehavior::InvalidResponse,
+            token_call_tracker: None,
+            default_branch: "main".to_string(),
         }
     }
 
-    MockRepoClient
+    /// Create config with custom token for organization
+    fn with_org_token(org_name: &str) -> Self {
+        Self {
+            token_behavior: MockTokenBehavior::Success(format!("ghs_mock_token_for_{}", org_name)),
+            token_call_tracker: None,
+            default_branch: "main".to_string(),
+        }
+    }
+}
+
+/// Configurable mock repository client that eliminates code duplication
+struct ConfigurableMockRepoClient {
+    config: MockRepoClientConfig,
+}
+
+impl ConfigurableMockRepoClient {
+    fn new(config: MockRepoClientConfig) -> Self {
+        Self { config }
+    }
+
+    /// Helper function to create a successful repository response
+    fn create_successful_repository(
+        &self,
+        payload: &github_client::RepositoryCreatePayload,
+    ) -> models::Repository {
+        models::Repository::new(
+            payload.name.clone(),
+            format!("test-org/{}", payload.name),
+            "MDEwOlJlcG9zaXRvcnkx".to_string(),
+            false,
+        )
+    }
+}
+
+#[async_trait]
+impl RepositoryClient for ConfigurableMockRepoClient {
+    async fn create_org_repository(
+        &self,
+        _owner: &str,
+        payload: &github_client::RepositoryCreatePayload,
+    ) -> Result<models::Repository, GitHubError> {
+        Ok(self.create_successful_repository(payload))
+    }
+
+    async fn create_user_repository(
+        &self,
+        _payload: &github_client::RepositoryCreatePayload,
+    ) -> Result<models::Repository, GitHubError> {
+        Err(GitHubError::AuthError(
+            "User repos not supported in test".to_string(),
+        ))
+    }
+
+    async fn update_repository_settings(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _settings: &RepositorySettingsUpdate,
+    ) -> Result<models::Repository, GitHubError> {
+        Err(GitHubError::AuthError(
+            "Not implemented in test".to_string(),
+        ))
+    }
+
+    async fn get_installation_token_for_org(&self, _org_name: &str) -> Result<String, GitHubError> {
+        // Track the call if a tracker is configured
+        if let Some(tracker) = &self.config.token_call_tracker {
+            *tracker.lock().unwrap() = true;
+        }
+
+        // Return the configured result based on behavior
+        match &self.config.token_behavior {
+            MockTokenBehavior::Success(token) => Ok(token.clone()),
+            MockTokenBehavior::InvalidResponse => Err(GitHubError::InvalidResponse),
+            MockTokenBehavior::AuthError(msg) => Err(GitHubError::AuthError(msg.clone())),
+        }
+    }
+
+    async fn get_organization_default_branch(
+        &self,
+        _org_name: &str,
+    ) -> Result<String, GitHubError> {
+        Ok(self.config.default_branch.clone())
+    }
+}
+
+/// Creates a mock repository client with successful responses
+fn create_mock_repo_client() -> impl RepositoryClient {
+    ConfigurableMockRepoClient::new(MockRepoClientConfig::default())
+}
+
+/// Creates a mock repository client with organization-specific token
+fn create_mock_repo_client_for_org(org_name: &str) -> impl RepositoryClient {
+    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_org_token(org_name))
 }
 
 /// Creates a mock repository client that tracks installation token calls
 fn create_token_tracking_mock_repo_client() -> (impl RepositoryClient, Arc<Mutex<bool>>) {
-    let token_called = Arc::new(Mutex::new(false));
-
-    struct TokenTrackingMockRepoClient {
-        token_called: Arc<Mutex<bool>>,
-    }
-
-    #[async_trait]
-    impl RepositoryClient for TokenTrackingMockRepoClient {
-        async fn create_org_repository(
-            &self,
-            _owner: &str,
-            payload: &github_client::RepositoryCreatePayload,
-        ) -> Result<models::Repository, GitHubError> {
-            Ok(models::Repository::new(
-                payload.name.clone(),
-                format!("test-org/{}", payload.name),
-                "MDEwOlJlcG9zaXRvcnkx".to_string(),
-                false,
-            ))
-        }
-
-        async fn create_user_repository(
-            &self,
-            _payload: &github_client::RepositoryCreatePayload,
-        ) -> Result<models::Repository, GitHubError> {
-            Err(GitHubError::AuthError(
-                "User repos not supported in test".to_string(),
-            ))
-        }
-
-        async fn update_repository_settings(
-            &self,
-            _owner: &str,
-            _repo: &str,
-            _settings: &RepositorySettingsUpdate,
-        ) -> Result<models::Repository, GitHubError> {
-            Err(GitHubError::AuthError(
-                "Not implemented in test".to_string(),
-            ))
-        }
-
-        async fn get_installation_token_for_org(
-            &self,
-            _org_name: &str,
-        ) -> Result<String, GitHubError> {
-            *self.token_called.lock().unwrap() = true;
-            Ok("ghs_test_token_for_org".to_string())
-        }
-
-        async fn get_organization_default_branch(
-            &self,
-            _org_name: &str,
-        ) -> Result<String, GitHubError> {
-            Ok("main".to_string())
-        }
-    }
-
-    let client = TokenTrackingMockRepoClient {
-        token_called: token_called.clone(),
-    };
-
-    (client, token_called)
+    let (config, tracker) = MockRepoClientConfig::with_token_tracking();
+    let client = ConfigurableMockRepoClient::new(config);
+    (client, tracker)
 }
 
 /// Creates a mock repository client that fails installation token retrieval
 fn create_failing_token_mock_repo_client() -> impl RepositoryClient {
-    struct FailingTokenMockRepoClient;
-
-    #[async_trait]
-    impl RepositoryClient for FailingTokenMockRepoClient {
-        async fn create_org_repository(
-            &self,
-            _owner: &str,
-            payload: &github_client::RepositoryCreatePayload,
-        ) -> Result<models::Repository, GitHubError> {
-            Ok(models::Repository::new(
-                payload.name.clone(),
-                format!("test-org/{}", payload.name),
-                "MDEwOlJlcG9zaXRvcnkx".to_string(),
-                false,
-            ))
-        }
-
-        async fn create_user_repository(
-            &self,
-            _payload: &github_client::RepositoryCreatePayload,
-        ) -> Result<models::Repository, GitHubError> {
-            Err(GitHubError::AuthError("Not implemented".to_string()))
-        }
-
-        async fn update_repository_settings(
-            &self,
-            _owner: &str,
-            _repo: &str,
-            _settings: &RepositorySettingsUpdate,
-        ) -> Result<models::Repository, GitHubError> {
-            Err(GitHubError::AuthError("Not implemented".to_string()))
-        }
-
-        async fn get_installation_token_for_org(
-            &self,
-            _org_name: &str,
-        ) -> Result<String, GitHubError> {
-            Err(GitHubError::InvalidResponse)
-        }
-
-        async fn get_organization_default_branch(
-            &self,
-            _org_name: &str,
-        ) -> Result<String, GitHubError> {
-            Ok("main".to_string())
-        }
-    }
-
-    FailingTokenMockRepoClient
+    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_token_failure())
 }
 
 /// Creates a default template config for testing
