@@ -71,7 +71,8 @@ pub async fn create_repository(request: CreateRepoRequest) -> CreateRepoResult {
         }
     };
 
-    repo_roller_core::create_repository(request, app_id, app_key).await
+    // Use the new function that accepts config directly
+    repo_roller_core::create_repository_with_config(request, &config.core, app_id, app_key).await
 }
 
 async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), Error> {

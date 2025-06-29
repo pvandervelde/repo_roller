@@ -3,7 +3,7 @@
 //! This crate is responsible for reading configuration files (e.g., TOML)
 //! and providing access to settings like template definitions, standard labels, etc.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -16,7 +16,7 @@ use thiserror::Error;
 mod tests;
 
 /// Represents a standard issue label configuration.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct LabelConfig {
     pub name: String,
     pub color: String, // Color hex code without '#'
@@ -24,7 +24,7 @@ pub struct LabelConfig {
 }
 
 /// Represents toggles for repository features.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct FeatureToggles {
     pub issues: Option<bool>,
     pub projects: Option<bool>,
@@ -33,7 +33,7 @@ pub struct FeatureToggles {
 }
 
 /// Represents settings related to pull requests.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct PullRequestSettings {
     pub allow_merge_commit: Option<bool>,
     pub allow_squash_merge: Option<bool>,
@@ -44,21 +44,21 @@ pub struct PullRequestSettings {
 
 // TODO: Define more detailed structs for Branch Protection, Actions, etc. later
 /// Placeholder for branch protection rule configuration.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct BranchProtectionRule {
     pub pattern: String,
     // Add specific rules like required checks, reviews, etc.
 }
 
 /// Placeholder for GitHub Actions permissions configuration.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct ActionPermissions {
     pub enabled: Option<bool>,
     // Add more granular permissions later
 }
 
 /// Template variable configuration matching the specification
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct VariableConfig {
     pub description: String,
     pub example: Option<String>,
@@ -88,7 +88,7 @@ pub enum ConfigError {
 
 /// Represents the configuration for a single repository template, including
 /// default settings to apply.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TemplateConfig {
     /// Unique identifier for the template.
     pub name: String,
@@ -116,7 +116,7 @@ pub struct TemplateConfig {
 }
 
 /// Represents the overall application configuration.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     /// List of available repository templates.
     pub templates: Vec<TemplateConfig>,
