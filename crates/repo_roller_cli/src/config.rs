@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use config_manager::Config;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -15,9 +16,14 @@ pub const DEFAULT_CONFIG_FILENAME: &str = "config.toml";
 #[path = "config_tests.rs"]
 mod tests;
 
-/// Configuration for Merge Warden CLI
+/// Configuration for RepoRoller CLI
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {
+    /// Core configuration (templates, repository settings, etc.)
+    #[serde(flatten)]
+    pub core: Config,
+
+    /// CLI-specific configuration
     #[serde(default)]
     pub authentication: AuthenticationConfig,
 }
@@ -67,6 +73,7 @@ impl AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            core: Config { templates: vec![] },
             authentication: AuthenticationConfig::new(),
         }
     }

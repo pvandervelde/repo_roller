@@ -3,7 +3,7 @@
 
 use super::*;
 use async_trait::async_trait;
-use config_manager::{Config, ConfigError, ConfigLoader, TemplateConfig};
+use config_manager::{Config, TemplateConfig};
 use github_client::{
     errors::Error as GitHubError, models, RepositoryClient, RepositorySettingsUpdate,
 };
@@ -12,21 +12,6 @@ use template_engine::TemplateFetcher;
 
 // --- MOCK FACTORY FUNCTIONS ---
 // These functions create fresh, isolated mock instances for each test
-
-/// Creates a mock config loader that returns the provided config
-fn create_mock_config_loader(config: Config) -> impl ConfigLoader {
-    struct MockConfigLoader {
-        config: Config,
-    }
-
-    impl ConfigLoader for MockConfigLoader {
-        fn load_config(&self, _path: &str) -> Result<Config, ConfigError> {
-            Ok(self.config.clone())
-        }
-    }
-
-    MockConfigLoader { config }
-}
 
 /// Creates a mock template fetcher that returns the provided files
 fn create_mock_template_fetcher(files: Vec<(String, Vec<u8>)>) -> impl TemplateFetcher {
@@ -242,7 +227,6 @@ fn create_empty_config() -> Config {
 #[tokio::test]
 async fn test_create_repository_fails_on_installation_token_error() {
     let config = create_config_with_basic_template();
-    let config_loader = create_mock_config_loader(config);
     let template_fetcher =
         create_mock_template_fetcher(vec![("README.md".to_string(), b"test content".to_vec())]);
     let repo_client = create_failing_token_mock_repo_client();
@@ -253,13 +237,8 @@ async fn test_create_repository_fails_on_installation_token_error() {
         template: "basic".to_string(),
     };
 
-    let result = create_repository_with_custom_settings(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    )
-    .await;
+    let result =
+        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
 
     assert!(!result.success);
     assert!(result.message.contains("Failed to get installation token"));
@@ -268,7 +247,6 @@ async fn test_create_repository_fails_on_installation_token_error() {
 #[tokio::test]
 async fn test_create_repository_fails_with_empty_owner() {
     let config = create_config_with_basic_template();
-    let config_loader = create_mock_config_loader(config);
     let template_fetcher =
         create_mock_template_fetcher(vec![("README.md".to_string(), b"test content".to_vec())]);
     let repo_client = create_mock_repo_client();
@@ -279,13 +257,8 @@ async fn test_create_repository_fails_with_empty_owner() {
         template: "basic".to_string(),
     };
 
-    let result = create_repository_with_custom_settings(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    )
-    .await;
+    let result =
+        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
 
     assert!(!result.success);
     // The mock returns an AuthError for user repositories, which gets formatted differently
@@ -295,7 +268,6 @@ async fn test_create_repository_fails_with_empty_owner() {
 #[tokio::test]
 async fn test_create_repository_fails_with_template_not_found() {
     let config = create_empty_config(); // No templates
-    let config_loader = create_mock_config_loader(config);
     let template_fetcher = create_mock_template_fetcher(vec![]);
     let repo_client = create_mock_repo_client();
 
@@ -305,13 +277,8 @@ async fn test_create_repository_fails_with_template_not_found() {
         template: "missing".to_string(),
     };
 
-    let result = create_repository_with_custom_settings(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    )
-    .await;
+    let result =
+        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
 
     assert!(!result.success);
     assert!(result.message.contains("Template not found"));
@@ -320,7 +287,6 @@ async fn test_create_repository_fails_with_template_not_found() {
 #[tokio::test]
 async fn test_create_repository_gets_installation_token() {
     let config = create_config_with_basic_template();
-    let config_loader = create_mock_config_loader(config);
     let template_fetcher =
         create_mock_template_fetcher(vec![("README.md".to_string(), b"test content".to_vec())]);
     let (repo_client, token_called) = create_token_tracking_mock_repo_client();
@@ -331,13 +297,8 @@ async fn test_create_repository_gets_installation_token() {
         template: "basic".to_string(),
     };
 
-    let _result = create_repository_with_custom_settings(
-        req,
-        &config_loader,
-        &template_fetcher,
-        &repo_client,
-    )
-    .await;
+    let _result =
+        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
 
     // The repository creation should call get_installation_token_for_org
     assert!(
