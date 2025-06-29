@@ -437,7 +437,7 @@ fn create_additional_files(
 /// Create a new repository from a template, with dependency injection for testability.
 async fn create_repository_with_custom_settings(
     req: CreateRepoRequest,
-    config_loader: &dyn ConfigLoader,
+    config: &config_manager::Config,
     template_fetcher: &dyn TemplateFetcher,
     repo_client: &dyn RepositoryClient,
 ) -> CreateRepoResult {
@@ -446,26 +446,12 @@ async fn create_repository_with_custom_settings(
         req.name, req.owner, req.template
     );
 
-    // 1. Load config
-    // TODO: Move the loading of the config to the endpoints because the endpoints need the config to determine
-    //       how to connect to github etc.
-    let config_path =
-        std::env::var("REPOROLLER_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
-    debug!("Loading configuration from: {}", config_path);
+    debug!(
+        "Found {} templates in configuration",
+        config.templates.len()
+    );
 
-    let config = match config_loader.load_config(&config_path) {
-        Ok(cfg) => {
-            info!("Configuration loaded successfully from: {}", config_path);
-            debug!("Found {} templates in configuration", cfg.templates.len());
-            cfg
-        }
-        Err(e) => {
-            error!("Failed to load configuration from '{}': {}", config_path, e);
-            return CreateRepoResult::failure(format!("Failed to load config: {e}"));
-        }
-    };
-
-    // 2. Find template config
+    // 1. Find template config
     debug!("Searching for template '{}' in configuration", req.template);
     let template = match config.templates.iter().find(|t| t.name == req.template) {
         Some(t) => {
@@ -483,7 +469,7 @@ async fn create_repository_with_custom_settings(
         }
     };
 
-    // 3. Create a local repository temporary directory
+    // 2. Create a local repository temporary directory
     let local_repo_path = match TempDir::new() {
         Ok(d) => d,
         Err(e) => {
@@ -493,7 +479,7 @@ async fn create_repository_with_custom_settings(
         }
     };
 
-    // 4. Fetch template files
+    // 3. Fetch template files
     let files = match template_fetcher
         .fetch_template_files(&template.source_repo)
         .await
@@ -502,22 +488,22 @@ async fn create_repository_with_custom_settings(
         Err(e) => return CreateRepoResult::failure(format!("Failed to fetch template files: {e}")),
     };
 
-    // 5. Add the template files (copy, not git clone)
+    // 4. Add the template files (copy, not git clone)
     if let Err(e) = copy_template_files(&files, &local_repo_path) {
         return CreateRepoResult::failure(format!("Failed to copy template files: {e}"));
     }
 
-    // 6. Replace template variables in the copied files
+    // 5. Replace template variables in the copied files
     if let Err(e) = replace_template_variables(&local_repo_path, &req, template) {
         return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
     }
 
-    // 7. Create any additional required files (only if not provided by template)
+    // 6. Create any additional required files (only if not provided by template)
     if let Err(e) = create_additional_files(&local_repo_path, &req, &files) {
         return CreateRepoResult::failure(format!("Failed to create additional files: {e}"));
     }
 
-    // 8. Create repo on github (org or user)
+    // 7. Create repo on github (org or user)
     let payload = RepositoryCreatePayload {
         name: req.name.clone(),
         ..Default::default()
@@ -596,12 +582,12 @@ async fn create_repository_with_custom_settings(
         }
     };
 
-    // 9. Initialize the local git repository with the organization's default branch
+    // 8. Initialize the local git repository with the organization's default branch
     if let Err(e) = init_local_git_repo(&local_repo_path, &default_branch) {
         return CreateRepoResult::failure(format!("Failed to initialize local git repo: {e}"));
     }
 
-    // 10. Commit all changes to the default branch (stub commit signing)
+    // 9. Commit all changes to the default branch (stub commit signing)
     if let Err(e) = commit_all_changes(&local_repo_path, "Initial commit (stub, unsigned)") {
         return CreateRepoResult::failure(format!("Failed to commit changes: {e}"));
     }
@@ -680,6 +666,22 @@ pub async fn create_repository(
 ) -> CreateRepoResult {
     let config_loader = config_manager::FileConfigLoader;
 
+    // Load configuration
+    let config_path =
+        std::env::var("REPOROLLER_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
+    debug!("Loading configuration from: {}", config_path);
+
+    let config = match config_loader.load_config(&config_path) {
+        Ok(cfg) => {
+            info!("Configuration loaded successfully from: {}", config_path);
+            cfg
+        }
+        Err(e) => {
+            error!("Failed to load configuration from '{}': {}", config_path, e);
+            return CreateRepoResult::failure(format!("Failed to load config: {e}"));
+        }
+    };
+
     let provider = match create_app_client(app_id, &app_key).await {
         Ok(p) => p,
         Err(e) => {
@@ -693,8 +695,62 @@ pub async fn create_repository(
     let repo_client = GitHubClient::new(provider.clone());
     let template_fetcher = template_engine::GitHubTemplateFetcher::new(GitHubClient::new(provider));
 
-    create_repository_with_custom_settings(request, &config_loader, &template_fetcher, &repo_client)
-        .await
+    create_repository_with_custom_settings(request, &config, &template_fetcher, &repo_client).await
+}
+
+/// Create a new repository from a template with provided configuration.
+///
+/// This function allows callers to provide their own configuration instead of
+/// loading it from the environment. This is useful for different interfaces
+/// (CLI, API, Azure Function) that may load configuration differently.
+///
+/// # Arguments
+///
+/// * `request` - Repository creation request containing name, owner, and template
+/// * `config` - Configuration containing template definitions and repository settings
+/// * `app_id` - GitHub App ID for authentication
+/// * `app_key` - GitHub App private key for authentication
+///
+/// # Returns
+///
+/// Returns `CreateRepoResult` indicating success or failure with details.
+///
+/// # Examples
+///
+/// ```no_run
+/// use repo_roller_core::{CreateRepoRequest, create_repository_with_config};
+/// use config_manager::Config;
+///
+/// # async fn example() {
+/// let request = CreateRepoRequest {
+///     name: "my-repo".to_string(),
+///     owner: "my-org".to_string(),
+///     template: "basic".to_string(),
+/// };
+/// let config = Config { templates: vec![] };
+/// let result = create_repository_with_config(request, &config, 12345, "private-key".to_string()).await;
+/// # }
+/// ```
+pub async fn create_repository_with_config(
+    request: CreateRepoRequest,
+    config: &config_manager::Config,
+    app_id: u64,
+    app_key: String,
+) -> CreateRepoResult {
+    let provider = match create_app_client(app_id, &app_key).await {
+        Ok(p) => p,
+        Err(e) => {
+            return CreateRepoResult::failure(format!(
+                "Failed to load the GitHub provider. Error was: {}",
+                e
+            ))
+        }
+    };
+
+    let repo_client = GitHubClient::new(provider.clone());
+    let template_fetcher = template_engine::GitHubTemplateFetcher::new(GitHubClient::new(provider));
+
+    create_repository_with_custom_settings(request, config, &template_fetcher, &repo_client).await
 }
 
 fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result<(), Error> {
