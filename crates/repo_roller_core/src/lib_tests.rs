@@ -1,6 +1,8 @@
 // Unit tests for repo_roller_core
 // Covers create_repository success and error paths with isolated mock dependencies
 
+// AI!: Order types and functions. In the following order: Mock structs, mock enums, mock functions, test functions. Everything in a category is ordered alphabetically
+
 use super::*;
 use async_trait::async_trait;
 use config_manager::{Config, TemplateConfig};
