@@ -15,14 +15,40 @@ pub use errors::Error;
 
 pub mod models;
 
+
 // Reference the tests module in the separate file
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
 
 /// A client for interacting with the GitHub API, authenticated as a GitHub App.
+///
+/// This struct provides a high-level interface for GitHub API operations using
+/// GitHub App authentication. It wraps an Octocrab client and provides methods
+/// for repository management, installation token retrieval, and organization queries.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use github_client::{GitHubClient, create_app_client};
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let app_id = 123456;
+///     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+///     
+///     let octocrab_client = create_app_client(app_id, private_key).await?;
+///     let github_client = GitHubClient::new(octocrab_client);
+///     
+///     let installations = github_client.list_installations().await?;
+///     println!("Found {} installations", installations.len());
+///     
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug)]
 pub struct GitHubClient {
+    /// The underlying Octocrab client used for API requests
     client: Octocrab,
 }
 
@@ -227,15 +253,35 @@ impl GitHubClient {
         }
     }
 
-    /// Creates a new `GitHubClient` instance authenticated as a GitHub App.
+    /// Creates a new `GitHubClient` instance with the provided Octocrab client.
+    ///
+    /// This constructor wraps an existing Octocrab client that should already be
+    /// configured with appropriate authentication (typically GitHub App JWT).
     ///
     /// # Arguments
     ///
-    /// * `app_id` - The ID of the GitHub App.
-    /// * `private_key` - The private key associated with the GitHub App, in PEM format.
+    /// * `client` - An authenticated Octocrab client instance
     ///
-    /// # Errors
-    /// Returns an `Error::AuthError` if authentication or client building fails.
+    /// # Returns
+    ///
+    /// Returns a new `GitHubClient` instance ready for API operations.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use github_client::{GitHubClient, create_app_client};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let app_id = 123456;
+    ///     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+    ///     
+    ///     let octocrab_client = create_app_client(app_id, private_key).await?;
+    ///     let github_client = GitHubClient::new(octocrab_client);
+    ///     
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn new(client: Octocrab) -> Self {
         Self { client }
     }
@@ -325,10 +371,17 @@ impl RepositoryClient for GitHubClient {
     }
 
     async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error> {
-        // Delegate to the existing implementation
-        self.get_installation_token_for_org(org_name).await
+        // This method implements the RepositoryClient trait by delegating to the
+        // GitHubClient's own implementation. This allows GitHubClient to be used
+        // polymorphically through the RepositoryClient trait while maintaining
+        // its own direct API. The duplication is intentional for trait compliance.
+        GitHubClient::get_installation_token_for_org(self, org_name).await
     }
 
+    /// Retrieves the default branch setting for an organization.
+    ///
+    /// This method queries the GitHub API to get the organization's default
+    /// branch setting, which is used for newly created repositories.
     async fn get_organization_default_branch(&self, org_name: &str) -> Result<String, Error> {
         info!(
             org_name = org_name,
@@ -371,52 +424,158 @@ impl RepositoryClient for GitHubClient {
     }
 }
 
+/// JWT claims structure for GitHub App authentication.
+/// 
+/// This struct represents the claims included in JSON Web Tokens used
+/// for GitHub App authentication. It contains the standard JWT fields
+/// required by GitHub's authentication system.
 #[derive(Debug, Serialize, Deserialize)]
 struct JWTClaims {
+    /// Issued at time (Unix timestamp)
     iat: u64,
+    /// Expiration time (Unix timestamp)
     exp: u64,
+    /// Issuer (GitHub App ID)
     iss: u64,
 }
 
-/// Represents the payload for creating a new repository via the REST API.
-/// Use `Default::default()` or builder pattern and modify fields as needed.
-#[derive(Serialize, Default, Debug, Clone)] // Added Clone
+/// Payload structure for creating a new repository via the GitHub REST API.
+///
+/// This struct contains all the configurable options for repository creation.
+/// Use `Default::default()` to get sensible defaults, then modify specific fields
+/// as needed. Optional fields that are `None` will use GitHub's default values.
+///
+/// # Examples
+///
+/// ```rust
+/// use github_client::RepositoryCreatePayload;
+///
+/// let payload = RepositoryCreatePayload {
+///     name: "my-new-repo".to_string(),
+///     description: Some("A test repository".to_string()),
+///     private: Some(true),
+///     ..Default::default()
+/// };
+/// ```
+#[derive(Serialize, Default, Debug, Clone)]
 pub struct RepositoryCreatePayload {
+    /// The name of the repository (required)
     pub name: String,
 
+    /// A short description of the repository
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
+    /// A URL with more information about the repository
     #[serde(skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
 
+    /// Whether the repository is private (defaults to false if None)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub private: Option<bool>, // Defaults to false if None
+    pub private: Option<bool>,
 
+    /// Whether issues are enabled for this repository (defaults to true if None)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_issues: Option<bool>, // Defaults to true if None
+    pub has_issues: Option<bool>,
 
+    /// Whether projects are enabled for this repository (defaults to true if None)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_projects: Option<bool>, // Defaults to true if None
+    pub has_projects: Option<bool>,
 
+    /// Whether the wiki is enabled for this repository (defaults to true if None)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_wiki: Option<bool>, // Defaults to true if None
+    pub has_wiki: Option<bool>,
 
+    /// Whether this repository is a template repository (defaults to false if None)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_template: Option<bool>, // Defaults to false if None
-
-                                   // Add other creation fields like team_id, auto_init, gitignore_template etc. as needed
+    pub is_template: Option<bool>,
 }
 
-/// Trait for repository operations (creation, file push, etc.).
+/// Trait for GitHub repository operations and management.
+///
+/// This trait defines the interface for interacting with GitHub repositories,
+/// including creation, updates, and metadata retrieval. It abstracts the
+/// underlying GitHub API client to allow for testing and different implementations.
+///
+/// All methods are async and return Results with appropriate error handling.
+/// Implementations should handle GitHub API rate limiting, authentication,
+/// and network errors appropriately.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use github_client::{RepositoryClient, RepositoryCreatePayload, GitHubClient, create_app_client};
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let app_id = 123456;
+///     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+///     
+///     let octocrab_client = create_app_client(app_id, private_key).await?;
+///     let client: Box<dyn RepositoryClient> = Box::new(GitHubClient::new(octocrab_client));
+///     
+///     let payload = RepositoryCreatePayload {
+///         name: "test-repo".to_string(),
+///         ..Default::default()
+///     };
+///     
+///     let repo = client.create_org_repository("my-org", &payload).await?;
+///     println!("Created repository: {}", repo.name());
+///     
+///     Ok(())
+/// }
+/// ```
 #[async_trait]
 pub trait RepositoryClient: Send + Sync {
+    /// Creates a new repository within a specified organization.
+    ///
+    /// This method creates a repository under the given organization using the
+    /// provided payload configuration. The authenticated GitHub App must have
+    /// appropriate permissions on the target organization.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The name of the organization where the repository will be created
+    /// * `payload` - Configuration for the new repository (name, description, settings, etc.)
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the created `Repository` on success, or an `Error`
+    /// if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if:
+    /// - The organization doesn't exist or is not accessible
+    /// - The authenticated app lacks permission to create repositories
+    /// - A repository with the same name already exists
+    /// - The GitHub API request fails
     async fn create_org_repository(
         &self,
         owner: &str,
         payload: &RepositoryCreatePayload,
     ) -> Result<models::Repository, Error>;
 
+    /// Creates a new repository for the authenticated user.
+    ///
+    /// This method creates a repository under the authenticated user's account
+    /// using the provided payload configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - Configuration for the new repository (name, description, settings, etc.)
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the created `Repository` on success, or an `Error`
+    /// if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if:
+    /// - A repository with the same name already exists
+    /// - The authenticated user lacks permission to create repositories
+    /// - The GitHub API request fails
     async fn create_user_repository(
         &self,
         payload: &RepositoryCreatePayload,
@@ -486,28 +645,49 @@ pub trait RepositoryClient: Send + Sync {
     async fn get_organization_default_branch(&self, org_name: &str) -> Result<String, Error>;
 }
 
-/// Represents the settings that can be updated for a repository.
-/// Use `Default::default()` and modify fields as needed.
+/// Settings that can be updated for an existing repository.
+///
+/// This struct contains all the repository settings that can be modified after
+/// creation. Use `Default::default()` to get an empty update (no changes), then
+/// set specific fields to update only those settings. Fields set to `None` will
+/// not be updated.
+///
+/// # Examples
+///
+/// ```rust
+/// use github_client::RepositorySettingsUpdate;
+///
+/// let settings = RepositorySettingsUpdate {
+///     description: Some("Updated description".to_string()),
+///     private: Some(false), // Make repository public
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Serialize, Default, Debug)]
 pub struct RepositorySettingsUpdate {
+    /// Update the repository description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
+    /// Update the repository homepage URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
 
+    /// Update the repository visibility (true for private, false for public)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private: Option<bool>,
 
+    /// Update whether issues are enabled for this repository
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_issues: Option<bool>,
 
+    /// Update whether projects are enabled for this repository
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_projects: Option<bool>,
 
+    /// Update whether the wiki is enabled for this repository
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_wiki: Option<bool>,
-    // Add other updatable fields like topics, default_branch etc. as needed
 }
 
 /// Authenticates with GitHub using an installation access token for a specific app installation.
@@ -679,6 +859,40 @@ pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocra
     Ok(octocrab)
 }
 
+/// Creates an Octocrab client authenticated with a personal access token.
+///
+/// This function creates a GitHub API client using a personal access token
+/// for authentication. This is useful for operations that don't require
+/// GitHub App authentication.
+///
+/// # Arguments
+///
+/// * `token` - A GitHub personal access token
+///
+/// # Returns
+///
+/// Returns a `Result` containing an authenticated `Octocrab` client, or an `Error`
+/// if the client cannot be built.
+///
+/// # Errors
+///
+/// This function returns an `Error::ApiError` if the Octocrab client cannot be
+/// constructed with the provided token.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use github_client::create_token_client;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let token = "ghp_xxxxxxxxxxxxxxxxxxxx"; // Your GitHub PAT
+///     let client = create_token_client(token)?;
+///     
+///     // Use client for API operations
+///     Ok(())
+/// }
+/// ```
 #[instrument(skip(token))]
 pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
     Octocrab::builder()
@@ -687,6 +901,11 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
         .map_err(|_| Error::ApiError())
 }
 
+/// Helper function to log Octocrab errors with appropriate detail.
+///
+/// This function examines the type of Octocrab error and logs relevant
+/// information for debugging purposes. It handles different error types
+/// with appropriate context and formatting.
 fn log_octocrab_error(message: &str, e: octocrab::Error) {
     match e {
         octocrab::Error::GitHub { source, backtrace } => {
