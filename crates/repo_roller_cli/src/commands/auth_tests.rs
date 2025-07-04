@@ -15,7 +15,7 @@ async fn test_execute_github_invalid_method() {
     let cmd = AuthCommands::GitHub {
         method: "invalid".to_string(),
     };
-    
+
     // This test would require mocking the config loading and keyring operations
     // For now, we'll just verify the command structure is valid
     if let AuthCommands::GitHub { method } = cmd {

@@ -26,7 +26,6 @@ fn test_auth_error_display() {
     assert!(error.source().is_none());
 }
 
-
 #[test]
 fn test_invalid_response_error_display() {
     let error = Error::InvalidResponse;

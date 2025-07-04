@@ -4,7 +4,7 @@ use super::*; // Import items from lib.rs
 use rand::thread_rng;
 use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey};
 use serde_json::json;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate}; // For constructing mock bodies
 
 // --- Test Constants ---

@@ -155,7 +155,7 @@ impl AppConfig {
     ///
     /// let config = AppConfig::default();
     /// let config_path = Path::new("./my-config.toml");
-    /// 
+    ///
     /// match config.save(&config_path) {
     ///     Ok(()) => println!("Configuration saved successfully"),
     ///     Err(e) => eprintln!("Failed to save config: {}", e),
@@ -207,7 +207,7 @@ pub struct AuthenticationConfig {
 
 impl AuthenticationConfig {
     /// Returns the default authentication method.
-    /// 
+    ///
     /// This is used as the default value for the auth_method field
     /// when deserializing from TOML if the field is not present.
     fn default_auth_method() -> String {

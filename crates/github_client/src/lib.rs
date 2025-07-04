@@ -15,7 +15,6 @@ pub use errors::Error;
 
 pub mod models;
 
-
 // Reference the tests module in the separate file
 #[cfg(test)]
 #[path = "lib_tests.rs"]
@@ -425,7 +424,7 @@ impl RepositoryClient for GitHubClient {
 }
 
 /// JWT claims structure for GitHub App authentication.
-/// 
+///
 /// This struct represents the claims included in JSON Web Tokens used
 /// for GitHub App authentication. It contains the standard JWT fields
 /// required by GitHub's authentication system.

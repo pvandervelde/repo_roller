@@ -1,7 +1,7 @@
 //! # RepoRoller CLI
 //!
 //! A command-line interface for creating GitHub repositories from templates.
-//! 
+//!
 //! This crate provides the main CLI application that allows users to:
 //! - Create new repositories from predefined templates
 //! - Configure authentication settings

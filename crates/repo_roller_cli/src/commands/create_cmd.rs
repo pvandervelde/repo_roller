@@ -56,11 +56,11 @@ pub struct ConfigFile {
     /// The name of the repository to create.
     /// Can be overridden by the `--name` CLI argument.
     pub name: Option<String>,
-    
+
     /// The owner (user or organization) for the repository.
     /// Can be overridden by the `--owner` CLI argument.
     pub owner: Option<String>,
-    
+
     /// The template type to use for repository creation.
     /// Can be overridden by the `--template` CLI argument.
     pub template: Option<String>,

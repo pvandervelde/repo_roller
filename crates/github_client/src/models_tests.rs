@@ -28,7 +28,6 @@ fn test_label_serialization() {
     assert_eq!(parsed["name"], "bug");
 }
 
-
 #[test]
 fn test_user_serialization() {
     // Create a user

@@ -10,7 +10,10 @@ fn test_auth_error_display() {
 #[test]
 fn test_config_error_display() {
     let error = Error::Config("Missing field 'name'".to_string());
-    assert_eq!(error.to_string(), "Configuration error: Missing field 'name'");
+    assert_eq!(
+        error.to_string(),
+        "Configuration error: Missing field 'name'"
+    );
 }
 
 #[test]
@@ -46,7 +49,10 @@ fn test_parse_toml_file_error_display() {
     let toml_content = "invalid = toml = syntax";
     let parse_error = toml::from_str::<toml::Value>(toml_content).unwrap_err();
     let error = Error::ParseTomlFile(parse_error);
-    assert_eq!(error.to_string(), "Failed to parse TOML configuration file.");
+    assert_eq!(
+        error.to_string(),
+        "Failed to parse TOML configuration file."
+    );
 }
 
 #[test]

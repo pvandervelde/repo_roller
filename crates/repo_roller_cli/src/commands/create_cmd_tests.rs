@@ -364,4 +364,3 @@ async fn test_partial_args_prompt_for_template() {
     assert_eq!(req.owner, "calvinverse");
     assert_eq!(req.template, "prompted_template");
 }
-
