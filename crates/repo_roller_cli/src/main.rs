@@ -1,16 +1,34 @@
+//! # RepoRoller CLI
+//!
+//! A command-line interface for creating GitHub repositories from templates.
+//!
+//! This crate provides the main CLI application that allows users to:
+//! - Create new repositories from predefined templates
+//! - Configure authentication settings
+//! - Manage repository configuration files
+//! - List available template variables
+//!
+//! ## Usage
+//!
+//! ```bash
+//! repo-roller create --name my-repo --owner my-org --template rust-library
+//! ```
+
 use std::io;
 use std::io::Write;
 
 use clap::{Parser, Subcommand};
 
+use tracing::error;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
 mod commands;
+use commands::create_cmd::{create_repository, handle_create_command};
+
 mod config;
 
 mod errors;
-use commands::create_cmd::{create_repository, handle_create_command};
 use errors::Error;
-use tracing::error;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs};
 
@@ -27,11 +45,17 @@ struct Cli {
     command: Commands,
 }
 
+/// Available CLI commands for the RepoRoller application.
+///
+/// Each command provides different functionality for managing repositories,
+/// authentication, and configuration.
 #[derive(Subcommand)]
 enum Commands {
+    /// Authentication-related commands for managing GitHub credentials
     #[command(subcommand)]
     Auth(AuthCommands),
 
+    /// Configuration management commands for templates and settings
     #[command(subcommand)]
     Config(ConfigCommands),
 
@@ -39,13 +63,13 @@ enum Commands {
     #[command()]
     Create(CreateArgs),
 
-    /// Initialize a repository config file
+    /// Initialize a repository config file in the current directory
     Init,
 
-    /// List recognized template variables
+    /// List recognized template variables and their descriptions
     ListVariables,
 
-    /// Show the CLI version
+    /// Show the CLI version information
     Version,
 }
 
@@ -68,7 +92,6 @@ pub fn parse_key_val(s: &str) -> Result<(String, String), String> {
 
 #[tokio::main]
 async fn main() {
-    // Initialize logging
     tracing_subscriber::registry()
         .with(fmt::layer().pretty())
         .with(EnvFilter::from_env("REPO_ROLLER_LOG"))

@@ -2,7 +2,7 @@ use super::*;
 use std::error::Error as StdError;
 
 #[test]
-fn test_api_error() {
+fn test_api_error_display() {
     let error = Error::ApiError();
 
     // Test error message
@@ -13,7 +13,7 @@ fn test_api_error() {
 }
 
 #[test]
-fn test_auth_error() {
+fn test_auth_error_display() {
     let error = Error::AuthError("Invalid credentials".to_string());
 
     // Test error message
@@ -27,7 +27,7 @@ fn test_auth_error() {
 }
 
 #[test]
-fn test_invalid_response_error() {
+fn test_invalid_response_error_display() {
     let error = Error::InvalidResponse;
 
     // Test error message
@@ -38,7 +38,7 @@ fn test_invalid_response_error() {
 }
 
 #[test]
-fn test_rate_limit_exceeded_error() {
+fn test_rate_limit_exceeded_error_display() {
     let error = Error::RateLimitExceeded;
 
     // Test error message

@@ -87,28 +87,91 @@ pub struct Label {
     pub name: String,
 }
 
+/// Represents a GitHub organization.
+///
+/// This struct contains basic information about a GitHub organization,
+/// primarily used for organization-related API operations and queries.
+///
+/// # Examples
+///
+/// ```rust
+/// use github_client::models::Organization;
+///
+/// let org = Organization {
+///     name: "my-organization".to_string(),
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     /// The name of the organization
     pub name: String,
 }
 
+/// Represents a GitHub repository.
+///
+/// This struct contains essential information about a GitHub repository,
+/// including its name, visibility, and identifiers. It provides methods
+/// for accessing repository properties and generating URLs.
+///
+/// # Examples
+///
+/// ```rust
+/// use github_client::models::Repository;
+///
+/// let repo = Repository::new(
+///     "my-repo".to_string(),
+///     "owner/my-repo".to_string(),
+///     "MDEwOlJlcG9zaXRvcnkx".to_string(),
+///     false
+/// );
+///
+/// println!("Repository: {}", repo.name());
+/// println!("Is private: {}", repo.is_private());
+/// println!("Clone URL: {}", repo.url());
+/// ```
 #[derive(Deserialize)]
 pub struct Repository {
+    /// The full name of the repository (owner/name)
     full_name: String,
+    /// The name of the repository
     name: String,
+    /// The GraphQL node ID of the repository
     node_id: String,
+    /// Whether the repository is private
     private: bool,
 }
+
 impl Repository {
+    /// Returns whether the repository is private.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the repository is private, `false` if it's public.
     pub fn is_private(&self) -> bool {
         self.private
     }
 
+    /// Returns the name of the repository.
+    ///
+    /// # Returns
+    ///
+    /// A string slice containing the repository name (without owner).
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Creates a new Repository instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the repository
+    /// * `full_name` - The full name including owner (owner/repo)
+    /// * `node_id` - The GraphQL node ID
+    /// * `private` - Whether the repository is private
+    ///
+    /// # Returns
+    ///
+    /// A new `Repository` instance with the provided values.
     pub fn new(name: String, full_name: String, node_id: String, private: bool) -> Self {
         Self {
             full_name,
@@ -118,9 +181,25 @@ impl Repository {
         }
     }
 
+    /// Returns the GraphQL node ID of the repository.
+    ///
+    /// # Returns
+    ///
+    /// A string slice containing the node ID used for GraphQL operations.
     pub fn node_id(&self) -> &str {
         &self.node_id
     }
+
+    /// Returns the Git clone URL for the repository.
+    ///
+    /// # Returns
+    ///
+    /// A `Url` pointing to the Git clone endpoint for this repository.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the repository full name cannot be formatted into a valid URL.
+    /// This should not happen with valid GitHub repository names.
     pub fn url(&self) -> Url {
         Url::parse(&format!("https://github.com/{}.git", self.full_name))
             .expect("Valid GitHub repository URL")
@@ -138,8 +217,28 @@ impl From<octocrab::models::Repository> for Repository {
     }
 }
 
+/// Represents a GitHub user account.
+///
+/// This struct contains basic information about a GitHub user, including
+/// their unique ID and login name. It's used throughout the API for
+/// representing repository owners, collaborators, and other user references.
+///
+/// # Examples
+///
+/// ```rust
+/// use github_client::models::User;
+///
+/// let user = User {
+///     id: 12345,
+///     login: "octocat".to_string(),
+/// };
+///
+/// println!("User: {} (ID: {})", user.login, user.id);
+/// ```
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct User {
+    /// The unique numeric ID of the user
     pub id: u64,
+    /// The login name of the user
     pub login: String,
 }

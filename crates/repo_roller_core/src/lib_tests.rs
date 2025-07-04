@@ -10,90 +10,7 @@ use github_client::{
 use std::sync::{Arc, Mutex};
 use template_engine::TemplateFetcher;
 
-// --- MOCK FACTORY FUNCTIONS ---
-// These functions create fresh, isolated mock instances for each test
-
-/// Creates a mock template fetcher that returns the provided files
-fn create_mock_template_fetcher(files: Vec<(String, Vec<u8>)>) -> impl TemplateFetcher {
-    struct MockTemplateFetcher {
-        files: Vec<(String, Vec<u8>)>,
-    }
-
-    #[async_trait]
-    impl TemplateFetcher for MockTemplateFetcher {
-        async fn fetch_template_files(
-            &self,
-            _source_repo: &str,
-        ) -> Result<Vec<(String, Vec<u8>)>, String> {
-            Ok(self.files.clone())
-        }
-    }
-
-    MockTemplateFetcher { files }
-}
-
-/// Configuration for mock repository client behavior
-#[derive(Clone)]
-enum MockTokenBehavior {
-    /// Return a successful token with the given string
-    Success(String),
-    /// Return an InvalidResponse error
-    InvalidResponse,
-    /// Return an AuthError with the given message
-    AuthError(String),
-}
-
-/// Configuration for mock repository client behavior
-#[derive(Clone)]
-struct MockRepoClientConfig {
-    /// Token behavior for get_installation_token_for_org
-    token_behavior: MockTokenBehavior,
-    /// Optional callback to track when get_installation_token_for_org is called
-    token_call_tracker: Option<Arc<Mutex<bool>>>,
-    /// Default branch to return from get_organization_default_branch
-    default_branch: String,
-}
-
-impl Default for MockRepoClientConfig {
-    fn default() -> Self {
-        Self {
-            token_behavior: MockTokenBehavior::Success("ghs_mock_token".to_string()),
-            token_call_tracker: None,
-            default_branch: "main".to_string(),
-        }
-    }
-}
-
-impl MockRepoClientConfig {
-    /// Create config that tracks installation token calls
-    fn with_token_tracking() -> (Self, Arc<Mutex<bool>>) {
-        let tracker = Arc::new(Mutex::new(false));
-        let config = Self {
-            token_behavior: MockTokenBehavior::Success("ghs_test_token_for_org".to_string()),
-            token_call_tracker: Some(tracker.clone()),
-            default_branch: "main".to_string(),
-        };
-        (config, tracker)
-    }
-
-    /// Create config that fails installation token retrieval
-    fn with_token_failure() -> Self {
-        Self {
-            token_behavior: MockTokenBehavior::InvalidResponse,
-            token_call_tracker: None,
-            default_branch: "main".to_string(),
-        }
-    }
-
-    /// Create config with custom token for organization
-    fn with_org_token(org_name: &str) -> Self {
-        Self {
-            token_behavior: MockTokenBehavior::Success(format!("ghs_mock_token_for_{}", org_name)),
-            token_call_tracker: None,
-            default_branch: "main".to_string(),
-        }
-    }
-}
+// --- MOCK STRUCTS (ALPHABETICALLY ORDERED) ---
 
 /// Configurable mock repository client that eliminates code duplication
 struct ConfigurableMockRepoClient {
@@ -171,27 +88,86 @@ impl RepositoryClient for ConfigurableMockRepoClient {
     }
 }
 
-/// Creates a mock repository client with successful responses
-fn create_mock_repo_client() -> impl RepositoryClient {
-    ConfigurableMockRepoClient::new(MockRepoClientConfig::default())
+/// Configuration for mock repository client behavior
+#[derive(Clone)]
+struct MockRepoClientConfig {
+    /// Token behavior for get_installation_token_for_org
+    token_behavior: MockTokenBehavior,
+    /// Optional callback to track when get_installation_token_for_org is called
+    token_call_tracker: Option<Arc<Mutex<bool>>>,
+    /// Default branch to return from get_organization_default_branch
+    default_branch: String,
 }
 
-/// Creates a mock repository client with organization-specific token
-fn create_mock_repo_client_for_org(org_name: &str) -> impl RepositoryClient {
-    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_org_token(org_name))
+impl Default for MockRepoClientConfig {
+    fn default() -> Self {
+        Self {
+            token_behavior: MockTokenBehavior::Success("ghs_mock_token".to_string()),
+            token_call_tracker: None,
+            default_branch: "main".to_string(),
+        }
+    }
 }
 
-/// Creates a mock repository client that tracks installation token calls
-fn create_token_tracking_mock_repo_client() -> (impl RepositoryClient, Arc<Mutex<bool>>) {
-    let (config, tracker) = MockRepoClientConfig::with_token_tracking();
-    let client = ConfigurableMockRepoClient::new(config);
-    (client, tracker)
+impl MockRepoClientConfig {
+    /// Create config that tracks installation token calls
+    fn with_token_tracking() -> (Self, Arc<Mutex<bool>>) {
+        let tracker = Arc::new(Mutex::new(false));
+        let config = Self {
+            token_behavior: MockTokenBehavior::Success("ghs_test_token_for_org".to_string()),
+            token_call_tracker: Some(tracker.clone()),
+            default_branch: "main".to_string(),
+        };
+        (config, tracker)
+    }
+
+    /// Create config that fails installation token retrieval
+    fn with_token_failure() -> Self {
+        Self {
+            token_behavior: MockTokenBehavior::InvalidResponse,
+            token_call_tracker: None,
+            default_branch: "main".to_string(),
+        }
+    }
+
+    /// Create config with custom token for organization
+    fn with_org_token(org_name: &str) -> Self {
+        Self {
+            token_behavior: MockTokenBehavior::Success(format!("ghs_mock_token_for_{}", org_name)),
+            token_call_tracker: None,
+            default_branch: "main".to_string(),
+        }
+    }
 }
 
-/// Creates a mock repository client that fails installation token retrieval
-fn create_failing_token_mock_repo_client() -> impl RepositoryClient {
-    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_token_failure())
+struct MockTemplateFetcher {
+    files: Vec<(String, Vec<u8>)>,
 }
+
+#[async_trait]
+impl TemplateFetcher for MockTemplateFetcher {
+    async fn fetch_template_files(
+        &self,
+        _source_repo: &str,
+    ) -> Result<Vec<(String, Vec<u8>)>, String> {
+        Ok(self.files.clone())
+    }
+}
+
+// --- MOCK ENUMS (ALPHABETICALLY ORDERED) ---
+
+/// Configuration for mock repository client behavior
+#[derive(Clone)]
+enum MockTokenBehavior {
+    /// Return an AuthError with the given message
+    AuthError(String),
+    /// Return an InvalidResponse error
+    InvalidResponse,
+    /// Return a successful token with the given string
+    Success(String),
+}
+
+// --- MOCK FUNCTIONS (ALPHABETICALLY ORDERED) ---
 
 /// Creates a default template config for testing
 fn create_basic_template_config() -> TemplateConfig {
@@ -222,7 +198,52 @@ fn create_empty_config() -> Config {
     Config { templates: vec![] }
 }
 
-// --- TESTS (ALPHABETICALLY ORDERED) ---
+/// Creates a mock repository client that fails installation token retrieval
+fn create_failing_token_mock_repo_client() -> impl RepositoryClient {
+    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_token_failure())
+}
+
+/// Creates a mock repository client with successful responses
+fn create_mock_repo_client() -> impl RepositoryClient {
+    ConfigurableMockRepoClient::new(MockRepoClientConfig::default())
+}
+
+/// Creates a mock repository client with organization-specific token
+fn create_mock_repo_client_for_org(org_name: &str) -> impl RepositoryClient {
+    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_org_token(org_name))
+}
+
+/// Creates a mock template fetcher that returns the provided files
+fn create_mock_template_fetcher(files: Vec<(String, Vec<u8>)>) -> impl TemplateFetcher {
+    MockTemplateFetcher { files }
+}
+
+/// Creates a mock repository client that tracks installation token calls
+fn create_token_tracking_mock_repo_client() -> (impl RepositoryClient, Arc<Mutex<bool>>) {
+    let (config, tracker) = MockRepoClientConfig::with_token_tracking();
+    let client = ConfigurableMockRepoClient::new(config);
+    (client, tracker)
+}
+
+// --- TEST FUNCTIONS (ALPHABETICALLY ORDERED) ---
+
+#[test]
+fn test_git_credentials_callback() {
+    use git2::{Cred, CredentialType};
+
+    // Test that our credentials callback works correctly
+    let token = "ghs_test_token_12345".to_string();
+    let allowed_types = CredentialType::USER_PASS_PLAINTEXT;
+
+    // This simulates what git2 would call
+    let result = if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+        Cred::userpass_plaintext("x-access-token", &token)
+    } else {
+        Err(git2::Error::from_str("No supported credential types"))
+    };
+
+    assert!(result.is_ok());
+}
 
 #[tokio::test]
 async fn test_create_repository_fails_on_installation_token_error() {
@@ -305,24 +326,6 @@ async fn test_create_repository_gets_installation_token() {
         *token_called.lock().unwrap(),
         "get_installation_token_for_org should have been called"
     );
-}
-
-#[test]
-fn test_git_credentials_callback() {
-    use git2::{Cred, CredentialType};
-
-    // Test that our credentials callback works correctly
-    let token = "ghs_test_token_12345".to_string();
-    let allowed_types = CredentialType::USER_PASS_PLAINTEXT;
-
-    // This simulates what git2 would call
-    let result = if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
-        Cred::userpass_plaintext("x-access-token", &token)
-    } else {
-        Err(git2::Error::from_str("No supported credential types"))
-    };
-
-    assert!(result.is_ok());
 }
 
 #[tokio::test]
