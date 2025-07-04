@@ -1,3 +1,13 @@
+//! Configuration management for the RepoRoller CLI.
+//!
+//! This module provides functionality for loading, saving, and managing
+//! configuration files for the RepoRoller CLI application. It handles both
+//! core configuration (templates, repository settings) and CLI-specific
+//! settings like authentication configuration.
+//!
+//! The configuration is stored in TOML format and can be loaded from a
+//! specified file path or from the default location in the current directory.
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -16,7 +26,29 @@ pub const DEFAULT_CONFIG_FILENAME: &str = "config.toml";
 #[path = "config_tests.rs"]
 mod tests;
 
-/// Configuration for RepoRoller CLI
+/// Main configuration structure for the RepoRoller CLI application.
+///
+/// This structure combines core repository and template configuration with
+/// CLI-specific settings. It serves as the primary configuration interface
+/// for the application and handles serialization to/from TOML format.
+///
+/// # Structure
+///
+/// The configuration is divided into two main sections:
+/// - Core configuration: Templates, repository settings, and variable definitions
+/// - Authentication configuration: CLI-specific authentication settings
+///
+/// # Example TOML Configuration
+///
+/// ```toml
+/// [authentication]
+/// auth_method = "token"
+///
+/// [[templates]]
+/// name = "rust-library"
+/// source = "https://github.com/example/rust-template"
+/// description = "A Rust library template"
+/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {
     /// Core configuration (templates, repository settings, etc.)
@@ -29,7 +61,42 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// Load configuration from the specified file
+    /// Loads configuration from a TOML file at the specified path.
+    ///
+    /// This method reads and parses a TOML configuration file, deserializing it
+    /// into an `AppConfig` instance. The configuration file should contain both
+    /// core repository/template settings and CLI-specific authentication settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The filesystem path to the configuration file to load
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing:
+    /// - `Ok(AppConfig)` - Successfully loaded and parsed configuration
+    /// - `Err(Error::Config)` - If the file doesn't exist, can't be read, or contains invalid TOML
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The specified file does not exist
+    /// - The file cannot be read due to permissions or I/O issues
+    /// - The file contains invalid TOML syntax
+    /// - The TOML structure doesn't match the expected configuration schema
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::path::Path;
+    /// use repo_roller_cli::config::AppConfig;
+    ///
+    /// let config_path = Path::new("./config.toml");
+    /// match AppConfig::load(&config_path) {
+    ///     Ok(config) => println!("Loaded {} templates", config.core.templates.len()),
+    ///     Err(e) => eprintln!("Failed to load config: {}", e),
+    /// }
+    /// ```
     pub fn load(path: &Path) -> Result<Self, Error> {
         debug!("Loading configuration from {:?}", path);
 
@@ -49,7 +116,51 @@ impl AppConfig {
         Ok(config)
     }
 
-    /// Save configuration to the specified file
+    /// Saves the configuration to a TOML file at the specified path.
+    ///
+    /// This method serializes the current `AppConfig` instance to TOML format
+    /// and writes it to the specified file. The output will be pretty-formatted
+    /// for human readability. If the target directory doesn't exist, it will be
+    /// created automatically.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The filesystem path where the configuration file should be saved
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing:
+    /// - `Ok(())` - Configuration was successfully saved
+    /// - `Err(Error::Config)` - If serialization fails or the file cannot be written
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The configuration cannot be serialized to TOML (should be rare)
+    /// - Parent directories cannot be created due to permissions
+    /// - The file cannot be written due to permissions or disk space issues
+    ///
+    /// # Behaviour
+    ///
+    /// - Creates parent directories automatically if they don't exist
+    /// - Overwrites existing files at the target path
+    /// - Uses pretty-formatted TOML output for readability
+    /// - Logs the save operation for debugging purposes
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::path::Path;
+    /// use repo_roller_cli::config::AppConfig;
+    ///
+    /// let config = AppConfig::default();
+    /// let config_path = Path::new("./my-config.toml");
+    /// 
+    /// match config.save(&config_path) {
+    ///     Ok(()) => println!("Configuration saved successfully"),
+    ///     Err(e) => eprintln!("Failed to save config: {}", e),
+    /// }
+    /// ```
     pub fn save(&self, path: &Path) -> Result<(), Error> {
         debug!("Saving configuration to {:?}", path);
 
@@ -79,6 +190,15 @@ impl Default for AppConfig {
     }
 }
 
+/// Configuration for CLI authentication settings.
+///
+/// This structure holds authentication-related configuration for the CLI,
+/// including the preferred authentication method for GitHub operations.
+/// Currently supports token-based authentication.
+///
+/// # Fields
+///
+/// * `auth_method` - The authentication method to use (defaults to "token")
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthenticationConfig {
     #[serde(default = "AuthenticationConfig::default_auth_method")]
@@ -86,10 +206,20 @@ pub struct AuthenticationConfig {
 }
 
 impl AuthenticationConfig {
+    /// Returns the default authentication method.
+    /// 
+    /// This is used as the default value for the auth_method field
+    /// when deserializing from TOML if the field is not present.
     fn default_auth_method() -> String {
         "token".to_string()
     }
 
+    /// Creates a new AuthenticationConfig with default values.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `AuthenticationConfig` instance with the default
+    /// authentication method set to "token".
     pub fn new() -> Self {
         AuthenticationConfig {
             auth_method: Self::default_auth_method(),
@@ -105,7 +235,25 @@ impl Default for AuthenticationConfig {
     }
 }
 
-/// Get the path to the configuration file
+/// Resolves the path to the configuration file.
+///
+/// This function determines the configuration file path based on the provided
+/// argument. If a specific path is provided, it uses that path. Otherwise,
+/// it defaults to looking for the configuration file in the current directory.
+///
+/// # Arguments
+///
+/// * `config_path` - Optional path to a specific configuration file
+///
+/// # Returns
+///
+/// Returns a `PathBuf` pointing to the configuration file location.
+///
+/// # Behaviour
+///
+/// - If `config_path` is `Some(path)`, returns that path as a `PathBuf`
+/// - If `config_path` is `None`, returns `./config.toml` in the current directory
+/// - Falls back to the current directory if unable to determine the working directory
 pub fn get_config_path(config_path: Option<&str>) -> PathBuf {
     if let Some(path) = config_path {
         PathBuf::from(path)
