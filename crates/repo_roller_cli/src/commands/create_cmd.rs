@@ -24,16 +24,6 @@ use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
 use std::{fs, future::Future};
 use tracing::{debug, error, info};
 
-/// Function type for prompting the user for a value interactively.
-/// Used for required fields that may be missing from config or CLI args.
-/// This allows for dependency injection during testing.
-type AskUserForValue = dyn Fn(&str) -> Result<String, Error>;
-
-/// Function type for retrieving organization-specific repository rules.
-/// Allows for dependency injection and testability by abstracting
-/// the rule retrieval mechanism.
-pub type GetOrgRulesFn = dyn Fn(&str) -> repo_roller_core::OrgRules;
-
 #[cfg(test)]
 #[path = "create_cmd_tests.rs"]
 mod create_cmd_tests;
@@ -296,18 +286,20 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
 /// - The configuration file cannot be read or parsed
 /// - Required values cannot be obtained from user input
 /// - Organization rules validation fails
-pub async fn handle_create_command<F, Fut>(
+pub async fn handle_create_command<F, Fut, AskFn, RulesFn>(
     config: &Option<String>,
     name: &Option<String>,
     owner: &Option<String>,
     template: &Option<String>,
-    ask_user_for_value: &AskUserForValue,
-    get_org_rules: &GetOrgRulesFn,
+    ask_user_for_value: AskFn,
+    get_org_rules: RulesFn,
     create_repository_fn: F,
 ) -> Result<CreateRepoResult, Error>
 where
     F: Fn(CreateRepoRequest) -> Fut + Send + Sync,
     Fut: Future<Output = CreateRepoResult> + Send,
+    AskFn: Fn(&str) -> Result<String, Error>,
+    RulesFn: for<'a> Fn(&'a str) -> repo_roller_core::OrgRules,
 {
     // Load config file if provided, otherwise start with empty values.
     let (mut final_name, mut final_owner, mut final_template) = if let Some(cfg_path) = config {

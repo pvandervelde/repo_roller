@@ -119,7 +119,7 @@ async fn main() {
                 &args.owner,
                 &args.template,
                 &ask_user_for_value,
-                &|org| repo_roller_core::OrgRules::new_from_text(org),
+                repo_roller_core::OrgRules::new_from_text,
                 create_repository,
             )
             .await;

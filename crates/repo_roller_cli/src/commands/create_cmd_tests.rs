@@ -43,7 +43,7 @@ async fn test_config_file_invalid_toml() {
     let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
-    let result = handle_create_command(&path, &None, &None, &None, &ask, &get_org_rules, |req| {
+    let result = handle_create_command(&path, &None, &None, &None, ask, get_org_rules, |req| {
         create_repository(req)
     })
     .await;
@@ -61,8 +61,8 @@ async fn test_config_file_missing() {
         &None,
         &None,
         &None,
-        &ask,
-        &get_org_rules,
+        ask,
+        get_org_rules,
         |req| create_repository(req),
     )
     .await;
@@ -99,16 +99,8 @@ async fn test_config_file_missing_fields() {
         }
     };
 
-    let result = handle_create_command(
-        &path,
-        &None,
-        &None,
-        &None,
-        &ask,
-        &get_org_rules,
-        create_repo,
-    )
-    .await;
+    let result =
+        handle_create_command(&path, &None, &None, &None, ask, get_org_rules, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -145,8 +137,8 @@ async fn test_create_repository_failure() {
         &Some("repo5".to_string()),
         &Some("calvinverse".to_string()),
         &Some("library".to_string()),
-        &ask,
-        &get_org_rules,
+        ask,
+        get_org_rules,
         create_repo,
     )
     .await;
@@ -187,8 +179,8 @@ async fn test_happy_path_with_all_args() {
         &Some("repo1".to_string()),
         &Some("calvinverse".to_string()),
         &Some("library".to_string()),
-        &ask,
-        &get_org_rules,
+        ask,
+        get_org_rules,
         create_repo,
     )
     .await;
@@ -239,16 +231,8 @@ async fn test_happy_path_with_config_file() {
         }
     };
 
-    let result = handle_create_command(
-        &path,
-        &None,
-        &None,
-        &None,
-        &ask,
-        &get_org_rules,
-        create_repo,
-    )
-    .await;
+    let result =
+        handle_create_command(&path, &None, &None, &None, ask, get_org_rules, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
