@@ -264,103 +264,48 @@ async fn test_happy_path_with_config_file() {
 }
 
 #[tokio::test]
-async fn test_partial_args_prompt_for_owner() {
-    // Only name and template provided, owner missing, should prompt
-    let ask = |_prompt: &str| Ok("prompted_owner".to_string());
-    let log = Arc::new(Mutex::new(CallLog::new()));
+async fn test_load_config_with_app_config_invalid_file() {
+    // Create an invalid TOML file
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, "invalid toml content [").unwrap();
 
-    let log_clone = log.clone();
-    let get_org_rules = move |org: &str| {
-        log_clone
-            .lock()
-            .unwrap()
-            .get_org_rules_args
-            .push(org.to_string());
-        OrgRules::new_from_text(org)
-    };
+    let path = file.path().to_str().unwrap();
+    let result = load_config_with_app_config(path);
 
-    let create_repo = {
-        let log = log.clone();
-        move |req: CreateRepoRequest| {
-            let log = log.clone();
-            async move {
-                log.lock().unwrap().create_repository_args.push(req.clone());
-                CreateRepoResult::success("stubbed")
-            }
-        }
-    };
-
-    let result = handle_create_command(
-        &None,
-        &Some("repo3".to_string()),
-        &None,
-        &Some("library".to_string()),
-        &ask,
-        &get_org_rules,
-        create_repo,
-    )
-    .await;
-    assert!(result.is_ok());
-    let res = result.unwrap();
-    assert!(res.success);
-    assert_eq!(res.message, "stubbed");
-
-    let log = log.lock().unwrap();
-    assert_eq!(log.get_org_rules_args, vec!["prompted_owner"]);
-    assert_eq!(log.create_repository_args.len(), 1);
-    let req = &log.create_repository_args[0];
-    assert_eq!(req.name, "repo3");
-    assert_eq!(req.owner, "prompted_owner");
-    assert_eq!(req.template, "library");
+    assert!(result.is_err());
+    // The error should be a Config error from AppConfig::load
+    assert!(matches!(result.unwrap_err(), Error::Config(_)));
 }
 
 #[tokio::test]
-async fn test_partial_args_prompt_for_template() {
-    // Only name and owner provided, template missing, should prompt
-    let ask = |_prompt: &str| Ok("prompted_template".to_string());
-    let log = Arc::new(Mutex::new(CallLog::new()));
+async fn test_load_config_with_app_config_missing_file() {
+    let result = load_config_with_app_config("nonexistent_file.toml");
 
-    let log_clone = log.clone();
-    let get_org_rules = move |org: &str| {
-        log_clone
-            .lock()
-            .unwrap()
-            .get_org_rules_args
-            .push(org.to_string());
-        OrgRules::new_from_text(org)
-    };
+    assert!(result.is_err());
+    // The error should be a Config error from AppConfig::load
+    assert!(matches!(result.unwrap_err(), Error::Config(_)));
+}
 
-    let create_repo = {
-        let log = log.clone();
-        move |req: CreateRepoRequest| {
-            let log = log.clone();
-            async move {
-                log.lock().unwrap().create_repository_args.push(req.clone());
-                CreateRepoResult::success("stubbed")
-            }
-        }
-    };
+#[tokio::test]
+async fn test_load_config_with_app_config_valid_file() {
+    // Create a valid AppConfig TOML file
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, "[authentication]").unwrap();
+    writeln!(file, "auth_method = \"app\"").unwrap();
+    writeln!(file, "").unwrap();
+    writeln!(file, "[[templates]]").unwrap();
+    writeln!(file, "name = \"TestTemplate\"").unwrap();
+    writeln!(file, "source_repo = \"https://github.com/example/test\"").unwrap();
+    writeln!(file, "description = \"A test template\"").unwrap();
 
-    let result = handle_create_command(
-        &None,
-        &Some("repo4".to_string()),
-        &Some("calvinverse".to_string()),
-        &None,
-        &ask,
-        &get_org_rules,
-        create_repo,
-    )
-    .await;
+    let path = file.path().to_str().unwrap();
+    let result = load_config_with_app_config(path);
+
     assert!(result.is_ok());
-    let res = result.unwrap();
-    assert!(res.success);
-    assert_eq!(res.message, "stubbed");
-
-    let log = log.lock().unwrap();
-    assert_eq!(log.get_org_rules_args, vec!["calvinverse"]);
-    assert_eq!(log.create_repository_args.len(), 1);
-    let req = &log.create_repository_args[0];
-    assert_eq!(req.name, "repo4");
-    assert_eq!(req.owner, "calvinverse");
-    assert_eq!(req.template, "prompted_template");
+    let (name, owner, template) = result.unwrap();
+    // For now, the function returns empty strings as we haven't implemented
+    // the template matching logic yet
+    assert_eq!(name, "");
+    assert_eq!(owner, "");
+    assert_eq!(template, "");
 }

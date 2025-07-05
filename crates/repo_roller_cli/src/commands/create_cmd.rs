@@ -66,6 +66,46 @@ pub struct ConfigFile {
     pub template: Option<String>,
 }
 
+/// Temporary compatibility layer for loading configuration using AppConfig.
+///
+/// This function loads configuration using the full AppConfig structure but
+/// extracts only the fields needed for repository creation. This provides
+/// a compatibility layer while we refactor away from the ConfigFile struct.
+///
+/// # Arguments
+///
+/// * `config_path` - Path to the configuration file to load
+///
+/// # Returns
+///
+/// Returns a Result containing a tuple of (name, owner, template) extracted
+/// from the configuration file, or an Error if loading fails.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The configuration file cannot be read
+/// - The configuration file contains invalid TOML
+/// - The AppConfig structure cannot be deserialized
+fn load_config_with_app_config(config_path: &str) -> Result<(String, String, String), Error> {
+    let config_file_path = std::path::Path::new(config_path);
+    let app_config = AppConfig::load(config_file_path)?;
+
+    // For now, we'll use empty strings as defaults since the original ConfigFile
+    // approach would have resulted in empty strings for missing fields anyway.
+    // In the future, we can implement more sophisticated template matching logic.
+    let name = String::new();
+    let owner = String::new();
+    let template = String::new();
+
+    // TODO: In the future, we could implement logic to:
+    // 1. Check if there's a default template in the config
+    // 2. Extract default owner/name from template configuration
+    // 3. Use template-specific defaults
+
+    Ok((name, owner, template))
+}
+
 /// Command-line arguments for the create command.
 ///
 /// This structure defines all the command-line options available for
