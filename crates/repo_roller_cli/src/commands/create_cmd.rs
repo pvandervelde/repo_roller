@@ -287,10 +287,7 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
 /// - Required values cannot be obtained from user input
 /// - Organization rules validation fails
 pub async fn handle_create_command<F, Fut, AskFn, RulesFn>(
-    config: &Option<String>,
-    name: &Option<String>,
-    owner: &Option<String>,
-    template: &Option<String>,
+    options: CreateCommandOptions<'_>,
     ask_user_for_value: AskFn,
     get_org_rules: RulesFn,
     create_repository_fn: F,
@@ -302,30 +299,31 @@ where
     RulesFn: for<'a> Fn(&'a str) -> repo_roller_core::OrgRules,
 {
     // Load config file if provided, otherwise start with empty values.
-    let (mut final_name, mut final_owner, mut final_template) = if let Some(cfg_path) = config {
-        match fs::read_to_string(cfg_path) {
-            Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
-                Ok(cfg) => (
-                    cfg.name.unwrap_or_default(),
-                    cfg.owner.unwrap_or_default(),
-                    cfg.template.unwrap_or_default(),
-                ),
-                Err(e) => return Err(Error::ParseTomlFile(e)),
-            },
-            Err(e) => return Err(Error::LoadFile(e)),
-        }
-    } else {
-        (String::new(), String::new(), String::new())
-    };
+    let (mut final_name, mut final_owner, mut final_template) =
+        if let Some(cfg_path) = options.config {
+            match fs::read_to_string(cfg_path) {
+                Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
+                    Ok(cfg) => (
+                        cfg.name.unwrap_or_default(),
+                        cfg.owner.unwrap_or_default(),
+                        cfg.template.unwrap_or_default(),
+                    ),
+                    Err(e) => return Err(Error::ParseTomlFile(e)),
+                },
+                Err(e) => return Err(Error::LoadFile(e)),
+            }
+        } else {
+            (String::new(), String::new(), String::new())
+        };
 
     // Override with CLI args if provided.
-    if let Some(n) = name {
+    if let Some(n) = options.name {
         final_name = n.clone();
     }
-    if let Some(o) = owner {
+    if let Some(o) = options.owner {
         final_owner = o.clone();
     }
-    if let Some(t) = template {
+    if let Some(t) = options.template {
         final_template = t.clone();
     }
 
@@ -387,4 +385,37 @@ where
         template: final_template,
     };
     Ok(create_repository_fn(req).await)
+}
+
+/// Options for the create command, grouping CLI arguments and configuration.
+///
+/// This struct reduces the parameter count of handle_create_command by grouping
+/// related CLI arguments together into a single parameter.
+#[derive(Debug)]
+pub struct CreateCommandOptions<'a> {
+    /// Path to a TOML configuration file containing repository settings.
+    pub config: &'a Option<String>,
+    /// Name of the new repository to create.
+    pub name: &'a Option<String>,
+    /// Owner (user or organization) for the new repository.
+    pub owner: &'a Option<String>,
+    /// Template type to use for repository creation.
+    pub template: &'a Option<String>,
+}
+
+impl<'a> CreateCommandOptions<'a> {
+    /// Creates new CreateCommandOptions from individual CLI arguments.
+    pub fn new(
+        config: &'a Option<String>,
+        name: &'a Option<String>,
+        owner: &'a Option<String>,
+        template: &'a Option<String>,
+    ) -> Self {
+        Self {
+            config,
+            name,
+            owner,
+            template,
+        }
+    }
 }

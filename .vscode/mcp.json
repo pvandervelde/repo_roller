@@ -1,14 +1,12 @@
 {
     "servers": {
         "git": {
-            "command": "docker",
+            "command": "git-mcp-go.exe",
             "args": [
-                "run",
-                "-i",
-                "--rm",
-                "--mount",
-                "type=bind,src=${workspaceFolder},dst=/workspace",
-                "mcp/git"
+                "serve",
+                "-r=${workspaceFolder}",
+                "--mode",
+                "shell"
             ]
         }
     }

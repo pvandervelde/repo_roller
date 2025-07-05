@@ -43,10 +43,9 @@ async fn test_config_file_invalid_toml() {
     let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
-    let result = handle_create_command(&path, &None, &None, &None, ask, get_org_rules, |req| {
-        create_repository(req)
-    })
-    .await;
+    let options = CreateCommandOptions::new(&path, &None, &None, &None);
+    let result =
+        handle_create_command(options, ask, get_org_rules, |req| create_repository(req)).await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
 
@@ -56,16 +55,10 @@ async fn test_config_file_missing() {
     let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
-    let result = handle_create_command(
-        &Some("nonexistent.toml".to_string()),
-        &None,
-        &None,
-        &None,
-        ask,
-        get_org_rules,
-        |req| create_repository(req),
-    )
-    .await;
+    let config_file = Some("nonexistent.toml".to_string());
+    let options = CreateCommandOptions::new(&config_file, &None, &None, &None);
+    let result =
+        handle_create_command(options, ask, get_org_rules, |req| create_repository(req)).await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
 }
 
@@ -99,8 +92,8 @@ async fn test_config_file_missing_fields() {
         }
     };
 
-    let result =
-        handle_create_command(&path, &None, &None, &None, ask, get_org_rules, create_repo).await;
+    let options = CreateCommandOptions::new(&path, &None, &None, &None);
+    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -132,16 +125,11 @@ async fn test_create_repository_failure() {
             }
         }
     };
-    let result = handle_create_command(
-        &None,
-        &Some("repo5".to_string()),
-        &Some("calvinverse".to_string()),
-        &Some("library".to_string()),
-        ask,
-        get_org_rules,
-        create_repo,
-    )
-    .await;
+    let repo_name = Some("repo5".to_string());
+    let org_name = Some("calvinverse".to_string());
+    let repo_type = Some("library".to_string());
+    let options = CreateCommandOptions::new(&None, &repo_name, &org_name, &repo_type);
+    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(!res.success);
@@ -174,16 +162,11 @@ async fn test_happy_path_with_all_args() {
         }
     };
 
-    let result = handle_create_command(
-        &None,
-        &Some("repo1".to_string()),
-        &Some("calvinverse".to_string()),
-        &Some("library".to_string()),
-        ask,
-        get_org_rules,
-        create_repo,
-    )
-    .await;
+    let repo_name = Some("repo1".to_string());
+    let org_name = Some("calvinverse".to_string());
+    let repo_type = Some("library".to_string());
+    let options = CreateCommandOptions::new(&None, &repo_name, &org_name, &repo_type);
+    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
@@ -231,8 +214,8 @@ async fn test_happy_path_with_config_file() {
         }
     };
 
-    let result =
-        handle_create_command(&path, &None, &None, &None, ask, get_org_rules, create_repo).await;
+    let options = CreateCommandOptions::new(&path, &None, &None, &None);
+    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
