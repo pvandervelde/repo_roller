@@ -13,6 +13,7 @@ async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 github_client = { path = "../github_client" }
+glob = "0.3.2"
 regex = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.0"

@@ -1,3 +1,19 @@
+//! Authentication command module for GitHub credentials management.
+//!
+//! This module provides commands for configuring authentication with GitHub,
+//! supporting both GitHub App authentication and Personal Access Token authentication.
+//! Credentials are securely stored in the system keyring.
+//!
+//! ## Supported Authentication Methods
+//!
+//! - **GitHub App**: Uses App ID, private key, and webhook secret
+//! - **Personal Access Token**: Uses a GitHub personal access token
+//!
+//! ## Security
+//!
+//! All sensitive credentials are stored in the system keyring rather than
+//! in configuration files to maintain security.
+
 use clap::Subcommand;
 use keyring::Entry;
 use std::path::PathBuf;
@@ -18,19 +34,49 @@ pub const KEY_RING_WEB_HOOK_SECRET: &str = "webhook_secret";
 #[path = "auth_tests.rs"]
 mod tests;
 
-/// Subcommands for the auth command
+/// Authentication subcommands for managing GitHub credentials.
+///
+/// This enum defines the available authentication commands that can be used
+/// to configure different types of GitHub authentication methods.
 #[derive(Subcommand, Debug)]
 pub enum AuthCommands {
-    /// Authenticate with GitHub
+    /// Configure GitHub authentication credentials.
+    ///
+    /// Sets up authentication with GitHub using either GitHub App credentials
+    /// or Personal Access Token. Credentials are securely stored in the system keyring.
     #[command(name = "github")]
     GitHub {
-        /// Authentication method (app or token)
+        /// Authentication method to configure.
+        ///
+        /// Supported methods:
+        /// - "app": GitHub App authentication (requires App ID, private key, webhook secret)
+        /// - "token": Personal Access Token authentication (requires GitHub PAT)
         #[arg(default_value = "token")]
         method: String,
     },
 }
 
-/// Execute the auth command
+/// Executes the specified authentication command.
+///
+/// This function serves as the main entry point for authentication commands,
+/// routing to the appropriate handler based on the command type.
+///
+/// # Arguments
+///
+/// * `cmd` - The authentication command to execute
+///
+/// # Returns
+///
+/// Returns `Ok(())` on successful authentication setup, or an `Error` if
+/// the authentication process fails.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The configuration file cannot be loaded or saved
+/// - Keyring operations fail
+/// - Invalid authentication method is specified
+/// - Required credentials are missing or invalid
 #[instrument]
 pub async fn execute(cmd: &AuthCommands) -> Result<(), Error> {
     match cmd {
@@ -38,7 +84,29 @@ pub async fn execute(cmd: &AuthCommands) -> Result<(), Error> {
     }
 }
 
-/// Authenticate with GitHub
+/// Configures GitHub authentication based on the specified method.
+///
+/// This function handles the interactive setup of GitHub authentication,
+/// prompting the user for required credentials and storing them securely
+/// in the system keyring. It also updates the application configuration
+/// to reflect the chosen authentication method.
+///
+/// # Arguments
+///
+/// * `method` - The authentication method ("app" or "token")
+///
+/// # Returns
+///
+/// Returns `Ok(())` on successful configuration, or an `Error` if setup fails.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - Configuration cannot be loaded or saved
+/// - Keyring operations fail
+/// - User input is invalid or missing
+/// - Private key file doesn't exist (for app method)
+/// - Unsupported authentication method is specified
 #[instrument]
 async fn auth_github(method: &str) -> Result<(), Error> {
     debug!(message = "Authenticating with GitHub", method = method);
