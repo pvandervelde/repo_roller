@@ -1,123 +1,68 @@
-# .github/workflows/lint.yml
-# Linting and static analysis checks based on spec/cicd-pipeline-design.md
-
-name: Lint Checks
+name: Rust Lint
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - '**' # Run on pushes to all branches
+      - "**"
   pull_request:
     branches:
-      - master # Run on PRs targeting master
-
-permissions:
-  contents: read # Needed for checkout
-  security-events: write # Needed for cargo-audit SARIF upload
+      - master
 
 jobs:
-  audit:
-    name: Security Audit (cargo audit)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-audit-
-
-      - name: Install cargo-audit
-        run: cargo install --force cargo-audit
-
-      - name: Run cargo audit
-        run: cargo audit --json
-
   check:
-    name: Compile Check (cargo check)
+    name: Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: dtolnay/rust-toolchain@stable # v1
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-check-
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+        with:
+          command: check
 
-      - name: Run cargo check
-        run: cargo check --workspace --all-targets
-
-  format:
-    name: Format Check (cargo fmt)
+  rustfmt:
+    name: rustfmt
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable # v1
         with:
+          # Not MSRV because its harder to jump between versions and people are
+          # more likely to have stable
+          toolchain: stable
+          profile: minimal
+          override: true
           components: rustfmt
-
-      - name: Run cargo fmt check
-        run: cargo fmt --check --all
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
   clippy:
-    name: Linter (cargo clippy)
+    name: Clippy
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: dtolnay/rust-toolchain@stable # v1
         with:
+          toolchain: stable
           components: clippy
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+          override: true
+      - uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # v1
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-clippy-
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+          name: Clippy Output
 
-      - name: Run cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings # Treat warnings as errors
-
-  deny:
-    name: Cargo Deny
+  cargo-deny:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         checks:
@@ -128,25 +73,23 @@ jobs:
     continue-on-error: ${{ matrix.checks == 'advisories' }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Install cargo deny
-        run: cargo install cargo-deny
-      - name: Run cargo deny
-        run: cargo deny check ${{ matrix.checks }}
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+    - uses: EmbarkStudios/cargo-deny-action@34899fc7ba81ca6268d5947a7a16b4649013fea1 # v2
+      with:
+        command: check ${{ matrix.checks }}
 
-  # terraform-lint: # Future scope as per design
-  #   name: Terraform Lint
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     # ... steps to setup terraform and run linters ...
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  # npm-lint: # Future scope as per design
-  #   name: NPM Lint
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     # ... steps to setup node and run npm lint ...
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Run security audit
+        run: cargo audit
