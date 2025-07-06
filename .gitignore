@@ -28,3 +28,5 @@ memory-bank/
 config.toml
 
 .llm/
+lcov.info
+.aider*
