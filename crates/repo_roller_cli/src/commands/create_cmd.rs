@@ -28,39 +28,14 @@ use tracing::{debug, error, info};
 #[path = "create_cmd_tests.rs"]
 mod create_cmd_tests;
 
-/// Configuration structure for repository creation loaded from TOML files.
-///
-/// This structure represents the optional configuration that can be loaded
-/// from a TOML file to provide default values for repository creation.
-/// All fields are optional and can be overridden by CLI arguments.
-///
-/// # Example TOML
-///
-/// ```toml
-/// name = "my-new-repo"
-/// owner = "my-organization"
-/// template = "rust-library"
-/// ```
-#[derive(serde::Deserialize)]
-pub struct ConfigFile {
-    /// The name of the repository to create.
-    /// Can be overridden by the `--name` CLI argument.
-    pub name: Option<String>,
-
-    /// The owner (user or organization) for the repository.
-    /// Can be overridden by the `--owner` CLI argument.
-    pub owner: Option<String>,
-
-    /// The template type to use for repository creation.
-    /// Can be overridden by the `--template` CLI argument.
-    pub template: Option<String>,
-}
-
 /// Loads CLI-specific configuration from a user-provided config file.
 ///
 /// This function loads CLI-specific configuration (name, owner, template) from
 /// a user-provided config file. This is separate from the main AppConfig which
 /// contains application-wide settings like templates and authentication.
+///
+/// The function directly parses the TOML content without using a dedicated struct
+/// to avoid duplication with the main AppConfig structure.
 ///
 /// # Arguments
 ///
@@ -76,15 +51,28 @@ pub struct ConfigFile {
 /// This function will return an error if:
 /// - The configuration file cannot be read
 /// - The configuration file contains invalid TOML
-/// - The ConfigFile structure cannot be deserialized
+/// - The TOML structure cannot be parsed
 fn load_cli_config(config_path: &str) -> Result<(String, String, String), Error> {
     match fs::read_to_string(config_path) {
-        Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
-            Ok(cfg) => Ok((
-                cfg.name.unwrap_or_default(),
-                cfg.owner.unwrap_or_default(),
-                cfg.template.unwrap_or_default(),
-            )),
+        Ok(contents) => match toml::from_str::<toml::Table>(&contents) {
+            Ok(table) => {
+                let name = table
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let owner = table
+                    .get("owner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let template = table
+                    .get("template")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Ok((name, owner, template))
+            }
             Err(e) => Err(Error::ParseTomlFile(e)),
         },
         Err(e) => Err(Error::LoadFile(e)),

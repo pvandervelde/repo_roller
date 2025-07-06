@@ -240,7 +240,7 @@ async fn test_load_cli_config_invalid_file() {
     let result = load_cli_config(path);
 
     assert!(result.is_err());
-    // The error should be a ParseTomlFile error from ConfigFile parsing
+    // The error should be a ParseTomlFile error from TOML parsing
     assert!(matches!(result.unwrap_err(), Error::ParseTomlFile(_)));
 }
 
