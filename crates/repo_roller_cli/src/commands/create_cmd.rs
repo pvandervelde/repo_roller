@@ -24,46 +24,59 @@ use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
 use std::{fs, future::Future};
 use tracing::{debug, error, info};
 
-/// Function type for prompting the user for a value interactively.
-/// Used for required fields that may be missing from config or CLI args.
-/// This allows for dependency injection during testing.
-type AskUserForValue = dyn Fn(&str) -> Result<String, Error>;
-
-/// Function type for retrieving organization-specific repository rules.
-/// Allows for dependency injection and testability by abstracting
-/// the rule retrieval mechanism.
-pub type GetOrgRulesFn = dyn Fn(&str) -> repo_roller_core::OrgRules;
-
 #[cfg(test)]
 #[path = "create_cmd_tests.rs"]
 mod create_cmd_tests;
 
-/// Configuration structure for repository creation loaded from TOML files.
+/// Loads CLI-specific configuration from a user-provided config file.
 ///
-/// This structure represents the optional configuration that can be loaded
-/// from a TOML file to provide default values for repository creation.
-/// All fields are optional and can be overridden by CLI arguments.
+/// This function loads CLI-specific configuration (name, owner, template) from
+/// a user-provided config file. This is separate from the main AppConfig which
+/// contains application-wide settings like templates and authentication.
 ///
-/// # Example TOML
+/// The function directly parses the TOML content without using a dedicated struct
+/// to avoid duplication with the main AppConfig structure.
 ///
-/// ```toml
-/// name = "my-new-repo"
-/// owner = "my-organization"
-/// template = "rust-library"
-/// ```
-#[derive(serde::Deserialize)]
-pub struct ConfigFile {
-    /// The name of the repository to create.
-    /// Can be overridden by the `--name` CLI argument.
-    pub name: Option<String>,
-
-    /// The owner (user or organization) for the repository.
-    /// Can be overridden by the `--owner` CLI argument.
-    pub owner: Option<String>,
-
-    /// The template type to use for repository creation.
-    /// Can be overridden by the `--template` CLI argument.
-    pub template: Option<String>,
+/// # Arguments
+///
+/// * `config_path` - Path to the CLI-specific configuration file to load
+///
+/// # Returns
+///
+/// Returns a Result containing a tuple of (name, owner, template) extracted
+/// from the configuration file, or an Error if loading fails.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The configuration file cannot be read
+/// - The configuration file contains invalid TOML
+/// - The TOML structure cannot be parsed
+fn load_cli_config(config_path: &str) -> Result<(String, String, String), Error> {
+    match fs::read_to_string(config_path) {
+        Ok(contents) => match toml::from_str::<toml::Table>(&contents) {
+            Ok(table) => {
+                let name = table
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let owner = table
+                    .get("owner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let template = table
+                    .get("template")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Ok((name, owner, template))
+            }
+            Err(e) => Err(Error::ParseTomlFile(e)),
+        },
+        Err(e) => Err(Error::LoadFile(e)),
+    }
 }
 
 /// Command-line arguments for the create command.
@@ -256,44 +269,37 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
 /// - The configuration file cannot be read or parsed
 /// - Required values cannot be obtained from user input
 /// - Organization rules validation fails
-pub async fn handle_create_command<F, Fut>(
-    config: &Option<String>,
-    name: &Option<String>,
-    owner: &Option<String>,
-    template: &Option<String>,
-    ask_user_for_value: &AskUserForValue,
-    get_org_rules: &GetOrgRulesFn,
+pub async fn handle_create_command<F, Fut, AskFn, RulesFn>(
+    options: CreateCommandOptions<'_>,
+    ask_user_for_value: AskFn,
+    get_org_rules: RulesFn,
     create_repository_fn: F,
 ) -> Result<CreateRepoResult, Error>
 where
     F: Fn(CreateRepoRequest) -> Fut + Send + Sync,
     Fut: Future<Output = CreateRepoResult> + Send,
+    AskFn: Fn(&str) -> Result<String, Error>,
+    RulesFn: for<'a> Fn(&'a str) -> repo_roller_core::OrgRules,
 {
-    // Load config file if provided, otherwise start with empty values.
-    let (mut final_name, mut final_owner, mut final_template) = if let Some(cfg_path) = config {
-        match fs::read_to_string(cfg_path) {
-            Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
-                Ok(cfg) => (
-                    cfg.name.unwrap_or_default(),
-                    cfg.owner.unwrap_or_default(),
-                    cfg.template.unwrap_or_default(),
-                ),
-                Err(e) => return Err(Error::ParseTomlFile(e)),
-            },
-            Err(e) => return Err(Error::LoadFile(e)),
-        }
-    } else {
-        (String::new(), String::new(), String::new())
-    };
+    // Load CLI-specific config file if provided, otherwise start with empty values.
+    let (mut final_name, mut final_owner, mut final_template) =
+        if let Some(cfg_path) = options.config {
+            match load_cli_config(cfg_path) {
+                Ok((name, owner, template)) => (name, owner, template),
+                Err(e) => return Err(e),
+            }
+        } else {
+            (String::new(), String::new(), String::new())
+        };
 
     // Override with CLI args if provided.
-    if let Some(n) = name {
+    if let Some(n) = options.name {
         final_name = n.clone();
     }
-    if let Some(o) = owner {
+    if let Some(o) = options.owner {
         final_owner = o.clone();
     }
-    if let Some(t) = template {
+    if let Some(t) = options.template {
         final_template = t.clone();
     }
 
@@ -355,4 +361,37 @@ where
         template: final_template,
     };
     Ok(create_repository_fn(req).await)
+}
+
+/// Options for the create command, grouping CLI arguments and configuration.
+///
+/// This struct reduces the parameter count of handle_create_command by grouping
+/// related CLI arguments together into a single parameter.
+#[derive(Debug)]
+pub struct CreateCommandOptions<'a> {
+    /// Path to a TOML configuration file containing repository settings.
+    pub config: &'a Option<String>,
+    /// Name of the new repository to create.
+    pub name: &'a Option<String>,
+    /// Owner (user or organization) for the new repository.
+    pub owner: &'a Option<String>,
+    /// Template type to use for repository creation.
+    pub template: &'a Option<String>,
+}
+
+impl<'a> CreateCommandOptions<'a> {
+    /// Creates new CreateCommandOptions from individual CLI arguments.
+    pub fn new(
+        config: &'a Option<String>,
+        name: &'a Option<String>,
+        owner: &'a Option<String>,
+        template: &'a Option<String>,
+    ) -> Self {
+        Self {
+            config,
+            name,
+            owner,
+            template,
+        }
+    }
 }

@@ -23,7 +23,7 @@ use tracing::error;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 mod commands;
-use commands::create_cmd::{create_repository, handle_create_command};
+use commands::create_cmd::{create_repository, handle_create_command, CreateCommandOptions};
 
 mod config;
 
@@ -113,13 +113,12 @@ async fn main() {
         }
         Commands::Create(args) => {
             // Use handle_create_command to merge config, prompt, and apply org rules
+            let options =
+                CreateCommandOptions::new(&args.config, &args.name, &args.owner, &args.template);
             let result = handle_create_command(
-                &args.config,
-                &args.name,
-                &args.owner,
-                &args.template,
+                options,
                 &ask_user_for_value,
-                &|org| repo_roller_core::OrgRules::new_from_text(org),
+                repo_roller_core::OrgRules::new_from_text,
                 create_repository,
             )
             .await;
