@@ -29,3 +29,4 @@ config.toml
 
 .llm/
 lcov.info
+.aider*
