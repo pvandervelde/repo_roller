@@ -15,6 +15,18 @@ target/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Ignore the LLM instruction files
 memory-bank/
 .roo/system-prompt-*
+.roo/rules-*/*
 .roomodes
+
+.github/instructions/
+
+# Ignore the test config file
+config.toml
+
+.llm/
+lcov.info
+.aider*
