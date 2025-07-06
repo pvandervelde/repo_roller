@@ -56,15 +56,15 @@ pub struct ConfigFile {
     pub template: Option<String>,
 }
 
-/// Temporary compatibility layer for loading configuration using AppConfig.
+/// Loads CLI-specific configuration from a user-provided config file.
 ///
-/// This function loads configuration using the full AppConfig structure but
-/// extracts only the fields needed for repository creation. This provides
-/// a compatibility layer while we refactor away from the ConfigFile struct.
+/// This function loads CLI-specific configuration (name, owner, template) from
+/// a user-provided config file. This is separate from the main AppConfig which
+/// contains application-wide settings like templates and authentication.
 ///
 /// # Arguments
 ///
-/// * `config_path` - Path to the configuration file to load
+/// * `config_path` - Path to the CLI-specific configuration file to load
 ///
 /// # Returns
 ///
@@ -76,24 +76,19 @@ pub struct ConfigFile {
 /// This function will return an error if:
 /// - The configuration file cannot be read
 /// - The configuration file contains invalid TOML
-/// - The AppConfig structure cannot be deserialized
-fn load_config_with_app_config(config_path: &str) -> Result<(String, String, String), Error> {
-    let config_file_path = std::path::Path::new(config_path);
-    let app_config = AppConfig::load(config_file_path)?;
-
-    // For now, we'll use empty strings as defaults since the original ConfigFile
-    // approach would have resulted in empty strings for missing fields anyway.
-    // In the future, we can implement more sophisticated template matching logic.
-    let name = String::new();
-    let owner = String::new();
-    let template = String::new();
-
-    // TODO: In the future, we could implement logic to:
-    // 1. Check if there's a default template in the config
-    // 2. Extract default owner/name from template configuration
-    // 3. Use template-specific defaults
-
-    Ok((name, owner, template))
+/// - The ConfigFile structure cannot be deserialized
+fn load_cli_config(config_path: &str) -> Result<(String, String, String), Error> {
+    match fs::read_to_string(config_path) {
+        Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
+            Ok(cfg) => Ok((
+                cfg.name.unwrap_or_default(),
+                cfg.owner.unwrap_or_default(),
+                cfg.template.unwrap_or_default(),
+            )),
+            Err(e) => Err(Error::ParseTomlFile(e)),
+        },
+        Err(e) => Err(Error::LoadFile(e)),
+    }
 }
 
 /// Command-line arguments for the create command.
@@ -298,19 +293,12 @@ where
     AskFn: Fn(&str) -> Result<String, Error>,
     RulesFn: for<'a> Fn(&'a str) -> repo_roller_core::OrgRules,
 {
-    // Load config file if provided, otherwise start with empty values.
+    // Load CLI-specific config file if provided, otherwise start with empty values.
     let (mut final_name, mut final_owner, mut final_template) =
         if let Some(cfg_path) = options.config {
-            match fs::read_to_string(cfg_path) {
-                Ok(contents) => match toml::from_str::<ConfigFile>(&contents) {
-                    Ok(cfg) => (
-                        cfg.name.unwrap_or_default(),
-                        cfg.owner.unwrap_or_default(),
-                        cfg.template.unwrap_or_default(),
-                    ),
-                    Err(e) => return Err(Error::ParseTomlFile(e)),
-                },
-                Err(e) => return Err(Error::LoadFile(e)),
+            match load_cli_config(cfg_path) {
+                Ok((name, owner, template)) => (name, owner, template),
+                Err(e) => return Err(e),
             }
         } else {
             (String::new(), String::new(), String::new())

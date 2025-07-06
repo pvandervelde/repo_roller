@@ -231,48 +231,42 @@ async fn test_happy_path_with_config_file() {
 }
 
 #[tokio::test]
-async fn test_load_config_with_app_config_invalid_file() {
+async fn test_load_cli_config_invalid_file() {
     // Create an invalid TOML file
     let mut file = NamedTempFile::new().unwrap();
     writeln!(file, "invalid toml content [").unwrap();
 
     let path = file.path().to_str().unwrap();
-    let result = load_config_with_app_config(path);
+    let result = load_cli_config(path);
 
     assert!(result.is_err());
-    // The error should be a Config error from AppConfig::load
-    assert!(matches!(result.unwrap_err(), Error::Config(_)));
+    // The error should be a ParseTomlFile error from ConfigFile parsing
+    assert!(matches!(result.unwrap_err(), Error::ParseTomlFile(_)));
 }
 
 #[tokio::test]
-async fn test_load_config_with_app_config_missing_file() {
-    let result = load_config_with_app_config("nonexistent_file.toml");
+async fn test_load_cli_config_missing_file() {
+    let result = load_cli_config("nonexistent_file.toml");
 
     assert!(result.is_err());
-    // The error should be a Config error from AppConfig::load
-    assert!(matches!(result.unwrap_err(), Error::Config(_)));
+    // The error should be a LoadFile error
+    assert!(matches!(result.unwrap_err(), Error::LoadFile(_)));
 }
 
 #[tokio::test]
-async fn test_load_config_with_app_config_valid_file() {
-    // Create a valid AppConfig TOML file
+async fn test_load_cli_config_valid_file() {
+    // Create a valid CLI config TOML file
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, "[authentication]").unwrap();
-    writeln!(file, "auth_method = \"app\"").unwrap();
-    writeln!(file, "").unwrap();
-    writeln!(file, "[[templates]]").unwrap();
-    writeln!(file, "name = \"TestTemplate\"").unwrap();
-    writeln!(file, "source_repo = \"https://github.com/example/test\"").unwrap();
-    writeln!(file, "description = \"A test template\"").unwrap();
+    writeln!(file, "name = \"test-repo\"").unwrap();
+    writeln!(file, "owner = \"test-owner\"").unwrap();
+    writeln!(file, "template = \"test-template\"").unwrap();
 
     let path = file.path().to_str().unwrap();
-    let result = load_config_with_app_config(path);
+    let result = load_cli_config(path);
 
     assert!(result.is_ok());
     let (name, owner, template) = result.unwrap();
-    // For now, the function returns empty strings as we haven't implemented
-    // the template matching logic yet
-    assert_eq!(name, "");
-    assert_eq!(owner, "");
-    assert_eq!(template, "");
+    assert_eq!(name, "test-repo");
+    assert_eq!(owner, "test-owner");
+    assert_eq!(template, "test-template");
 }
