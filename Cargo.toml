@@ -19,4 +19,8 @@ version = "0.1.0"
 license-file = "LICENSE"
 
 [workspace.dependencies]
+async-trait = "0.1"
+octocrab = "0.38"
 thiserror = "2.0"
+tracing = "0.1"
+url = "2.5.4"
