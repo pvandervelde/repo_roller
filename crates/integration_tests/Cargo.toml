@@ -1,0 +1,34 @@
+[package]
+name = "integration_tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "integration_tests"
+path = "src/main.rs"
+
+[dependencies]
+repo_roller_core = { path = "../repo_roller_core" }
+github_client = { path = "../github_client" }
+template_engine = { path = "../template_engine" }
+config_manager = { path = "../config_manager" }
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "test-util",
+    "time",
+] }
+tempfile = "3.0"
+clap = { version = "4.0", features = ["derive"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4"] }
+regex = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"
