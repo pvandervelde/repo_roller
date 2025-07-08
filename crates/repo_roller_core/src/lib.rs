@@ -435,13 +435,21 @@ fn set_head_reference_and_verify(
     commit_oid: git2::Oid,
     commit_message: &str,
 ) -> Result<(), Error> {
-    // Now set the HEAD reference to point to our new commit
-    let reference_name = "HEAD";
-    repo.reference(reference_name, commit_oid, true, "Initial commit")
+    // First, create the main branch reference pointing to our commit
+    let branch_ref_name = "refs/heads/main";
+    repo.reference(branch_ref_name, commit_oid, false, "Initial commit")
         .map_err(|e| {
-            error!("Failed to set HEAD reference: {}", e);
-            Error::GitOperation(format!("Failed to set HEAD reference: {}", e))
+            error!("Failed to create main branch reference: {}", e);
+            Error::GitOperation(format!("Failed to create main branch reference: {}", e))
         })?;
+
+    info!("Main branch reference created: {}", branch_ref_name);
+
+    // Now set HEAD to point to the main branch (symbolic reference)
+    repo.set_head(branch_ref_name).map_err(|e| {
+        error!("Failed to set HEAD to main branch: {}", e);
+        Error::GitOperation(format!("Failed to set HEAD to main branch: {}", e))
+    })?;
 
     info!(
         "Changes committed successfully with OID: {} and message: '{}'",
