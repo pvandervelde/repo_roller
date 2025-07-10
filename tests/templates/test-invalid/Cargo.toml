@@ -1,0 +1,18 @@
+[package]
+name = "test-invalid"
+version = "0.1.0"
+edition = "2021"
+description = "This is an intentionally broken Cargo.toml file
+
+[dependencies]
+# Invalid dependency specification
+nonexistent-crate = { version = "999.999.999", features = ["invalid-feature"] }
+# Circular dependency (would cause issues)
+test-invalid = "0.1.0"
+
+# Invalid section
+[invalid_section_name
+key = "value"
+
+# Intentionally malformed TOML - missing closing quote
+# Missing closing bracket for dependencies section
