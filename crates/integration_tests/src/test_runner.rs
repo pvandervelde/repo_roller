@@ -172,6 +172,12 @@ impl IntegrationTestRunner {
         Ok(results)
     }
 
+    /// Run a single test scenario (for individual test methods)
+    pub async fn run_single_test_scenario(&mut self, scenario: TestScenario) -> TestResult {
+        info!(scenario = ?scenario, "Running single test scenario");
+        self.run_single_test(scenario).await
+    }
+
     /// Run a single test scenario
     async fn run_single_test(&mut self, scenario: TestScenario) -> TestResult {
         let start_time = std::time::Instant::now();
