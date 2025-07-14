@@ -17,16 +17,23 @@
 .PARAMETER Force
     Force recreation of repositories if they already exist.
 
+.PARAMETER Verbose
+    Enable verbose logging for debugging.
+
 .EXAMPLE
     ./scripts/create-test-repositories.ps1
 
 .EXAMPLE
     ./scripts/create-test-repositories.ps1 -Organization "myorg" -Force
+
+.EXAMPLE
+    ./scripts/create-test-repositories.ps1 -Organization "myorg" -Verbose
 #>
 
 param(
     [string]$Organization = "pvandervelde",
-    [switch]$Force
+    [switch]$Force,
+    [switch]$Verbose
 )
 
 # Set error action preference
@@ -35,22 +42,22 @@ $ErrorActionPreference = "Stop"
 # Template repositories to create
 $Templates = @(
     @{
-        Name        = "test-basic"
+        Name        = "template-test-basic"
         Description = "Basic repository template for RepoRoller integration tests"
         Path        = "tests/templates/test-basic"
     },
     @{
-        Name        = "test-variables"
+        Name        = "template-test-variables"
         Description = "Variable substitution template for RepoRoller integration tests"
         Path        = "tests/templates/test-variables"
     },
     @{
-        Name        = "test-filtering"
+        Name        = "template-test-filtering"
         Description = "File filtering template for RepoRoller integration tests"
         Path        = "tests/templates/test-filtering"
     },
     @{
-        Name        = "test-invalid"
+        Name        = "template-test-invalid"
         Description = "Error handling template for RepoRoller integration tests"
         Path        = "tests/templates/test-invalid"
     }
@@ -109,13 +116,84 @@ function Test-RepositoryExists
 {
     param([string]$Organization, [string]$Name)
 
+    if ($Verbose)
+    {
+        Write-Host "Checking if repository exists: $Organization/$Name" -ForegroundColor Gray
+    }
+
     try
     {
-        $null = gh repo view "$Organization/$Name" 2>$null
-        return $true
+        # Try to get repository information using GitHub CLI
+        $output = gh repo view "$Organization/$Name" --json name, owner 2>$null
+
+        if ($Verbose)
+        {
+            Write-Host "Raw output: '$output'" -ForegroundColor Gray
+        }
+
+        # Check if we got any output
+        if ([string]::IsNullOrWhiteSpace($output))
+        {
+            if ($Verbose)
+            {
+                Write-Host "No output received - repository does not exist" -ForegroundColor Gray
+            }
+            return $false
+        }
+
+        # Try to parse JSON
+        try
+        {
+            $repoInfo = $output | ConvertFrom-Json
+        }
+        catch
+        {
+            if ($Verbose)
+            {
+                Write-Host "Failed to parse JSON output - repository likely doesn't exist" -ForegroundColor Gray
+            }
+            return $false
+        }
+
+        # Check if we have valid repository info
+        if (-not $repoInfo -or -not $repoInfo.owner -or -not $repoInfo.name)
+        {
+            if ($Verbose)
+            {
+                Write-Host "Invalid repository information - repository does not exist" -ForegroundColor Gray
+            }
+            return $false
+        }
+
+        if ($Verbose)
+        {
+            Write-Host "Repository found: $($repoInfo.owner.login)/$($repoInfo.name)" -ForegroundColor Gray
+        }
+
+        # Verify exact match (case-insensitive for organization, exact for repo name)
+        $exactMatch = ($repoInfo.owner.login -ieq $Organization) -and ($repoInfo.name -eq $Name)
+
+        if ($Verbose)
+        {
+            if ($exactMatch)
+            {
+                Write-Host "Exact match confirmed" -ForegroundColor Green
+            }
+            else
+            {
+                Write-Host "Repository name mismatch. Expected: $Organization/$Name, Found: $($repoInfo.owner.login)/$($repoInfo.name)" -ForegroundColor Yellow
+            }
+        }
+
+        return $exactMatch
     }
     catch
     {
+        if ($Verbose)
+        {
+            Write-Host "Repository not found or error occurred: $Organization/$Name" -ForegroundColor Gray
+            Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Gray
+        }
         return $false
     }
 }
@@ -158,7 +236,10 @@ function New-Repository
         git commit -m "Initial commit: $Description"
 
         # Create GitHub repository
-        gh repo create "$Organization/$Name" --public --description $Description --template
+        gh repo create "$Organization/$Name" --public --description "$Description"
+
+        # Enable template repository feature after creation
+        gh api repos/$Organization/$Name --method PATCH --field is_template=true
 
         # Push to GitHub
         git remote add origin "https://github.com/$Organization/$Name.git"
@@ -181,6 +262,14 @@ function New-Repository
 # Main execution
 Write-Host "RepoRoller Test Repository Creator" -ForegroundColor Magenta
 Write-Host "=================================" -ForegroundColor Magenta
+
+if ($Verbose)
+{
+    Write-Host "Verbose mode enabled" -ForegroundColor Gray
+    Write-Host "Organization: $Organization" -ForegroundColor Gray
+    Write-Host "Force recreation: $Force" -ForegroundColor Gray
+    Write-Host ""
+}
 
 # Validate prerequisites
 Test-GitHubCLI
@@ -206,6 +295,14 @@ if (-not $allValid)
 foreach ($template in $Templates)
 {
     $repoName = $template.Name
+
+    if ($Verbose)
+    {
+        Write-Host "Processing template: $($template.Name)" -ForegroundColor Gray
+        Write-Host "Description: $($template.Description)" -ForegroundColor Gray
+        Write-Host "Path: $($template.Path)" -ForegroundColor Gray
+    }
+
     $repoExists = Test-RepositoryExists $Organization $repoName
 
     if ($repoExists)

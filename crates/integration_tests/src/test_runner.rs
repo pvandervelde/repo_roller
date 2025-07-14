@@ -53,10 +53,14 @@ impl TestScenario {
     }
 
     /// Create a mock template configuration for testing
-    pub fn create_mock_template(&self) -> TemplateConfig {
+    pub fn create_mock_template(&self, org: &str) -> TemplateConfig {
         TemplateConfig {
             name: self.template_name().to_string(),
-            source_repo: format!("https://github.com/pvandervelde/{}", self.template_name()),
+            source_repo: format!(
+                "https://github.com/{}/template-{}",
+                org,
+                self.template_name()
+            ),
             description: Some(format!("Test template for {}", self.test_name())),
             topics: Some(vec!["test".to_string(), "repo-roller".to_string()]),
             features: None,
@@ -256,7 +260,7 @@ impl IntegrationTestRunner {
         // Step 2: Create mock configuration with test template
         info!(scenario = ?scenario, "Creating test configuration");
 
-        let template = scenario.create_mock_template();
+        let template = scenario.create_mock_template(&self.config.test_org);
         let config = Config {
             templates: vec![template],
         };
@@ -382,8 +386,8 @@ mod tests {
     #[test]
     fn test_mock_template_creation() {
         let scenario = TestScenario::VariableSubstitution;
-        let template = scenario.create_mock_template();
+        let template = scenario.create_mock_template("glitchgrove");
         assert_eq!(template.name, "test-variables");
-        assert!(template.source_repo.contains("test-variables"));
+        assert!(template.source_repo.contains("template-test-variables"));
     }
 }
