@@ -1,18 +1,18 @@
 name: Integration Tests
 
 on:
-  # Run on pull requests to main
+  # Run on pull requests to master
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/integration-tests.yml'
 
-  # Run on pushes to main
+  # Run on pushes to master
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'crates/**'
       - 'Cargo.toml'
@@ -54,7 +54,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.repository == 'pvandervelde/repo_roller' &&
        github.event_name == 'push' &&
-       github.ref == 'refs/heads/main')
+       github.ref == 'refs/heads/master')
 
     steps:
       - name: Checkout code
