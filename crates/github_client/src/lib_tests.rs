@@ -33,7 +33,7 @@ async fn test_create_org_repository_success() {
     };
 
     Mock::given(method("POST"))
-        .and(path(format!("/orgs/{}/repos", org_name)))
+        .and(path(format!("/orgs/{org_name}/repos")))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": 123456,
             "name": payload.name,
@@ -55,7 +55,7 @@ async fn test_create_org_repository_success() {
     let result = client.create_org_repository(org_name, &payload).await;
 
     if let Err(e) = &result {
-        eprintln!("create_org_repository error: {:?}", e);
+        eprintln!("create_org_repository error: {e:?}");
     }
     assert!(result.is_ok());
 }
@@ -92,7 +92,7 @@ async fn test_create_user_repository_success() {
     let result = client.create_user_repository(&payload).await;
 
     if let Err(e) = &result {
-        eprintln!("create_user_repository error: {:?}", e);
+        eprintln!("create_user_repository error: {e:?}");
     }
     assert!(result.is_ok());
 }
@@ -104,7 +104,7 @@ async fn test_get_repository_success() {
     let repo = "test-repo";
 
     Mock::given(method("GET"))
-        .and(path(format!("/repos/{}/{}", owner, repo)))
+        .and(path(format!("/repos/{owner}/{repo}")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": 123456,
             "name": repo,
@@ -147,7 +147,7 @@ async fn test_get_repository_success() {
     let result = client.get_repository(owner, repo).await;
 
     if let Err(e) = &result {
-        eprintln!("get_repository error: {:?}", e);
+        eprintln!("get_repository error: {e:?}");
     }
     assert!(result.is_ok());
 }
@@ -163,7 +163,7 @@ async fn test_update_repository_settings_success() {
     };
 
     Mock::given(method("PATCH"))
-        .and(path(format!("/repos/{}/{}", owner, repo)))
+        .and(path(format!("/repos/{owner}/{repo}")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": 123456,
             "name": repo,
@@ -187,7 +187,7 @@ async fn test_update_repository_settings_success() {
         .await;
 
     if let Err(e) = &result {
-        eprintln!("update_repository_settings error: {:?}", e);
+        eprintln!("update_repository_settings error: {e:?}");
     }
     assert!(result.is_ok());
 }
@@ -269,8 +269,8 @@ async fn test_list_installations_success() {
     match &result {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error in list_installations: {:?}", e);
-            panic!("Expected Ok, got Err: {:?}", e);
+            eprintln!("Error in list_installations: {e:?}");
+            panic!("Expected Ok, got Err: {e:?}");
         }
     }
     let installations = result.unwrap();
@@ -352,8 +352,7 @@ async fn test_get_installation_token_for_org_success() {
     // Mock the installation token endpoint
     Mock::given(method("POST"))
         .and(path(format!(
-            "/app/installations/{}/access_tokens",
-            installation_id
+            "/app/installations/{installation_id}/access_tokens"
         )))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "token": test_token,
@@ -376,8 +375,8 @@ async fn test_get_installation_token_for_org_success() {
     match &result {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error in get_installation_token_for_org: {:?}", e);
-            panic!("Expected Ok, got Err: {:?}", e);
+            eprintln!("Error in get_installation_token_for_org: {e:?}");
+            panic!("Expected Ok, got Err: {e:?}");
         }
     }
     let token = result.unwrap();
@@ -480,8 +479,7 @@ async fn test_get_installation_token_case_insensitive() {
 
     Mock::given(method("POST"))
         .and(path(format!(
-            "/app/installations/{}/access_tokens",
-            installation_id
+            "/app/installations/{installation_id}/access_tokens"
         )))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "token": test_token,
@@ -505,8 +503,8 @@ async fn test_get_installation_token_case_insensitive() {
     match &result {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error in get_installation_token_case_insensitive: {:?}", e);
-            panic!("Expected Ok, got Err: {:?}", e);
+            eprintln!("Error in get_installation_token_case_insensitive: {e:?}");
+            panic!("Expected Ok, got Err: {e:?}");
         }
     }
     let token = result.unwrap();

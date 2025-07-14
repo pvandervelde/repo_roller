@@ -35,13 +35,13 @@ mod tests;
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let app_id = 123456;
 ///     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
-///     
+///
 ///     let octocrab_client = create_app_client(app_id, private_key).await?;
 ///     let github_client = GitHubClient::new(octocrab_client);
-///     
+///
 ///     let installations = github_client.list_installations().await?;
 ///     println!("Found {} installations", installations.len());
-///     
+///
 ///     Ok(())
 /// }
 /// ```
@@ -274,10 +274,10 @@ impl GitHubClient {
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     let app_id = 123456;
     ///     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
-    ///     
+    ///
     ///     let octocrab_client = create_app_client(app_id, private_key).await?;
     ///     let github_client = GitHubClient::new(octocrab_client);
-    ///     
+    ///
     ///     Ok(())
     /// }
     /// ```
@@ -302,7 +302,7 @@ impl RepositoryClient for GitHubClient {
         org_name: &str,
         payload: &RepositoryCreatePayload,
     ) -> Result<models::Repository, Error> {
-        let path = format!("/orgs/{}/repos", org_name);
+        let path = format!("/orgs/{org_name}/repos");
         let response: OctocrabResult<octocrab::models::Repository> =
             self.client.post(path, Some(payload)).await;
         match response {
@@ -356,7 +356,7 @@ impl RepositoryClient for GitHubClient {
         repo: &str,
         settings: &RepositorySettingsUpdate,
     ) -> Result<models::Repository, Error> {
-        let path = format!("/repos/{}/{}", owner, repo);
+        let path = format!("/repos/{owner}/{repo}");
         // Use client.patch for updating repository settings via the REST API
         let response: OctocrabResult<octocrab::models::Repository> =
             self.client.patch(path, Some(settings)).await;
@@ -387,7 +387,7 @@ impl RepositoryClient for GitHubClient {
             "Getting default branch setting for organization"
         );
 
-        let path = format!("/orgs/{}", org_name);
+        let path = format!("/orgs/{org_name}");
 
         debug!("Making API call to: {}", path);
         let response: OctocrabResult<serde_json::Value> = self.client.get(path, None::<&()>).await;
@@ -509,18 +509,18 @@ pub struct RepositoryCreatePayload {
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let app_id = 123456;
 ///     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
-///     
+///
 ///     let octocrab_client = create_app_client(app_id, private_key).await?;
 ///     let client: Box<dyn RepositoryClient> = Box::new(GitHubClient::new(octocrab_client));
-///     
+///
 ///     let payload = RepositoryCreatePayload {
 ///         name: "test-repo".to_string(),
 ///         ..Default::default()
 ///     };
-///     
+///
 ///     let repo = client.create_org_repository("my-org", &payload).await?;
 ///     println!("Created repository: {}", repo.name());
-///     
+///
 ///     Ok(())
 /// }
 /// ```
@@ -834,9 +834,7 @@ pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocra
             error = %e,
             "Failed to parse RSA private key - key format is invalid"
         );
-        Error::AuthError(
-            format!("Failed to translate the private key. Error was: {}", e).to_string(),
-        )
+        Error::AuthError(format!("Failed to translate the private key. Error was: {e}").to_string())
     })?;
 
     info!(app_id = app_id, "Successfully parsed RSA private key");
@@ -887,7 +885,7 @@ pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocra
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let token = "ghp_xxxxxxxxxxxxxxxxxxxx"; // Your GitHub PAT
 ///     let client = create_token_client(token)?;
-///     
+///
 ///     // Use client for API operations
 ///     Ok(())
 /// }
