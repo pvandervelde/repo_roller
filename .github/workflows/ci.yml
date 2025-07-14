@@ -49,11 +49,11 @@ jobs:
             # There are tags, use the latest tag as starting point
             LATEST_TAG=$(git describe --tags --abbrev=0)
             LATEST_COMMIT=$(git rev-parse $LATEST_TAG)
-            NEXT_VERSION=$(conventional_commits_next_version --from-commit-hash $LATEST_COMMIT --from-version $LATEST_TAG --calculation-mode "Batch")
+            NEXT_VERSION=$(conventional_commits_next_version --from-version ${LATEST_TAG} --calculation-mode Batch ${LATEST_COMMIT} )
           else
             # No tags, start from the beginning of the repository
             FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-            NEXT_VERSION=$(conventional_commits_next_version --from-commit-hash $FIRST_COMMIT --from-version "0.0.0" --calculation-mode "Batch")
+            NEXT_VERSION=$(conventional_commits_next_version --from-version "0.0.0" --calculation-mode Batch ${FIRST_COMMIT})
           fi
           echo "NEXT_VERSION=${NEXT_VERSION}" >> $GITHUB_OUTPUT
           echo "The next version is: ${NEXT_VERSION}"
