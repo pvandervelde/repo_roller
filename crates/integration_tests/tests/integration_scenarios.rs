@@ -6,8 +6,6 @@
 
 use anyhow::Result;
 use integration_tests::{test_runner::IntegrationTestRunner, utils::TestConfig};
-use std::collections::HashMap;
-use tokio;
 use tracing::info;
 
 /// Test basic repository creation functionality.

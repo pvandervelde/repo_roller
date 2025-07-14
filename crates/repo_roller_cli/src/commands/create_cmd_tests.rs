@@ -80,8 +80,7 @@ async fn test_cli_config_invalid_toml() {
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
     let options = CreateCommandOptions::new(&path, &None, &None, &None);
-    let result =
-        handle_create_command(options, ask, get_org_rules, |req| create_repository(req)).await;
+    let result = handle_create_command(options, ask, get_org_rules, create_repository).await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
 
@@ -93,8 +92,7 @@ async fn test_cli_config_missing() {
     let _log = Arc::new(Mutex::new(CallLog::new()));
     let config_file = Some("nonexistent.toml".to_string());
     let options = CreateCommandOptions::new(&config_file, &None, &None, &None);
-    let result =
-        handle_create_command(options, ask, get_org_rules, |req| create_repository(req)).await;
+    let result = handle_create_command(options, ask, get_org_rules, create_repository).await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
 }
 

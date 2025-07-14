@@ -67,6 +67,7 @@ pub struct TestRepository {
     pub name: String,
     pub owner: String,
     pub full_name: String,
+    #[allow(dead_code)]
     pub created_at: chrono::DateTime<Utc>,
 }
 

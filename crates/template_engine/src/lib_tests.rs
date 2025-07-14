@@ -225,7 +225,7 @@ fn test_substitute_variables() {
 #[test]
 fn test_template_processor_default() {
     let processor1 = TemplateProcessor::new();
-    let processor2 = TemplateProcessor::default();
+    let processor2 = TemplateProcessor;
 
     // Both should work the same way
     let mut variables = HashMap::new();

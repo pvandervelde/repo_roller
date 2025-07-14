@@ -86,23 +86,12 @@ pub struct TestResult {
 }
 
 /// Detailed test execution information
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TestDetails {
     pub request_created: bool,
     pub config_loaded: bool,
     pub repository_created: bool,
     pub validation_passed: bool,
-}
-
-impl Default for TestDetails {
-    fn default() -> Self {
-        Self {
-            request_created: false,
-            config_loaded: false,
-            repository_created: false,
-            validation_passed: false,
-        }
-    }
 }
 
 /// Integration test runner that orchestrates all test scenarios
@@ -177,6 +166,7 @@ impl IntegrationTestRunner {
     }
 
     /// Run a single test scenario (for individual test methods)
+    #[allow(dead_code)]
     pub async fn run_single_test_scenario(&mut self, scenario: TestScenario) -> TestResult {
         info!(scenario = ?scenario, "Running single test scenario");
         self.run_single_test(scenario).await
