@@ -48,6 +48,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    permissions:
+      # Allow reading repository content
+      contents: read
+      # Allow writing comments on pull requests
+      issues: write
+      pull-requests: write
+
     # Only run integration tests if we have the required secrets
     if: >
       github.event_name == 'schedule' ||
