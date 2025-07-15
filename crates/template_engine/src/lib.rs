@@ -843,7 +843,7 @@ impl TemplateProcessor {
                 if !options.contains(&value) {
                     return Err(Error::VariableValidation {
                         variable: var_name.clone(),
-                        reason: format!("Invalid option, allowed values: {:?}", options),
+                        reason: format!("Invalid option, allowed values: {options:?}"),
                     });
                 }
             }
