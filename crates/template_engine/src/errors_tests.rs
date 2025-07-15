@@ -4,7 +4,7 @@ use std::io;
 #[test]
 fn test_error_debug_format() {
     let error = Error::RequiredVariableMissing("test_var".to_string());
-    let debug_output = format!("{:?}", error);
+    let debug_output = format!("{error:?}");
     assert!(debug_output.contains("RequiredVariableMissing"));
     assert!(debug_output.contains("test_var"));
 }
