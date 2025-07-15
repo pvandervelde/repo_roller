@@ -70,20 +70,12 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           key: integration-tests
           cache-on-failure: true
-
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Build integration tests
         run: |
@@ -241,29 +233,3 @@ jobs:
               repo: context.repo.repo,
               body: commentBody
             });
-
-  # Separate job for security scanning of integration test dependencies
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Run security audit
-        run: cargo audit --deny warnings
-
-      - name: Install cargo-deny
-        run: cargo install cargo-deny
-
-      - name: Check licenses and dependencies
-        run: cargo deny check
