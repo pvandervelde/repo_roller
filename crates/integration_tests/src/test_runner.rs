@@ -55,7 +55,9 @@ impl TestScenario {
     /// Create a mock template configuration for testing
     pub fn create_mock_template(&self, org: &str) -> TemplateConfig {
         let description = match self {
-            TestScenario::ErrorHandling => Some("Non-existent template for testing error handling".to_string()),
+            TestScenario::ErrorHandling => {
+                Some("Non-existent template for testing error handling".to_string())
+            }
             _ => Some(format!("Test template for {}", self.test_name())),
         };
 
