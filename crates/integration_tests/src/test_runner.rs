@@ -33,7 +33,7 @@ impl TestScenario {
             TestScenario::BasicCreation => "basic",
             TestScenario::VariableSubstitution => "variables",
             TestScenario::FileFiltering => "filtering",
-            TestScenario::ErrorHandling => "errors",
+            TestScenario::ErrorHandling => "error-handling",
         }
     }
 
@@ -43,7 +43,7 @@ impl TestScenario {
             TestScenario::BasicCreation => "test-basic",
             TestScenario::VariableSubstitution => "test-variables",
             TestScenario::FileFiltering => "test-filtering",
-            TestScenario::ErrorHandling => "test-invalid",
+            TestScenario::ErrorHandling => "test-nonexistent",
         }
     }
 
@@ -54,6 +54,11 @@ impl TestScenario {
 
     /// Create a mock template configuration for testing
     pub fn create_mock_template(&self, org: &str) -> TemplateConfig {
+        let description = match self {
+            TestScenario::ErrorHandling => Some("Non-existent template for testing error handling".to_string()),
+            _ => Some(format!("Test template for {}", self.test_name())),
+        };
+
         TemplateConfig {
             name: self.template_name().to_string(),
             source_repo: format!(
@@ -61,7 +66,7 @@ impl TestScenario {
                 org,
                 self.template_name()
             ),
-            description: Some(format!("Test template for {}", self.test_name())),
+            description,
             topics: Some(vec!["test".to_string(), "repo-roller".to_string()]),
             features: None,
             pr_settings: None,
@@ -368,9 +373,9 @@ mod tests {
         assert_eq!(basic.template_name(), "test-basic");
 
         let error = TestScenario::ErrorHandling;
-        assert_eq!(error.test_name(), "errors");
+        assert_eq!(error.test_name(), "error-handling");
         assert!(!error.should_succeed());
-        assert_eq!(error.template_name(), "test-invalid");
+        assert_eq!(error.template_name(), "test-nonexistent");
     }
 
     #[test]

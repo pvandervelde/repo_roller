@@ -119,7 +119,7 @@ async fn test_file_filtering() -> Result<()> {
 /// Test error handling for invalid template configurations.
 ///
 /// This test verifies that RepoRoller properly handles and reports errors when processing
-/// invalid templates using the test-invalid template.
+/// invalid templates using a non-existent template repository.
 #[tokio::test]
 async fn test_error_handling() -> Result<()> {
     info!("Starting error handling test");
