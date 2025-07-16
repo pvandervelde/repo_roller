@@ -10,6 +10,7 @@ members = [
     "crates/repo_roller_api",
     "crates/repo_roller_mcp",
     "crates/repo_roller_azure_fn",
+    "crates/integration_tests",
 ]
 
 [workspace.package]

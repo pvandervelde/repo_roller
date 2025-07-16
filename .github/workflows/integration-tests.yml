@@ -1,0 +1,235 @@
+name: Integration Tests
+
+on:
+  # Run on pull requests to master
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/integration-tests.yml'
+
+  # Run on pushes to master
+  push:
+    branches: [ master ]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/integration-tests.yml'
+
+  # Scheduled nightly runs for orphan cleanup and regression testing
+  schedule:
+    # Run at 2 AM UTC daily
+    - cron: '0 2 * * *'
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      cleanup_only:
+        description: 'Only perform cleanup, skip tests'
+        required: false
+        default: false
+        type: boolean
+      max_age_hours:
+        description: 'Maximum age in hours for orphaned repositories'
+        required: false
+        default: '24'
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      # Allow reading repository content
+      contents: read
+      # Allow writing comments on pull requests
+      issues: write
+      pull-requests: write
+
+    # Only run integration tests if we have the required secrets
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
+      (github.repository == 'pvandervelde/repo_roller' &&
+       github.event_name == 'push' &&
+       github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: integration-tests
+          cache-on-failure: true
+
+      - name: Build integration tests
+        run: |
+          echo "Building integration test binary..."
+          cargo build --release --bin integration_tests
+          echo "Integration test binary built successfully"
+
+      - name: Validate environment setup
+        env:
+          GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+          TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+        run: |
+          echo "Validating integration test environment..."
+
+          if [ -z "$GITHUB_APP_ID" ]; then
+            echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
+            exit 1
+          fi
+
+          if [ -z "$GITHUB_APP_PRIVATE_KEY" ]; then
+            echo "❌ INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY secret not set"
+            exit 1
+          fi
+
+          if [ -z "$TEST_ORG" ]; then
+            echo "❌ INTEGRATION_TEST_ORG secret not set"
+            exit 1
+          fi
+
+          echo "✅ All required secrets are configured"
+          echo "📋 GitHub App ID: $GITHUB_APP_ID"
+          echo "📋 Test Organization: $TEST_ORG"
+
+      - name: Run orphan cleanup (scheduled runs)
+        if: github.event_name == 'schedule'
+        env:
+          GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+          TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+          RUST_LOG: info
+        run: |
+          echo "🧹 Running scheduled orphan cleanup..."
+          ./target/release/integration_tests --cleanup-orphans --max-age-hours 24
+
+      - name: Run integration tests
+        if: github.event.inputs.cleanup_only != 'true'
+        env:
+          GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+          TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+          RUST_LOG: info
+        run: |
+          echo "🚀 Starting integration test suite..."
+
+          # Determine cleanup parameters
+          CLEANUP_ARGS=""
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.cleanup_only }}" = "true" ]; then
+            CLEANUP_ARGS="--cleanup-orphans"
+            if [ -n "${{ github.event.inputs.max_age_hours }}" ]; then
+              CLEANUP_ARGS="$CLEANUP_ARGS --max-age-hours ${{ github.event.inputs.max_age_hours }}"
+            fi
+          fi
+
+          # Run cleanup only if requested
+          if [ "${{ github.event.inputs.cleanup_only }}" = "true" ]; then
+            echo "🧹 Running cleanup only..."
+            ./target/release/integration_tests $CLEANUP_ARGS --cleanup-only
+          else
+            echo "🧪 Running full integration test suite..."
+            ./target/release/integration_tests $CLEANUP_ARGS
+          fi
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-report
+          path: integration-test-report.md
+          retention-days: 30
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: |
+            *.log
+            target/debug/deps/integration_tests-*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Emergency cleanup on failure
+        if: failure()
+        env:
+          GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+          TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+          RUST_LOG: warn
+        run: |
+          echo "🚨 Test run failed, attempting emergency cleanup..."
+
+          # Try to clean up any repositories created in the last hour
+          ./target/release/integration_tests --cleanup-orphans --max-age-hours 1 || true
+
+          echo "Emergency cleanup completed (best effort)"
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Read test report if it exists
+            let reportContent = '';
+            try {
+              reportContent = fs.readFileSync('integration-test-report.md', 'utf8');
+            } catch (error) {
+              reportContent = '❌ Integration test report not generated - tests may have failed to start.';
+            }
+
+            // Determine overall status
+            const success = '${{ job.status }}' === 'success';
+            const statusEmoji = success ? '✅' : '❌';
+            const statusText = success ? 'PASSED' : 'FAILED';
+
+            // Create comment body
+            const commentBody = `
+            ## ${statusEmoji} Integration Tests ${statusText}
+
+            **Workflow**: \`${{ github.workflow }}\`
+            **Run ID**: [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **Commit**: \`${{ github.sha }}\`
+
+            <details>
+            <summary>📊 Detailed Test Report</summary>
+
+            \`\`\`
+            ${reportContent}
+            \`\`\`
+
+            </details>
+
+            ${success ?
+              '🎉 All integration tests passed! The changes are ready for review.' :
+              '⚠️ Integration tests failed. Please review the logs and fix any issues before merging.'
+            }
+            `;
+
+            // Post comment
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });

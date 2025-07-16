@@ -1,0 +1,11 @@
+project:
+  name: "{{project_name}}"
+  version: "{{version}}"
+  author: "{{author_name}}"
+  email: "{{author_email}}"
+  description: "{{project_description}}"
+  license: "{{license}}"
+
+settings:
+  debug: { { debug_mode } }
+  environment: "{{environment}}"

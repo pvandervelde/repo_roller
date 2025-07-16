@@ -272,7 +272,7 @@ impl GitHubTemplateFetcher {
 
         // Create a temporary directory for cloning
         let temp_dir =
-            TempDir::new().map_err(|e| format!("Failed to create temporary directory: {}", e))?;
+            TempDir::new().map_err(|e| format!("Failed to create temporary directory: {e}"))?;
 
         // Clone the repository
         let output = Command::new("git")
@@ -284,13 +284,11 @@ impl GitHubTemplateFetcher {
                 temp_dir.path().to_str().unwrap(),
             ])
             .output()
-            .map_err(|e| format!("Failed to execute git clone: {}", e))?;
+            .map_err(|e| format!("Failed to execute git clone: {e}"))?;
 
         if !output.status.success() {
-            return Err(format!(
-                "Git clone failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Git clone failed: {stderr}"));
         }
 
         // Read all files from the cloned repository
@@ -304,7 +302,7 @@ impl GitHubTemplateFetcher {
             let path = entry.path();
             let relative_path = path
                 .strip_prefix(temp_dir.path())
-                .map_err(|e| format!("Failed to get relative path: {}", e))?;
+                .map_err(|e| format!("Failed to get relative path: {e}"))?;
 
             // Skip .git directory files
             let path_str = relative_path.to_string_lossy();
@@ -313,14 +311,14 @@ impl GitHubTemplateFetcher {
             }
 
             // Read file content
-            let content = std::fs::read(path)
-                .map_err(|e| format!("Failed to read file {:?}: {}", path, e))?;
+            let content =
+                std::fs::read(path).map_err(|e| format!("Failed to read file {path:?}: {e}"))?;
 
             files.push((path_str.to_string(), content));
         }
 
         if files.is_empty() {
-            return Err(format!("No files found in repository {}", url));
+            return Err(format!("No files found in repository {url}"));
         }
 
         Ok(files)
@@ -351,7 +349,7 @@ impl TemplateFetcher for GitHubTemplateFetcher {
             .collect();
 
         if filtered_files.is_empty() {
-            return Err(format!("No template files found in repository {}", source));
+            return Err(format!("No template files found in repository {source}"));
         }
 
         Ok(filtered_files)
@@ -810,7 +808,7 @@ impl TemplateProcessor {
             if let Some(ref pattern) = config.pattern {
                 let regex = regex::Regex::new(pattern).map_err(|_| Error::VariableValidation {
                     variable: var_name.clone(),
-                    reason: format!("Invalid regex pattern: {}", pattern),
+                    reason: format!("Invalid regex pattern: {pattern}"),
                 })?;
 
                 if !regex.is_match(&value) {
@@ -826,7 +824,7 @@ impl TemplateProcessor {
                 if value.len() < min_len {
                     return Err(Error::VariableValidation {
                         variable: var_name.clone(),
-                        reason: format!("Value too short, minimum length: {}", min_len),
+                        reason: format!("Value too short, minimum length: {min_len}"),
                     });
                 }
             }
@@ -835,7 +833,7 @@ impl TemplateProcessor {
                 if value.len() > max_len {
                     return Err(Error::VariableValidation {
                         variable: var_name.clone(),
-                        reason: format!("Value too long, maximum length: {}", max_len),
+                        reason: format!("Value too long, maximum length: {max_len}"),
                     });
                 }
             }
@@ -845,7 +843,7 @@ impl TemplateProcessor {
                 if !options.contains(&value) {
                     return Err(Error::VariableValidation {
                         variable: var_name.clone(),
-                        reason: format!("Invalid option, allowed values: {:?}", options),
+                        reason: format!("Invalid option, allowed values: {options:?}"),
                     });
                 }
             }
@@ -867,7 +865,7 @@ impl TemplateProcessor {
 
         // Substitute variables
         for (key, value) in variables {
-            let pattern = format!("{{{{{}}}}}", key);
+            let pattern = format!("{{{{{key}}}}}");
             result = result.replace(&pattern, value);
         }
 

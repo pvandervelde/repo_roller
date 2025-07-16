@@ -131,6 +131,7 @@ impl MockRepoClientConfig {
     }
 
     /// Create config with custom token for organization
+    #[allow(dead_code)]
     fn with_org_token(org_name: &str) -> Self {
         Self {
             token_behavior: MockTokenBehavior::Success(format!("ghs_mock_token_for_{}", org_name)),
@@ -160,6 +161,7 @@ impl TemplateFetcher for MockTemplateFetcher {
 #[derive(Clone)]
 enum MockTokenBehavior {
     /// Return an AuthError with the given message
+    #[allow(dead_code)]
     AuthError(String),
     /// Return an InvalidResponse error
     InvalidResponse,
@@ -209,6 +211,7 @@ fn create_mock_repo_client() -> impl RepositoryClient {
 }
 
 /// Creates a mock repository client with organization-specific token
+#[allow(dead_code)]
 fn create_mock_repo_client_for_org(org_name: &str) -> impl RepositoryClient {
     ConfigurableMockRepoClient::new(MockRepoClientConfig::with_org_token(org_name))
 }

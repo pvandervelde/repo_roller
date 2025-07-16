@@ -1,0 +1,17 @@
+{
+    "name": "test-filtering-config",
+    "version": "1.0.0",
+    "description": "Configuration file that should be included in filtering",
+    "settings": {
+        "debug": false,
+        "environment": "test",
+        "features": {
+            "filtering": true,
+            "validation": true
+        }
+    },
+    "metadata": {
+        "created": "2024-01-01",
+        "purpose": "Testing file filtering capabilities"
+    }
+}

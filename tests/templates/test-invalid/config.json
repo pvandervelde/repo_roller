@@ -1,0 +1,17 @@
+{
+    "name": "test-invalid",
+    "version": "1.0.0",
+    "description": "Intentionally malformed JSON for testing",
+    "settings": {
+        "debug": true,
+        "environment": "test"
+        // Missing comma above
+        "invalid_key": "value"
+    },
+    "array": [
+        "item1",
+        "item2"
+        // Missing comma
+        "item3"
+    ]
+    // Missing closing brace
