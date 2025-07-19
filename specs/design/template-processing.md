@@ -115,9 +115,10 @@ serde_json = "1.0"
 
 **File Path Validation:**
 
-- Prevent directory traversal attacks (../../../etc/passwd)
-- Validate file names for filesystem compatibility
-- Ensure paths stay within target directory bounds
+- Prevent directory traversal attacks (../../../etc/passwd) by normalizing paths and rejecting any paths containing `..` or starting with `/`.
+- Use the `std::path::Path` module in Rust to validate and sanitize file paths.
+- Ensure paths stay within target directory bounds by resolving absolute paths and checking that they are descendants of the target directory.
+- Validate file names for filesystem compatibility using regular expressions or predefined rules for allowed characters.
 
 **Template Sandboxing:**
 
