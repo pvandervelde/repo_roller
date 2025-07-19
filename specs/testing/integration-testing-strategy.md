@@ -142,9 +142,12 @@ sequenceDiagram
 
 - `template-basic` - Simple template with minimal variables
 - `template-variables` - Complex variable substitution scenarios
+- `template-handlebars` - Advanced Handlebars features (conditionals, loops, helpers)
+- `template-path-templating` - File and directory name templating
 - `template-filtering` - File inclusion/exclusion patterns
 - `template-binary` - Mixed text and binary files
 - `template-nested` - Deep directory structures
+- `template-edge-cases` - Edge cases and error conditions
 
 #### 3. GitHub Actions Workflow (`integration-tests.yml`)
 
@@ -207,7 +210,47 @@ async fn test_file_filtering() {
 }
 ```
 
-#### Test Case 4: Error Handling
+#### Test Case 4: Handlebars Template Features
+
+```rust
+#[tokio::test]
+async fn test_handlebars_features() {
+    // Use template-handlebars with conditionals, loops, and helpers
+    // Verify {{#if}}, {{#each}}, {{#with}} work correctly
+    // Test custom helpers: {{snake_case}}, {{kebab_case}}, {{timestamp}}
+    // Verify complex variable structures and nested objects
+    // Cleanup
+}
+```
+
+#### Test Case 5: File Path Templating
+
+```rust
+#[tokio::test]
+async fn test_path_templating() {
+    // Use template-path-templating with dynamic file/directory names
+    // Verify file paths are templated correctly
+    // Test path security validation (no traversal attacks)
+    // Check name collision detection
+    // Cleanup
+}
+```
+
+#### Test Case 6: Template Edge Cases
+
+```rust
+#[tokio::test]
+async fn test_template_edge_cases() {
+    // Use template-edge-cases for boundary conditions
+    // Test missing variables, type mismatches
+    // Verify malformed template handling
+    // Test very long paths and large files
+    // Test Unicode and special characters
+    // Cleanup
+}
+```
+
+#### Test Case 7: Error Handling
 
 ```rust
 #[tokio::test]
