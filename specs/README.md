@@ -33,6 +33,7 @@ What the system must accomplish and how it should behave.
 - [**Repository Management**](requirements/repository-management.md) - GitHub repository features and settings
 - [**Repository Visibility**](requirements/repository-visibility.md) - Visibility handling and organization policies
 - [**Organization Repository Settings**](requirements/organization-repository-settings.md) - Organization-specific configuration management
+- [**Non-Template Repository Support**](requirements/empty-repository-support.md) - Creating repositories without templates (empty or custom-initialized)
 - [**Non-Functional Requirements**](requirements/non-functional-requirements.md) - Performance, security, and reliability
 
 ### 🎨 Design
@@ -43,6 +44,7 @@ Detailed design specifications for key system areas.
 - [**Template Processing**](design/template-processing.md) - Template engine and variable substitution
 - [**Repository Visibility**](design/repository-visibility.md) - Visibility determination and policy enforcement
 - [**Organization Repository Settings**](design/organization-repository-settings.md) - Configuration management and hierarchical merging
+- [**Non-Template Repository Support**](design/empty-repository-support.md) - Template-free repository creation with empty and custom-initialization modes
 - [**Configuration Management**](design/configuration-management.md) - Configuration schema and loading
 - [**Error Handling**](design/error-handling.md) - Error handling strategies and user experience
 
