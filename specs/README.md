@@ -31,6 +31,7 @@ What the system must accomplish and how it should behave.
 
 - [**Functional Requirements**](requirements/functional-requirements.md) - Core system capabilities
 - [**Repository Management**](requirements/repository-management.md) - GitHub repository features and settings
+- [**Repository Visibility**](requirements/repository-visibility.md) - Visibility handling and organization policies
 - [**Non-Functional Requirements**](requirements/non-functional-requirements.md) - Performance, security, and reliability
 
 ### 🎨 Design
@@ -39,6 +40,7 @@ Detailed design specifications for key system areas.
 
 - [**Authentication**](design/authentication.md) - GitHub App integration and user authentication
 - [**Template Processing**](design/template-processing.md) - Template engine and variable substitution
+- [**Repository Visibility**](design/repository-visibility.md) - Visibility determination and policy enforcement
 - [**Configuration Management**](design/configuration-management.md) - Configuration schema and loading
 - [**Error Handling**](design/error-handling.md) - Error handling strategies and user experience
 
