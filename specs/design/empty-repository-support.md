@@ -260,19 +260,28 @@ impl NonTemplateRepositoryManager {
     }
 }
 
-        // Validate repository type exists
-        if let Some(repo_type) = &request.repository_type {
-            if !self.config_manager.is_repository_type_available(&request.organization, repo_type).await? {
-                return Err(RepositoryCreationError::RepositoryTypeNotFound {
-                    repo_type: repo_type.clone(),
-                    organization: request.organization.clone(),
-                });
-            }
+        } else {
+            return Err(RepositoryCreationError::RepositoryTypeNotFound {
+                repo_type: repo_type.clone(),
+                organization: request.organization.clone(),
+            });
         }
 
         // Validate team membership if team specified
         if let Some(team) = &request.team {
-            // TODO: Validate user has permission to create repos for this team
+            if !self.config_manager.is_team_accessible(&request.organization, team).await? {
+                return Err(RepositoryCreationError::TeamNotFound {
+                    team: team.clone(),
+                });
+            }
+        }
+
+        // Validate visibility against organization policies
+        if !merged_config.is_visibility_allowed(request.visibility) {
+            return Err(RepositoryCreationError::VisibilityNotAllowed {
+                requested: request.visibility,
+                policy: merged_config.visibility_policy.clone(),
+            });
         }
 
         Ok(())
@@ -528,70 +537,39 @@ impl CreateCommand {
         Ok(())
     }
 }
-```
-
-                organization: context.organization.clone(),
-                initialization_options: InitializationOptions {
-                    include_readme: self.include_readme,
-                    readme_content: None,
-                    include_gitignore: self.include_gitignore,
-                    gitignore_template: self.gitignore_language.clone(),
-                    include_license: self.include_license,
-                    license_type: self.license_type.clone(),
-                    create_initial_commit: true,
-                },
-            };
-
-            let result = context.empty_repository_manager
-                .create_empty_repository(request)
-                .await?;
-
-            println!("✅ Created empty repository: {}", result.repository.full_name);
-            println!("🔗 URL: {}", result.repository.html_url);
-
-        } else {
-            // Create from template (existing functionality)
-            // ... template-based creation logic
-        }
-
-        Ok(())
-    }
-}
-
-```
 
 ### API Integration
 
-REST API endpoints support empty repository creation:
+REST API endpoints support non-template repository creation:
 
 ```rust
 #[derive(Deserialize)]
-pub struct CreateEmptyRepositoryRequest {
-    pub description: Option<String>,
-    pub initialization: Option<InitializationOptions>,
+pub struct CreateNonTemplateRepositoryRequest {
     pub name: String,
-    pub repository_type: Option<String>,
-    pub team: Option<String>,
+    pub description: Option<String>,
     pub visibility: RepositoryVisibility,
+    pub team: Option<String>,
+    pub repository_type: Option<String>,
+    pub creation_mode: RepositoryCreationMode,
 }
 
-#[post("/repositories/empty")]
-pub async fn create_empty_repository(
-    request: Json<CreateEmptyRepositoryRequest>,
+#[post("/repositories/non-template")]
+pub async fn create_non_template_repository(
+    request: Json<CreateNonTemplateRepositoryRequest>,
     context: web::Data<ApiContext>,
 ) -> Result<Json<RepositoryCreationResponse>, ApiError> {
-    let empty_request = EmptyRepositoryRequest {
+    let repo_request = NonTemplateRepositoryRequest {
         repository_name: request.name.clone(),
         description: request.description.clone(),
         visibility: request.visibility,
         team: request.team.clone(),
         repository_type: request.repository_type.clone(),
         organization: context.organization.clone(),
-        initialization_options: request.initialization.clone().unwrap_or_default(),
+        creation_mode: request.creation_mode.clone(),
     };
 
-    let result = context.empty_repository_manager
-        .create_empty_repository(empty_request)
+    let result = context.non_template_repository_manager
+        .create_non_template_repository(repo_request)
         .await
         .map_err(ApiError::from)?;
 
@@ -601,29 +579,51 @@ pub async fn create_empty_repository(
 
 ### MCP Integration
 
-MCP server supports empty repository creation through tools:
+MCP server supports non-template repository creation through tools:
 
 ```rust
 #[derive(Deserialize)]
-pub struct CreateEmptyRepositoryParams {
-    pub description: Option<String>,
-    pub gitignore_language: Option<String>,
-    pub include_gitignore: Option<bool>,
-    pub include_license: Option<bool>,
-    pub include_readme: Option<bool>,
-    pub license_type: Option<String>,
+pub struct CreateNonTemplateRepositoryParams {
     pub name: String,
-    pub repository_type: Option<String>,
-    pub team: Option<String>,
+    pub description: Option<String>,
     pub visibility: Option<String>,
+    pub team: Option<String>,
+    pub repository_type: Option<String>,
+    pub creation_mode: String, // "empty" or "custom-initialized"
+    pub include_readme: Option<bool>,
+    pub readme_content: Option<String>,
+    pub include_gitignore: Option<bool>,
+    pub gitignore_language: Option<String>,
+    pub gitignore_content: Option<String>,
+    pub include_license: Option<bool>,
+    pub license_type: Option<String>,
 }
 
 impl McpServer {
-    async fn handle_create_empty_repository(
+    async fn handle_create_non_template_repository(
         &self,
-        params: CreateEmptyRepositoryParams,
+        params: CreateNonTemplateRepositoryParams,
     ) -> Result<Value, McpError> {
-        let request = EmptyRepositoryRequest {
+        let creation_mode = match params.creation_mode.as_str() {
+            "empty" => RepositoryCreationMode::Empty,
+            "custom-initialized" => {
+                RepositoryCreationMode::CustomInitialized(InitializationOptions {
+                    include_readme: params.include_readme.unwrap_or(false),
+                    readme_content: params.readme_content,
+                    include_gitignore: params.include_gitignore.unwrap_or(false),
+                    gitignore_template: params.gitignore_language,
+                    gitignore_custom_content: params.gitignore_content,
+                    include_license: params.include_license.unwrap_or(false),
+                    license_type: params.license_type,
+                    custom_files: Vec::new(),
+                })
+            }
+            _ => return Err(McpError::InvalidParams {
+                message: "creation_mode must be 'empty' or 'custom-initialized'".to_string(),
+            }),
+        };
+
+        let request = NonTemplateRepositoryRequest {
             repository_name: params.name,
             description: params.description,
             visibility: params.visibility
@@ -633,19 +633,11 @@ impl McpServer {
             team: params.team,
             repository_type: params.repository_type,
             organization: self.config.organization.clone(),
-            initialization_options: InitializationOptions {
-                include_readme: params.include_readme.unwrap_or(true),
-                readme_content: None,
-                include_gitignore: params.include_gitignore.unwrap_or(false),
-                gitignore_template: params.gitignore_language,
-                include_license: params.include_license.unwrap_or(false),
-                license_type: params.license_type,
-                create_initial_commit: true,
-            },
+            creation_mode,
         };
 
-        let result = self.empty_repository_manager
-            .create_empty_repository(request)
+        let result = self.non_template_repository_manager
+            .create_non_template_repository(request)
             .await?;
 
         Ok(json!({
@@ -655,7 +647,11 @@ impl McpServer {
                 "html_url": result.repository.html_url,
                 "created_at": result.repository.created_at,
             },
-            "creation_method": "empty",
+            "creation_method": match result.creation_method {
+                CreationMethod::Empty => "empty",
+                CreationMethod::CustomInitialized => "custom-initialized",
+                _ => "unknown",
+            },
             "applied_settings": {
                 "repository_type": result.applied_configuration.repository_type,
                 "team": result.applied_configuration.team,
@@ -814,7 +810,7 @@ mod tests {
     use mockall::predicate::*;
 
     #[tokio::test]
-    async fn test_create_empty_repository_success() {
+    async fn test_create_non_template_repository_success() {
         let mut mock_github_client = MockGitHubClient::new();
         let mut mock_config_manager = MockOrganizationSettingsManager::new();
         let mut mock_init_provider = MockInitializationProvider::new();
@@ -830,35 +826,35 @@ mod tests {
             .with(eq("test-repo"), predicate::always())
             .returning(|_, _| Ok(Repository::test_repository()));
 
-        let manager = EmptyRepositoryManager {
+        let manager = NonTemplateRepositoryManager {
             config_manager: Arc::new(mock_config_manager),
             github_client: Arc::new(mock_github_client),
             repository_creator: Arc::new(RepositoryCreator::new()),
             initialization_provider: Arc::new(mock_init_provider),
         };
 
-        let request = EmptyRepositoryRequest {
+        let request = NonTemplateRepositoryRequest {
             repository_name: "test-repo".to_string(),
             description: Some("Test repository".to_string()),
             visibility: RepositoryVisibility::Private,
             team: None,
             repository_type: None,
             organization: "test-org".to_string(),
-            initialization_options: InitializationOptions::default(),
+            creation_mode: RepositoryCreationMode::Empty,
         };
 
-        let result = manager.create_empty_repository(request).await;
+        let result = manager.create_non_template_repository(request).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_repository_type_validation() {
-        // Test repository type validation for empty repositories
+        // Test repository type validation for non-template repositories
     }
 
     #[tokio::test]
     async fn test_organization_policy_enforcement() {
-        // Test that organization policies are enforced for empty repositories
+        // Test that organization policies are enforced for non-template repositories
     }
 }
 ```
@@ -867,18 +863,65 @@ mod tests {
 
 ```rust
 #[tokio::test]
+async fn test_non_template_repository_end_to_end() {
+    let test_context = IntegrationTestContext::new().await;
+
+    // Create custom-initialized repository through CLI
+    let output = test_context
+        .run_cli_command(&[
+            "create",
+            "test-custom-repo",
+            "--custom-init",
+            "--include-readme",
+            "--include-gitignore",
+            "--gitignore-language", "rust",
+            "--repository-type", "library",
+        ])
+        .await
+        .expect("CLI command should succeed");
+
+    assert!(output.contains("Created custom-initialized repository"));
+
+    // Verify repository was created correctly
+    let repository = test_context
+        .github_client
+        .get_repository("test-org/test-custom-repo")
+        .await
+        .expect("Repository should exist");
+
+    assert_eq!(repository.name, "test-custom-repo");
+
+    // Verify files were created
+    let files = test_context
+        .github_client
+        .list_repository_contents("test-org/test-custom-repo", "")
+        .await
+        .expect("Should list repository contents");
+
+    let file_names: Vec<_> = files.iter().map(|f| &f.name).collect();
+    assert!(file_names.contains(&"README.md"));
+    assert!(file_names.contains(&".gitignore"));
+
+    // Verify repository type custom property
+    let properties = test_context
+        .github_client
+        .get_repository_custom_properties("test-org/test-custom-repo")
+        .await
+        .expect("Should get custom properties");
+
+    assert_eq!(properties.get("repository_type"), Some(&"library".to_string()));
+}
+
+#[tokio::test]
 async fn test_empty_repository_end_to_end() {
     let test_context = IntegrationTestContext::new().await;
 
-    // Create empty repository through CLI
+    // Create truly empty repository through CLI
     let output = test_context
         .run_cli_command(&[
             "create",
             "test-empty-repo",
             "--empty",
-            "--include-readme",
-            "--include-gitignore",
-            "--gitignore-language", "rust",
             "--repository-type", "library",
         ])
         .await
@@ -895,16 +938,14 @@ async fn test_empty_repository_end_to_end() {
 
     assert_eq!(repository.name, "test-empty-repo");
 
-    // Verify files were created
+    // Verify no files were created (truly empty)
     let files = test_context
         .github_client
         .list_repository_contents("test-org/test-empty-repo", "")
         .await
         .expect("Should list repository contents");
 
-    let file_names: Vec<_> = files.iter().map(|f| &f.name).collect();
-    assert!(file_names.contains(&"README.md"));
-    assert!(file_names.contains(&".gitignore"));
+    assert!(files.is_empty(), "Empty repository should have no files");
 
     // Verify repository type custom property
     let properties = test_context

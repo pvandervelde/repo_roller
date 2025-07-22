@@ -42,9 +42,7 @@ The system SHALL implement a four-level configuration hierarchy with the followi
 
 ### FR-3: Metadata Repository Management
 
-### FR-2: Metadata Repository Management
-
-#### FR-2.1: Repository Discovery
+#### FR-3.1: Repository Discovery
 
 - The system SHALL support metadata repository discovery through multiple methods:
   - Configuration-based: Repository name specified in app configuration
@@ -52,7 +50,7 @@ The system SHALL implement a four-level configuration hierarchy with the followi
 - The system SHALL require metadata repository to be in the same organization as target repositories
 - The system SHALL validate metadata repository access and structure during initialization
 
-#### FR-2.2: Repository Structure
+#### FR-3.2: Repository Structure
 
 - Metadata repositories SHALL follow a standardized directory structure:
   - `global/` directory for organization-wide defaults
@@ -60,55 +58,55 @@ The system SHALL implement a four-level configuration hierarchy with the followi
   - `schemas/` directory for validation schemas
 - The system SHALL validate repository structure and required files during loading
 
-### FR-3: Global Organization Defaults
+### FR-4: Global Organization Defaults
 
-#### FR-3.1: Default Settings Management
+#### FR-4.1: Default Settings Management
 
 - Organizations SHALL define baseline repository settings in `global/defaults.toml`
 - Global defaults SHALL apply to all repositories unless explicitly overridden
 - The system SHALL support override controls for each setting (allowed/prohibited)
 - Global defaults SHALL include repository features, pull request policies, branch protection, and security settings
 
-#### FR-3.2: Override Control System
+#### FR-4.2: Override Control System
 
 - Each global setting SHALL specify whether teams/templates can override it
 - Override permissions SHALL be enforced at configuration merge time
 - Security-critical settings SHALL be marked as non-overridable
 - The system SHALL validate override attempts and reject unauthorized changes
 
-### FR-4: Team-Specific Configuration
+### FR-5: Team-Specific Configuration
 
-#### FR-4.1: Team Override Capabilities
+#### FR-5.1: Team Override Capabilities
 
 - Teams SHALL be able to override global defaults where permitted
 - Team configurations SHALL be stored in `teams/{team-name}/config.toml`
 - Team overrides SHALL only apply to repositories created for that specific team
 - The system SHALL validate team override permissions against global policies
 
-#### FR-4.2: Team-Specific Resources
+#### FR-5.2: Team-Specific Resources
 
 - Teams SHALL be able to define team-specific labels, webhooks, and GitHub Apps
 - Team resources SHALL be additive to global resources (not replacement)
 - Team-specific environments and custom properties SHALL be supported
 - The system SHALL merge team resources with global defaults appropriately
 
-### FR-5: Template-Specific Configuration
+### FR-6: Template-Specific Configuration
 
-#### FR-5.1: Template Requirements
+#### FR-6.1: Template Requirements
 
 - Templates SHALL be able to specify template-specific repository settings
 - Template configurations SHALL override team and global settings (highest precedence)
 - Templates SHALL be able to define required settings that cannot be overridden
 - The system SHALL validate template requirements during template registration
 
-#### FR-5.2: Template Resource Definition
+#### FR-6.2: Template Resource Definition
 
 - Templates SHALL support template-specific labels, variables, and post-creation actions
 - Template configurations SHALL be stored in `.reporoller/template.toml`
 - Template metadata SHALL include description, author, tags, and version information
 - The system SHALL validate template configuration syntax and constraints
 
-#### FR-5.3: Template Repository Type Specification
+#### FR-6.3: Template Repository Type Specification
 
 - Templates SHALL be able to specify the repository type for repositories created from the template
 - Templates SHALL define repository type policy as either "fixed" or "preferable"
@@ -119,48 +117,48 @@ The system SHALL implement a four-level configuration hierarchy with the followi
 - Repository type SHALL be automatically applied as a GitHub custom property upon repository creation
 - The system SHALL validate that specified repository types exist in the organization configuration
 
-### FR-6: Configuration Merging and Validation
+### FR-7: Configuration Merging and Validation
 
-#### FR-6.1: Hierarchical Merging
+#### FR-7.1: Hierarchical Merging
 
 - The system SHALL merge configurations following the established precedence hierarchy
 - Field-level merging SHALL be supported for complex configuration objects
 - Collection fields (labels, webhooks) SHALL be merged additively
 - The system SHALL detect and resolve configuration conflicts appropriately
 
-#### FR-6.2: Override Validation
+#### FR-7.2: Override Validation
 
 - The system SHALL validate all override attempts against global policies
 - Unauthorized override attempts SHALL be rejected with clear error messages
 - Override validation SHALL occur during configuration merge process
 - The system SHALL maintain audit trail of override attempts and violations
 
-### FR-7: Configuration Caching and Performance
+### FR-8: Configuration Caching and Performance
 
-#### FR-7.1: Intelligent Caching
+#### FR-8.1: Intelligent Caching
 
 - The system SHALL cache loaded configurations to improve performance
 - Cache TTL SHALL be configurable per configuration type
 - Cache invalidation SHALL be triggered by configuration repository changes
 - The system SHALL support concurrent access to cached configurations
 
-#### FR-7.2: Configuration Loading
+#### FR-8.2: Configuration Loading
 
 - Configuration loading SHALL be optimized for common access patterns
 - The system SHALL support lazy loading of team configurations when needed
 - Configuration validation SHALL be performed during loading phase
 - The system SHALL provide clear error messages for configuration loading failures
 
-### FR-8: Dynamic Configuration Updates
+### FR-9: Dynamic Configuration Updates
 
-#### FR-8.1: Runtime Configuration Changes
+#### FR-9.1: Runtime Configuration Changes
 
 - The system SHALL detect changes to metadata repository configurations
 - Configuration updates SHALL be applied to new repository creation requests
 - In-progress repository creations SHALL use configuration snapshot at start time
 - The system SHALL provide notification mechanism for configuration changes
 
-#### FR-8.2: Configuration Validation
+#### FR-9.2: Configuration Validation
 
 - All configuration changes SHALL be validated before application
 - The system SHALL support schema-based validation using JSON Schema

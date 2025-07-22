@@ -326,7 +326,7 @@ allow_merge_commit = { value = false, override_allowed = true }
 allow_squash_merge = { value = true, override_allowed = true }
 required_approving_review_count = { value = 1, override_allowed = true }
 require_conversation_resolution = { value = true, override_allowed = false }  # Quality policy
-ble
+
 [branch_protection]
 default_branch = { value = "main", override_allowed = true }
 require_pull_request_reviews = { value = true, override_allowed = false }  # Security policy
