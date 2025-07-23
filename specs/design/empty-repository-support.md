@@ -259,34 +259,6 @@ impl NonTemplateRepositoryManager {
         Ok(())
     }
 }
-
-        } else {
-            return Err(RepositoryCreationError::RepositoryTypeNotFound {
-                repo_type: repo_type.clone(),
-                organization: request.organization.clone(),
-            });
-        }
-
-        // Validate team membership if team specified
-        if let Some(team) = &request.team {
-            if !self.config_manager.is_team_accessible(&request.organization, team).await? {
-                return Err(RepositoryCreationError::TeamNotFound {
-                    team: team.clone(),
-                });
-            }
-        }
-
-        // Validate visibility against organization policies
-        if !merged_config.is_visibility_allowed(request.visibility) {
-            return Err(RepositoryCreationError::VisibilityNotAllowed {
-                requested: request.visibility,
-                policy: merged_config.visibility_policy.clone(),
-            });
-        }
-
-        Ok(())
-    }
-}
 ```
 
 ### Initialization Provider

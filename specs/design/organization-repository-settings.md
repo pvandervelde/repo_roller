@@ -836,18 +836,18 @@ impl OrganizationSettingsManager {
             match repo_type_spec.policy {
                 RepositoryTypePolicy::Fixed => {
                     // Template enforces the repository type - user cannot override
-                    if user_override.is_some() && user_override != Some(&repo_type_spec.r#type) {
+                    if user_override.is_some() && user_override != Some(&repo_type_spec.repository_type) {
                         return Err(ConfigurationError::RepositoryTypeOverrideNotAllowed {
-                            template_type: repo_type_spec.r#type.clone(),
+                            template_type: repo_type_spec.repository_type.clone(),
                             attempted_override: user_override.unwrap().to_string(),
                             template_name: template_config.template.name.clone(),
                         });
                     }
-                    Ok(Some(repo_type_spec.r#type.clone()))
+                    Ok(Some(repo_type_spec.repository_type.clone()))
                 }
                 RepositoryTypePolicy::Preferable => {
                     // User can override, but template provides default
-                    Ok(Some(user_override.unwrap_or(&repo_type_spec.r#type).to_string()))
+                    Ok(Some(user_override.unwrap_or(&repo_type_spec.repository_type).to_string()))
                 }
             }
         } else {
