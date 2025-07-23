@@ -31,6 +31,10 @@ What the system must accomplish and how it should behave.
 
 - [**Functional Requirements**](requirements/functional-requirements.md) - Core system capabilities
 - [**Repository Management**](requirements/repository-management.md) - GitHub repository features and settings
+- [**Repository Visibility**](requirements/repository-visibility.md) - Visibility handling and organization policies
+- [**Organization Repository Settings**](requirements/organization-repository-settings.md) - Organization-specific configuration management
+- [**Non-Template Repository Support**](requirements/empty-repository-support.md) - Creating repositories without templates (empty or custom-initialized)
+- [**Multi-Level Permissions System**](requirements/multi-level-permissions.md) - Hierarchical permission management across org/type/template/user levels
 - [**Non-Functional Requirements**](requirements/non-functional-requirements.md) - Performance, security, and reliability
 
 ### 🎨 Design
@@ -39,6 +43,10 @@ Detailed design specifications for key system areas.
 
 - [**Authentication**](design/authentication.md) - GitHub App integration and user authentication
 - [**Template Processing**](design/template-processing.md) - Template engine and variable substitution
+- [**Repository Visibility**](design/repository-visibility.md) - Visibility determination and policy enforcement
+- [**Organization Repository Settings**](design/organization-repository-settings.md) - Configuration management and hierarchical merging
+- [**Non-Template Repository Support**](design/empty-repository-support.md) - Template-free repository creation with empty and custom-initialization modes
+- [**Multi-Level Permissions System**](design/multi-level-permissions.md) - Hierarchical permission management with approval workflows and compliance monitoring
 - [**Configuration Management**](design/configuration-management.md) - Configuration schema and loading
 - [**Error Handling**](design/error-handling.md) - Error handling strategies and user experience
 
