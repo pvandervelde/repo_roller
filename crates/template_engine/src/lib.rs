@@ -83,12 +83,19 @@
 use async_trait::async_trait;
 use github_client::GitHubClient;
 use glob::{MatchOptions, Pattern};
+use handlebars::{
+    Context, Handlebars, Helper, HelperDef, JsonRender, Output, RenderContext, RenderError,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
 pub mod errors;
 pub use errors::Error;
+
+pub mod handlebars_engine;
+pub use handlebars_engine::*;
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]
