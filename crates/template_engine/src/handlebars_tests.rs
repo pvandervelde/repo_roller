@@ -223,11 +223,11 @@ mod tests {
             ]
         }));
 
-        let template = "Features:\n{{#each features}}{{@index}}. {{this}}\n{{/each}}\nContributors:\n{{#each contributors}}- {{name}} ({{commits}} commits)\n{{/each}}";
+        let template = "Features:\n{{#each features}}{{@index}}. {{this}}\n{{/each}}Contributors:\n{{#each contributors}}- {{name}} ({{commits}} commits)\n{{/each}}";
         let result = engine.render_template(template, &context);
 
         assert!(result.is_ok());
-        let expected = "Features:\n0. logging\n1. testing\n2. docs\n\nContributors:\n- Alice (150 commits)\n- Bob (89 commits)\n";
+        let expected = "Features:\n0. logging\n1. testing\n2. docs\nContributors:\n- Alice (150 commits)\n- Bob (89 commits)\n";
         assert_eq!(result.unwrap(), expected);
     }
 

@@ -47,6 +47,7 @@
 //! # }
 //! ```
 
+use chrono;
 use handlebars::{
     Context, Handlebars, Helper, HelperDef, JsonRender, Output, RenderContext, RenderError,
 };
@@ -58,6 +59,196 @@ use thiserror::Error;
 #[cfg(test)]
 #[path = "handlebars_tests.rs"]
 mod handlebars_tests;
+
+// ================================
+// Custom Handlebars Helpers
+// ================================
+
+/// Helper to convert text to snake_case format.
+struct SnakeCaseHelper;
+
+impl HelperDef for SnakeCaseHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let param = h
+            .param(0)
+            .and_then(|v| v.value().as_str())
+            .ok_or_else(|| RenderError::new("snake_case helper requires a string parameter"))?;
+
+        let snake_case = param
+            .trim()
+            .replace(' ', "_")
+            .replace('-', "_")
+            .to_lowercase();
+
+        out.write(&snake_case)?;
+        Ok(())
+    }
+}
+
+/// Helper to convert text to kebab-case format.
+struct KebabCaseHelper;
+
+impl HelperDef for KebabCaseHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let param = h
+            .param(0)
+            .and_then(|v| v.value().as_str())
+            .ok_or_else(|| RenderError::new("kebab_case helper requires a string parameter"))?;
+
+        let kebab_case = param
+            .trim()
+            .replace(' ', "-")
+            .replace('_', "-")
+            .to_lowercase();
+
+        out.write(&kebab_case)?;
+        Ok(())
+    }
+}
+
+/// Helper to convert text to UPPER_CASE format.
+struct UpperCaseHelper;
+
+impl HelperDef for UpperCaseHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let param = h
+            .param(0)
+            .and_then(|v| v.value().as_str())
+            .ok_or_else(|| RenderError::new("upper_case helper requires a string parameter"))?;
+
+        out.write(&param.to_uppercase())?;
+        Ok(())
+    }
+}
+
+/// Helper to convert text to lowercase format.
+struct LowerCaseHelper;
+
+impl HelperDef for LowerCaseHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let param = h
+            .param(0)
+            .and_then(|v| v.value().as_str())
+            .ok_or_else(|| RenderError::new("lower_case helper requires a string parameter"))?;
+
+        out.write(&param.to_lowercase())?;
+        Ok(())
+    }
+}
+
+/// Helper to capitalize the first letter of text.
+struct CapitalizeHelper;
+
+impl HelperDef for CapitalizeHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let param = h
+            .param(0)
+            .and_then(|v| v.value().as_str())
+            .ok_or_else(|| RenderError::new("capitalize helper requires a string parameter"))?;
+
+        let capitalized = if let Some(first_char) = param.chars().next() {
+            let mut result = first_char.to_uppercase().collect::<String>();
+            result.push_str(&param[first_char.len_utf8()..]);
+            result
+        } else {
+            param.to_string()
+        };
+
+        out.write(&capitalized)?;
+        Ok(())
+    }
+}
+
+/// Helper to provide default values for undefined variables.
+struct DefaultHelper;
+
+impl HelperDef for DefaultHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let value = h.param(0);
+        let default_value = h
+            .param(1)
+            .ok_or_else(|| RenderError::new("default helper requires a default value parameter"))?;
+
+        if let Some(val) = value {
+            if !val.value().is_null() {
+                out.write(&val.value().render())?;
+            } else {
+                out.write(&default_value.value().render())?;
+            }
+        } else {
+            out.write(&default_value.value().render())?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Helper to generate current timestamp.
+struct TimestampHelper;
+
+impl HelperDef for TimestampHelper {
+    fn call<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'reg, 'rc>,
+        _: &'reg Handlebars<'reg>,
+        _: &'rc Context,
+        _: &mut RenderContext<'reg, 'rc>,
+        out: &mut dyn Output,
+    ) -> Result<(), RenderError> {
+        let format = h
+            .param(0)
+            .and_then(|v| v.value().as_str())
+            .unwrap_or("%Y-%m-%d %H:%M:%S");
+
+        let now = chrono::Utc::now();
+        let formatted = now.format(format).to_string();
+
+        out.write(&formatted)?;
+        Ok(())
+    }
+}
 
 /// Errors that can occur during Handlebars template processing.
 ///
@@ -333,14 +524,12 @@ pub struct HandlebarsTemplateEngine {
     /// This is the core Handlebars engine that handles template compilation,
     /// helper registration, and rendering. It maintains a registry of compiled
     /// templates and custom helpers.
-    #[allow(dead_code)]
     handlebars: Handlebars<'static>,
 
     /// Configuration for template rendering behavior.
     ///
     /// Controls security restrictions, performance limits, and error handling
     /// strategies used during template processing.
-    #[allow(dead_code)]
     config: TemplateRenderConfig,
 }
 
@@ -464,8 +653,11 @@ impl HandlebarsTemplateEngine {
     /// # Ok::<(), template_engine::HandlebarsError>(())
     /// ```
     pub fn new() -> Result<Self, HandlebarsError> {
-        let handlebars = Handlebars::new();
+        let mut handlebars = Handlebars::new();
         let config = TemplateRenderConfig::default();
+
+        // Configure handlebars based on our config
+        handlebars.set_strict_mode(config.strict_variables);
 
         Ok(Self { handlebars, config })
     }
@@ -491,7 +683,10 @@ impl HandlebarsTemplateEngine {
     /// # Ok::<(), template_engine::HandlebarsError>(())
     /// ```
     pub fn with_config(config: TemplateRenderConfig) -> Result<Self, HandlebarsError> {
-        let handlebars = Handlebars::new();
+        let mut handlebars = Handlebars::new();
+
+        // Configure handlebars based on our config
+        handlebars.set_strict_mode(config.strict_variables);
 
         Ok(Self { handlebars, config })
     }
@@ -527,7 +722,34 @@ impl HandlebarsTemplateEngine {
     /// # Ok::<(), template_engine::HandlebarsError>(())
     /// ```
     pub fn register_custom_helpers(&mut self) -> Result<(), HandlebarsError> {
-        // TODO: implement - register all custom helpers
+        // Register snake_case helper
+        self.handlebars
+            .register_helper("snake_case", Box::new(SnakeCaseHelper));
+
+        // Register kebab_case helper
+        self.handlebars
+            .register_helper("kebab_case", Box::new(KebabCaseHelper));
+
+        // Register upper_case helper
+        self.handlebars
+            .register_helper("upper_case", Box::new(UpperCaseHelper));
+
+        // Register lower_case helper
+        self.handlebars
+            .register_helper("lower_case", Box::new(LowerCaseHelper));
+
+        // Register capitalize helper
+        self.handlebars
+            .register_helper("capitalize", Box::new(CapitalizeHelper));
+
+        // Register default helper
+        self.handlebars
+            .register_helper("default", Box::new(DefaultHelper));
+
+        // Register timestamp helper
+        self.handlebars
+            .register_helper("timestamp", Box::new(TimestampHelper));
+
         Ok(())
     }
 
@@ -568,11 +790,57 @@ impl HandlebarsTemplateEngine {
     /// ```
     pub fn render_template(
         &self,
-        #[allow(unused_variables)] template: &str,
-        #[allow(unused_variables)] context: &TemplateContext,
+        template: &str,
+        context: &TemplateContext,
     ) -> Result<String, HandlebarsError> {
-        // TODO: implement - render template with handlebars
-        Ok(String::new())
+        // Check template size limit
+        if template.len() > self.config.max_template_size {
+            return Err(HandlebarsError::ResourceLimit {
+                limit_type: "template_size".to_string(),
+                message: format!(
+                    "Template size {} bytes exceeds limit of {} bytes",
+                    template.len(),
+                    self.config.max_template_size
+                ),
+            });
+        }
+
+        // Render the template with the provided context
+        let result = self
+            .handlebars
+            .render_template(template, &context.variables)
+            .map_err(|e| {
+                // Check the error type and message to categorize appropriately
+                let err_msg = e.to_string();
+
+                // Check for missing variable errors in strict mode
+                if err_msg.contains("Variable") && err_msg.contains("not found") {
+                    HandlebarsError::VariableValidation {
+                        variable: "unknown".to_string(), // Could parse from error message
+                        reason: err_msg,
+                    }
+                }
+                // Check for compilation/syntax errors
+                else if err_msg.contains("parse")
+                    || err_msg.contains("Parse")
+                    || err_msg.contains("syntax")
+                    || err_msg.contains("Syntax")
+                    || err_msg.contains("invalid")
+                    || err_msg.contains("Invalid")
+                    || err_msg.contains("unclosed")
+                    || err_msg.contains("Unclosed")
+                    || err_msg.contains("unexpected")
+                    || err_msg.contains("Unexpected")
+                {
+                    HandlebarsError::CompilationError { message: err_msg }
+                }
+                // All other errors are render errors
+                else {
+                    HandlebarsError::RenderError { message: err_msg }
+                }
+            })?;
+
+        Ok(result)
     }
 
     /// Processes a file path template to generate the actual file path.
@@ -627,11 +895,16 @@ impl HandlebarsTemplateEngine {
     /// ```
     pub fn template_file_path(
         &self,
-        #[allow(unused_variables)] path_template: &str,
-        #[allow(unused_variables)] context: &TemplateContext,
+        path_template: &str,
+        context: &TemplateContext,
     ) -> Result<String, HandlebarsError> {
-        // TODO: implement - process file path template with security validation
-        Ok(String::new())
+        // First render the path template
+        let rendered_path = self.render_template(path_template, context)?;
+
+        // Then validate the resulting path for security
+        self.validate_file_path(&rendered_path)?;
+
+        Ok(rendered_path)
     }
 
     /// Validates that a generated file path is safe and filesystem-compatible.
@@ -679,11 +952,84 @@ impl HandlebarsTemplateEngine {
     /// assert!(engine.validate_file_path("file<>name").is_err());
     /// # Ok::<(), template_engine::HandlebarsError>(())
     /// ```
-    pub fn validate_file_path(
-        &self,
-        #[allow(unused_variables)] path: &str,
-    ) -> Result<(), HandlebarsError> {
-        // TODO: implement - comprehensive path validation
+    pub fn validate_file_path(&self, path: &str) -> Result<(), HandlebarsError> {
+        // Check for empty path
+        if path.is_empty() {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Path cannot be empty".to_string(),
+            });
+        }
+
+        // Check for special directory names
+        if path == "." || path == ".." {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Path cannot be '.' or '..'".to_string(),
+            });
+        }
+
+        // Check for directory traversal patterns
+        if path.contains("..") {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Path contains directory traversal sequence '..'".to_string(),
+            });
+        }
+
+        // Check for absolute paths (Unix and Windows)
+        if path.starts_with('/') || path.starts_with('\\') {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Absolute paths are not allowed".to_string(),
+            });
+        }
+
+        // Check for Windows drive letters
+        if path.len() >= 2 && path.chars().nth(1) == Some(':') {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Windows drive letters are not allowed".to_string(),
+            });
+        }
+
+        // Check for UNC paths
+        if path.starts_with("\\\\") {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "UNC paths are not allowed".to_string(),
+            });
+        }
+
+        // Check for null bytes
+        if path.contains('\0') {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Path contains null byte".to_string(),
+            });
+        }
+
+        // Check for invalid characters on Windows
+        if cfg!(windows) {
+            let invalid_chars = ['<', '>', '|', '?', '*'];
+            for ch in invalid_chars.iter() {
+                if path.contains(*ch) {
+                    return Err(HandlebarsError::InvalidPath {
+                        path: path.to_string(),
+                        reason: format!("Path contains invalid character '{}'", ch),
+                    });
+                }
+            }
+        }
+
+        // Check path length (conservative limit)
+        if path.len() > 255 {
+            return Err(HandlebarsError::InvalidPath {
+                path: path.to_string(),
+                reason: "Path exceeds maximum length of 255 characters".to_string(),
+            });
+        }
+
         Ok(())
     }
 }
