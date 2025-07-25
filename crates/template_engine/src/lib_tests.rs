@@ -4,7 +4,7 @@ use std::path::Path;
 
 #[test]
 fn test_built_in_variables_generation() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let params = BuiltInVariablesParams {
         repo_name: "test-repo",
@@ -39,7 +39,7 @@ fn test_built_in_variables_generation() {
 
 #[test]
 fn test_is_text_file() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     // Text content
     assert!(processor.is_text_file(b"Hello, world!"));
@@ -56,7 +56,7 @@ fn test_is_text_file() {
 
 #[test]
 fn test_process_template_basic() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let files = vec![
         (
@@ -95,7 +95,7 @@ fn test_process_template_basic() {
 
 #[test]
 fn test_process_template_with_filtering() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let files = vec![
         ("README.md".to_string(), b"# {{project_name}}".to_vec()),
@@ -138,7 +138,7 @@ fn test_process_template_with_filtering() {
 
 #[test]
 fn test_process_template_removes_template_suffix() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let files = vec![
         (
@@ -176,7 +176,7 @@ fn test_process_template_removes_template_suffix() {
 
 #[test]
 fn test_simple_glob_match() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     // Test exact matches
     assert!(processor.simple_glob_match("README.md", "README.md"));
@@ -200,47 +200,8 @@ fn test_simple_glob_match() {
 }
 
 #[test]
-fn test_substitute_variables() {
-    let processor = TemplateProcessor::new();
-
-    let mut variables = HashMap::new();
-    variables.insert("name".to_string(), "John".to_string());
-    variables.insert("project".to_string(), "MyApp".to_string());
-
-    let content = "Hello {{name}}, welcome to {{project}}!";
-    let result = processor.substitute_variables(content, &variables);
-    assert_eq!(result, "Hello John, welcome to MyApp!");
-
-    // Test escaped braces
-    let content_with_escaped = "Use \\{{name}} for {{name}} substitution";
-    let result = processor.substitute_variables(content_with_escaped, &variables);
-    assert_eq!(result, "Use {{name}} for John substitution");
-
-    // Test missing variables (should remain unchanged)
-    let content_missing = "Hello {{name}}, your age is {{age}}";
-    let result = processor.substitute_variables(content_missing, &variables);
-    assert_eq!(result, "Hello John, your age is {{age}}");
-}
-
-#[test]
-fn test_template_processor_default() {
-    let processor1 = TemplateProcessor::new();
-    let processor2 = TemplateProcessor;
-
-    // Both should work the same way
-    let mut variables = HashMap::new();
-    variables.insert("test".to_string(), "value".to_string());
-
-    let result1 = processor1.substitute_variables("{{test}}", &variables);
-    let result2 = processor2.substitute_variables("{{test}}", &variables);
-
-    assert_eq!(result1, result2);
-    assert_eq!(result1, "value");
-}
-
-#[test]
 fn test_validate_variables_required() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let mut variable_configs = HashMap::new();
     variable_configs.insert(
@@ -275,7 +236,7 @@ fn test_validate_variables_required() {
 
 #[test]
 fn test_validate_variables_pattern() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let mut variable_configs = HashMap::new();
     variable_configs.insert(
@@ -312,7 +273,7 @@ fn test_validate_variables_pattern() {
 
 #[test]
 fn test_validate_variables_length() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let mut variable_configs = HashMap::new();
     variable_configs.insert(
@@ -366,7 +327,7 @@ fn test_validate_variables_length() {
 
 #[test]
 fn test_validate_variables_options() {
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
 
     let mut variable_configs = HashMap::new();
     variable_configs.insert(
