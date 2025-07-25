@@ -586,8 +586,18 @@ impl Default for TemplateProcessor {
     /// Creates a new TemplateProcessor with default settings.
     ///
     /// This is equivalent to calling `TemplateProcessor::new()`.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the Handlebars engine cannot be initialized.
+    /// This could happen if:
+    /// - System is out of memory
+    /// - Required dependencies are missing or corrupted
+    /// - Custom helpers fail to register due to naming conflicts
+    ///
+    /// For error handling, use `TemplateProcessor::new()` instead.
     fn default() -> Self {
-        Self::new().expect("Failed to create default TemplateProcessor")
+        Self::new().expect("Failed to create default TemplateProcessor: ensure sufficient memory and valid Handlebars dependencies")
     }
 }
 
@@ -612,18 +622,13 @@ impl TemplateProcessor {
     /// # Ok::<(), template_engine::Error>(())
     /// ```
     pub fn new() -> Result<Self, Error> {
-        let mut handlebars_engine =
-            HandlebarsTemplateEngine::new().map_err(|e| Error::VariableValidation {
-                variable: "handlebars_engine".to_string(),
-                reason: format!("Failed to initialize Handlebars engine: {}", e),
-            })?;
+        let mut handlebars_engine = HandlebarsTemplateEngine::new().map_err(|e| {
+            Error::EngineInitialization(format!("Failed to initialize Handlebars engine: {}", e))
+        })?;
 
-        handlebars_engine
-            .register_custom_helpers()
-            .map_err(|e| Error::VariableValidation {
-                variable: "handlebars_helpers".to_string(),
-                reason: format!("Failed to register custom helpers: {}", e),
-            })?;
+        handlebars_engine.register_custom_helpers().map_err(|e| {
+            Error::EngineInitialization(format!("Failed to register custom helpers: {}", e))
+        })?;
 
         Ok(Self { handlebars_engine })
     }

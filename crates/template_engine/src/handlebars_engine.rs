@@ -15,12 +15,10 @@
 //!
 //! ## Examples
 //!
-//! ```rust,ignore
-//! use template_engine::{HandlebarsTemplateEngine, TemplateContext};
-//! use std::collections::HashMap;
-//! use serde_json::json;
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! ```rust
+//! # use template_engine::{HandlebarsTemplateEngine, TemplateContext};
+//! # use serde_json::json;
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create template engine with custom helpers
 //! let mut engine = HandlebarsTemplateEngine::new()?;
 //! engine.register_custom_helpers()?;
@@ -35,14 +33,14 @@
 //! let context = TemplateContext::new(variables);
 //!
 //! // Process template content
-//! let template = "# {{repo_name}}\n{{#if features}}Features: {{#each features}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}}";
+//! let template = "# {{repo_name}}";
 //! let result = engine.render_template(template, &context)?;
-//! println!("{}", result); // "# my-awesome-project\nFeatures: logging, testing, docs"
+//! assert_eq!(result, "# my-awesome-project");
 //!
-//! // Process file path
-//! let file_path = "{{snake_case repo_name}}/{{author.name}}.md";
+//! // Process file path with helper
+//! let file_path = "{{snake_case repo_name}}.md";
 //! let processed_path = engine.template_file_path(file_path, &context)?;
-//! println!("{}", processed_path); // "my_awesome_project/John Doe.md"
+//! assert_eq!(processed_path, "my_awesome_project.md");
 //! # Ok(())
 //! # }
 //! ```
@@ -53,7 +51,6 @@ use handlebars::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[cfg(test)]
@@ -83,9 +80,12 @@ impl HelperDef for SnakeCaseHelper {
 
         let snake_case = param
             .trim()
-            .replace(' ', "_")
-            .replace('-', "_")
-            .to_lowercase();
+            .chars()
+            .map(|c| match c {
+                ' ' | '-' => '_',
+                c => c.to_ascii_lowercase(),
+            })
+            .collect::<String>();
 
         out.write(&snake_case)?;
         Ok(())
@@ -111,9 +111,12 @@ impl HelperDef for KebabCaseHelper {
 
         let kebab_case = param
             .trim()
-            .replace(' ', "-")
-            .replace('_', "-")
-            .to_lowercase();
+            .chars()
+            .map(|c| match c {
+                ' ' | '_' => '-',
+                c => c.to_ascii_lowercase(),
+            })
+            .collect::<String>();
 
         out.write(&kebab_case)?;
         Ok(())
