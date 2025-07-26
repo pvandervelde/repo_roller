@@ -365,3 +365,194 @@ fn test_validate_variables_options() {
         Error::VariableValidation { .. }
     ));
 }
+
+#[test]
+fn test_process_template_with_default_values() {
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
+
+    let files = vec![
+        (
+            "README.md".to_string(),
+            b"# {{project_name}}\n\nBy {{author}}".to_vec(),
+        ),
+        (
+            "config.yml".to_string(),
+            b"version: {{version}}\nenvironment: {{env}}".to_vec(),
+        ),
+    ];
+
+    // Don't provide any user variables - should use defaults
+    let user_variables = HashMap::new();
+
+    // Configure variables with default values
+    let mut variable_configs = HashMap::new();
+    variable_configs.insert(
+        "project_name".to_string(),
+        VariableConfig {
+            description: "Project name".to_string(),
+            example: None,
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("Default Project".to_string()),
+        },
+    );
+    variable_configs.insert(
+        "author".to_string(),
+        VariableConfig {
+            description: "Author name".to_string(),
+            example: None,
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("Default Author".to_string()),
+        },
+    );
+    variable_configs.insert(
+        "version".to_string(),
+        VariableConfig {
+            description: "Version number".to_string(),
+            example: None,
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("1.0.0".to_string()),
+        },
+    );
+    variable_configs.insert(
+        "env".to_string(),
+        VariableConfig {
+            description: "Environment".to_string(),
+            example: None,
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("development".to_string()),
+        },
+    );
+
+    let request = TemplateProcessingRequest {
+        variables: user_variables,
+        built_in_variables: HashMap::new(),
+        variable_configs,
+        templating_config: None,
+    };
+
+    let result = processor
+        .process_template(&files, &request, Path::new("."))
+        .unwrap();
+
+    assert_eq!(result.files.len(), 2);
+
+    let readme_content = String::from_utf8(result.files[0].1.clone()).unwrap();
+    assert_eq!(readme_content, "# Default Project\n\nBy Default Author");
+
+    let config_content = String::from_utf8(result.files[1].1.clone()).unwrap();
+    assert_eq!(config_content, "version: 1.0.0\nenvironment: development");
+}
+
+#[test]
+fn test_integration_test_variable_substitution_scenario() {
+    // This test simulates the exact integration test scenario that was failing
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
+
+    // Files from test-variables template (as documented in specs)
+    let files = vec![
+        (
+            "README.md".to_string(),
+            b"# {{project_name}}\n\n{{project_description}}".to_vec(),
+        ),
+        (
+            "src/main.rs".to_string(),
+            b"fn main() {\n    println!(\"Hello from {{project_name}}!\");\n}".to_vec(),
+        ),
+        (
+            "Cargo.toml".to_string(),
+            b"[package]\nname = \"{{project_name}}\"\nversion = \"{{version}}\"".to_vec(),
+        ),
+    ];
+
+    // Empty user variables (as was happening in integration test)
+    let user_variables = HashMap::new();
+
+    // Built-in variables (as provided by repo_roller_core)
+    let mut built_in_variables = HashMap::new();
+    built_in_variables.insert("repo_name".to_string(), "test-repo-name".to_string());
+    built_in_variables.insert("org_name".to_string(), "test-org".to_string());
+
+    // Variable configs with defaults (our fix to integration test)
+    let mut variable_configs = HashMap::new();
+    variable_configs.insert(
+        "project_name".to_string(),
+        VariableConfig {
+            description: "Name of the project".to_string(),
+            example: Some("my-awesome-project".to_string()),
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("test-project".to_string()),
+        },
+    );
+    variable_configs.insert(
+        "project_description".to_string(),
+        VariableConfig {
+            description: "Description of the project".to_string(),
+            example: Some("A simple test project".to_string()),
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("Integration test project for RepoRoller".to_string()),
+        },
+    );
+    variable_configs.insert(
+        "version".to_string(),
+        VariableConfig {
+            description: "Project version".to_string(),
+            example: Some("1.0.0".to_string()),
+            required: Some(false),
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+            default: Some("0.1.0".to_string()),
+        },
+    );
+
+    let request = TemplateProcessingRequest {
+        variables: user_variables,
+        built_in_variables,
+        variable_configs,
+        templating_config: None,
+    };
+
+    // This was failing before our fix, should now succeed
+    let result = processor
+        .process_template(&files, &request, Path::new("."))
+        .expect("Template processing should succeed with default values");
+
+    assert_eq!(result.files.len(), 3);
+
+    // Verify defaults were applied and built-ins were preserved
+    let readme_content = String::from_utf8(result.files[0].1.clone()).unwrap();
+    assert!(readme_content.contains("# test-project"));
+    assert!(readme_content.contains("Integration test project for RepoRoller"));
+
+    let src_content = String::from_utf8(result.files[1].1.clone()).unwrap();
+    assert!(src_content.contains("Hello from test-project!"));
+
+    let cargo_content = String::from_utf8(result.files[2].1.clone()).unwrap();
+    assert!(cargo_content.contains("name = \"test-project\""));
+    assert!(cargo_content.contains("version = \"0.1.0\""));
+}

@@ -61,6 +61,141 @@ impl TestScenario {
             _ => Some(format!("Test template for {}", self.test_name())),
         };
 
+        // Create variable configurations with defaults for VariableSubstitution scenario
+        let variable_configs = if matches!(self, TestScenario::VariableSubstitution) {
+            let mut configs = HashMap::new();
+
+            configs.insert(
+                "project_name".to_string(),
+                config_manager::VariableConfig {
+                    description: "Name of the project".to_string(),
+                    example: Some("my-awesome-project".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("test-project".to_string()),
+                },
+            );
+
+            configs.insert(
+                "project_description".to_string(),
+                config_manager::VariableConfig {
+                    description: "Description of the project".to_string(),
+                    example: Some("A simple test project".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("Integration test project for RepoRoller".to_string()),
+                },
+            );
+
+            configs.insert(
+                "author_name".to_string(),
+                config_manager::VariableConfig {
+                    description: "Author's name".to_string(),
+                    example: Some("John Doe".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("RepoRoller Test".to_string()),
+                },
+            );
+
+            configs.insert(
+                "author_email".to_string(),
+                config_manager::VariableConfig {
+                    description: "Author's email".to_string(),
+                    example: Some("john@example.com".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("test@example.com".to_string()),
+                },
+            );
+
+            configs.insert(
+                "version".to_string(),
+                config_manager::VariableConfig {
+                    description: "Project version".to_string(),
+                    example: Some("1.0.0".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("0.1.0".to_string()),
+                },
+            );
+
+            configs.insert(
+                "license".to_string(),
+                config_manager::VariableConfig {
+                    description: "License type".to_string(),
+                    example: Some("MIT".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("MIT".to_string()),
+                },
+            );
+
+            configs.insert(
+                "custom_ignore".to_string(),
+                config_manager::VariableConfig {
+                    description: "Additional gitignore patterns".to_string(),
+                    example: Some("*.tmp".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("*.test".to_string()),
+                },
+            );
+
+            configs.insert(
+                "debug_mode".to_string(),
+                config_manager::VariableConfig {
+                    description: "Boolean for debug mode".to_string(),
+                    example: Some("true".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("true".to_string()),
+                },
+            );
+
+            configs.insert(
+                "environment".to_string(),
+                config_manager::VariableConfig {
+                    description: "Environment name".to_string(),
+                    example: Some("production".to_string()),
+                    required: Some(false),
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                    options: None,
+                    default: Some("development".to_string()),
+                },
+            );
+
+            Some(configs)
+        } else {
+            Some(HashMap::new())
+        };
+
         TemplateConfig {
             name: self.template_name().to_string(),
             source_repo: format!(
@@ -76,7 +211,7 @@ impl TestScenario {
             branch_protection_rules: None,
             action_permissions: None,
             required_variables: None,
-            variable_configs: Some(HashMap::new()),
+            variable_configs,
         }
     }
 }

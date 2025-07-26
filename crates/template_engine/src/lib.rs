@@ -638,10 +638,20 @@ impl TemplateProcessor {
         &self,
         variables: &HashMap<String, String>,
         built_in_variables: &HashMap<String, String>,
+        variable_configs: &HashMap<String, VariableConfig>,
     ) -> Result<serde_json::Value, Error> {
         let mut all_variables = variables.clone();
 
-        // Built-in variables override user variables
+        // Apply default values from variable configs for missing variables
+        for (var_name, config) in variable_configs {
+            if !all_variables.contains_key(var_name) {
+                if let Some(ref default_value) = config.default {
+                    all_variables.insert(var_name.clone(), default_value.clone());
+                }
+            }
+        }
+
+        // Built-in variables override user variables and defaults
         for (key, value) in built_in_variables {
             all_variables.insert(key.clone(), value.clone());
         }
@@ -727,8 +737,11 @@ impl TemplateProcessor {
         self.validate_variables(request)?;
 
         // Convert HashMap variables to JSON format for Handlebars
-        let all_variables =
-            self.convert_variables_to_json(&request.variables, &request.built_in_variables)?;
+        let all_variables = self.convert_variables_to_json(
+            &request.variables,
+            &request.built_in_variables,
+            &request.variable_configs,
+        )?;
         let context = TemplateContext::new(all_variables);
 
         let mut processed_files = Vec::new();
