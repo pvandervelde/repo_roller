@@ -10,6 +10,9 @@ use std::io;
 use std::path::Path;
 use thiserror::Error;
 
+// Organization-specific repository configuration structures
+pub mod organization;
+
 // Unit tests will be added in a separate file: lib_tests.rs
 #[path = "lib_tests.rs"]
 #[cfg(test)]
