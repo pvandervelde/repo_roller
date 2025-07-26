@@ -89,6 +89,31 @@ pub enum CommitMessageOption {
     PullRequestTitleAndCommitDetails,
 }
 
+/// GitHub Actions workflow token permissions.
+///
+/// This enum represents the different permission levels that can be assigned to
+/// workflow tokens by default. These permissions control what API operations
+/// workflows can perform against the repository.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::WorkflowPermission;
+///
+/// let permission = WorkflowPermission::Read;
+/// assert_eq!(format!("{:?}", permission), "Read");
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkflowPermission {
+    /// No permissions - most restrictive setting.
+    None,
+    /// Read access to repository contents and metadata.
+    Read,
+    /// Read and write access to repository contents and metadata.
+    Write,
+}
+
 /// Webhook events that can trigger notifications.
 ///
 /// This enum represents the different GitHub events that can trigger webhook notifications.
@@ -648,6 +673,493 @@ impl GlobalDefaults {
 }
 
 impl Default for GlobalDefaults {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// GitHub Actions configuration settings.
+///
+/// Controls workflow execution permissions, artifact retention, and security policies
+/// for GitHub Actions in repositories. These settings affect how workflows can run
+/// and interact with repository resources.
+///
+/// # Security Implications
+///
+/// Actions settings control workflow permissions and should be carefully configured
+/// to prevent unauthorized access to repository secrets or resources.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::ActionSettings;
+///
+/// let settings = ActionSettings::new();
+/// // TODO: Add example usage once implemented
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct ActionSettings {
+    /// Whether GitHub Actions are enabled for repositories.
+    /// When disabled, no workflows can be executed.
+    pub enabled: Option<OverridableValue<bool>>,
+
+    /// Default permissions for workflow tokens.
+    /// Controls what API operations workflows can perform.
+    pub default_workflow_permissions: Option<OverridableValue<WorkflowPermission>>,
+}
+
+impl ActionSettings {
+    /// Creates a new empty `ActionSettings` configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `ActionSettings` instance with all fields set to `None`.
+    pub fn new() -> Self {
+        Self {
+            enabled: None,
+            default_workflow_permissions: None,
+        }
+    }
+}
+
+impl Default for ActionSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Branch protection configuration settings.
+///
+/// Defines rules and policies that protect important branches from direct pushes,
+/// require review processes, and enforce status checks before merging.
+///
+/// # Security Implications
+///
+/// Branch protection is a critical security feature that should typically be
+/// marked as fixed in global defaults to prevent circumvention.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::BranchProtectionSettings;
+///
+/// let protection = BranchProtectionSettings::new();
+/// // TODO: Add example usage once implemented
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct BranchProtectionSettings {
+    /// Whether branch protection is enabled.
+    pub enabled: Option<OverridableValue<bool>>,
+
+    /// Require pull request reviews before merging.
+    pub require_pull_request_reviews: Option<OverridableValue<bool>>,
+
+    /// Number of required reviewers.
+    pub required_reviewers: Option<OverridableValue<u32>>,
+}
+
+impl BranchProtectionSettings {
+    /// Creates a new empty `BranchProtectionSettings` configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `BranchProtectionSettings` instance with all fields set to `None`.
+    pub fn new() -> Self {
+        Self {
+            enabled: None,
+            require_pull_request_reviews: None,
+            required_reviewers: None,
+        }
+    }
+}
+
+impl Default for BranchProtectionSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Custom repository property definition.
+///
+/// Represents metadata properties that can be attached to repositories for
+/// categorization, compliance tracking, and automation workflows.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::CustomProperty;
+///
+/// let property = CustomProperty::new(
+///     "team".to_string(),
+///     "backend".to_string()
+/// );
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct CustomProperty {
+    /// The name of the custom property.
+    pub property_name: String,
+
+    /// The value of the custom property.
+    pub value: String,
+}
+
+impl CustomProperty {
+    /// Creates a new custom property.
+    ///
+    /// # Arguments
+    ///
+    /// * `property_name` - The name of the property
+    /// * `value` - The value of the property
+    ///
+    /// # Returns
+    ///
+    /// A new `CustomProperty` instance.
+    pub fn new(property_name: String, value: String) -> Self {
+        Self {
+            property_name,
+            value,
+        }
+    }
+}
+
+/// Environment configuration for deployment workflows.
+///
+/// Defines deployment targets with protection rules, required reviewers,
+/// and environment-specific secrets and variables.
+///
+/// # Security Implications
+///
+/// Environment configurations control access to deployment targets and
+/// should include appropriate protection rules for production environments.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::EnvironmentConfig;
+///
+/// let env = EnvironmentConfig::new("production".to_string());
+/// // TODO: Add example usage once implemented
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct EnvironmentConfig {
+    /// The name of the environment.
+    pub name: String,
+
+    /// Whether the environment requires manual approval before deployment.
+    pub protection_rules_enabled: Option<OverridableValue<bool>>,
+}
+
+impl EnvironmentConfig {
+    /// Creates a new environment configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the environment
+    ///
+    /// # Returns
+    ///
+    /// A new `EnvironmentConfig` instance.
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            protection_rules_enabled: None,
+        }
+    }
+}
+
+/// GitHub App configuration for repository integration.
+///
+/// Defines GitHub Apps that should be installed on repositories for
+/// automation, security scanning, or development workflow enhancement.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::GitHubAppConfig;
+///
+/// let app = GitHubAppConfig::new("dependabot".to_string());
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct GitHubAppConfig {
+    /// The slug name of the GitHub App.
+    pub app_slug: String,
+
+    /// Whether the app installation is required.
+    pub required: Option<OverridableValue<bool>>,
+}
+
+impl GitHubAppConfig {
+    /// Creates a new GitHub App configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_slug` - The slug name of the GitHub App
+    ///
+    /// # Returns
+    ///
+    /// A new `GitHubAppConfig` instance.
+    pub fn new(app_slug: String) -> Self {
+        Self {
+            app_slug,
+            required: None,
+        }
+    }
+}
+
+/// Pull request configuration settings.
+///
+/// Controls merge strategies, review requirements, branch deletion policies,
+/// and other pull request workflow behaviors.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::PullRequestSettings;
+///
+/// let settings = PullRequestSettings::new();
+/// // TODO: Add example usage once implemented
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct PullRequestSettings {
+    /// Whether to delete head branches after merge.
+    pub delete_branch_on_merge: Option<OverridableValue<bool>>,
+
+    /// Whether to allow squash merging.
+    pub allow_squash_merge: Option<OverridableValue<bool>>,
+
+    /// Whether to allow merge commits.
+    pub allow_merge_commit: Option<OverridableValue<bool>>,
+}
+
+impl PullRequestSettings {
+    /// Creates a new empty `PullRequestSettings` configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `PullRequestSettings` instance with all fields set to `None`.
+    pub fn new() -> Self {
+        Self {
+            delete_branch_on_merge: None,
+            allow_squash_merge: None,
+            allow_merge_commit: None,
+        }
+    }
+}
+
+impl Default for PullRequestSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Push and commit policy settings.
+///
+/// Defines restrictions on direct pushes to protected branches,
+/// commit signing requirements, and push validation rules.
+///
+/// # Security Implications
+///
+/// Push settings control direct access to repository branches and
+/// should be configured to enforce security policies.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::PushSettings;
+///
+/// let settings = PushSettings::new();
+/// // TODO: Add example usage once implemented
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct PushSettings {
+    /// Whether to allow force pushes to protected branches.
+    pub allow_force_pushes: Option<OverridableValue<bool>>,
+
+    /// Whether to require signed commits.
+    pub require_signed_commits: Option<OverridableValue<bool>>,
+}
+
+impl PushSettings {
+    /// Creates a new empty `PushSettings` configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `PushSettings` instance with all fields set to `None`.
+    pub fn new() -> Self {
+        Self {
+            allow_force_pushes: None,
+            require_signed_commits: None,
+        }
+    }
+}
+
+impl Default for PushSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Repository-specific feature settings.
+///
+/// Controls the availability and configuration of repository features
+/// such as issues, wiki, projects, and security advisories.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::RepositorySettings;
+///
+/// let settings = RepositorySettings::new();
+/// // TODO: Add example usage once implemented
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct RepositorySettings {
+    /// Whether to enable issues for the repository.
+    pub issues: Option<OverridableValue<bool>>,
+
+    /// Whether to enable the wiki for the repository.
+    pub wiki: Option<OverridableValue<bool>>,
+
+    /// Whether to enable projects for the repository.
+    pub projects: Option<OverridableValue<bool>>,
+
+    /// Whether to enable discussions for the repository.
+    pub discussions: Option<OverridableValue<bool>>,
+}
+
+impl RepositorySettings {
+    /// Creates a new empty `RepositorySettings` configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositorySettings` instance with all fields set to `None`.
+    pub fn new() -> Self {
+        Self {
+            issues: None,
+            wiki: None,
+            projects: None,
+            discussions: None,
+        }
+    }
+}
+
+impl Default for RepositorySettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Enhanced global organization-wide baseline settings matching the specification.
+///
+/// This structure defines the default configuration values that apply across all repositories
+/// in an organization. These settings serve as the foundation layer in the hierarchical
+/// configuration system and can be overridden by team-specific or template-specific
+/// configurations based on the individual field configurations.
+///
+/// Each field in the structure is optional, allowing organizations to configure only
+/// the settings that are relevant to their needs. When a field is present, it defines
+/// the baseline for that configuration area.
+///
+/// # Configuration Hierarchy
+///
+/// Global defaults serve as the base layer in the configuration hierarchy:
+/// 1. **Global defaults** (this structure) - organization-wide baseline
+/// 2. Repository type configuration - overrides for specific repository types
+/// 3. Team configuration - team-specific overrides and additions
+/// 4. Template configuration - final template-specific requirements
+///
+/// # Security Considerations
+///
+/// Global defaults often contain security-critical settings. Individual fields may
+/// have their own override policies to prevent weakening of security requirements
+/// by higher-level configurations.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::{GlobalDefaultsEnhanced, ActionSettings, OverridableValue, WorkflowPermission};
+///
+/// let mut defaults = GlobalDefaultsEnhanced::new();
+/// defaults.actions = Some(ActionSettings {
+///     enabled: Some(OverridableValue::fixed(true)),
+///     default_workflow_permissions: Some(OverridableValue::overridable(WorkflowPermission::Read)),
+/// });
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct GlobalDefaultsEnhanced {
+    /// GitHub Actions settings for workflow execution and permissions.
+    /// Controls whether Actions are enabled and execution policies.
+    pub actions: Option<ActionSettings>,
+
+    /// Branch protection rules and policies.
+    /// Defines required status checks, review requirements, and merge restrictions.
+    pub branch_protection: Option<BranchProtectionSettings>,
+
+    /// Custom repository properties for organization-wide metadata.
+    /// Used for categorization, compliance tracking, and automation.
+    pub custom_properties: Option<Vec<CustomProperty>>,
+
+    /// Environment configurations for deployment workflows.
+    /// Defines deployment targets, protection rules, and secrets.
+    pub environments: Option<Vec<EnvironmentConfig>>,
+
+    /// GitHub Apps to install on all repositories.
+    /// Usually fixed to ensure consistent tooling across the organization.
+    pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Pull request settings and policies.
+    /// Controls merge strategies, review requirements, and automation.
+    pub pull_requests: Option<PullRequestSettings>,
+
+    /// Push and commit policies.
+    /// Defines restrictions on direct pushes and commit requirements.
+    pub push: Option<PushSettings>,
+
+    /// Repository-specific settings and features.
+    /// Controls issues, wiki, projects, and other repository features.
+    pub repository: Option<RepositorySettings>,
+
+    /// Organization-wide webhook configurations.
+    /// Typically fixed to ensure security and compliance monitoring.
+    pub webhooks: Option<Vec<WebhookConfig>>,
+}
+
+impl GlobalDefaultsEnhanced {
+    /// Creates a new empty `GlobalDefaultsEnhanced` configuration.
+    ///
+    /// All fields are initialized to `None`, allowing for gradual configuration
+    /// building. Use the various setter methods or direct field assignment to
+    /// populate the configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `GlobalDefaultsEnhanced` instance with all fields set to `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::GlobalDefaultsEnhanced;
+    ///
+    /// let defaults = GlobalDefaultsEnhanced::new();
+    /// assert!(defaults.actions.is_none());
+    /// assert!(defaults.branch_protection.is_none());
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            actions: None,
+            branch_protection: None,
+            custom_properties: None,
+            environments: None,
+            github_apps: None,
+            pull_requests: None,
+            push: None,
+            repository: None,
+            webhooks: None,
+        }
+    }
+}
+
+impl Default for GlobalDefaultsEnhanced {
     fn default() -> Self {
         Self::new()
     }

@@ -6,7 +6,7 @@
 
 use crate::organization::{
     CommitMessageOption, GlobalDefaults, LabelConfig, MergeConfig, MergeType, OverridableValue,
-    RepositoryVisibility, WebhookConfig, WebhookEvent,
+    RepositoryVisibility, WebhookConfig, WebhookEvent, WorkflowPermission,
 };
 
 #[cfg(test)]
@@ -442,6 +442,17 @@ mod enum_and_struct_tests {
     }
 
     #[test]
+    fn workflow_permission_enum_works_correctly() {
+        let none = WorkflowPermission::None;
+        let read = WorkflowPermission::Read;
+        let write = WorkflowPermission::Write;
+
+        assert_eq!(format!("{:?}", none), "None");
+        assert_eq!(format!("{:?}", read), "Read");
+        assert_eq!(format!("{:?}", write), "Write");
+    }
+
+    #[test]
     fn label_config_creation_and_access_works() {
         let label = LabelConfig::new(
             "bug".to_string(),
@@ -522,6 +533,12 @@ mod enum_and_struct_tests {
         let deserialized: WebhookEvent =
             serde_json::from_str(&serialized).expect("Should deserialize");
         assert_eq!(webhook_event, deserialized);
+
+        let workflow_permission = WorkflowPermission::Read;
+        let serialized = serde_json::to_string(&workflow_permission).expect("Should serialize");
+        let deserialized: WorkflowPermission =
+            serde_json::from_str(&serialized).expect("Should deserialize");
+        assert_eq!(workflow_permission, deserialized);
     }
 
     #[test]
@@ -559,5 +576,478 @@ mod enum_and_struct_tests {
         let deserialized: MergeConfig =
             serde_json::from_str(&serialized).expect("Should deserialize");
         assert_eq!(merge_config, deserialized);
+    }
+}
+
+// Tests for enhanced GlobalDefaults structure matching specification
+
+#[cfg(test)]
+mod enhanced_configuration_tests {
+    use super::*;
+    use crate::organization::{
+        ActionSettings, BranchProtectionSettings, CustomProperty, EnvironmentConfig,
+        GitHubAppConfig, GlobalDefaultsEnhanced, PullRequestSettings, PushSettings,
+        RepositorySettings, WorkflowPermission,
+    };
+
+    #[test]
+    fn test_action_settings_creation() {
+        let settings = ActionSettings::new();
+        assert!(settings.enabled.is_none());
+        assert!(settings.default_workflow_permissions.is_none());
+    }
+
+    #[test]
+    fn test_action_settings_default() {
+        let settings = ActionSettings::default();
+        assert!(settings.enabled.is_none());
+        assert!(settings.default_workflow_permissions.is_none());
+    }
+
+    #[test]
+    fn test_action_settings_serialization() {
+        let mut settings = ActionSettings::new();
+        settings.enabled = Some(OverridableValue::fixed(true));
+        settings.default_workflow_permissions =
+            Some(OverridableValue::overridable(WorkflowPermission::Read));
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: ActionSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(settings, deserialized);
+        assert_eq!(deserialized.enabled.as_ref().unwrap().value, true);
+        assert!(!deserialized.enabled.as_ref().unwrap().can_override());
+        assert_eq!(
+            deserialized
+                .default_workflow_permissions
+                .as_ref()
+                .unwrap()
+                .value,
+            WorkflowPermission::Read
+        );
+        assert!(deserialized
+            .default_workflow_permissions
+            .as_ref()
+            .unwrap()
+            .can_override());
+    }
+
+    #[test]
+    fn test_branch_protection_settings_creation() {
+        let protection = BranchProtectionSettings::new();
+        assert!(protection.enabled.is_none());
+        assert!(protection.require_pull_request_reviews.is_none());
+        assert!(protection.required_reviewers.is_none());
+    }
+
+    #[test]
+    fn test_branch_protection_settings_default() {
+        let protection = BranchProtectionSettings::default();
+        assert!(protection.enabled.is_none());
+        assert!(protection.require_pull_request_reviews.is_none());
+        assert!(protection.required_reviewers.is_none());
+    }
+
+    #[test]
+    fn test_branch_protection_settings_serialization() {
+        let mut protection = BranchProtectionSettings::new();
+        protection.enabled = Some(OverridableValue::fixed(true));
+        protection.require_pull_request_reviews = Some(OverridableValue::fixed(true));
+        protection.required_reviewers = Some(OverridableValue::overridable(2));
+
+        let json = serde_json::to_string(&protection).unwrap();
+        let deserialized: BranchProtectionSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(protection, deserialized);
+        assert_eq!(deserialized.enabled.as_ref().unwrap().value, true);
+        assert!(!deserialized.enabled.as_ref().unwrap().can_override());
+        assert_eq!(deserialized.required_reviewers.as_ref().unwrap().value, 2);
+        assert!(deserialized
+            .required_reviewers
+            .as_ref()
+            .unwrap()
+            .can_override());
+    }
+
+    #[test]
+    fn test_custom_property_creation() {
+        let property = CustomProperty::new("team".to_string(), "backend".to_string());
+        assert_eq!(property.property_name, "team");
+        assert_eq!(property.value, "backend");
+    }
+
+    #[test]
+    fn test_custom_property_serialization() {
+        let property = CustomProperty::new("repository_type".to_string(), "service".to_string());
+
+        let json = serde_json::to_string(&property).unwrap();
+        let deserialized: CustomProperty = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(property, deserialized);
+        assert_eq!(deserialized.property_name, "repository_type");
+        assert_eq!(deserialized.value, "service");
+    }
+
+    #[test]
+    fn test_environment_config_creation() {
+        let env = EnvironmentConfig::new("production".to_string());
+        assert_eq!(env.name, "production");
+        assert!(env.protection_rules_enabled.is_none());
+    }
+
+    #[test]
+    fn test_environment_config_serialization() {
+        let mut env = EnvironmentConfig::new("staging".to_string());
+        env.protection_rules_enabled = Some(OverridableValue::overridable(true));
+
+        let json = serde_json::to_string(&env).unwrap();
+        let deserialized: EnvironmentConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(env, deserialized);
+        assert_eq!(deserialized.name, "staging");
+        assert_eq!(
+            deserialized
+                .protection_rules_enabled
+                .as_ref()
+                .unwrap()
+                .value,
+            true
+        );
+        assert!(deserialized
+            .protection_rules_enabled
+            .as_ref()
+            .unwrap()
+            .can_override());
+    }
+
+    #[test]
+    fn test_github_app_config_creation() {
+        let app = GitHubAppConfig::new("dependabot".to_string());
+        assert_eq!(app.app_slug, "dependabot");
+        assert!(app.required.is_none());
+    }
+
+    #[test]
+    fn test_github_app_config_serialization() {
+        let mut app = GitHubAppConfig::new("codecov".to_string());
+        app.required = Some(OverridableValue::fixed(true));
+
+        let json = serde_json::to_string(&app).unwrap();
+        let deserialized: GitHubAppConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(app, deserialized);
+        assert_eq!(deserialized.app_slug, "codecov");
+        assert_eq!(deserialized.required.as_ref().unwrap().value, true);
+        assert!(!deserialized.required.as_ref().unwrap().can_override());
+    }
+
+    #[test]
+    fn test_pull_request_settings_creation() {
+        let settings = PullRequestSettings::new();
+        assert!(settings.delete_branch_on_merge.is_none());
+        assert!(settings.allow_squash_merge.is_none());
+        assert!(settings.allow_merge_commit.is_none());
+    }
+
+    #[test]
+    fn test_pull_request_settings_default() {
+        let settings = PullRequestSettings::default();
+        assert!(settings.delete_branch_on_merge.is_none());
+        assert!(settings.allow_squash_merge.is_none());
+        assert!(settings.allow_merge_commit.is_none());
+    }
+
+    #[test]
+    fn test_pull_request_settings_serialization() {
+        let mut settings = PullRequestSettings::new();
+        settings.delete_branch_on_merge = Some(OverridableValue::overridable(true));
+        settings.allow_squash_merge = Some(OverridableValue::fixed(true));
+        settings.allow_merge_commit = Some(OverridableValue::fixed(false));
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: PullRequestSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(settings, deserialized);
+        assert_eq!(
+            deserialized.delete_branch_on_merge.as_ref().unwrap().value,
+            true
+        );
+        assert!(deserialized
+            .delete_branch_on_merge
+            .as_ref()
+            .unwrap()
+            .can_override());
+        assert_eq!(
+            deserialized.allow_squash_merge.as_ref().unwrap().value,
+            true
+        );
+        assert!(!deserialized
+            .allow_squash_merge
+            .as_ref()
+            .unwrap()
+            .can_override());
+        assert_eq!(
+            deserialized.allow_merge_commit.as_ref().unwrap().value,
+            false
+        );
+        assert!(!deserialized
+            .allow_merge_commit
+            .as_ref()
+            .unwrap()
+            .can_override());
+    }
+
+    #[test]
+    fn test_push_settings_creation() {
+        let settings = PushSettings::new();
+        assert!(settings.allow_force_pushes.is_none());
+        assert!(settings.require_signed_commits.is_none());
+    }
+
+    #[test]
+    fn test_push_settings_default() {
+        let settings = PushSettings::default();
+        assert!(settings.allow_force_pushes.is_none());
+        assert!(settings.require_signed_commits.is_none());
+    }
+
+    #[test]
+    fn test_push_settings_serialization() {
+        let mut settings = PushSettings::new();
+        settings.allow_force_pushes = Some(OverridableValue::fixed(false));
+        settings.require_signed_commits = Some(OverridableValue::overridable(true));
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: PushSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(settings, deserialized);
+        assert_eq!(
+            deserialized.allow_force_pushes.as_ref().unwrap().value,
+            false
+        );
+        assert!(!deserialized
+            .allow_force_pushes
+            .as_ref()
+            .unwrap()
+            .can_override());
+        assert_eq!(
+            deserialized.require_signed_commits.as_ref().unwrap().value,
+            true
+        );
+        assert!(deserialized
+            .require_signed_commits
+            .as_ref()
+            .unwrap()
+            .can_override());
+    }
+
+    #[test]
+    fn test_repository_settings_creation() {
+        let settings = RepositorySettings::new();
+        assert!(settings.issues.is_none());
+        assert!(settings.wiki.is_none());
+        assert!(settings.projects.is_none());
+        assert!(settings.discussions.is_none());
+    }
+
+    #[test]
+    fn test_repository_settings_default() {
+        let settings = RepositorySettings::default();
+        assert!(settings.issues.is_none());
+        assert!(settings.wiki.is_none());
+        assert!(settings.projects.is_none());
+        assert!(settings.discussions.is_none());
+    }
+
+    #[test]
+    fn test_repository_settings_serialization() {
+        let mut settings = RepositorySettings::new();
+        settings.issues = Some(OverridableValue::overridable(true));
+        settings.wiki = Some(OverridableValue::fixed(false));
+        settings.projects = Some(OverridableValue::overridable(true));
+        settings.discussions = Some(OverridableValue::fixed(true));
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: RepositorySettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(settings, deserialized);
+        assert_eq!(deserialized.issues.as_ref().unwrap().value, true);
+        assert!(deserialized.issues.as_ref().unwrap().can_override());
+        assert_eq!(deserialized.wiki.as_ref().unwrap().value, false);
+        assert!(!deserialized.wiki.as_ref().unwrap().can_override());
+        assert_eq!(deserialized.projects.as_ref().unwrap().value, true);
+        assert!(deserialized.projects.as_ref().unwrap().can_override());
+        assert_eq!(deserialized.discussions.as_ref().unwrap().value, true);
+        assert!(!deserialized.discussions.as_ref().unwrap().can_override());
+    }
+
+    #[test]
+    fn test_global_defaults_enhanced_creation() {
+        let defaults = GlobalDefaultsEnhanced::new();
+        assert!(defaults.actions.is_none());
+        assert!(defaults.branch_protection.is_none());
+        assert!(defaults.custom_properties.is_none());
+        assert!(defaults.environments.is_none());
+        assert!(defaults.github_apps.is_none());
+        assert!(defaults.pull_requests.is_none());
+        assert!(defaults.push.is_none());
+        assert!(defaults.repository.is_none());
+        assert!(defaults.webhooks.is_none());
+    }
+
+    #[test]
+    fn test_global_defaults_enhanced_default() {
+        let defaults = GlobalDefaultsEnhanced::default();
+        assert!(defaults.actions.is_none());
+        assert!(defaults.branch_protection.is_none());
+        assert!(defaults.custom_properties.is_none());
+        assert!(defaults.environments.is_none());
+        assert!(defaults.github_apps.is_none());
+        assert!(defaults.pull_requests.is_none());
+        assert!(defaults.push.is_none());
+        assert!(defaults.repository.is_none());
+        assert!(defaults.webhooks.is_none());
+    }
+
+    #[test]
+    fn test_global_defaults_enhanced_comprehensive_configuration() {
+        let mut defaults = GlobalDefaultsEnhanced::new();
+
+        // Configure Actions
+        let mut actions = ActionSettings::new();
+        actions.enabled = Some(OverridableValue::fixed(true));
+        actions.default_workflow_permissions =
+            Some(OverridableValue::overridable(WorkflowPermission::Read));
+        defaults.actions = Some(actions);
+
+        // Configure Branch Protection
+        let mut protection = BranchProtectionSettings::new();
+        protection.enabled = Some(OverridableValue::fixed(true));
+        protection.require_pull_request_reviews = Some(OverridableValue::fixed(true));
+        protection.required_reviewers = Some(OverridableValue::overridable(2));
+        defaults.branch_protection = Some(protection);
+
+        // Configure Custom Properties
+        defaults.custom_properties = Some(vec![
+            CustomProperty::new("team".to_string(), "platform".to_string()),
+            CustomProperty::new("classification".to_string(), "internal".to_string()),
+        ]);
+
+        // Configure Environments
+        let mut prod_env = EnvironmentConfig::new("production".to_string());
+        prod_env.protection_rules_enabled = Some(OverridableValue::fixed(true));
+        let mut staging_env = EnvironmentConfig::new("staging".to_string());
+        staging_env.protection_rules_enabled = Some(OverridableValue::overridable(false));
+        defaults.environments = Some(vec![prod_env, staging_env]);
+
+        // Configure GitHub Apps
+        let mut dependabot = GitHubAppConfig::new("dependabot".to_string());
+        dependabot.required = Some(OverridableValue::fixed(true));
+        let mut codecov = GitHubAppConfig::new("codecov".to_string());
+        codecov.required = Some(OverridableValue::overridable(false));
+        defaults.github_apps = Some(vec![dependabot, codecov]);
+
+        // Configure Pull Requests
+        let mut pr_settings = PullRequestSettings::new();
+        pr_settings.delete_branch_on_merge = Some(OverridableValue::overridable(true));
+        pr_settings.allow_squash_merge = Some(OverridableValue::fixed(true));
+        pr_settings.allow_merge_commit = Some(OverridableValue::fixed(false));
+        defaults.pull_requests = Some(pr_settings);
+
+        // Configure Push settings
+        let mut push_settings = PushSettings::new();
+        push_settings.allow_force_pushes = Some(OverridableValue::fixed(false));
+        push_settings.require_signed_commits = Some(OverridableValue::overridable(true));
+        defaults.push = Some(push_settings);
+
+        // Configure Repository settings
+        let mut repo_settings = RepositorySettings::new();
+        repo_settings.issues = Some(OverridableValue::overridable(true));
+        repo_settings.wiki = Some(OverridableValue::fixed(false));
+        repo_settings.projects = Some(OverridableValue::overridable(true));
+        repo_settings.discussions = Some(OverridableValue::fixed(false));
+        defaults.repository = Some(repo_settings);
+
+        // Configure Webhooks
+        let webhook = WebhookConfig::new(
+            "https://security.example.com/webhook".to_string(),
+            vec![WebhookEvent::Push, WebhookEvent::PullRequest],
+            true,
+            Some("webhook_secret".to_string()),
+        );
+        defaults.webhooks = Some(vec![webhook]);
+
+        // Verify all fields are configured
+        assert!(defaults.actions.is_some());
+        assert!(defaults.branch_protection.is_some());
+        assert!(defaults.custom_properties.is_some());
+        assert!(defaults.environments.is_some());
+        assert!(defaults.github_apps.is_some());
+        assert!(defaults.pull_requests.is_some());
+        assert!(defaults.push.is_some());
+        assert!(defaults.repository.is_some());
+        assert!(defaults.webhooks.is_some());
+
+        // Verify specific configurations
+        let actions = defaults.actions.as_ref().unwrap();
+        assert_eq!(actions.enabled.as_ref().unwrap().value, true);
+        assert!(!actions.enabled.as_ref().unwrap().can_override());
+
+        let custom_props = defaults.custom_properties.as_ref().unwrap();
+        assert_eq!(custom_props.len(), 2);
+        assert_eq!(custom_props[0].property_name, "team");
+        assert_eq!(custom_props[0].value, "platform");
+
+        let environments = defaults.environments.as_ref().unwrap();
+        assert_eq!(environments.len(), 2);
+        assert_eq!(environments[0].name, "production");
+        assert!(!environments[0]
+            .protection_rules_enabled
+            .as_ref()
+            .unwrap()
+            .can_override());
+
+        let github_apps = defaults.github_apps.as_ref().unwrap();
+        assert_eq!(github_apps.len(), 2);
+        assert_eq!(github_apps[0].app_slug, "dependabot");
+        assert!(!github_apps[0].required.as_ref().unwrap().can_override());
+
+        let webhooks = defaults.webhooks.as_ref().unwrap();
+        assert_eq!(webhooks.len(), 1);
+        assert_eq!(webhooks[0].url, "https://security.example.com/webhook");
+    }
+
+    #[test]
+    fn test_global_defaults_enhanced_serialization() {
+        let mut defaults = GlobalDefaultsEnhanced::new();
+
+        // Configure a subset of fields for serialization test
+        let mut actions = ActionSettings::new();
+        actions.enabled = Some(OverridableValue::fixed(true));
+        defaults.actions = Some(actions);
+
+        defaults.custom_properties = Some(vec![CustomProperty::new(
+            "team".to_string(),
+            "backend".to_string(),
+        )]);
+
+        let json = serde_json::to_string(&defaults).unwrap();
+        let deserialized: GlobalDefaultsEnhanced = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(defaults, deserialized);
+        assert!(deserialized.actions.is_some());
+        assert_eq!(
+            deserialized
+                .actions
+                .as_ref()
+                .unwrap()
+                .enabled
+                .as_ref()
+                .unwrap()
+                .value,
+            true
+        );
+        assert!(deserialized.custom_properties.is_some());
+        assert_eq!(deserialized.custom_properties.as_ref().unwrap().len(), 1);
     }
 }
