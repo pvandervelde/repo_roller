@@ -1495,7 +1495,9 @@ fn replace_template_variables(
     debug!("Processing template variables using TemplateProcessor");
 
     // Create template processor
-    let processor = TemplateProcessor::new();
+    let processor = TemplateProcessor::new().map_err(|e| {
+        Error::TemplateProcessing(format!("Failed to create template processor: {}", e))
+    })?;
 
     // Generate built-in variables
     let built_in_params = template_engine::BuiltInVariablesParams {

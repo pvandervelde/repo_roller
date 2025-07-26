@@ -90,6 +90,9 @@ use std::path::Path;
 pub mod errors;
 pub use errors::Error;
 
+pub mod handlebars_engine;
+pub use handlebars_engine::*;
+
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
@@ -171,6 +174,7 @@ pub trait TemplateFetcher: Send + Sync {
 /// ```rust
 /// use template_engine::{BuiltInVariablesParams, TemplateProcessor};
 ///
+/// # fn main() -> Result<(), template_engine::Error> {
 /// let params = BuiltInVariablesParams {
 ///     repo_name: "my-awesome-project",
 ///     org_name: "my-organization",
@@ -181,11 +185,13 @@ pub trait TemplateFetcher: Send + Sync {
 ///     default_branch: "main",
 /// };
 ///
-/// let processor = TemplateProcessor::new();
+/// let processor = TemplateProcessor::new()?;
 /// let built_ins = processor.generate_built_in_variables(&params);
 ///
 /// assert_eq!(built_ins.get("repo_name"), Some(&"my-awesome-project".to_string()));
 /// assert_eq!(built_ins.get("org_name"), Some(&"my-organization".to_string()));
+/// # Ok(())
+/// # }
 /// ```
 pub struct BuiltInVariablesParams<'a> {
     /// The name of the repository being created
@@ -523,12 +529,22 @@ pub struct TemplateProcessingRequest {
 /// Template processor that handles variable substitution and file processing.
 ///
 /// This processor is the core component that takes template files and applies variable
-/// substitution to create customized output files. It handles various template processing
-/// operations including variable validation, file content transformation, and built-in
-/// variable generation.
+/// substitution to create customized output files. It uses the Handlebars templating
+/// engine to provide advanced template processing capabilities including control structures,
+/// nested objects, and custom helpers.
 ///
-/// The processor supports Handlebars-style templating with double curly braces ({{ variable }})
-/// for variable substitution and can generate built-in variables like timestamps and user information.
+/// The processor provides full Handlebars syntax support for advanced template processing.
+/// It can generate built-in variables like timestamps and user information, and provides
+/// file path templating with security validation.
+///
+/// # Features
+///
+/// - **Variable Substitution**: Complete Handlebars syntax support
+/// - **Control Structures**: `{{#if}}`, `{{#each}}`, `{{#unless}}`, `{{#with}}`
+/// - **Custom Helpers**: Repository-specific transformations like `{{snake_case}}`
+/// - **File Path Templating**: Template file names and directory paths
+/// - **Security**: Path validation and template sandboxing
+/// - **HashMap Integration**: Seamless conversion from HashMap<String, String> to JSON context
 ///
 /// # Examples
 ///
@@ -537,7 +553,7 @@ pub struct TemplateProcessingRequest {
 /// use std::collections::HashMap;
 /// use std::path::Path;
 ///
-/// let processor = TemplateProcessor::new();
+/// let processor = TemplateProcessor::new()?;
 ///
 /// let mut variables = HashMap::new();
 /// variables.insert("project_name".to_string(), "my-project".to_string());
@@ -554,39 +570,99 @@ pub struct TemplateProcessingRequest {
 ///
 /// let files = vec![
 ///     ("README.md".to_string(), b"# {{project_name}}".to_vec()),
+///     ("{{snake_case project_name}}/Cargo.toml".to_string(), b"[package]\nname = \"{{kebab_case project_name}}\"".to_vec()),
 /// ];
 ///
 /// let output_dir = Path::new("/tmp/output");
 /// let result = processor.process_template(&files, &request, output_dir)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub struct TemplateProcessor;
+pub struct TemplateProcessor {
+    /// The underlying Handlebars template engine for advanced templating
+    handlebars_engine: HandlebarsTemplateEngine,
+}
 
 impl Default for TemplateProcessor {
     /// Creates a new TemplateProcessor with default settings.
     ///
     /// This is equivalent to calling `TemplateProcessor::new()`.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the Handlebars engine cannot be initialized.
+    /// This could happen if:
+    /// - System is out of memory
+    /// - Required dependencies are missing or corrupted
+    /// - Custom helpers fail to register due to naming conflicts
+    ///
+    /// For error handling, use `TemplateProcessor::new()` instead.
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default TemplateProcessor: ensure sufficient memory and valid Handlebars dependencies")
     }
 }
 
 impl TemplateProcessor {
-    /// Creates a new template processor instance.
+    /// Creates a new template processor instance with Handlebars engine.
     ///
-    /// The processor is stateless and can be reused for multiple template
-    /// processing operations. It's safe to share across threads.
+    /// The processor initializes a Handlebars template engine with all custom helpers
+    /// registered and default security settings. It's safe to share across threads.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `TemplateProcessor` with Handlebars engine configured, or an error
+    /// if the engine initialization fails.
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// use template_engine::TemplateProcessor;
     ///
-    /// let processor = TemplateProcessor::new();
+    /// let processor = TemplateProcessor::new()?;
     /// // Use processor for multiple template operations
+    /// # Ok::<(), template_engine::Error>(())
     /// ```
-    pub fn new() -> Self {
-        Self
+    pub fn new() -> Result<Self, Error> {
+        let mut handlebars_engine = HandlebarsTemplateEngine::new().map_err(|e| {
+            Error::EngineInitialization(format!("Failed to initialize Handlebars engine: {}", e))
+        })?;
+
+        handlebars_engine.register_custom_helpers().map_err(|e| {
+            Error::EngineInitialization(format!("Failed to register custom helpers: {}", e))
+        })?;
+
+        Ok(Self { handlebars_engine })
+    }
+
+    /// Convert HashMap variables to JSON format for Handlebars
+    fn convert_variables_to_json(
+        &self,
+        variables: &HashMap<String, String>,
+        built_in_variables: &HashMap<String, String>,
+        variable_configs: &HashMap<String, VariableConfig>,
+    ) -> Result<serde_json::Value, Error> {
+        let mut all_variables = variables.clone();
+
+        // Apply default values from variable configs for missing variables
+        for (var_name, config) in variable_configs {
+            if !all_variables.contains_key(var_name) {
+                if let Some(ref default_value) = config.default {
+                    all_variables.insert(var_name.clone(), default_value.clone());
+                }
+            }
+        }
+
+        // Built-in variables override user variables and defaults
+        for (key, value) in built_in_variables {
+            all_variables.insert(key.clone(), value.clone());
+        }
+
+        // Convert to JSON Value
+        let json_map: serde_json::Map<String, serde_json::Value> = all_variables
+            .into_iter()
+            .map(|(k, v)| (k, serde_json::Value::String(v)))
+            .collect();
+
+        Ok(serde_json::Value::Object(json_map))
     }
 
     /// Processes template files by applying variable substitution and filtering.
@@ -660,11 +736,13 @@ impl TemplateProcessor {
         // Validate variables first
         self.validate_variables(request)?;
 
-        // Combine all variables (built-ins override user variables)
-        let mut all_variables = request.variables.clone();
-        for (key, value) in &request.built_in_variables {
-            all_variables.insert(key.clone(), value.clone());
-        }
+        // Convert HashMap variables to JSON format for Handlebars
+        let all_variables = self.convert_variables_to_json(
+            &request.variables,
+            &request.built_in_variables,
+            &request.variable_configs,
+        )?;
+        let context = TemplateContext::new(all_variables);
 
         let mut processed_files = Vec::new();
 
@@ -683,10 +761,25 @@ impl TemplateProcessor {
                 }
             }
 
+            // Process file path template (with security validation)
+            let processed_path = self
+                .handlebars_engine
+                .template_file_path(file_path, &context)
+                .map_err(|e| Error::VariableValidation {
+                    variable: "file_path".to_string(),
+                    reason: format!("File path templating failed: {}", e),
+                })?;
+
             let processed_content = if self.is_text_file(content) {
-                // Apply variable substitution to text files
+                // Apply Handlebars template processing to text files
                 let content_str = String::from_utf8_lossy(content);
-                let processed_str = self.substitute_variables(&content_str, &all_variables);
+                let processed_str = self
+                    .handlebars_engine
+                    .render_template(&content_str, &context)
+                    .map_err(|e| Error::VariableValidation {
+                        variable: "template_content".to_string(),
+                        reason: format!("Template rendering failed: {}", e),
+                    })?;
                 processed_str.into_bytes()
             } else {
                 // Binary files are copied as-is
@@ -694,10 +787,10 @@ impl TemplateProcessor {
             };
 
             // Handle .template suffix removal
-            let final_path = if file_path.ends_with(".template") {
-                file_path.trim_end_matches(".template").to_string()
+            let final_path = if processed_path.ends_with(".template") {
+                processed_path.trim_end_matches(".template").to_string()
             } else {
-                file_path.clone()
+                processed_path
             };
 
             processed_files.push((final_path, processed_content));
@@ -850,29 +943,6 @@ impl TemplateProcessor {
         }
 
         Ok(())
-    }
-
-    /// Performs variable substitution in text content using Handlebars-style syntax.
-    ///
-    /// This method replaces `{{variable_name}}` placeholders with their corresponding
-    /// values from the variables map. It handles escaped braces (`\{{`) by preserving
-    /// them as literal `{{` in the output.
-    fn substitute_variables(&self, content: &str, variables: &HashMap<String, String>) -> String {
-        let mut result = content.to_string();
-
-        // Handle escaped braces first
-        result = result.replace("\\{{", "__ESCAPED_OPEN_BRACE__");
-
-        // Substitute variables
-        for (key, value) in variables {
-            let pattern = format!("{{{{{key}}}}}");
-            result = result.replace(&pattern, value);
-        }
-
-        // Restore escaped braces
-        result = result.replace("__ESCAPED_OPEN_BRACE__", "{{");
-
-        result
     }
 
     /// Determines if a file should be excluded from processing based on glob patterns.

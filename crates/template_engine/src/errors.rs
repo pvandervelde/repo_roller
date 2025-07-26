@@ -76,4 +76,11 @@ pub enum Error {
         /// The regex pattern that the variable should have matched
         pattern: String,
     },
+
+    /// Template engine initialization failed.
+    ///
+    /// This error occurs when the template engine cannot be initialized
+    /// due to configuration issues, dependency failures, or system constraints.
+    #[error("Template engine initialization failed: {0}")]
+    EngineInitialization(String),
 }
