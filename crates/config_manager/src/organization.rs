@@ -204,8 +204,11 @@ impl LabelConfig {
     /// assert_eq!(label.name, "bug");
     /// ```
     pub fn new(name: String, description: Option<String>, color: String) -> Self {
-        // TODO: implement
-        todo!()
+        Self {
+            name,
+            description,
+            color,
+        }
     }
 }
 
@@ -286,8 +289,12 @@ impl WebhookConfig {
         active: bool,
         secret: Option<String>,
     ) -> Self {
-        // TODO: implement
-        todo!()
+        Self {
+            url,
+            events,
+            active,
+            secret,
+        }
     }
 }
 
@@ -358,8 +365,11 @@ impl MergeConfig {
         merge_commit_message: CommitMessageOption,
         squash_commit_message: CommitMessageOption,
     ) -> Self {
-        // TODO: implement
-        todo!()
+        Self {
+            allowed_types,
+            merge_commit_message,
+            squash_commit_message,
+        }
     }
 }
 
@@ -422,8 +432,10 @@ impl<T: Clone> OverridableValue<T> {
     /// assert!(setting.can_override());
     /// ```
     pub fn new(value: T, can_override: bool) -> Self {
-        // TODO: implement
-        todo!()
+        Self {
+            value,
+            can_override,
+        }
     }
 
     /// Creates a new `OverridableValue` that allows override (convenience method).
@@ -448,8 +460,7 @@ impl<T: Clone> OverridableValue<T> {
     /// assert!(setting.can_override());
     /// ```
     pub fn overridable(value: T) -> Self {
-        // TODO: implement
-        todo!()
+        Self::new(value, true)
     }
 
     /// Creates a new `OverridableValue` that cannot be overridden (convenience method).
@@ -474,8 +485,7 @@ impl<T: Clone> OverridableValue<T> {
     /// assert!(!setting.can_override());
     /// ```
     pub fn fixed(value: T) -> Self {
-        // TODO: implement
-        todo!()
+        Self::new(value, false)
     }
 
     /// Returns a reference to the wrapped configuration value.
@@ -493,8 +503,7 @@ impl<T: Clone> OverridableValue<T> {
     /// assert_eq!(setting.value(), 42);
     /// ```
     pub fn value(&self) -> T {
-        // TODO: implement
-        todo!()
+        self.value.clone()
     }
 
     /// Returns whether this value can be overridden by higher hierarchy levels.
@@ -515,8 +524,7 @@ impl<T: Clone> OverridableValue<T> {
     /// assert!(!fixed.can_override());
     /// ```
     pub fn can_override(&self) -> bool {
-        // TODO: implement
-        todo!()
+        self.can_override
     }
 
     /// Attempts to override this value with a new value from a higher hierarchy level.
@@ -547,8 +555,11 @@ impl<T: Clone> OverridableValue<T> {
     /// assert_eq!(unchanged.value(), 42);
     /// ```
     pub fn try_override(&self, new_value: T) -> Self {
-        // TODO: implement
-        todo!()
+        if self.can_override {
+            Self::new(new_value, self.can_override)
+        } else {
+            self.clone()
+        }
     }
 }
 
@@ -625,8 +636,14 @@ impl GlobalDefaults {
     /// assert!(defaults.branch_protection_enabled.is_none());
     /// ```
     pub fn new() -> Self {
-        // TODO: implement
-        todo!()
+        Self {
+            branch_protection_enabled: None,
+            repository_visibility: None,
+            merge_configuration: None,
+            default_labels: None,
+            organization_webhooks: None,
+            required_github_apps: None,
+        }
     }
 }
 
