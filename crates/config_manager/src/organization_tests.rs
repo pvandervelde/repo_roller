@@ -5,8 +5,9 @@
 //! configuration structures.
 
 use crate::organization::{
-    CommitMessageOption, GlobalDefaults, LabelConfig, MergeConfig, MergeType, OverridableValue,
-    RepositoryVisibility, WebhookConfig, WebhookEvent, WorkflowPermission,
+    CommitMessageOption, ConfigurationError, EnvironmentConfig, GlobalDefaults, LabelConfig,
+    MergeConfig, MergeType, OverridableValue, RepositoryVisibility, TeamConfig, WebhookConfig,
+    WebhookEvent, WorkflowPermission,
 };
 
 #[cfg(test)]
@@ -690,15 +691,21 @@ mod enhanced_configuration_tests {
 
     #[test]
     fn test_environment_config_creation() {
-        let env = EnvironmentConfig::new("production".to_string());
+        let env = EnvironmentConfig::new("production".to_string(), None, None, None);
         assert_eq!(env.name, "production");
-        assert!(env.protection_rules_enabled.is_none());
+        assert!(env.required_reviewers.is_none());
+        assert!(env.wait_timer.is_none());
+        assert!(env.deployment_branch_policy.is_none());
     }
 
     #[test]
     fn test_environment_config_serialization() {
-        let mut env = EnvironmentConfig::new("staging".to_string());
-        env.protection_rules_enabled = Some(OverridableValue::overridable(true));
+        let env = EnvironmentConfig::new(
+            "staging".to_string(),
+            Some(vec!["@team-leads".to_string()]),
+            Some(300),
+            Some("main".to_string()),
+        );
 
         let json = serde_json::to_string(&env).unwrap();
         let deserialized: EnvironmentConfig = serde_json::from_str(&json).unwrap();
@@ -706,18 +713,14 @@ mod enhanced_configuration_tests {
         assert_eq!(env, deserialized);
         assert_eq!(deserialized.name, "staging");
         assert_eq!(
-            deserialized
-                .protection_rules_enabled
-                .as_ref()
-                .unwrap()
-                .value,
-            true
+            deserialized.required_reviewers,
+            Some(vec!["@team-leads".to_string()])
         );
-        assert!(deserialized
-            .protection_rules_enabled
-            .as_ref()
-            .unwrap()
-            .can_override());
+        assert_eq!(deserialized.wait_timer, Some(300));
+        assert_eq!(
+            deserialized.deployment_branch_policy,
+            Some("main".to_string())
+        );
     }
 
     #[test]
@@ -934,10 +937,18 @@ mod enhanced_configuration_tests {
         ]);
 
         // Configure Environments
-        let mut prod_env = EnvironmentConfig::new("production".to_string());
-        prod_env.protection_rules_enabled = Some(OverridableValue::fixed(true));
-        let mut staging_env = EnvironmentConfig::new("staging".to_string());
-        staging_env.protection_rules_enabled = Some(OverridableValue::overridable(false));
+        let prod_env = EnvironmentConfig::new(
+            "production".to_string(),
+            Some(vec!["@security-team".to_string()]),
+            Some(300),
+            Some("main".to_string()),
+        );
+        let staging_env = EnvironmentConfig::new(
+            "staging".to_string(),
+            Some(vec!["@team-leads".to_string()]),
+            None,
+            None,
+        );
         defaults.environments = Some(vec![prod_env, staging_env]);
 
         // Configure GitHub Apps
@@ -1001,11 +1012,15 @@ mod enhanced_configuration_tests {
         let environments = defaults.environments.as_ref().unwrap();
         assert_eq!(environments.len(), 2);
         assert_eq!(environments[0].name, "production");
-        assert!(!environments[0]
-            .protection_rules_enabled
-            .as_ref()
-            .unwrap()
-            .can_override());
+        assert_eq!(
+            environments[0].required_reviewers,
+            Some(vec!["@security-team".to_string()])
+        );
+        assert_eq!(environments[0].wait_timer, Some(300));
+        assert_eq!(
+            environments[0].deployment_branch_policy,
+            Some("main".to_string())
+        );
 
         let github_apps = defaults.github_apps.as_ref().unwrap();
         assert_eq!(github_apps.len(), 2);
@@ -1049,5 +1064,563 @@ mod enhanced_configuration_tests {
         );
         assert!(deserialized.custom_properties.is_some());
         assert_eq!(deserialized.custom_properties.as_ref().unwrap().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod team_config_tests {
+    use super::*;
+
+    #[test]
+    fn new_creates_empty_team_config() {
+        let team_config = TeamConfig::new();
+
+        assert!(team_config.repository_visibility.is_none());
+        assert!(team_config.branch_protection_enabled.is_none());
+        assert!(team_config.merge_configuration.is_none());
+        assert!(team_config.team_webhooks.is_none());
+        assert!(team_config.team_github_apps.is_none());
+        assert!(team_config.team_labels.is_none());
+        assert!(team_config.team_environments.is_none());
+    }
+
+    #[test]
+    fn default_creates_empty_team_config() {
+        let team_config = TeamConfig::default();
+        let new_config = TeamConfig::new();
+
+        assert_eq!(team_config, new_config);
+    }
+
+    #[test]
+    fn has_overrides_returns_false_for_empty_config() {
+        let team_config = TeamConfig::new();
+        assert!(!team_config.has_overrides());
+    }
+
+    #[test]
+    fn has_overrides_returns_true_when_repository_visibility_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.repository_visibility = Some(RepositoryVisibility::Public);
+
+        assert!(team_config.has_overrides());
+    }
+
+    #[test]
+    fn has_overrides_returns_true_when_branch_protection_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.branch_protection_enabled = Some(false);
+
+        assert!(team_config.has_overrides());
+    }
+
+    #[test]
+    fn has_overrides_returns_true_when_merge_configuration_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.merge_configuration = Some(MergeConfig::new(
+            vec![MergeType::Squash],
+            CommitMessageOption::PullRequestTitle,
+            CommitMessageOption::PullRequestTitleAndDescription,
+        ));
+
+        assert!(team_config.has_overrides());
+    }
+
+    #[test]
+    fn has_overrides_returns_false_for_additive_only_config() {
+        let mut team_config = TeamConfig::new();
+        team_config.team_webhooks = Some(vec![WebhookConfig::new(
+            "https://team.example.com/webhook".to_string(),
+            vec![WebhookEvent::Push],
+            true,
+            None,
+        )]);
+        team_config.team_github_apps = Some(vec!["team-app".to_string()]);
+
+        assert!(!team_config.has_overrides());
+    }
+
+    #[test]
+    fn has_additions_returns_false_for_empty_config() {
+        let team_config = TeamConfig::new();
+        assert!(!team_config.has_additions());
+    }
+
+    #[test]
+    fn has_additions_returns_true_when_team_webhooks_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.team_webhooks = Some(vec![WebhookConfig::new(
+            "https://team.example.com/webhook".to_string(),
+            vec![WebhookEvent::Push],
+            true,
+            None,
+        )]);
+
+        assert!(team_config.has_additions());
+    }
+
+    #[test]
+    fn has_additions_returns_true_when_team_github_apps_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.team_github_apps = Some(vec!["team-app".to_string()]);
+
+        assert!(team_config.has_additions());
+    }
+
+    #[test]
+    fn has_additions_returns_true_when_team_labels_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.team_labels = Some(vec![LabelConfig::new(
+            "team-specific".to_string(),
+            Some("Team specific label".to_string()),
+            "ff0000".to_string(),
+        )]);
+
+        assert!(team_config.has_additions());
+    }
+
+    #[test]
+    fn has_additions_returns_true_when_team_environments_set() {
+        let mut team_config = TeamConfig::new();
+        team_config.team_environments = Some(vec![EnvironmentConfig::new(
+            "team-staging".to_string(),
+            Some(vec!["@team-leads".to_string()]),
+            None,
+            None,
+        )]);
+
+        assert!(team_config.has_additions());
+    }
+
+    #[test]
+    fn has_additions_returns_false_for_overrides_only_config() {
+        let mut team_config = TeamConfig::new();
+        team_config.repository_visibility = Some(RepositoryVisibility::Public);
+        team_config.branch_protection_enabled = Some(true);
+
+        assert!(!team_config.has_additions());
+    }
+
+    #[test]
+    fn validate_overrides_succeeds_with_empty_team_config() {
+        let team_config = TeamConfig::new();
+        let global_defaults = GlobalDefaults::new();
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_overrides_succeeds_when_global_allows_repository_visibility_override() {
+        let mut team_config = TeamConfig::new();
+        team_config.repository_visibility = Some(RepositoryVisibility::Public);
+
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.repository_visibility =
+            Some(OverridableValue::overridable(RepositoryVisibility::Private));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_overrides_fails_when_global_prohibits_repository_visibility_override() {
+        let mut team_config = TeamConfig::new();
+        team_config.repository_visibility = Some(RepositoryVisibility::Public);
+
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.repository_visibility =
+            Some(OverridableValue::fixed(RepositoryVisibility::Private));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_err());
+
+        if let Err(ConfigurationError::OverrideNotAllowed {
+            field,
+            attempted_value,
+            global_value,
+        }) = result
+        {
+            assert_eq!(field, "repository_visibility");
+            assert_eq!(attempted_value, "Public");
+            assert_eq!(global_value, "Private");
+        } else {
+            panic!("Expected OverrideNotAllowed error");
+        }
+    }
+
+    #[test]
+    fn validate_overrides_succeeds_when_global_allows_branch_protection_override() {
+        let mut team_config = TeamConfig::new();
+        team_config.branch_protection_enabled = Some(false);
+
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.branch_protection_enabled = Some(OverridableValue::overridable(true));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_overrides_fails_when_global_prohibits_branch_protection_override() {
+        let mut team_config = TeamConfig::new();
+        team_config.branch_protection_enabled = Some(false);
+
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.branch_protection_enabled = Some(OverridableValue::fixed(true));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_err());
+
+        if let Err(ConfigurationError::OverrideNotAllowed {
+            field,
+            attempted_value,
+            global_value,
+        }) = result
+        {
+            assert_eq!(field, "branch_protection_enabled");
+            assert_eq!(attempted_value, "false");
+            assert_eq!(global_value, "true");
+        } else {
+            panic!("Expected OverrideNotAllowed error");
+        }
+    }
+
+    #[test]
+    fn validate_overrides_succeeds_when_global_allows_merge_configuration_override() {
+        let team_merge_config = MergeConfig::new(
+            vec![MergeType::Squash],
+            CommitMessageOption::PullRequestTitle,
+            CommitMessageOption::PullRequestTitleAndDescription,
+        );
+        let mut team_config = TeamConfig::new();
+        team_config.merge_configuration = Some(team_merge_config.clone());
+
+        let global_merge_config = MergeConfig::new(
+            vec![MergeType::Merge, MergeType::Squash],
+            CommitMessageOption::DefaultMessage,
+            CommitMessageOption::DefaultMessage,
+        );
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.merge_configuration =
+            Some(OverridableValue::overridable(global_merge_config));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_overrides_fails_when_global_prohibits_merge_configuration_override() {
+        let team_merge_config = MergeConfig::new(
+            vec![MergeType::Squash],
+            CommitMessageOption::PullRequestTitle,
+            CommitMessageOption::PullRequestTitleAndDescription,
+        );
+        let mut team_config = TeamConfig::new();
+        team_config.merge_configuration = Some(team_merge_config);
+
+        let global_merge_config = MergeConfig::new(
+            vec![MergeType::Merge],
+            CommitMessageOption::DefaultMessage,
+            CommitMessageOption::DefaultMessage,
+        );
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.merge_configuration = Some(OverridableValue::fixed(global_merge_config));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_err());
+
+        if let Err(ConfigurationError::OverrideNotAllowed { field, .. }) = result {
+            assert_eq!(field, "merge_configuration");
+        } else {
+            panic!("Expected OverrideNotAllowed error");
+        }
+    }
+
+    #[test]
+    fn validate_overrides_ignores_additive_configurations() {
+        let mut team_config = TeamConfig::new();
+        team_config.team_webhooks = Some(vec![WebhookConfig::new(
+            "https://team.example.com/webhook".to_string(),
+            vec![WebhookEvent::Push],
+            true,
+            None,
+        )]);
+        team_config.team_github_apps = Some(vec!["team-app".to_string()]);
+        team_config.team_labels = Some(vec![LabelConfig::new(
+            "team-specific".to_string(),
+            None,
+            "ff0000".to_string(),
+        )]);
+        team_config.team_environments = Some(vec![EnvironmentConfig::new(
+            "team-staging".to_string(),
+            None,
+            None,
+            None,
+        )]);
+
+        let global_defaults = GlobalDefaults::new();
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_overrides_handles_multiple_override_violations() {
+        let mut team_config = TeamConfig::new();
+        team_config.repository_visibility = Some(RepositoryVisibility::Public);
+        team_config.branch_protection_enabled = Some(false);
+
+        let mut global_defaults = GlobalDefaults::new();
+        global_defaults.repository_visibility =
+            Some(OverridableValue::fixed(RepositoryVisibility::Private));
+        global_defaults.branch_protection_enabled = Some(OverridableValue::fixed(true));
+
+        let result = team_config.validate_overrides(&global_defaults);
+        assert!(result.is_err());
+
+        // Should fail on the first violation encountered
+        if let Err(ConfigurationError::OverrideNotAllowed { field, .. }) = result {
+            // Either field could be reported first, both are violations
+            assert!(field == "repository_visibility" || field == "branch_protection_enabled");
+        } else {
+            panic!("Expected OverrideNotAllowed error");
+        }
+    }
+
+    #[test]
+    fn serialization_roundtrip_preserves_team_config() {
+        let mut team_config = TeamConfig::new();
+        team_config.repository_visibility = Some(RepositoryVisibility::Public);
+        team_config.branch_protection_enabled = Some(true);
+        team_config.merge_configuration = Some(MergeConfig::new(
+            vec![MergeType::Squash, MergeType::Merge],
+            CommitMessageOption::PullRequestTitle,
+            CommitMessageOption::PullRequestTitleAndDescription,
+        ));
+        team_config.team_webhooks = Some(vec![
+            WebhookConfig::new(
+                "https://team.example.com/webhook1".to_string(),
+                vec![WebhookEvent::Push, WebhookEvent::PullRequest],
+                true,
+                Some("secret1".to_string()),
+            ),
+            WebhookConfig::new(
+                "https://team.example.com/webhook2".to_string(),
+                vec![WebhookEvent::Issues],
+                false,
+                None,
+            ),
+        ]);
+        team_config.team_github_apps =
+            Some(vec!["team-app-1".to_string(), "team-app-2".to_string()]);
+        team_config.team_labels = Some(vec![
+            LabelConfig::new(
+                "team-bug".to_string(),
+                Some("Team specific bug label".to_string()),
+                "ff0000".to_string(),
+            ),
+            LabelConfig::new(
+                "team-feature".to_string(),
+                Some("Team specific feature label".to_string()),
+                "00ff00".to_string(),
+            ),
+        ]);
+        team_config.team_environments = Some(vec![
+            EnvironmentConfig::new(
+                "team-staging".to_string(),
+                Some(vec!["@team-leads".to_string()]),
+                None,
+                Some("main".to_string()),
+            ),
+            EnvironmentConfig::new(
+                "team-production".to_string(),
+                Some(vec![
+                    "@team-leads".to_string(),
+                    "@security-team".to_string(),
+                ]),
+                Some(300),
+                Some("main".to_string()),
+            ),
+        ]);
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&team_config).expect("Failed to serialize to JSON");
+        let deserialized: TeamConfig =
+            serde_json::from_str(&json).expect("Failed to deserialize from JSON");
+        assert_eq!(team_config, deserialized);
+
+        // Serialize to TOML
+        let toml = toml::to_string(&team_config).expect("Failed to serialize to TOML");
+        let deserialized: TeamConfig =
+            toml::from_str(&toml).expect("Failed to deserialize from TOML");
+        assert_eq!(team_config, deserialized);
+    }
+}
+
+#[cfg(test)]
+mod environment_config_tests {
+    use super::*;
+
+    #[test]
+    fn new_creates_environment_with_all_fields() {
+        let env = EnvironmentConfig::new(
+            "production".to_string(),
+            Some(vec![
+                "@team-leads".to_string(),
+                "@security-team".to_string(),
+            ]),
+            Some(300),
+            Some("main".to_string()),
+        );
+
+        assert_eq!(env.name, "production");
+        assert_eq!(
+            env.required_reviewers,
+            Some(vec![
+                "@team-leads".to_string(),
+                "@security-team".to_string()
+            ])
+        );
+        assert_eq!(env.wait_timer, Some(300));
+        assert_eq!(env.deployment_branch_policy, Some("main".to_string()));
+    }
+
+    #[test]
+    fn new_creates_environment_with_minimal_configuration() {
+        let env = EnvironmentConfig::new("staging".to_string(), None, None, None);
+
+        assert_eq!(env.name, "staging");
+        assert!(env.required_reviewers.is_none());
+        assert!(env.wait_timer.is_none());
+        assert!(env.deployment_branch_policy.is_none());
+    }
+
+    #[test]
+    fn environment_config_serialization_roundtrip() {
+        let env = EnvironmentConfig::new(
+            "test-env".to_string(),
+            Some(vec!["@reviewer1".to_string(), "@reviewer2".to_string()]),
+            Some(180),
+            Some("release/*".to_string()),
+        );
+
+        // JSON roundtrip
+        let json = serde_json::to_string(&env).expect("Failed to serialize to JSON");
+        let deserialized: EnvironmentConfig =
+            serde_json::from_str(&json).expect("Failed to deserialize from JSON");
+        assert_eq!(env, deserialized);
+
+        // TOML roundtrip
+        let toml = toml::to_string(&env).expect("Failed to serialize to TOML");
+        let deserialized: EnvironmentConfig =
+            toml::from_str(&toml).expect("Failed to deserialize from TOML");
+        assert_eq!(env, deserialized);
+    }
+}
+
+#[cfg(test)]
+mod configuration_error_tests {
+    use super::*;
+
+    #[test]
+    fn override_not_allowed_error_contains_correct_details() {
+        let error = ConfigurationError::OverrideNotAllowed {
+            field: "repository_visibility".to_string(),
+            attempted_value: "Public".to_string(),
+            global_value: "Private".to_string(),
+        };
+
+        if let ConfigurationError::OverrideNotAllowed {
+            field,
+            attempted_value,
+            global_value,
+        } = error
+        {
+            assert_eq!(field, "repository_visibility");
+            assert_eq!(attempted_value, "Public");
+            assert_eq!(global_value, "Private");
+        } else {
+            panic!("Expected OverrideNotAllowed error");
+        }
+    }
+
+    #[test]
+    fn invalid_value_error_contains_correct_details() {
+        let error = ConfigurationError::InvalidValue {
+            field: "webhook_url".to_string(),
+            value: "not-a-url".to_string(),
+            reason: "Invalid URL format".to_string(),
+        };
+
+        if let ConfigurationError::InvalidValue {
+            field,
+            value,
+            reason,
+        } = error
+        {
+            assert_eq!(field, "webhook_url");
+            assert_eq!(value, "not-a-url");
+            assert_eq!(reason, "Invalid URL format");
+        } else {
+            panic!("Expected InvalidValue error");
+        }
+    }
+
+    #[test]
+    fn required_field_missing_error_contains_correct_details() {
+        let error = ConfigurationError::RequiredFieldMissing {
+            field: "branch_protection_enabled".to_string(),
+            context: "global defaults".to_string(),
+        };
+
+        if let ConfigurationError::RequiredFieldMissing { field, context } = error {
+            assert_eq!(field, "branch_protection_enabled");
+            assert_eq!(context, "global defaults");
+        } else {
+            panic!("Expected RequiredFieldMissing error");
+        }
+    }
+
+    #[test]
+    fn format_error_contains_correct_details() {
+        let error = ConfigurationError::FormatError {
+            file: "team-config.toml".to_string(),
+            error: "Invalid TOML syntax at line 5".to_string(),
+        };
+
+        if let ConfigurationError::FormatError { file, error } = error {
+            assert_eq!(file, "team-config.toml");
+            assert_eq!(error, "Invalid TOML syntax at line 5");
+        } else {
+            panic!("Expected FormatError error");
+        }
+    }
+
+    #[test]
+    fn configuration_errors_are_cloneable() {
+        let error = ConfigurationError::OverrideNotAllowed {
+            field: "test".to_string(),
+            attempted_value: "value1".to_string(),
+            global_value: "value2".to_string(),
+        };
+
+        let cloned = error.clone();
+        assert_eq!(error, cloned);
+    }
+
+    #[test]
+    fn configuration_errors_are_debuggable() {
+        let error = ConfigurationError::InvalidValue {
+            field: "test_field".to_string(),
+            value: "test_value".to_string(),
+            reason: "test_reason".to_string(),
+        };
+
+        let debug_string = format!("{:?}", error);
+        assert!(debug_string.contains("InvalidValue"));
+        assert!(debug_string.contains("test_field"));
+        assert!(debug_string.contains("test_value"));
+        assert!(debug_string.contains("test_reason"));
     }
 }

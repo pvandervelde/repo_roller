@@ -678,6 +678,558 @@ impl Default for GlobalDefaults {
     }
 }
 
+/// Team-specific configuration overrides and additions.
+///
+/// The `TeamConfig` structure allows teams within an organization to customize their
+/// repository settings while respecting the override policies defined in global defaults.
+/// Teams can override settings that are marked as overridable in the global configuration
+/// and add team-specific configurations like webhooks, GitHub Apps, and environments.
+///
+/// # Configuration Hierarchy
+///
+/// Team configurations are applied after global defaults but before template configurations
+/// in the hierarchical merging process:
+/// 1. Global defaults (baseline)
+/// 2. **Team configuration** (team-specific overrides and additions)
+/// 3. Repository type configuration (type-specific settings)
+/// 4. Template configuration (highest precedence)
+///
+/// # Override Control
+///
+/// Teams can only override global settings that have `override_allowed = true`.
+/// Attempting to override fixed global settings will result in validation errors
+/// during configuration merging.
+///
+/// # Team-Specific Features
+///
+/// Teams can add configurations that are purely additive and don't conflict with
+/// global policies:
+/// - Team-specific webhooks for notifications and automation
+/// - Additional GitHub Apps for team-specific workflows
+/// - Custom environments for team deployment processes
+/// - Team-specific labels for issue and PR management
+///
+/// # Security Considerations
+///
+/// Team configurations are loaded from the metadata repository under `teams/{team}/config.toml`.
+/// Access to modify team configurations should be restricted to team leads or
+/// repository administrators to prevent unauthorized changes to team policies.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::{TeamConfig, OverridableValue, RepositoryVisibility, WebhookConfig, WebhookEvent};
+///
+/// let mut team_config = TeamConfig::new();
+///
+/// // Override global repository visibility if allowed
+/// team_config.repository_visibility = Some(RepositoryVisibility::Public);
+///
+/// // Add team-specific webhook
+/// let webhook = WebhookConfig::new(
+///     "https://backend-team.example.com/webhook".to_string(),
+///     vec![WebhookEvent::Push, WebhookEvent::PullRequest],
+///     true,
+///     Some("team_secret".to_string())
+/// );
+/// team_config.team_webhooks = Some(vec![webhook]);
+///
+/// // Add team-specific GitHub Apps
+/// team_config.team_github_apps = Some(vec!["team-specific-app".to_string()]);
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct TeamConfig {
+    /// Override for repository visibility setting.
+    ///
+    /// If the global default allows override (`override_allowed = true`), teams can
+    /// specify a different repository visibility. This is useful for teams that need
+    /// public repositories for open source projects while the organization defaults to private.
+    ///
+    /// # Override Policy
+    ///
+    /// This setting can only be applied if the global default has `override_allowed = true`.
+    /// If the global setting is fixed, this field will be ignored during merging and
+    /// may generate validation warnings.
+    pub repository_visibility: Option<RepositoryVisibility>,
+
+    /// Override for branch protection enablement.
+    ///
+    /// Teams can disable branch protection if the global policy allows it, though this
+    /// is typically not recommended for production repositories. Most organizations
+    /// will set this as a fixed requirement in global defaults.
+    ///
+    /// # Override Policy
+    ///
+    /// This setting can only be applied if the global default has `override_allowed = true`.
+    /// Security-conscious organizations typically make this a fixed requirement.
+    pub branch_protection_enabled: Option<bool>,
+
+    /// Override for merge configuration settings.
+    ///
+    /// Teams can customize their merge strategies and commit message formats if the
+    /// global policy allows overrides. This enables teams to choose workflows that
+    /// best suit their development practices while maintaining organizational consistency.
+    ///
+    /// # Override Policy
+    ///
+    /// This setting can only be applied if the global default has `override_allowed = true`.
+    /// Organizations may fix this to ensure consistent merge practices.
+    pub merge_configuration: Option<MergeConfig>,
+
+    /// Team-specific webhook configurations.
+    ///
+    /// These webhooks are additive to any organization-wide webhooks defined in global
+    /// defaults. Teams can add webhooks for team-specific notifications, automation,
+    /// or integration with team tools without affecting other teams.
+    ///
+    /// # Additive Behavior
+    ///
+    /// Team webhooks are merged additively with global webhooks. Both will be configured
+    /// on repositories created by the team. Duplicate webhook URLs are not automatically
+    /// deduplicated, so teams should ensure they don't conflict with global webhooks.
+    ///
+    /// # Security Considerations
+    ///
+    /// Webhook URLs should be validated to ensure they point to approved team services.
+    /// Secrets should be properly secured and not logged in configuration audit trails.
+    pub team_webhooks: Option<Vec<WebhookConfig>>,
+
+    /// Team-specific GitHub App installations.
+    ///
+    /// These GitHub Apps are additive to any required apps defined in global defaults.
+    /// Teams can specify additional apps they need for their specific workflows,
+    /// such as team-specific deployment tools or code analysis services.
+    ///
+    /// # Additive Behavior
+    ///
+    /// Team GitHub Apps are merged additively with required global apps. All apps
+    /// (global required + team-specific) will be installed on team repositories.
+    /// Duplicate app installations are handled gracefully by the GitHub API.
+    ///
+    /// # App Specification
+    ///
+    /// GitHub Apps are specified by their slug name (e.g., "dependabot", "codecov").
+    /// The actual installation and permission configuration is handled during
+    /// repository creation through the GitHub Apps API.
+    pub team_github_apps: Option<Vec<String>>,
+
+    /// Team-specific repository labels.
+    ///
+    /// These labels are additive to any default labels defined in global defaults.
+    /// Teams can define labels for team-specific issue tracking, project management,
+    /// or workflow categorization that supplement the organization-wide label set.
+    ///
+    /// # Additive Behavior
+    ///
+    /// Team labels are merged additively with global default labels. If a team label
+    /// has the same name as a global label, the team label takes precedence for
+    /// repositories created by that team.
+    ///
+    /// # Label Management
+    ///
+    /// Labels are created and updated automatically during repository creation.
+    /// Changes to team label configurations will only affect newly created repositories
+    /// unless explicitly synchronized to existing repositories.
+    pub team_labels: Option<Vec<LabelConfig>>,
+
+    /// Team-specific environment configurations.
+    ///
+    /// Environments define deployment targets with protection rules and secrets.
+    /// Teams can define environments for their specific deployment needs, such as
+    /// staging environments, preview environments, or team-specific production environments.
+    ///
+    /// # Environment Management
+    ///
+    /// Environments are created during repository setup and can include protection rules
+    /// such as required reviewers, wait timers, and deployment branch restrictions.
+    /// Environment-specific secrets and variables must be configured separately through
+    /// the GitHub API after repository creation.
+    ///
+    /// # Security Considerations
+    ///
+    /// Environment protection rules should be carefully configured to prevent unauthorized
+    /// deployments. Required reviewers should include team leads or designated deployment
+    /// approvers to maintain proper change control.
+    pub team_environments: Option<Vec<EnvironmentConfig>>,
+}
+
+/// Configuration for a deployment environment.
+///
+/// Environments in GitHub provide deployment protection rules and allow teams to
+/// configure deployment gates, required reviewers, and deployment branch restrictions.
+/// Each environment can have its own protection rules and is managed independently.
+///
+/// # Environment Protection
+///
+/// Environments can include various protection mechanisms:
+/// - Required reviewers who must approve deployments
+/// - Wait timers that delay deployments for a specified period
+/// - Deployment branch restrictions that limit which branches can deploy
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::EnvironmentConfig;
+///
+/// // Production environment with strict protection
+/// let production = EnvironmentConfig {
+///     name: "production".to_string(),
+///     required_reviewers: Some(vec!["@team-leads".to_string(), "@security-team".to_string()]),
+///     wait_timer: Some(300), // 5 minute wait timer
+///     deployment_branch_policy: Some("main".to_string()),
+/// };
+///
+/// // Staging environment with minimal protection
+/// let staging = EnvironmentConfig {
+///     name: "staging".to_string(),
+///     required_reviewers: Some(vec!["@team-leads".to_string()]),
+///     wait_timer: None,
+///     deployment_branch_policy: None, // Any branch can deploy to staging
+/// };
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct EnvironmentConfig {
+    /// The name of the environment (e.g., "production", "staging", "preview").
+    ///
+    /// Environment names must be unique within a repository and should follow
+    /// your organization's naming conventions. Common patterns include
+    /// environment-purpose combinations like "prod", "staging", "dev".
+    pub name: String,
+
+    /// List of required reviewers for deployments to this environment.
+    ///
+    /// Reviewers can be specified as:
+    /// - Individual users: "@username"
+    /// - Teams: "@org/team-name"
+    /// - Organization roles: "@org/role-name"
+    ///
+    /// At least one required reviewer must approve before deployment can proceed.
+    /// This provides change control and oversight for sensitive environments.
+    pub required_reviewers: Option<Vec<String>>,
+
+    /// Wait timer in seconds before deployments can proceed.
+    ///
+    /// Provides a cooling-off period for last-minute reviews or to coordinate
+    /// with other systems. Commonly used for production environments to allow
+    /// time for final validation or to schedule deployments during maintenance windows.
+    ///
+    /// Set to `None` for no wait timer, or specify seconds (e.g., 300 for 5 minutes).
+    pub wait_timer: Option<u32>,
+
+    /// Deployment branch policy restricting which branches can deploy.
+    ///
+    /// Can specify:
+    /// - Specific branch name: "main", "release", etc.
+    /// - Branch pattern: "release/*", "hotfix/*"
+    /// - `None` to allow deployment from any branch
+    ///
+    /// This helps enforce deployment practices and prevents accidental deployments
+    /// from feature branches to production environments.
+    pub deployment_branch_policy: Option<String>,
+}
+
+impl TeamConfig {
+    /// Creates a new empty `TeamConfig`.
+    ///
+    /// All fields are initialized to `None`, representing no team-specific overrides
+    /// or additions. Use the various setter methods or direct field assignment to
+    /// build the team configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `TeamConfig` instance with all fields set to `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::TeamConfig;
+    ///
+    /// let team_config = TeamConfig::new();
+    /// assert!(team_config.repository_visibility.is_none());
+    /// assert!(team_config.team_webhooks.is_none());
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            repository_visibility: None,
+            branch_protection_enabled: None,
+            merge_configuration: None,
+            team_webhooks: None,
+            team_github_apps: None,
+            team_labels: None,
+            team_environments: None,
+        }
+    }
+
+    /// Validates that team configuration overrides are allowed by global defaults.
+    ///
+    /// This method checks that any overrides specified in the team configuration
+    /// are permitted by the corresponding global default settings. It validates
+    /// that only settings with `override_allowed = true` are being overridden.
+    ///
+    /// # Arguments
+    ///
+    /// * `global_defaults` - The global configuration to validate against
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if all team overrides are valid
+    /// * `Err(ConfigurationError)` if any overrides violate global policies
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::OverrideNotAllowed` if the team attempts to
+    /// override a setting that is marked as fixed in the global defaults.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TeamConfig, GlobalDefaults, OverridableValue, RepositoryVisibility};
+    ///
+    /// let mut global = GlobalDefaults::new();
+    /// global.repository_visibility = Some(OverridableValue::overridable(RepositoryVisibility::Private));
+    ///
+    /// let mut team = TeamConfig::new();
+    /// team.repository_visibility = Some(RepositoryVisibility::Public);
+    ///
+    /// // This should succeed because global allows override
+    /// assert!(team.validate_overrides(&global).is_ok());
+    /// ```
+    pub fn validate_overrides(
+        &self,
+        global_defaults: &GlobalDefaults,
+    ) -> Result<(), ConfigurationError> {
+        // Check repository visibility override
+        if let Some(team_visibility) = &self.repository_visibility {
+            if let Some(global_visibility) = &global_defaults.repository_visibility {
+                if !global_visibility.can_override() {
+                    return Err(ConfigurationError::OverrideNotAllowed {
+                        field: "repository_visibility".to_string(),
+                        attempted_value: format!("{:?}", team_visibility),
+                        global_value: format!("{:?}", global_visibility.value()),
+                    });
+                }
+            }
+        }
+
+        // Check branch protection override
+        if let Some(team_protection) = &self.branch_protection_enabled {
+            if let Some(global_protection) = &global_defaults.branch_protection_enabled {
+                if !global_protection.can_override() {
+                    return Err(ConfigurationError::OverrideNotAllowed {
+                        field: "branch_protection_enabled".to_string(),
+                        attempted_value: team_protection.to_string(),
+                        global_value: global_protection.value().to_string(),
+                    });
+                }
+            }
+        }
+
+        // Check merge configuration override
+        if let Some(_team_merge) = &self.merge_configuration {
+            if let Some(global_merge) = &global_defaults.merge_configuration {
+                if !global_merge.can_override() {
+                    return Err(ConfigurationError::OverrideNotAllowed {
+                        field: "merge_configuration".to_string(),
+                        attempted_value: "custom_merge_config".to_string(),
+                        global_value: "fixed_merge_config".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Checks if the team configuration has any override settings specified.
+    ///
+    /// This method returns `true` if the team has specified any values that would
+    /// override global defaults, as opposed to purely additive configurations
+    /// like team-specific webhooks or labels.
+    ///
+    /// # Returns
+    ///
+    /// `true` if any override settings are specified, `false` if the configuration
+    /// is purely additive or empty.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TeamConfig, RepositoryVisibility};
+    ///
+    /// let mut team = TeamConfig::new();
+    /// assert!(!team.has_overrides());
+    ///
+    /// team.repository_visibility = Some(RepositoryVisibility::Public);
+    /// assert!(team.has_overrides());
+    /// ```
+    pub fn has_overrides(&self) -> bool {
+        self.repository_visibility.is_some()
+            || self.branch_protection_enabled.is_some()
+            || self.merge_configuration.is_some()
+    }
+
+    /// Checks if the team configuration has any additive settings specified.
+    ///
+    /// This method returns `true` if the team has specified any additive configurations
+    /// such as team-specific webhooks, GitHub Apps, labels, or environments that
+    /// extend rather than override global settings.
+    ///
+    /// # Returns
+    ///
+    /// `true` if any additive settings are specified, `false` if the configuration
+    /// contains only overrides or is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TeamConfig, WebhookConfig, WebhookEvent};
+    ///
+    /// let mut team = TeamConfig::new();
+    /// assert!(!team.has_additions());
+    ///
+    /// let webhook = WebhookConfig::new(
+    ///     "https://team.example.com/webhook".to_string(),
+    ///     vec![WebhookEvent::Push],
+    ///     true,
+    ///     None
+    /// );
+    /// team.team_webhooks = Some(vec![webhook]);
+    /// assert!(team.has_additions());
+    /// ```
+    pub fn has_additions(&self) -> bool {
+        self.team_webhooks.is_some()
+            || self.team_github_apps.is_some()
+            || self.team_labels.is_some()
+            || self.team_environments.is_some()
+    }
+}
+
+impl EnvironmentConfig {
+    /// Creates a new environment configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the environment
+    /// * `required_reviewers` - Optional list of required reviewers
+    /// * `wait_timer` - Optional wait timer in seconds
+    /// * `deployment_branch_policy` - Optional branch restriction policy
+    ///
+    /// # Returns
+    ///
+    /// A new `EnvironmentConfig` instance with the specified settings.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::EnvironmentConfig;
+    ///
+    /// let env = EnvironmentConfig::new(
+    ///     "production".to_string(),
+    ///     Some(vec!["@team-leads".to_string()]),
+    ///     Some(300),
+    ///     Some("main".to_string())
+    /// );
+    /// assert_eq!(env.name, "production");
+    /// ```
+    pub fn new(
+        name: String,
+        required_reviewers: Option<Vec<String>>,
+        wait_timer: Option<u32>,
+        deployment_branch_policy: Option<String>,
+    ) -> Self {
+        Self {
+            name,
+            required_reviewers,
+            wait_timer,
+            deployment_branch_policy,
+        }
+    }
+}
+
+impl Default for TeamConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Configuration validation and merging errors.
+///
+/// This enum represents the various errors that can occur during configuration
+/// validation, merging, and processing. Each variant provides specific context
+/// about the nature of the error to help with troubleshooting and resolution.
+///
+/// # Error Categories
+///
+/// - **Override Violations**: Attempts to override fixed settings
+/// - **Validation Failures**: Schema or business rule violations
+/// - **Missing Dependencies**: Required configurations not found
+/// - **Format Errors**: Invalid configuration file formats
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::ConfigurationError;
+///
+/// let error = ConfigurationError::OverrideNotAllowed {
+///     field: "branch_protection_enabled".to_string(),
+///     attempted_value: "false".to_string(),
+///     global_value: "true".to_string(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigurationError {
+    /// Attempted to override a setting that is marked as fixed in global defaults.
+    ///
+    /// This error occurs when a team or template configuration tries to override
+    /// a global setting that has `override_allowed = false`. The error includes
+    /// details about which field was being overridden and what values were involved.
+    OverrideNotAllowed {
+        /// The configuration field that cannot be overridden.
+        field: String,
+        /// The value that was attempted to be set.
+        attempted_value: String,
+        /// The fixed value from global defaults.
+        global_value: String,
+    },
+
+    /// Configuration value failed validation rules.
+    ///
+    /// This error occurs when a configuration value doesn't meet schema requirements
+    /// or business rules, such as invalid webhook URLs, malformed color codes for labels,
+    /// or unsupported merge strategies.
+    InvalidValue {
+        /// The configuration field that has an invalid value.
+        field: String,
+        /// The invalid value that was provided.
+        value: String,
+        /// Description of why the value is invalid.
+        reason: String,
+    },
+
+    /// Required configuration field is missing.
+    ///
+    /// This error occurs when a mandatory configuration field is not provided
+    /// in contexts where it's required, such as missing global defaults that
+    /// are needed for security compliance.
+    RequiredFieldMissing {
+        /// The name of the missing required field.
+        field: String,
+        /// Context about where the field was expected.
+        context: String,
+    },
+
+    /// Configuration file format is invalid or corrupted.
+    ///
+    /// This error occurs when configuration files cannot be parsed due to
+    /// syntax errors, unsupported formats, or schema violations.
+    FormatError {
+        /// The file that contains the format error.
+        file: String,
+        /// Description of the format error.
+        error: String,
+    },
+}
+
 /// GitHub Actions configuration settings.
 ///
 /// Controls workflow execution permissions, artifact retention, and security policies
@@ -827,46 +1379,6 @@ impl CustomProperty {
 /// Defines deployment targets with protection rules, required reviewers,
 /// and environment-specific secrets and variables.
 ///
-/// # Security Implications
-///
-/// Environment configurations control access to deployment targets and
-/// should include appropriate protection rules for production environments.
-///
-/// # Examples
-///
-/// ```rust
-/// use config_manager::organization::EnvironmentConfig;
-///
-/// let env = EnvironmentConfig::new("production".to_string());
-/// // TODO: Add example usage once implemented
-/// ```
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-pub struct EnvironmentConfig {
-    /// The name of the environment.
-    pub name: String,
-
-    /// Whether the environment requires manual approval before deployment.
-    pub protection_rules_enabled: Option<OverridableValue<bool>>,
-}
-
-impl EnvironmentConfig {
-    /// Creates a new environment configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the environment
-    ///
-    /// # Returns
-    ///
-    /// A new `EnvironmentConfig` instance.
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            protection_rules_enabled: None,
-        }
-    }
-}
-
 /// GitHub App configuration for repository integration.
 ///
 /// Defines GitHub Apps that should be installed on repositories for
