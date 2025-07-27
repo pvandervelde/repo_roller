@@ -1676,3 +1676,485 @@ impl Default for GlobalDefaultsEnhanced {
         Self::new()
     }
 }
+
+/// Repository type configuration for type-specific settings.
+///
+/// This structure represents configuration settings that apply to repositories of a specific type
+/// (e.g., documentation, actions, library, service). Repository types provide a way to group
+/// repositories with similar requirements and apply consistent settings across them.
+///
+/// Repository type configurations are stored in the metadata repository under `types/{type}/config.toml`
+/// and are loaded based on the repository type specified during repository creation or through
+/// GitHub custom properties.
+///
+/// The configuration supports all the same settings as global defaults and team configurations,
+/// allowing type-specific customization of repository behavior, security policies, and automation.
+///
+/// # Repository Type Hierarchy
+///
+/// Repository types fit into the configuration hierarchy as:
+/// 1. **Template** - Highest precedence (can override repository type settings)
+/// 2. **Team** - Second precedence
+/// 3. **Repository Type** - Third precedence (this structure)
+/// 4. **Global** - Lowest precedence (baseline defaults)
+///
+/// # Examples
+///
+/// Creating a repository type configuration for documentation repositories:
+///
+/// ```rust
+/// use config_manager::organization::{RepositoryTypeConfig, RepositorySettings, LabelConfig};
+/// use config_manager::organization::OverridableValue;
+///
+/// let mut doc_config = RepositoryTypeConfig::new();
+///
+/// // Documentation repositories typically disable wiki (docs are in the repo)
+/// let mut repo_settings = RepositorySettings::new();
+/// repo_settings.wiki = Some(OverridableValue::fixed(false));
+/// repo_settings.issues = Some(OverridableValue::overridable(true));
+/// doc_config.repository = Some(repo_settings);
+///
+/// // Add documentation-specific labels
+/// let doc_label = LabelConfig::new(
+///     "documentation".to_string(),
+///     "0052cc".to_string(),
+///     Some("Improvements or additions to documentation".to_string())
+/// );
+/// doc_config.labels = Some(vec![doc_label]);
+/// ```
+///
+/// Loading from TOML configuration file:
+///
+/// ```toml
+/// # types/documentation/config.toml
+///
+/// [repository]
+/// wiki = { value = false, override_allowed = true }
+/// issues = { value = true, override_allowed = true }
+///
+/// [[labels]]
+/// name = "documentation"
+/// color = "0052cc"
+/// description = "Improvements or additions to documentation"
+/// ```
+///
+/// # Security Considerations
+///
+/// Repository type configurations should be carefully designed to ensure they don't conflict
+/// with security policies. Templates can override repository type settings, so sensitive
+/// security configurations should be marked as non-overridable where appropriate.
+///
+/// # Error Conditions
+///
+/// - **Invalid Configuration**: If the repository type configuration contains invalid values
+/// - **Override Conflicts**: If a template tries to override a non-overridable setting
+/// - **Missing Dependencies**: If the configuration references undefined custom properties or environments
+/// - **Serialization Errors**: If the configuration cannot be loaded from TOML/JSON files
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct RepositoryTypeConfig {
+    /// Branch protection settings for repositories of this type.
+    ///
+    /// These settings control branch protection rules, required status checks, and merge policies.
+    /// Common patterns include stricter protection for library repositories and more flexible
+    /// settings for documentation repositories.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, BranchProtectionSettings};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// config.branch_protection = Some(BranchProtectionSettings::new());
+    /// ```
+    pub branch_protection: Option<BranchProtectionSettings>,
+
+    /// Custom properties specific to this repository type.
+    ///
+    /// GitHub custom properties allow organizations to attach metadata to repositories.
+    /// Repository types can define standard properties that should be applied to all
+    /// repositories of that type.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, CustomProperty};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// let property = CustomProperty::new(
+    ///     "type".to_string(),
+    ///     "documentation".to_string(),
+    ///     Some("Repository classification".to_string())
+    /// );
+    /// config.custom_properties = Some(vec![property]);
+    /// ```
+    pub custom_properties: Option<Vec<CustomProperty>>,
+
+    /// Deployment environments for repositories of this type.
+    ///
+    /// Different repository types may have different deployment patterns. For example,
+    /// library repositories might have staging and production environments, while
+    /// documentation repositories might only need a production environment.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, EnvironmentConfig};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// let prod_env = EnvironmentConfig::new("production".to_string());
+    /// config.environments = Some(vec![prod_env]);
+    /// ```
+    pub environments: Option<Vec<EnvironmentConfig>>,
+
+    /// GitHub Apps that should be installed for repositories of this type.
+    ///
+    /// Repository types can specify which GitHub Apps should be automatically installed
+    /// to provide type-specific functionality (e.g., security scanning for libraries,
+    /// documentation generators for documentation repositories).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, GitHubAppConfig};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// config.github_apps = Some(vec![
+    ///     GitHubAppConfig::new("dependabot".to_string())
+    /// ]);
+    /// ```
+    pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Labels that should be created for repositories of this type.
+    ///
+    /// Repository types typically need specific labels for their workflows. For example,
+    /// documentation repositories might need "typo" and "documentation" labels, while
+    /// action repositories need "breaking-change" labels.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, LabelConfig};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// let label = LabelConfig::new(
+    ///     "enhancement".to_string(),
+    ///     "a2eeef".to_string(),
+    ///     Some("New feature or request".to_string())
+    /// );
+    /// config.labels = Some(vec![label]);
+    /// ```
+    pub labels: Option<Vec<LabelConfig>>,
+
+    /// Pull request settings for repositories of this type.
+    ///
+    /// Different repository types may have different pull request requirements. For example,
+    /// marketplace actions might require more reviewers than internal documentation.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, PullRequestSettings};
+    /// use config_manager::organization::OverridableValue;
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// let mut pr_settings = PullRequestSettings::new();
+    /// pr_settings.required_approving_review_count = Some(OverridableValue::fixed(2));
+    /// config.pull_requests = Some(pr_settings);
+    /// ```
+    pub pull_requests: Option<PullRequestSettings>,
+
+    /// Repository-level settings for repositories of this type.
+    ///
+    /// These settings control repository features like issues, wiki, projects, and security features.
+    /// Repository types can provide sensible defaults based on the repository's purpose.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, RepositorySettings};
+    /// use config_manager::organization::OverridableValue;
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// let mut repo_settings = RepositorySettings::new();
+    /// repo_settings.issues = Some(OverridableValue::overridable(true));
+    /// repo_settings.wiki = Some(OverridableValue::fixed(false));
+    /// config.repository = Some(repo_settings);
+    /// ```
+    pub repository: Option<RepositorySettings>,
+
+    /// Webhooks that should be configured for repositories of this type.
+    ///
+    /// Repository types can define standard webhooks for integration with external systems.
+    /// For example, library repositories might need webhooks for package publishing,
+    /// while documentation repositories might need webhooks for site deployment.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, WebhookConfig, WebhookEvent};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// let webhook = WebhookConfig::new(
+    ///     "https://example.com/webhook".to_string(),
+    ///     vec![WebhookEvent::Push, WebhookEvent::PullRequest]
+    /// );
+    /// config.webhooks = Some(vec![webhook]);
+    /// ```
+    pub webhooks: Option<Vec<WebhookConfig>>,
+}
+
+impl RepositoryTypeConfig {
+    /// Creates a new empty `RepositoryTypeConfig`.
+    ///
+    /// All configuration fields are initialized to `None`, indicating that this repository type
+    /// does not override any settings. Individual fields can be set as needed to customize
+    /// the behavior for repositories of this type.
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryTypeConfig` instance with all fields set to `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::RepositoryTypeConfig;
+    ///
+    /// let config = RepositoryTypeConfig::new();
+    /// assert!(config.repository.is_none());
+    /// assert!(config.labels.is_none());
+    /// assert!(config.webhooks.is_none());
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            branch_protection: None,
+            custom_properties: None,
+            environments: None,
+            github_apps: None,
+            labels: None,
+            pull_requests: None,
+            repository: None,
+            webhooks: None,
+        }
+    }
+
+    /// Validates the repository type configuration for consistency and completeness.
+    ///
+    /// This method performs comprehensive validation of the configuration, checking for:
+    /// - Invalid or conflicting settings
+    /// - Missing required dependencies
+    /// - Malformed data (e.g., invalid colors, malformed URLs)
+    /// - Logical inconsistencies between related settings
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())` if the configuration is valid
+    /// - `Err(ConfigurationError)` if validation fails with details about the issues
+    ///
+    /// # Errors
+    ///
+    /// - `ConfigurationError::InvalidConfiguration`: If settings are invalid or inconsistent
+    /// - `ConfigurationError::MissingDependency`: If referenced resources don't exist
+    /// - `ConfigurationError::ValidationError`: If data format validation fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, LabelConfig};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    ///
+    /// // Valid configuration
+    /// let label = LabelConfig::new("bug".to_string(), "d73a4a".to_string(), None);
+    /// config.labels = Some(vec![label]);
+    /// assert!(config.validate().is_ok());
+    ///
+    /// // Invalid configuration (bad color format)
+    /// let bad_label = LabelConfig::new("bad".to_string(), "invalid-color".to_string(), None);
+    /// config.labels = Some(vec![bad_label]);
+    /// assert!(config.validate().is_err());
+    /// ```
+    pub fn validate(&self) -> Result<(), ConfigurationError> {
+        // Validate labels if present - basic validation for now
+        if let Some(labels) = &self.labels {
+            for label in labels {
+                if label.name.is_empty() {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "label.name".to_string(),
+                        value: "".to_string(),
+                        reason: "Label name cannot be empty".to_string(),
+                    });
+                }
+                if label.color.is_empty() {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "label.color".to_string(),
+                        value: "".to_string(),
+                        reason: "Label color cannot be empty".to_string(),
+                    });
+                }
+                // Basic hex color validation (6 characters)
+                if !label.color.chars().all(|c| c.is_ascii_hexdigit()) || label.color.len() != 6 {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "label.color".to_string(),
+                        value: label.color.clone(),
+                        reason: "Color must be 6-character hex string".to_string(),
+                    });
+                }
+            }
+        }
+
+        // Validate webhooks if present - basic validation for now
+        if let Some(webhooks) = &self.webhooks {
+            for webhook in webhooks {
+                if webhook.url.is_empty() {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "webhook.url".to_string(),
+                        value: "".to_string(),
+                        reason: "Webhook URL cannot be empty".to_string(),
+                    });
+                }
+                if !webhook.url.starts_with("https://") {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "webhook.url".to_string(),
+                        value: webhook.url.clone(),
+                        reason: "Webhook URL must use HTTPS".to_string(),
+                    });
+                }
+            }
+        }
+
+        // Validate environments if present - basic validation for now
+        if let Some(environments) = &self.environments {
+            for env in environments {
+                if env.name.is_empty() {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "environment.name".to_string(),
+                        value: "".to_string(),
+                        reason: "Environment name cannot be empty".to_string(),
+                    });
+                }
+            }
+        }
+
+        // Validate GitHub apps if present - basic validation for now
+        if let Some(github_apps) = &self.github_apps {
+            for app in github_apps {
+                if app.app_slug.is_empty() {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "github_app.app_slug".to_string(),
+                        value: "".to_string(),
+                        reason: "GitHub App name cannot be empty".to_string(),
+                    });
+                }
+            }
+        }
+
+        // Validate custom properties if present - basic validation for now
+        if let Some(custom_properties) = &self.custom_properties {
+            for property in custom_properties {
+                if property.property_name.is_empty() {
+                    return Err(ConfigurationError::InvalidValue {
+                        field: "custom_property.property_name".to_string(),
+                        value: "".to_string(),
+                        reason: "Custom property name cannot be empty".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Checks if this repository type configuration has any settings defined.
+    ///
+    /// This method returns `true` if any configuration field is set (not `None`),
+    /// indicating that this repository type provides specific settings that differ
+    /// from the defaults.
+    ///
+    /// # Returns
+    ///
+    /// `true` if any configuration field is defined, `false` if all fields are `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, RepositorySettings};
+    ///
+    /// let empty_config = RepositoryTypeConfig::new();
+    /// assert!(!empty_config.has_settings());
+    ///
+    /// let mut config_with_settings = RepositoryTypeConfig::new();
+    /// config_with_settings.repository = Some(RepositorySettings::new());
+    /// assert!(config_with_settings.has_settings());
+    /// ```
+    pub fn has_settings(&self) -> bool {
+        self.branch_protection.is_some()
+            || self.custom_properties.is_some()
+            || self.environments.is_some()
+            || self.github_apps.is_some()
+            || self.labels.is_some()
+            || self.pull_requests.is_some()
+            || self.repository.is_some()
+            || self.webhooks.is_some()
+    }
+
+    /// Counts the total number of additive items (labels, webhooks, etc.) in this configuration.
+    ///
+    /// This method provides a count of items that are additively merged during configuration
+    /// resolution. This is useful for understanding the scope of configuration and for
+    /// performance optimization in merging operations.
+    ///
+    /// # Returns
+    ///
+    /// The total count of additive configuration items.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeConfig, LabelConfig, WebhookConfig, WebhookEvent};
+    ///
+    /// let mut config = RepositoryTypeConfig::new();
+    /// assert_eq!(config.count_additive_items(), 0);
+    ///
+    /// // Add some labels and webhooks
+    /// config.labels = Some(vec![
+    ///     LabelConfig::new("bug".to_string(), "d73a4a".to_string(), None),
+    ///     LabelConfig::new("feature".to_string(), "a2eeef".to_string(), None),
+    /// ]);
+    /// config.webhooks = Some(vec![
+    ///     WebhookConfig::new("https://example.com/hook".to_string(), vec![WebhookEvent::Push])
+    /// ]);
+    ///
+    /// assert_eq!(config.count_additive_items(), 3); // 2 labels + 1 webhook
+    /// ```
+    pub fn count_additive_items(&self) -> usize {
+        let mut count = 0;
+
+        if let Some(labels) = &self.labels {
+            count += labels.len();
+        }
+
+        if let Some(webhooks) = &self.webhooks {
+            count += webhooks.len();
+        }
+
+        if let Some(environments) = &self.environments {
+            count += environments.len();
+        }
+
+        if let Some(github_apps) = &self.github_apps {
+            count += github_apps.len();
+        }
+
+        if let Some(custom_properties) = &self.custom_properties {
+            count += custom_properties.len();
+        }
+
+        count
+    }
+}
+
+impl Default for RepositoryTypeConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}

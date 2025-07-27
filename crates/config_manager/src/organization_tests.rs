@@ -6,8 +6,8 @@
 
 use crate::organization::{
     CommitMessageOption, ConfigurationError, EnvironmentConfig, GlobalDefaults, LabelConfig,
-    MergeConfig, MergeType, OverridableValue, RepositoryVisibility, TeamConfig, WebhookConfig,
-    WebhookEvent, WorkflowPermission,
+    MergeConfig, MergeType, OverridableValue, RepositoryTypeConfig, RepositoryVisibility,
+    TeamConfig, WebhookConfig, WebhookEvent, WorkflowPermission,
 };
 
 #[cfg(test)]
@@ -1622,5 +1622,560 @@ mod configuration_error_tests {
         assert!(debug_string.contains("test_field"));
         assert!(debug_string.contains("test_value"));
         assert!(debug_string.contains("test_reason"));
+    }
+}
+
+#[cfg(test)]
+mod repository_type_config_tests {
+    use super::*;
+    use crate::organization::{
+        BranchProtectionSettings, CustomProperty, GitHubAppConfig, PullRequestSettings,
+        RepositorySettings,
+    };
+
+    #[test]
+    fn new_creates_empty_repository_type_config() {
+        let config = RepositoryTypeConfig::new();
+
+        assert!(config.branch_protection.is_none());
+        assert!(config.custom_properties.is_none());
+        assert!(config.environments.is_none());
+        assert!(config.github_apps.is_none());
+        assert!(config.labels.is_none());
+        assert!(config.pull_requests.is_none());
+        assert!(config.repository.is_none());
+        assert!(config.webhooks.is_none());
+    }
+
+    #[test]
+    fn default_creates_empty_repository_type_config() {
+        let config = RepositoryTypeConfig::default();
+        let new_config = RepositoryTypeConfig::new();
+
+        assert_eq!(config, new_config);
+    }
+
+    #[test]
+    fn has_settings_returns_false_for_empty_config() {
+        let config = RepositoryTypeConfig::new();
+        assert!(!config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_branch_protection_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.branch_protection = Some(BranchProtectionSettings::new());
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_custom_properties_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.custom_properties = Some(vec![]);
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_environments_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.environments = Some(vec![]);
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_github_apps_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.github_apps = Some(vec![]);
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_labels_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![]);
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_pull_requests_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.pull_requests = Some(PullRequestSettings::new());
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_repository_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.repository = Some(RepositorySettings::new());
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn has_settings_returns_true_when_webhooks_is_set() {
+        let mut config = RepositoryTypeConfig::new();
+        config.webhooks = Some(vec![]);
+        assert!(config.has_settings());
+    }
+
+    #[test]
+    fn count_additive_items_returns_zero_for_empty_config() {
+        let config = RepositoryTypeConfig::new();
+        assert_eq!(config.count_additive_items(), 0);
+    }
+
+    #[test]
+    fn count_additive_items_counts_labels() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![
+            LabelConfig::new(
+                "bug".to_string(),
+                Some("Bug report".to_string()),
+                "d73a4a".to_string(),
+            ),
+            LabelConfig::new(
+                "enhancement".to_string(),
+                Some("Enhancement request".to_string()),
+                "a2eeef".to_string(),
+            ),
+        ]);
+
+        assert_eq!(config.count_additive_items(), 2);
+    }
+
+    #[test]
+    fn count_additive_items_counts_webhooks() {
+        let mut config = RepositoryTypeConfig::new();
+        config.webhooks = Some(vec![
+            WebhookConfig {
+                url: "https://example.com/hook1".to_string(),
+                events: vec![WebhookEvent::Push],
+                active: true,
+                secret: None,
+            },
+            WebhookConfig {
+                url: "https://example.com/hook2".to_string(),
+                events: vec![WebhookEvent::PullRequest],
+                active: true,
+                secret: None,
+            },
+        ]);
+
+        assert_eq!(config.count_additive_items(), 2);
+    }
+
+    #[test]
+    fn count_additive_items_counts_environments() {
+        let mut config = RepositoryTypeConfig::new();
+        config.environments = Some(vec![
+            EnvironmentConfig::new("production".to_string(), None, None, None),
+            EnvironmentConfig::new("staging".to_string(), None, None, None),
+        ]);
+
+        assert_eq!(config.count_additive_items(), 2);
+    }
+
+    #[test]
+    fn count_additive_items_counts_github_apps() {
+        let mut config = RepositoryTypeConfig::new();
+        config.github_apps = Some(vec![
+            GitHubAppConfig::new("dependabot".to_string()),
+            GitHubAppConfig::new("security-scan".to_string()),
+        ]);
+
+        assert_eq!(config.count_additive_items(), 2);
+    }
+
+    #[test]
+    fn count_additive_items_counts_custom_properties() {
+        let mut config = RepositoryTypeConfig::new();
+        config.custom_properties = Some(vec![
+            CustomProperty::new("type".to_string(), "documentation".to_string()),
+            CustomProperty::new("owner".to_string(), "platform-team".to_string()),
+        ]);
+
+        assert_eq!(config.count_additive_items(), 2);
+    }
+
+    #[test]
+    fn count_additive_items_counts_all_types() {
+        let mut config = RepositoryTypeConfig::new();
+
+        // Add 2 labels
+        config.labels = Some(vec![
+            LabelConfig::new("bug".to_string(), None, "d73a4a".to_string()),
+            LabelConfig::new("enhancement".to_string(), None, "a2eeef".to_string()),
+        ]);
+
+        // Add 1 webhook
+        config.webhooks = Some(vec![WebhookConfig {
+            url: "https://example.com/hook".to_string(),
+            events: vec![WebhookEvent::Push],
+            active: true,
+            secret: None,
+        }]);
+
+        // Add 1 environment
+        config.environments = Some(vec![EnvironmentConfig::new(
+            "production".to_string(),
+            None,
+            None,
+            None,
+        )]);
+
+        // Add 2 GitHub apps
+        config.github_apps = Some(vec![
+            GitHubAppConfig::new("dependabot".to_string()),
+            GitHubAppConfig::new("security-scan".to_string()),
+        ]);
+
+        // Add 1 custom property
+        config.custom_properties = Some(vec![CustomProperty::new(
+            "type".to_string(),
+            "documentation".to_string(),
+        )]);
+
+        // Total: 2 + 1 + 1 + 2 + 1 = 7
+        assert_eq!(config.count_additive_items(), 7);
+    }
+
+    #[test]
+    fn validate_succeeds_for_empty_config() {
+        let config = RepositoryTypeConfig::new();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_succeeds_for_valid_labels() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![
+            LabelConfig::new("bug".to_string(), None, "d73a4a".to_string()),
+            LabelConfig::new(
+                "enhancement".to_string(),
+                Some("New feature".to_string()),
+                "a2eeef".to_string(),
+            ),
+        ]);
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_fails_for_empty_label_name() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![LabelConfig::new(
+            "".to_string(),
+            None,
+            "d73a4a".to_string(),
+        )]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_fails_for_empty_label_color() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![LabelConfig::new(
+            "bug".to_string(),
+            None,
+            "".to_string(),
+        )]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_fails_for_invalid_label_color_format() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![LabelConfig::new(
+            "bug".to_string(),
+            None,
+            "invalid-color".to_string(),
+        )]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_fails_for_short_label_color() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![LabelConfig::new(
+            "bug".to_string(),
+            None,
+            "123".to_string(),
+        )]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_succeeds_for_valid_webhooks() {
+        let mut config = RepositoryTypeConfig::new();
+        config.webhooks = Some(vec![WebhookConfig {
+            url: "https://example.com/hook".to_string(),
+            events: vec![WebhookEvent::Push],
+            active: true,
+            secret: Some("secret".to_string()),
+        }]);
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_fails_for_empty_webhook_url() {
+        let mut config = RepositoryTypeConfig::new();
+        config.webhooks = Some(vec![WebhookConfig {
+            url: "".to_string(),
+            events: vec![WebhookEvent::Push],
+            active: true,
+            secret: None,
+        }]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_fails_for_non_https_webhook_url() {
+        let mut config = RepositoryTypeConfig::new();
+        config.webhooks = Some(vec![WebhookConfig {
+            url: "http://example.com/hook".to_string(),
+            events: vec![WebhookEvent::Push],
+            active: true,
+            secret: None,
+        }]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_succeeds_for_valid_environments() {
+        let mut config = RepositoryTypeConfig::new();
+        config.environments = Some(vec![
+            EnvironmentConfig::new("production".to_string(), None, None, None),
+            EnvironmentConfig::new("staging".to_string(), None, None, None),
+        ]);
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_fails_for_empty_environment_name() {
+        let mut config = RepositoryTypeConfig::new();
+        config.environments = Some(vec![EnvironmentConfig::new(
+            "".to_string(),
+            None,
+            None,
+            None,
+        )]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_succeeds_for_valid_github_apps() {
+        let mut config = RepositoryTypeConfig::new();
+        config.github_apps = Some(vec![
+            GitHubAppConfig::new("dependabot".to_string()),
+            GitHubAppConfig::new("security-scan".to_string()),
+        ]);
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_fails_for_empty_github_app_name() {
+        let mut config = RepositoryTypeConfig::new();
+        config.github_apps = Some(vec![GitHubAppConfig::new("".to_string())]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_succeeds_for_valid_custom_properties() {
+        let mut config = RepositoryTypeConfig::new();
+        config.custom_properties = Some(vec![CustomProperty::new(
+            "type".to_string(),
+            "documentation".to_string(),
+        )]);
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_fails_for_empty_custom_property_name() {
+        let mut config = RepositoryTypeConfig::new();
+        config.custom_properties = Some(vec![CustomProperty::new(
+            "".to_string(),
+            "documentation".to_string(),
+        )]);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigurationError::InvalidValue { .. }
+        ));
+    }
+
+    #[test]
+    fn serialization_roundtrip_toml() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![LabelConfig::new(
+            "bug".to_string(),
+            Some("Something isn't working".to_string()),
+            "d73a4a".to_string(),
+        )]);
+        config.webhooks = Some(vec![WebhookConfig {
+            url: "https://example.com/hook".to_string(),
+            events: vec![WebhookEvent::Push, WebhookEvent::PullRequest],
+            active: true,
+            secret: Some("webhook_secret".to_string()),
+        }]);
+
+        let toml_str = toml::to_string(&config).expect("Should serialize to TOML");
+        let deserialized: RepositoryTypeConfig =
+            toml::from_str(&toml_str).expect("Should deserialize from TOML");
+
+        assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn serialization_roundtrip_json() {
+        let mut config = RepositoryTypeConfig::new();
+        config.environments = Some(vec![EnvironmentConfig::new(
+            "production".to_string(),
+            None,
+            None,
+            None,
+        )]);
+        config.github_apps = Some(vec![GitHubAppConfig::new("dependabot".to_string())]);
+        config.custom_properties = Some(vec![CustomProperty::new(
+            "type".to_string(),
+            "library".to_string(),
+        )]);
+
+        let json_str = serde_json::to_string(&config).expect("Should serialize to JSON");
+        let deserialized: RepositoryTypeConfig =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+
+        assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn complex_repository_type_config() {
+        let mut config = RepositoryTypeConfig::new();
+
+        // Repository settings
+        let mut repo_settings = RepositorySettings::new();
+        repo_settings.issues = Some(OverridableValue::overridable(true));
+        repo_settings.wiki = Some(OverridableValue::fixed(false));
+        config.repository = Some(repo_settings);
+
+        // Pull request settings
+        let mut pr_settings = PullRequestSettings::new();
+        pr_settings.allow_squash_merge = Some(OverridableValue::fixed(false));
+        config.pull_requests = Some(pr_settings);
+
+        // Labels
+        config.labels = Some(vec![
+            LabelConfig::new(
+                "breaking-change".to_string(),
+                Some("Breaking API changes".to_string()),
+                "d73a4a".to_string(),
+            ),
+            LabelConfig::new(
+                "enhancement".to_string(),
+                Some("New feature or request".to_string()),
+                "a2eeef".to_string(),
+            ),
+        ]);
+
+        // Environments
+        config.environments = Some(vec![EnvironmentConfig::new(
+            "production".to_string(),
+            None,
+            None,
+            None,
+        )]);
+
+        // GitHub Apps
+        config.github_apps = Some(vec![
+            GitHubAppConfig::new("dependabot".to_string()),
+            GitHubAppConfig::new("security-scan".to_string()),
+        ]);
+
+        // Validation should pass
+        assert!(config.validate().is_ok());
+
+        // Should have settings
+        assert!(config.has_settings());
+
+        // Should count additive items: 2 labels + 1 environment + 2 GitHub apps = 5
+        assert_eq!(config.count_additive_items(), 5);
+
+        // Should serialize/deserialize correctly
+        let json_str = serde_json::to_string(&config).expect("Should serialize to JSON");
+        let deserialized: RepositoryTypeConfig =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+        assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn repository_type_config_is_cloneable() {
+        let mut config = RepositoryTypeConfig::new();
+        config.labels = Some(vec![LabelConfig::new(
+            "test".to_string(),
+            None,
+            "ffffff".to_string(),
+        )]);
+
+        let cloned = config.clone();
+        assert_eq!(config, cloned);
+    }
+
+    #[test]
+    fn repository_type_config_is_debuggable() {
+        let config = RepositoryTypeConfig::new();
+        let debug_string = format!("{:?}", config);
+        assert!(debug_string.contains("RepositoryTypeConfig"));
     }
 }
