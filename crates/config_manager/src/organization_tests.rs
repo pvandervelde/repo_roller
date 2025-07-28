@@ -6,9 +6,11 @@
 
 use crate::organization::{
     CommitMessageOption, ConfigurationError, EnvironmentConfig, GlobalDefaults, LabelConfig,
-    MergeConfig, MergeType, OverridableValue, RepositoryTypeConfig, RepositoryVisibility,
-    TeamConfig, WebhookConfig, WebhookEvent, WorkflowPermission,
+    MergeConfig, MergeType, OverridableValue, RepositoryTypeConfig, RepositoryTypePolicy,
+    RepositoryTypeSpec, RepositoryVisibility, TeamConfig, TemplateConfig, TemplateMetadata,
+    TemplateVariable, WebhookConfig, WebhookEvent, WorkflowPermission,
 };
+use std::collections::HashMap;
 
 #[cfg(test)]
 mod overridable_value_tests {
@@ -2177,5 +2179,524 @@ mod repository_type_config_tests {
         let config = RepositoryTypeConfig::new();
         let debug_string = format!("{:?}", config);
         assert!(debug_string.contains("RepositoryTypeConfig"));
+    }
+}
+
+#[cfg(test)]
+mod template_config_tests {
+    use super::*;
+
+    #[test]
+    fn repository_type_policy_serialization() {
+        // Test Fixed policy
+        let fixed = RepositoryTypePolicy::Fixed;
+        let json_fixed = serde_json::to_string(&fixed).expect("Should serialize Fixed");
+        assert_eq!(json_fixed, "\"fixed\"");
+
+        let deserialized_fixed: RepositoryTypePolicy =
+            serde_json::from_str(&json_fixed).expect("Should deserialize Fixed");
+        assert_eq!(deserialized_fixed, RepositoryTypePolicy::Fixed);
+
+        // Test Preferable policy
+        let preferable = RepositoryTypePolicy::Preferable;
+        let json_preferable =
+            serde_json::to_string(&preferable).expect("Should serialize Preferable");
+        assert_eq!(json_preferable, "\"preferable\"");
+
+        let deserialized_preferable: RepositoryTypePolicy =
+            serde_json::from_str(&json_preferable).expect("Should deserialize Preferable");
+        assert_eq!(deserialized_preferable, RepositoryTypePolicy::Preferable);
+    }
+
+    #[test]
+    fn repository_type_spec_new_and_accessors() {
+        let spec = RepositoryTypeSpec::new("microservice".to_string(), RepositoryTypePolicy::Fixed);
+
+        assert_eq!(spec.repository_type(), "microservice");
+        assert_eq!(spec.policy(), &RepositoryTypePolicy::Fixed);
+        assert!(!spec.can_override());
+    }
+
+    #[test]
+    fn repository_type_spec_can_override() {
+        let fixed_spec =
+            RepositoryTypeSpec::new("service".to_string(), RepositoryTypePolicy::Fixed);
+        let flexible_spec =
+            RepositoryTypeSpec::new("library".to_string(), RepositoryTypePolicy::Preferable);
+
+        assert!(!fixed_spec.can_override());
+        assert!(flexible_spec.can_override());
+    }
+
+    #[test]
+    fn repository_type_spec_serialization() {
+        let spec = RepositoryTypeSpec::new("api".to_string(), RepositoryTypePolicy::Preferable);
+
+        let json_str = serde_json::to_string(&spec).expect("Should serialize to JSON");
+        let deserialized: RepositoryTypeSpec =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+
+        assert_eq!(spec, deserialized);
+        assert_eq!(deserialized.repository_type(), "api");
+        assert_eq!(deserialized.policy(), &RepositoryTypePolicy::Preferable);
+    }
+
+    #[test]
+    fn template_metadata_new_and_accessors() {
+        let metadata = TemplateMetadata::new(
+            "rust-service".to_string(),
+            "Production Rust service template".to_string(),
+            "Platform Team".to_string(),
+            vec![
+                "rust".to_string(),
+                "microservice".to_string(),
+                "backend".to_string(),
+            ],
+        );
+
+        assert_eq!(metadata.name(), "rust-service");
+        assert_eq!(metadata.description(), "Production Rust service template");
+        assert_eq!(metadata.author(), "Platform Team");
+        assert_eq!(metadata.tags().len(), 3);
+        assert_eq!(metadata.tags(), &["rust", "microservice", "backend"]);
+    }
+
+    #[test]
+    fn template_metadata_has_tag() {
+        let metadata = TemplateMetadata::new(
+            "web-app".to_string(),
+            "React web application".to_string(),
+            "Frontend Team".to_string(),
+            vec![
+                "react".to_string(),
+                "web".to_string(),
+                "frontend".to_string(),
+            ],
+        );
+
+        assert!(metadata.has_tag("react"));
+        assert!(metadata.has_tag("web"));
+        assert!(metadata.has_tag("frontend"));
+        assert!(!metadata.has_tag("backend"));
+        assert!(!metadata.has_tag("rust"));
+    }
+
+    #[test]
+    fn template_metadata_serialization() {
+        let metadata = TemplateMetadata::new(
+            "test-template".to_string(),
+            "Test template description".to_string(),
+            "Test Team".to_string(),
+            vec!["test".to_string(), "example".to_string()],
+        );
+
+        let json_str = serde_json::to_string(&metadata).expect("Should serialize to JSON");
+        let deserialized: TemplateMetadata =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+
+        assert_eq!(metadata, deserialized);
+        assert_eq!(deserialized.name(), "test-template");
+        assert_eq!(deserialized.tags().len(), 2);
+    }
+
+    #[test]
+    fn template_variable_new_and_accessors() {
+        let var = TemplateVariable::new(
+            "Service name for the microservice".to_string(),
+            Some("user-service".to_string()),
+            Some("default-service".to_string()),
+            Some(true),
+        );
+
+        assert_eq!(var.description(), "Service name for the microservice");
+        assert_eq!(var.example(), Some("user-service"));
+        assert_eq!(var.default(), Some("default-service"));
+        assert_eq!(var.required(), Some(true));
+        assert!(var.has_default());
+    }
+
+    #[test]
+    fn template_variable_optional_fields() {
+        let minimal_var =
+            TemplateVariable::new("Optional configuration".to_string(), None, None, None);
+
+        assert_eq!(minimal_var.description(), "Optional configuration");
+        assert_eq!(minimal_var.example(), None);
+        assert_eq!(minimal_var.default(), None);
+        assert_eq!(minimal_var.required(), None);
+        assert!(!minimal_var.has_default());
+    }
+
+    #[test]
+    fn template_variable_has_default() {
+        let with_default = TemplateVariable::new(
+            "Port number".to_string(),
+            Some("8080".to_string()),
+            Some("8000".to_string()),
+            Some(false),
+        );
+
+        let without_default = TemplateVariable::new(
+            "Service name".to_string(),
+            Some("example-service".to_string()),
+            None,
+            Some(true),
+        );
+
+        assert!(with_default.has_default());
+        assert!(!without_default.has_default());
+    }
+
+    #[test]
+    fn template_variable_serialization() {
+        let var = TemplateVariable::new(
+            "Database URL".to_string(),
+            Some("postgresql://localhost:5432/mydb".to_string()),
+            Some("sqlite:///tmp/default.db".to_string()),
+            Some(false),
+        );
+
+        let json_str = serde_json::to_string(&var).expect("Should serialize to JSON");
+        let deserialized: TemplateVariable =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+
+        assert_eq!(var, deserialized);
+        assert_eq!(deserialized.description(), "Database URL");
+        assert!(deserialized.has_default());
+    }
+
+    #[test]
+    fn template_config_new_and_basic_accessors() {
+        let metadata = TemplateMetadata::new(
+            "api-template".to_string(),
+            "REST API template".to_string(),
+            "Backend Team".to_string(),
+            vec!["api".to_string(), "rest".to_string()],
+        );
+
+        let config = TemplateConfig::new(metadata);
+
+        assert_eq!(config.template().name(), "api-template");
+        assert_eq!(config.template().author(), "Backend Team");
+        assert!(config.repository_type().is_none());
+        assert!(config.repository().is_none());
+        assert!(config.pull_requests().is_none());
+        assert!(config.branch_protection().is_none());
+        assert!(config.labels().is_none());
+        assert!(config.webhooks().is_none());
+        assert!(config.github_apps().is_none());
+        assert!(config.environments().is_none());
+        assert!(config.variables().is_none());
+    }
+
+    #[test]
+    fn template_config_repository_type_management() {
+        let metadata = TemplateMetadata::new(
+            "service-template".to_string(),
+            "Microservice template".to_string(),
+            "Platform Team".to_string(),
+            vec!["microservice".to_string()],
+        );
+
+        let mut config = TemplateConfig::new(metadata);
+
+        // Initially no repository type
+        assert!(!config.has_repository_type());
+        assert!(config.can_override_repository_type()); // No restriction when not specified
+
+        // Set fixed repository type
+        let fixed_spec =
+            RepositoryTypeSpec::new("microservice".to_string(), RepositoryTypePolicy::Fixed);
+        config.set_repository_type(Some(fixed_spec));
+
+        assert!(config.has_repository_type());
+        assert!(!config.can_override_repository_type());
+        assert_eq!(
+            config.repository_type().unwrap().repository_type(),
+            "microservice"
+        );
+
+        // Change to preferable repository type
+        let preferable_spec =
+            RepositoryTypeSpec::new("service".to_string(), RepositoryTypePolicy::Preferable);
+        config.set_repository_type(Some(preferable_spec));
+
+        assert!(config.has_repository_type());
+        assert!(config.can_override_repository_type());
+        assert_eq!(
+            config.repository_type().unwrap().repository_type(),
+            "service"
+        );
+
+        // Remove repository type
+        config.set_repository_type(None);
+        assert!(!config.has_repository_type());
+        assert!(config.can_override_repository_type());
+    }
+
+    #[test]
+    fn template_config_variable_management() {
+        let metadata = TemplateMetadata::new(
+            "app-template".to_string(),
+            "Application template".to_string(),
+            "Dev Team".to_string(),
+            vec!["app".to_string()],
+        );
+
+        let mut config = TemplateConfig::new(metadata);
+
+        // Initially no variables
+        assert!(config.variables().is_none());
+
+        // Add individual variable
+        let service_var = TemplateVariable::new(
+            "Name of the service".to_string(),
+            Some("my-service".to_string()),
+            None,
+            Some(true),
+        );
+        config.add_variable("service_name".to_string(), service_var);
+
+        assert!(config.variables().is_some());
+        assert!(config.variables().unwrap().contains_key("service_name"));
+        assert_eq!(config.variables().unwrap().len(), 1);
+
+        // Add another variable
+        let port_var = TemplateVariable::new(
+            "Port number".to_string(),
+            Some("8080".to_string()),
+            Some("8000".to_string()),
+            Some(false),
+        );
+        config.add_variable("port".to_string(), port_var);
+
+        assert_eq!(config.variables().unwrap().len(), 2);
+        assert!(config.variables().unwrap().contains_key("port"));
+
+        // Set entire variables HashMap
+        let mut new_vars = HashMap::new();
+        new_vars.insert(
+            "database_url".to_string(),
+            TemplateVariable::new(
+                "Database connection URL".to_string(),
+                None,
+                Some("sqlite:///tmp/app.db".to_string()),
+                Some(false),
+            ),
+        );
+        config.set_variables(Some(new_vars));
+
+        assert_eq!(config.variables().unwrap().len(), 1);
+        assert!(config.variables().unwrap().contains_key("database_url"));
+        assert!(!config.variables().unwrap().contains_key("service_name"));
+
+        // Remove all variables
+        config.set_variables(None);
+        assert!(config.variables().is_none());
+    }
+
+    #[test]
+    fn template_config_labels_management() {
+        let metadata = TemplateMetadata::new(
+            "lib-template".to_string(),
+            "Library template".to_string(),
+            "Platform Team".to_string(),
+            vec!["library".to_string()],
+        );
+
+        let mut config = TemplateConfig::new(metadata);
+
+        // Initially no labels
+        assert!(config.labels().is_none());
+
+        // Set labels
+        let labels = vec![
+            LabelConfig::new(
+                "bug".to_string(),
+                Some("Bug reports".to_string()),
+                "d73a4a".to_string(),
+            ),
+            LabelConfig::new(
+                "enhancement".to_string(),
+                Some("Feature requests".to_string()),
+                "a2eeef".to_string(),
+            ),
+        ];
+        config.set_labels(Some(labels));
+
+        assert!(config.labels().is_some());
+        assert_eq!(config.labels().unwrap().len(), 2);
+
+        // Remove labels
+        config.set_labels(None);
+        assert!(config.labels().is_none());
+    }
+
+    #[test]
+    fn template_config_count_additive_items() {
+        let metadata = TemplateMetadata::new(
+            "full-template".to_string(),
+            "Template with all features".to_string(),
+            "Full Team".to_string(),
+            vec!["complete".to_string()],
+        );
+
+        let mut config = TemplateConfig::new(metadata);
+
+        // Initially no additive items
+        assert_eq!(config.count_additive_items(), 0);
+
+        // Add labels
+        config.set_labels(Some(vec![
+            LabelConfig::new("bug".to_string(), None, "d73a4a".to_string()),
+            LabelConfig::new("feature".to_string(), None, "a2eeef".to_string()),
+            LabelConfig::new("documentation".to_string(), None, "0075ca".to_string()),
+        ]));
+        assert_eq!(config.count_additive_items(), 3);
+
+        // Add webhooks
+        config.set_webhooks(Some(vec![
+            WebhookConfig::new(
+                "https://example.com/hook1".to_string(),
+                vec![WebhookEvent::Push],
+                true,
+                None,
+            ),
+            WebhookConfig::new(
+                "https://example.com/hook2".to_string(),
+                vec![WebhookEvent::PullRequest],
+                true,
+                None,
+            ),
+        ]));
+        assert_eq!(config.count_additive_items(), 5); // 3 labels + 2 webhooks
+
+        // Add variables
+        let mut variables = HashMap::new();
+        variables.insert(
+            "var1".to_string(),
+            TemplateVariable::new("Variable 1".to_string(), None, None, None),
+        );
+        variables.insert(
+            "var2".to_string(),
+            TemplateVariable::new("Variable 2".to_string(), None, None, None),
+        );
+        config.set_variables(Some(variables));
+        assert_eq!(config.count_additive_items(), 7); // 3 labels + 2 webhooks + 2 variables
+
+        // Add environments
+        config.set_environments(Some(vec![EnvironmentConfig::new(
+            "staging".to_string(),
+            None,
+            None,
+            None,
+        )]));
+        assert_eq!(config.count_additive_items(), 8); // 3 labels + 2 webhooks + 2 variables + 1 environment
+    }
+
+    #[test]
+    fn template_config_serialization() {
+        let metadata = TemplateMetadata::new(
+            "serialization-test".to_string(),
+            "Template for testing serialization".to_string(),
+            "Test Team".to_string(),
+            vec!["test".to_string(), "serialization".to_string()],
+        );
+
+        let mut config = TemplateConfig::new(metadata);
+
+        // Set repository type
+        config.set_repository_type(Some(RepositoryTypeSpec::new(
+            "library".to_string(),
+            RepositoryTypePolicy::Preferable,
+        )));
+
+        // Add variables
+        let mut variables = HashMap::new();
+        variables.insert(
+            "lib_name".to_string(),
+            TemplateVariable::new(
+                "Library name".to_string(),
+                Some("my-lib".to_string()),
+                None,
+                Some(true),
+            ),
+        );
+        config.set_variables(Some(variables));
+
+        // Add labels
+        config.set_labels(Some(vec![LabelConfig::new(
+            "library".to_string(),
+            Some("Library specific".to_string()),
+            "0075ca".to_string(),
+        )]));
+
+        // Test serialization
+        let json_str = serde_json::to_string(&config).expect("Should serialize to JSON");
+        let deserialized: TemplateConfig =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+
+        // Verify metadata
+        assert_eq!(deserialized.template().name(), "serialization-test");
+        assert_eq!(deserialized.template().author(), "Test Team");
+        assert_eq!(deserialized.template().tags().len(), 2);
+
+        // Verify repository type
+        assert!(deserialized.repository_type().is_some());
+        assert_eq!(
+            deserialized.repository_type().unwrap().repository_type(),
+            "library"
+        );
+        assert!(deserialized.can_override_repository_type());
+
+        // Verify variables
+        assert!(deserialized.variables().is_some());
+        assert!(deserialized.variables().unwrap().contains_key("lib_name"));
+
+        // Verify labels
+        assert!(deserialized.labels().is_some());
+        assert_eq!(deserialized.labels().unwrap().len(), 1);
+
+        // Verify additive item count
+        assert_eq!(deserialized.count_additive_items(), 2); // 1 variable + 1 label
+    }
+
+    #[test]
+    fn template_config_is_cloneable() {
+        let metadata = TemplateMetadata::new(
+            "clone-test".to_string(),
+            "Template for clone testing".to_string(),
+            "Clone Team".to_string(),
+            vec!["clone".to_string()],
+        );
+
+        let mut config = TemplateConfig::new(metadata);
+        config.add_variable(
+            "test_var".to_string(),
+            TemplateVariable::new("Test variable".to_string(), None, None, None),
+        );
+
+        let cloned = config.clone();
+
+        // Verify they are equal but independent
+        assert_eq!(config.template().name(), cloned.template().name());
+        assert_eq!(config.variables().is_some(), cloned.variables().is_some());
+        assert_eq!(config.count_additive_items(), cloned.count_additive_items());
+    }
+
+    #[test]
+    fn template_config_is_debuggable() {
+        let metadata = TemplateMetadata::new(
+            "debug-test".to_string(),
+            "Template for debug testing".to_string(),
+            "Debug Team".to_string(),
+            vec!["debug".to_string()],
+        );
+
+        let config = TemplateConfig::new(metadata);
+        let debug_string = format!("{:?}", config);
+
+        assert!(debug_string.contains("TemplateConfig"));
+        assert!(debug_string.contains("debug-test"));
     }
 }

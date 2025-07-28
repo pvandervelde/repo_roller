@@ -9,6 +9,7 @@
 //! consistency policies can be enforced.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // Unit tests for organization configuration structures
 #[path = "organization_tests.rs"]
@@ -2156,5 +2157,837 @@ impl RepositoryTypeConfig {
 impl Default for RepositoryTypeConfig {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Repository type specification policy for templates.
+///
+/// This enum defines how templates can specify repository types and whether users
+/// can override the template's repository type choice during repository creation.
+/// This provides flexibility while allowing templates to enforce specific requirements.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::RepositoryTypePolicy;
+///
+/// let policy = RepositoryTypePolicy::Fixed;
+/// assert_eq!(format!("{:?}", policy), "Fixed");
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RepositoryTypePolicy {
+    /// User cannot override the repository type - template requirement is enforced.
+    Fixed,
+    /// User can override the repository type during repository creation.
+    Preferable,
+}
+
+/// Repository type specification for template configurations.
+///
+/// This structure allows templates to specify what repository type they create
+/// and whether users can override this choice. This enables templates to either
+/// enforce specific repository types for compliance or suggest preferred types
+/// while allowing flexibility.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::{RepositoryTypeSpec, RepositoryTypePolicy};
+///
+/// // Template that enforces a specific repository type
+/// let fixed_spec = RepositoryTypeSpec::new("microservice".to_string(), RepositoryTypePolicy::Fixed);
+/// assert_eq!(fixed_spec.repository_type(), "microservice");
+/// assert_eq!(fixed_spec.policy(), &RepositoryTypePolicy::Fixed);
+///
+/// // Template that prefers a type but allows override
+/// let flexible_spec = RepositoryTypeSpec::new("library".to_string(), RepositoryTypePolicy::Preferable);
+/// assert_eq!(flexible_spec.policy(), &RepositoryTypePolicy::Preferable);
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryTypeSpec {
+    /// The repository type this template creates or prefers.
+    repository_type: String,
+    /// Whether users can override this repository type choice.
+    policy: RepositoryTypePolicy,
+}
+
+impl RepositoryTypeSpec {
+    /// Creates a new repository type specification.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_type` - The repository type name (e.g., "microservice", "library")
+    /// * `policy` - Whether this type can be overridden by users
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryTypeSpec` with the specified type and policy.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeSpec, RepositoryTypePolicy};
+    ///
+    /// let spec = RepositoryTypeSpec::new("service".to_string(), RepositoryTypePolicy::Fixed);
+    /// assert_eq!(spec.repository_type(), "service");
+    /// ```
+    pub fn new(repository_type: String, policy: RepositoryTypePolicy) -> Self {
+        Self {
+            repository_type,
+            policy,
+        }
+    }
+
+    /// Gets the repository type name.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the repository type string.
+    pub fn repository_type(&self) -> &str {
+        &self.repository_type
+    }
+
+    /// Gets the override policy for this repository type specification.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `RepositoryTypePolicy`.
+    pub fn policy(&self) -> &RepositoryTypePolicy {
+        &self.policy
+    }
+
+    /// Checks if users can override this repository type.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the repository type can be overridden, `false` if it's fixed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{RepositoryTypeSpec, RepositoryTypePolicy};
+    ///
+    /// let fixed = RepositoryTypeSpec::new("service".to_string(), RepositoryTypePolicy::Fixed);
+    /// let flexible = RepositoryTypeSpec::new("library".to_string(), RepositoryTypePolicy::Preferable);
+    ///
+    /// assert!(!fixed.can_override());
+    /// assert!(flexible.can_override());
+    /// ```
+    pub fn can_override(&self) -> bool {
+        matches!(self.policy, RepositoryTypePolicy::Preferable)
+    }
+}
+
+/// Template metadata containing authoring and identification information.
+///
+/// This structure provides essential information about the template including
+/// its name, description, author, and categorization tags. This metadata helps
+/// users understand the purpose and scope of the template.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::TemplateMetadata;
+///
+/// let metadata = TemplateMetadata::new(
+///     "rust-microservice".to_string(),
+///     "Production-ready Rust microservice template".to_string(),
+///     "Platform Team".to_string(),
+///     vec!["rust".to_string(), "microservice".to_string()],
+/// );
+///
+/// assert_eq!(metadata.name(), "rust-microservice");
+/// assert_eq!(metadata.tags().len(), 2);
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct TemplateMetadata {
+    /// Unique name identifying this template.
+    name: String,
+    /// Human-readable description of the template's purpose.
+    description: String,
+    /// Author or team responsible for this template.
+    author: String,
+    /// Categorization tags for discovery and organization.
+    tags: Vec<String>,
+}
+
+impl TemplateMetadata {
+    /// Creates new template metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique template identifier
+    /// * `description` - Human-readable template description
+    /// * `author` - Template author or responsible team
+    /// * `tags` - Categorization tags for discovery
+    ///
+    /// # Returns
+    ///
+    /// A new `TemplateMetadata` instance with the provided information.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::TemplateMetadata;
+    ///
+    /// let metadata = TemplateMetadata::new(
+    ///     "web-app".to_string(),
+    ///     "React web application template".to_string(),
+    ///     "Frontend Team".to_string(),
+    ///     vec!["react".to_string(), "web".to_string()],
+    /// );
+    ///
+    /// assert_eq!(metadata.author(), "Frontend Team");
+    /// ```
+    pub fn new(name: String, description: String, author: String, tags: Vec<String>) -> Self {
+        Self {
+            name,
+            description,
+            author,
+            tags,
+        }
+    }
+
+    /// Gets the template name.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the template name string.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Gets the template description.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the template description string.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// Gets the template author.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the author string.
+    pub fn author(&self) -> &str {
+        &self.author
+    }
+
+    /// Gets the template tags.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the vector of tag strings.
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    /// Checks if the template has a specific tag.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - The tag to search for
+    ///
+    /// # Returns
+    ///
+    /// `true` if the template has the specified tag, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::TemplateMetadata;
+    ///
+    /// let metadata = TemplateMetadata::new(
+    ///     "api".to_string(),
+    ///     "REST API template".to_string(),
+    ///     "Backend Team".to_string(),
+    ///     vec!["api".to_string(), "rest".to_string()],
+    /// );
+    ///
+    /// assert!(metadata.has_tag("api"));
+    /// assert!(!metadata.has_tag("frontend"));
+    /// ```
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tags.iter().any(|t| t == tag)
+    }
+}
+
+/// Template variable configuration with validation and metadata.
+///
+/// This structure defines properties and validation rules for template variables
+/// used during repository creation. It extends the basic variable configuration
+/// concept to support template-specific requirements and defaults.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::TemplateVariable;
+///
+/// // Required variable with validation
+/// let service_name = TemplateVariable::new(
+///     "Name of the microservice".to_string(),
+///     Some("user-service".to_string()),
+///     None,
+///     Some(true),
+/// );
+///
+/// assert!(service_name.required().unwrap_or(false));
+/// assert_eq!(service_name.example().unwrap(), "user-service");
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct TemplateVariable {
+    /// Human-readable description of what this variable controls.
+    description: String,
+    /// Optional example value to guide users.
+    example: Option<String>,
+    /// Optional default value if not provided by user.
+    default: Option<String>,
+    /// Whether this variable must be provided (overrides template engine defaults).
+    required: Option<bool>,
+}
+
+impl TemplateVariable {
+    /// Creates a new template variable configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `description` - Human-readable description of the variable's purpose
+    /// * `example` - Optional example value for user guidance
+    /// * `default` - Optional default value if not provided
+    /// * `required` - Whether this variable is required (None uses template engine default)
+    ///
+    /// # Returns
+    ///
+    /// A new `TemplateVariable` with the specified configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::TemplateVariable;
+    ///
+    /// let var = TemplateVariable::new(
+    ///     "Service port number".to_string(),
+    ///     Some("8080".to_string()),
+    ///     Some("8000".to_string()),
+    ///     Some(false),
+    /// );
+    ///
+    /// assert_eq!(var.default().unwrap(), "8000");
+    /// ```
+    pub fn new(
+        description: String,
+        example: Option<String>,
+        default: Option<String>,
+        required: Option<bool>,
+    ) -> Self {
+        Self {
+            description,
+            example,
+            default,
+            required,
+        }
+    }
+
+    /// Gets the variable description.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the description string.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// Gets the example value if provided.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the example string.
+    pub fn example(&self) -> Option<&str> {
+        self.example.as_deref()
+    }
+
+    /// Gets the default value if provided.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the default string.
+    pub fn default(&self) -> Option<&str> {
+        self.default.as_deref()
+    }
+
+    /// Gets the required flag if specified.
+    ///
+    /// # Returns
+    ///
+    /// An optional boolean indicating if the variable is required.
+    pub fn required(&self) -> Option<bool> {
+        self.required
+    }
+
+    /// Checks if this variable has a default value.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a default value is provided, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::TemplateVariable;
+    ///
+    /// let with_default = TemplateVariable::new(
+    ///     "Port".to_string(),
+    ///     None,
+    ///     Some("8080".to_string()),
+    ///     None,
+    /// );
+    ///
+    /// let without_default = TemplateVariable::new(
+    ///     "Name".to_string(),
+    ///     None,
+    ///     None,
+    ///     Some(true),
+    /// );
+    ///
+    /// assert!(with_default.has_default());
+    /// assert!(!without_default.has_default());
+    /// ```
+    pub fn has_default(&self) -> bool {
+        self.default.is_some()
+    }
+}
+
+/// Template-specific configuration for repository creation and management.
+///
+/// This structure defines all template-specific requirements and settings that
+/// are applied during repository creation. Templates have the highest precedence
+/// in the configuration hierarchy and can specify whether their settings can be
+/// overridden by lower-level configurations.
+///
+/// The template configuration extends beyond basic repository settings to include
+/// metadata, variable definitions, repository type specifications, and environment
+/// configurations specific to the template's intended use case.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::{TemplateConfig, TemplateMetadata, RepositoryTypeSpec, RepositoryTypePolicy};
+/// use std::collections::HashMap;
+///
+/// let metadata = TemplateMetadata::new(
+///     "rust-service".to_string(),
+///     "Rust microservice template".to_string(),
+///     "Platform Team".to_string(),
+///     vec!["rust".to_string(), "microservice".to_string()],
+/// );
+///
+/// let mut config = TemplateConfig::new(metadata);
+/// config.set_repository_type(Some(RepositoryTypeSpec::new(
+///     "microservice".to_string(),
+///     RepositoryTypePolicy::Fixed,
+/// )));
+///
+/// assert_eq!(config.template().name(), "rust-service");
+/// assert!(config.repository_type().is_some());
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct TemplateConfig {
+    /// Template identification and metadata information.
+    template: TemplateMetadata,
+    /// Optional repository type specification and override policy.
+    repository_type: Option<RepositoryTypeSpec>,
+    /// Template-specific repository settings (wiki, issues, security, etc.).
+    repository: Option<RepositorySettings>,
+    /// Template-specific pull request settings and policies.
+    pull_requests: Option<PullRequestSettings>,
+    /// Template-specific branch protection settings.
+    branch_protection: Option<BranchProtectionSettings>,
+    /// Labels that should be created in repositories using this template.
+    labels: Option<Vec<LabelConfig>>,
+    /// Webhooks that should be configured for repositories using this template.
+    webhooks: Option<Vec<WebhookConfig>>,
+    /// GitHub Apps that should be installed for repositories using this template.
+    github_apps: Option<Vec<GitHubAppConfig>>,
+    /// Environment configurations for deployment and automation.
+    environments: Option<Vec<EnvironmentConfig>>,
+    /// Template variable definitions with validation and defaults.
+    variables: Option<HashMap<String, TemplateVariable>>,
+}
+
+impl TemplateConfig {
+    /// Creates a new template configuration with the specified metadata.
+    ///
+    /// All optional configuration sections are initialized to None and can be
+    /// set using the provided setter methods.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - Template metadata including name, description, author, and tags
+    ///
+    /// # Returns
+    ///
+    /// A new `TemplateConfig` with the provided metadata and empty optional sections.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TemplateConfig, TemplateMetadata};
+    ///
+    /// let metadata = TemplateMetadata::new(
+    ///     "web-app".to_string(),
+    ///     "React web application".to_string(),
+    ///     "Frontend Team".to_string(),
+    ///     vec!["react".to_string()],
+    /// );
+    ///
+    /// let config = TemplateConfig::new(metadata);
+    /// assert_eq!(config.template().name(), "web-app");
+    /// assert!(config.repository_type().is_none());
+    /// ```
+    pub fn new(template: TemplateMetadata) -> Self {
+        Self {
+            template,
+            repository_type: None,
+            repository: None,
+            pull_requests: None,
+            branch_protection: None,
+            labels: None,
+            webhooks: None,
+            github_apps: None,
+            environments: None,
+            variables: None,
+        }
+    }
+
+    /// Gets the template metadata.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `TemplateMetadata`.
+    pub fn template(&self) -> &TemplateMetadata {
+        &self.template
+    }
+
+    /// Gets the repository type specification if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the `RepositoryTypeSpec`.
+    pub fn repository_type(&self) -> Option<&RepositoryTypeSpec> {
+        self.repository_type.as_ref()
+    }
+
+    /// Sets the repository type specification.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_type` - Optional repository type specification
+    pub fn set_repository_type(&mut self, repository_type: Option<RepositoryTypeSpec>) {
+        self.repository_type = repository_type;
+    }
+
+    /// Gets the repository settings if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the `RepositorySettings`.
+    pub fn repository(&self) -> Option<&RepositorySettings> {
+        self.repository.as_ref()
+    }
+
+    /// Sets the repository settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - Optional repository settings
+    pub fn set_repository(&mut self, repository: Option<RepositorySettings>) {
+        self.repository = repository;
+    }
+
+    /// Gets the pull request settings if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the `PullRequestSettings`.
+    pub fn pull_requests(&self) -> Option<&PullRequestSettings> {
+        self.pull_requests.as_ref()
+    }
+
+    /// Sets the pull request settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `pull_requests` - Optional pull request settings
+    pub fn set_pull_requests(&mut self, pull_requests: Option<PullRequestSettings>) {
+        self.pull_requests = pull_requests;
+    }
+
+    /// Gets the branch protection settings if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the `BranchProtectionSettings`.
+    pub fn branch_protection(&self) -> Option<&BranchProtectionSettings> {
+        self.branch_protection.as_ref()
+    }
+
+    /// Sets the branch protection settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `branch_protection` - Optional branch protection settings
+    pub fn set_branch_protection(&mut self, branch_protection: Option<BranchProtectionSettings>) {
+        self.branch_protection = branch_protection;
+    }
+
+    /// Gets the labels if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the vector of `LabelConfig`.
+    pub fn labels(&self) -> Option<&[LabelConfig]> {
+        self.labels.as_deref()
+    }
+
+    /// Sets the labels.
+    ///
+    /// # Arguments
+    ///
+    /// * `labels` - Optional vector of label configurations
+    pub fn set_labels(&mut self, labels: Option<Vec<LabelConfig>>) {
+        self.labels = labels;
+    }
+
+    /// Gets the webhooks if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the vector of `WebhookConfig`.
+    pub fn webhooks(&self) -> Option<&[WebhookConfig]> {
+        self.webhooks.as_deref()
+    }
+
+    /// Sets the webhooks.
+    ///
+    /// # Arguments
+    ///
+    /// * `webhooks` - Optional vector of webhook configurations
+    pub fn set_webhooks(&mut self, webhooks: Option<Vec<WebhookConfig>>) {
+        self.webhooks = webhooks;
+    }
+
+    /// Gets the GitHub Apps if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the vector of `GitHubAppConfig`.
+    pub fn github_apps(&self) -> Option<&[GitHubAppConfig]> {
+        self.github_apps.as_deref()
+    }
+
+    /// Sets the GitHub Apps.
+    ///
+    /// # Arguments
+    ///
+    /// * `github_apps` - Optional vector of GitHub App configurations
+    pub fn set_github_apps(&mut self, github_apps: Option<Vec<GitHubAppConfig>>) {
+        self.github_apps = github_apps;
+    }
+
+    /// Gets the environments if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the vector of `EnvironmentConfig`.
+    pub fn environments(&self) -> Option<&[EnvironmentConfig]> {
+        self.environments.as_deref()
+    }
+
+    /// Sets the environments.
+    ///
+    /// # Arguments
+    ///
+    /// * `environments` - Optional vector of environment configurations
+    pub fn set_environments(&mut self, environments: Option<Vec<EnvironmentConfig>>) {
+        self.environments = environments;
+    }
+
+    /// Gets the template variables if configured.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the HashMap of variable name to `TemplateVariable`.
+    pub fn variables(&self) -> Option<&HashMap<String, TemplateVariable>> {
+        self.variables.as_ref()
+    }
+
+    /// Sets the template variables.
+    ///
+    /// # Arguments
+    ///
+    /// * `variables` - Optional HashMap of variable configurations
+    pub fn set_variables(&mut self, variables: Option<HashMap<String, TemplateVariable>>) {
+        self.variables = variables;
+    }
+
+    /// Adds a single template variable.
+    ///
+    /// If the variables HashMap doesn't exist, it will be created.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Variable name
+    /// * `variable` - Variable configuration
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TemplateConfig, TemplateMetadata, TemplateVariable};
+    ///
+    /// let metadata = TemplateMetadata::new(
+    ///     "test".to_string(),
+    ///     "Test template".to_string(),
+    ///     "Test Team".to_string(),
+    ///     vec![],
+    /// );
+    ///
+    /// let mut config = TemplateConfig::new(metadata);
+    /// let variable = TemplateVariable::new(
+    ///     "Service name".to_string(),
+    ///     Some("example-service".to_string()),
+    ///     None,
+    ///     Some(true),
+    /// );
+    ///
+    /// config.add_variable("service_name".to_string(), variable);
+    /// assert!(config.variables().is_some());
+    /// assert!(config.variables().unwrap().contains_key("service_name"));
+    /// ```
+    pub fn add_variable(&mut self, name: String, variable: TemplateVariable) {
+        if self.variables.is_none() {
+            self.variables = Some(HashMap::new());
+        }
+        if let Some(ref mut vars) = self.variables {
+            vars.insert(name, variable);
+        }
+    }
+
+    /// Checks if this template specifies a repository type.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a repository type is specified, `false` otherwise.
+    pub fn has_repository_type(&self) -> bool {
+        self.repository_type.is_some()
+    }
+
+    /// Checks if the template's repository type can be overridden.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the repository type can be overridden or no type is specified,
+    /// `false` if the type is fixed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TemplateConfig, TemplateMetadata, RepositoryTypeSpec, RepositoryTypePolicy};
+    ///
+    /// let metadata = TemplateMetadata::new(
+    ///     "test".to_string(),
+    ///     "Test".to_string(),
+    ///     "Test Team".to_string(),
+    ///     vec![],
+    /// );
+    ///
+    /// let mut config = TemplateConfig::new(metadata);
+    ///
+    /// // No repository type specified - can override
+    /// assert!(config.can_override_repository_type());
+    ///
+    /// // Fixed repository type - cannot override
+    /// config.set_repository_type(Some(RepositoryTypeSpec::new(
+    ///     "service".to_string(),
+    ///     RepositoryTypePolicy::Fixed,
+    /// )));
+    /// assert!(!config.can_override_repository_type());
+    ///
+    /// // Preferable repository type - can override
+    /// config.set_repository_type(Some(RepositoryTypeSpec::new(
+    ///     "library".to_string(),
+    ///     RepositoryTypePolicy::Preferable,
+    /// )));
+    /// assert!(config.can_override_repository_type());
+    /// ```
+    pub fn can_override_repository_type(&self) -> bool {
+        match &self.repository_type {
+            Some(spec) => spec.can_override(),
+            None => true, // No restriction if not specified
+        }
+    }
+
+    /// Counts the total number of additive items (labels, webhooks, etc.) in this configuration.
+    ///
+    /// This method provides a count of items that are additively merged during configuration
+    /// resolution. This is useful for understanding the scope of configuration and for
+    /// performance optimization in merging operations.
+    ///
+    /// # Returns
+    ///
+    /// The total count of additive configuration items.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{TemplateConfig, TemplateMetadata, LabelConfig, WebhookConfig, WebhookEvent};
+    ///
+    /// let metadata = TemplateMetadata::new(
+    ///     "test".to_string(),
+    ///     "Test".to_string(),
+    ///     "Test Team".to_string(),
+    ///     vec![],
+    /// );
+    ///
+    /// let mut config = TemplateConfig::new(metadata);
+    /// assert_eq!(config.count_additive_items(), 0);
+    ///
+    /// // Add some labels and webhooks
+    /// config.set_labels(Some(vec![
+    ///     LabelConfig::new("bug".to_string(), "d73a4a".to_string(), None),
+    ///     LabelConfig::new("feature".to_string(), "a2eeef".to_string(), None),
+    /// ]));
+    /// config.set_webhooks(Some(vec![
+    ///     WebhookConfig::new("https://example.com/hook".to_string(), vec![WebhookEvent::Push])
+    /// ]));
+    ///
+    /// assert_eq!(config.count_additive_items(), 3); // 2 labels + 1 webhook
+    /// ```
+    pub fn count_additive_items(&self) -> usize {
+        let mut count = 0;
+
+        if let Some(labels) = &self.labels {
+            count += labels.len();
+        }
+
+        if let Some(webhooks) = &self.webhooks {
+            count += webhooks.len();
+        }
+
+        if let Some(environments) = &self.environments {
+            count += environments.len();
+        }
+
+        if let Some(github_apps) = &self.github_apps {
+            count += github_apps.len();
+        }
+
+        if let Some(variables) = &self.variables {
+            count += variables.len();
+        }
+
+        count
     }
 }
