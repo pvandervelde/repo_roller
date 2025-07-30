@@ -5,10 +5,11 @@
 //! configuration structures.
 
 use crate::organization::{
-    CommitMessageOption, ConfigurationError, EnvironmentConfig, GlobalDefaults, LabelConfig,
-    MergeConfig, MergeType, OverridableValue, RepositoryTypeConfig, RepositoryTypePolicy,
-    RepositoryTypeSpec, RepositoryVisibility, TeamConfig, TemplateConfig, TemplateMetadata,
-    TemplateVariable, WebhookConfig, WebhookEvent, WorkflowPermission,
+    CommitMessageOption, ConfigurationError, ConfigurationSource, ConfigurationSourceTrace,
+    EnvironmentConfig, GlobalDefaults, LabelConfig, MergeConfig, MergeType, MergedConfiguration,
+    OverridableValue, RepositoryTypeConfig, RepositoryTypePolicy, RepositoryTypeSpec,
+    RepositoryVisibility, TeamConfig, TemplateConfig, TemplateMetadata, TemplateVariable,
+    WebhookConfig, WebhookEvent, WorkflowPermission,
 };
 use std::collections::HashMap;
 
@@ -2179,6 +2180,438 @@ mod repository_type_config_tests {
         let config = RepositoryTypeConfig::new();
         let debug_string = format!("{:?}", config);
         assert!(debug_string.contains("RepositoryTypeConfig"));
+    }
+}
+
+#[cfg(test)]
+mod merged_configuration_tests {
+    use super::*;
+
+    #[test]
+    fn configuration_source_precedence_ordering() {
+        assert_eq!(ConfigurationSource::Global.precedence(), 1);
+        assert_eq!(ConfigurationSource::RepositoryType.precedence(), 2);
+        assert_eq!(ConfigurationSource::Team.precedence(), 3);
+        assert_eq!(ConfigurationSource::Template.precedence(), 4);
+
+        // Test ordering
+        assert!(
+            ConfigurationSource::Template.precedence() > ConfigurationSource::Team.precedence()
+        );
+        assert!(
+            ConfigurationSource::Team.precedence()
+                > ConfigurationSource::RepositoryType.precedence()
+        );
+        assert!(
+            ConfigurationSource::RepositoryType.precedence()
+                > ConfigurationSource::Global.precedence()
+        );
+    }
+
+    #[test]
+    fn configuration_source_overrides_works_correctly() {
+        let global = ConfigurationSource::Global;
+        let repo_type = ConfigurationSource::RepositoryType;
+        let team = ConfigurationSource::Team;
+        let template = ConfigurationSource::Template;
+
+        // Template overrides everything
+        assert!(template.overrides(&team));
+        assert!(template.overrides(&repo_type));
+        assert!(template.overrides(&global));
+
+        // Team overrides repo_type and global, but not template
+        assert!(team.overrides(&repo_type));
+        assert!(team.overrides(&global));
+        assert!(!team.overrides(&template));
+
+        // Repository type only overrides global
+        assert!(repo_type.overrides(&global));
+        assert!(!repo_type.overrides(&team));
+        assert!(!repo_type.overrides(&template));
+
+        // Global doesn't override anything
+        assert!(!global.overrides(&repo_type));
+        assert!(!global.overrides(&team));
+        assert!(!global.overrides(&template));
+    }
+
+    #[test]
+    fn configuration_source_serialization() {
+        let source = ConfigurationSource::Template;
+        let json_str = serde_json::to_string(&source).expect("Should serialize to JSON");
+        let deserialized: ConfigurationSource =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+        assert_eq!(source, deserialized);
+    }
+
+    #[test]
+    fn configuration_source_trace_new_and_basic_operations() {
+        let mut trace = ConfigurationSourceTrace::new();
+        assert!(trace.is_empty());
+        assert_eq!(trace.count(), 0);
+
+        trace.add_source(
+            "repository.issues".to_string(),
+            ConfigurationSource::Template,
+        );
+        assert!(!trace.is_empty());
+        assert_eq!(trace.count(), 1);
+        assert!(trace.has_source("repository.issues"));
+        assert_eq!(
+            trace.get_source("repository.issues"),
+            Some(&ConfigurationSource::Template)
+        );
+        assert_eq!(trace.get_source("repository.wiki"), None);
+    }
+
+    #[test]
+    fn configuration_source_trace_replacement() {
+        let mut trace = ConfigurationSourceTrace::new();
+
+        // Add initial source
+        trace.add_source("setting".to_string(), ConfigurationSource::Global);
+        assert_eq!(
+            trace.get_source("setting"),
+            Some(&ConfigurationSource::Global)
+        );
+
+        // Replace with higher precedence
+        trace.add_source("setting".to_string(), ConfigurationSource::Template);
+        assert_eq!(
+            trace.get_source("setting"),
+            Some(&ConfigurationSource::Template)
+        );
+        assert_eq!(trace.count(), 1); // Still just one entry
+    }
+
+    #[test]
+    fn configuration_source_trace_all_sources() {
+        let mut trace = ConfigurationSourceTrace::new();
+        trace.add_source("labels.bug".to_string(), ConfigurationSource::Global);
+        trace.add_source("labels.feature".to_string(), ConfigurationSource::Team);
+        trace.add_source("webhooks.ci".to_string(), ConfigurationSource::Template);
+
+        let all_sources = trace.all_sources();
+        assert_eq!(all_sources.len(), 3);
+        assert!(all_sources.contains_key("labels.bug"));
+        assert!(all_sources.contains_key("labels.feature"));
+        assert!(all_sources.contains_key("webhooks.ci"));
+    }
+
+    #[test]
+    fn configuration_source_trace_merge() {
+        let mut trace1 = ConfigurationSourceTrace::new();
+        trace1.add_source("setting1".to_string(), ConfigurationSource::Global);
+        trace1.add_source("setting2".to_string(), ConfigurationSource::Team);
+
+        let mut trace2 = ConfigurationSourceTrace::new();
+        trace2.add_source("setting2".to_string(), ConfigurationSource::Template);
+        trace2.add_source("setting3".to_string(), ConfigurationSource::RepositoryType);
+
+        trace1.merge(trace2);
+
+        // Template should override Team for setting2
+        assert_eq!(
+            trace1.get_source("setting2"),
+            Some(&ConfigurationSource::Template)
+        );
+        assert_eq!(
+            trace1.get_source("setting1"),
+            Some(&ConfigurationSource::Global)
+        );
+        assert_eq!(
+            trace1.get_source("setting3"),
+            Some(&ConfigurationSource::RepositoryType)
+        );
+        assert_eq!(trace1.count(), 3);
+    }
+
+    #[test]
+    fn configuration_source_trace_merge_precedence() {
+        let mut trace1 = ConfigurationSourceTrace::new();
+        trace1.add_source("test".to_string(), ConfigurationSource::Template);
+
+        let mut trace2 = ConfigurationSourceTrace::new();
+        trace2.add_source("test".to_string(), ConfigurationSource::Global);
+
+        trace1.merge(trace2);
+
+        // Template should remain because it has higher precedence
+        assert_eq!(
+            trace1.get_source("test"),
+            Some(&ConfigurationSource::Template)
+        );
+    }
+
+    #[test]
+    fn configuration_source_trace_serialization() {
+        let mut trace = ConfigurationSourceTrace::new();
+        trace.add_source("test.field".to_string(), ConfigurationSource::Team);
+
+        let json_str = serde_json::to_string(&trace).expect("Should serialize to JSON");
+        let deserialized: ConfigurationSourceTrace =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+        assert_eq!(trace, deserialized);
+    }
+
+    #[test]
+    fn configuration_source_trace_is_cloneable() {
+        let mut trace = ConfigurationSourceTrace::new();
+        trace.add_source("test".to_string(), ConfigurationSource::Global);
+
+        let cloned = trace.clone();
+        assert_eq!(trace, cloned);
+    }
+
+    #[test]
+    fn configuration_source_trace_default() {
+        let trace = ConfigurationSourceTrace::default();
+        assert!(trace.is_empty());
+    }
+
+    #[test]
+    fn merged_configuration_new_and_basic_accessors() {
+        let config = MergedConfiguration::new();
+
+        // Test initial state
+        assert!(config.labels().is_empty());
+        assert!(config.webhooks().is_empty());
+        assert!(config.github_apps().is_empty());
+        assert!(config.environments().is_empty());
+        assert!(config.source_trace().is_empty());
+        assert!(config.is_empty());
+        assert_eq!(config.count_items(), 0);
+    }
+
+    #[test]
+    fn merged_configuration_label_management() {
+        let mut config = MergedConfiguration::new();
+
+        let label = LabelConfig::new(
+            "bug".to_string(),
+            Some("Something isn't working".to_string()),
+            "d73a4a".to_string(),
+        );
+        config.add_label(label);
+
+        assert_eq!(config.labels().len(), 1);
+        assert!(config.labels().contains_key("bug"));
+        assert!(!config.is_empty());
+        assert_eq!(config.count_items(), 1);
+    }
+
+    #[test]
+    fn merged_configuration_webhook_management() {
+        let mut config = MergedConfiguration::new();
+
+        let webhook = WebhookConfig::new(
+            "https://example.com/hook".to_string(),
+            vec![WebhookEvent::Push],
+            true,
+            None,
+        );
+        config.add_webhook(webhook);
+
+        assert_eq!(config.webhooks().len(), 1);
+        assert_eq!(config.count_items(), 1);
+    }
+
+    #[test]
+    fn merged_configuration_environment_management() {
+        let mut config = MergedConfiguration::new();
+
+        let env = EnvironmentConfig::new("production".to_string(), None, None, None);
+        config.add_environment(env);
+
+        assert_eq!(config.environments().len(), 1);
+        assert_eq!(config.count_items(), 1);
+    }
+
+    #[test]
+    fn merged_configuration_source_trace_management() {
+        let mut config = MergedConfiguration::new();
+
+        let mut trace = ConfigurationSourceTrace::new();
+        trace.add_source("test".to_string(), ConfigurationSource::Template);
+
+        config.set_source_trace(trace);
+        assert!(!config.source_trace().is_empty());
+        assert_eq!(config.source_trace().count(), 1);
+    }
+
+    #[test]
+    fn merged_configuration_mutable_accessors() {
+        let mut config = MergedConfiguration::new();
+
+        // Test mutable accessors don't panic
+        let _repo_settings = config.repository_settings_mut();
+        let _pr_settings = config.pull_request_settings_mut();
+        let _branch_protection = config.branch_protection_mut();
+        let _labels = config.labels_mut();
+        let _webhooks = config.webhooks_mut();
+        let _github_apps = config.github_apps_mut();
+        let _environments = config.environments_mut();
+        let _source_trace = config.source_trace_mut();
+    }
+
+    #[test]
+    fn merged_configuration_count_items() {
+        let mut config = MergedConfiguration::new();
+        assert_eq!(config.count_items(), 0);
+
+        // Add various items
+        config.add_label(LabelConfig::new(
+            "bug".to_string(),
+            None,
+            "d73a4a".to_string(),
+        ));
+        config.add_label(LabelConfig::new(
+            "feature".to_string(),
+            None,
+            "a2eeef".to_string(),
+        ));
+        assert_eq!(config.count_items(), 2);
+
+        config.add_webhook(WebhookConfig::new(
+            "https://example.com".to_string(),
+            vec![WebhookEvent::Push],
+            true,
+            None,
+        ));
+        assert_eq!(config.count_items(), 3);
+
+        config.add_environment(EnvironmentConfig::new("prod".to_string(), None, None, None));
+        assert_eq!(config.count_items(), 4);
+    }
+
+    #[test]
+    fn merged_configuration_validation_success() {
+        let config = MergedConfiguration::new();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn merged_configuration_validation_invalid_label_color() {
+        let mut config = MergedConfiguration::new();
+
+        // Add label with invalid color
+        let invalid_label = LabelConfig::new("bug".to_string(), None, "invalid_color".to_string());
+        config.add_label(invalid_label);
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(ConfigurationError::InvalidValue {
+            field,
+            value,
+            reason,
+        }) = result
+        {
+            assert!(field.contains("labels.bug.color"));
+            assert_eq!(value, "invalid_color");
+            assert!(reason.contains("hex color"));
+        } else {
+            panic!("Expected InvalidValue error");
+        }
+    }
+
+    #[test]
+    fn merged_configuration_validation_invalid_webhook_url() {
+        let mut config = MergedConfiguration::new();
+
+        // Add webhook with non-HTTPS URL
+        let invalid_webhook = WebhookConfig::new(
+            "http://example.com/hook".to_string(),
+            vec![WebhookEvent::Push],
+            true,
+            None,
+        );
+        config.add_webhook(invalid_webhook);
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(ConfigurationError::InvalidValue {
+            field,
+            value,
+            reason,
+        }) = result
+        {
+            assert!(field.contains("webhooks"));
+            assert_eq!(value, "http://example.com/hook");
+            assert!(reason.contains("HTTPS"));
+        } else {
+            panic!("Expected InvalidValue error");
+        }
+    }
+
+    #[test]
+    fn merged_configuration_validation_empty_environment_name() {
+        let mut config = MergedConfiguration::new();
+
+        // Add environment with empty name
+        let invalid_env = EnvironmentConfig::new("   ".to_string(), None, None, None);
+        config.add_environment(invalid_env);
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(ConfigurationError::InvalidValue {
+            field,
+            value,
+            reason,
+        }) = result
+        {
+            assert!(field.contains("environments"));
+            assert_eq!(value, "   ");
+            assert!(reason.contains("cannot be empty"));
+        } else {
+            panic!("Expected InvalidValue error");
+        }
+    }
+
+    #[test]
+    fn merged_configuration_serialization() {
+        let mut config = MergedConfiguration::new();
+        config.add_label(LabelConfig::new(
+            "test".to_string(),
+            None,
+            "ffffff".to_string(),
+        ));
+
+        let json_str = serde_json::to_string(&config).expect("Should serialize to JSON");
+        let deserialized: MergedConfiguration =
+            serde_json::from_str(&json_str).expect("Should deserialize from JSON");
+
+        assert_eq!(config.labels().len(), deserialized.labels().len());
+        assert!(deserialized.labels().contains_key("test"));
+    }
+
+    #[test]
+    fn merged_configuration_is_cloneable() {
+        let mut config = MergedConfiguration::new();
+        config.add_label(LabelConfig::new(
+            "test".to_string(),
+            None,
+            "ffffff".to_string(),
+        ));
+
+        let cloned = config.clone();
+        assert_eq!(config.labels().len(), cloned.labels().len());
+    }
+
+    #[test]
+    fn merged_configuration_is_debuggable() {
+        let config = MergedConfiguration::new();
+        let debug_string = format!("{:?}", config);
+        assert!(debug_string.contains("MergedConfiguration"));
+    }
+
+    #[test]
+    fn merged_configuration_default() {
+        let config = MergedConfiguration::default();
+        assert!(config.is_empty());
     }
 }
 

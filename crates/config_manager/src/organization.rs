@@ -1718,8 +1718,8 @@ impl Default for GlobalDefaultsEnhanced {
 /// // Add documentation-specific labels
 /// let doc_label = LabelConfig::new(
 ///     "documentation".to_string(),
-///     "0052cc".to_string(),
-///     Some("Improvements or additions to documentation".to_string())
+///     Some("Improvements or additions to documentation".to_string()),
+///     "0052cc".to_string()
 /// );
 /// doc_config.labels = Some(vec![doc_label]);
 /// ```
@@ -1783,8 +1783,7 @@ pub struct RepositoryTypeConfig {
     /// let mut config = RepositoryTypeConfig::new();
     /// let property = CustomProperty::new(
     ///     "type".to_string(),
-    ///     "documentation".to_string(),
-    ///     Some("Repository classification".to_string())
+    ///     "documentation".to_string()
     /// );
     /// config.custom_properties = Some(vec![property]);
     /// ```
@@ -1802,7 +1801,7 @@ pub struct RepositoryTypeConfig {
     /// use config_manager::organization::{RepositoryTypeConfig, EnvironmentConfig};
     ///
     /// let mut config = RepositoryTypeConfig::new();
-    /// let prod_env = EnvironmentConfig::new("production".to_string());
+    /// let prod_env = EnvironmentConfig::new("production".to_string(), None, None, None);
     /// config.environments = Some(vec![prod_env]);
     /// ```
     pub environments: Option<Vec<EnvironmentConfig>>,
@@ -1839,8 +1838,8 @@ pub struct RepositoryTypeConfig {
     /// let mut config = RepositoryTypeConfig::new();
     /// let label = LabelConfig::new(
     ///     "enhancement".to_string(),
-    ///     "a2eeef".to_string(),
-    ///     Some("New feature or request".to_string())
+    ///     Some("New feature or request".to_string()),
+    ///     "a2eeef".to_string()
     /// );
     /// config.labels = Some(vec![label]);
     /// ```
@@ -1897,7 +1896,9 @@ pub struct RepositoryTypeConfig {
     /// let mut config = RepositoryTypeConfig::new();
     /// let webhook = WebhookConfig::new(
     ///     "https://example.com/webhook".to_string(),
-    ///     vec![WebhookEvent::Push, WebhookEvent::PullRequest]
+    ///     vec![WebhookEvent::Push, WebhookEvent::PullRequest],
+    ///     true,
+    ///     None
     /// );
     /// config.webhooks = Some(vec![webhook]);
     /// ```
@@ -1965,12 +1966,12 @@ impl RepositoryTypeConfig {
     /// let mut config = RepositoryTypeConfig::new();
     ///
     /// // Valid configuration
-    /// let label = LabelConfig::new("bug".to_string(), "d73a4a".to_string(), None);
+    /// let label = LabelConfig::new("bug".to_string(), None, "d73a4a".to_string());
     /// config.labels = Some(vec![label]);
     /// assert!(config.validate().is_ok());
     ///
     /// // Invalid configuration (bad color format)
-    /// let bad_label = LabelConfig::new("bad".to_string(), "invalid-color".to_string(), None);
+    /// let bad_label = LabelConfig::new("bad".to_string(), None, "invalid-color".to_string());
     /// config.labels = Some(vec![bad_label]);
     /// assert!(config.validate().is_err());
     /// ```
@@ -2118,11 +2119,11 @@ impl RepositoryTypeConfig {
     ///
     /// // Add some labels and webhooks
     /// config.labels = Some(vec![
-    ///     LabelConfig::new("bug".to_string(), "d73a4a".to_string(), None),
-    ///     LabelConfig::new("feature".to_string(), "a2eeef".to_string(), None),
+    ///     LabelConfig::new("bug".to_string(), None, "d73a4a".to_string()),
+    ///     LabelConfig::new("feature".to_string(), None, "a2eeef".to_string()),
     /// ]);
     /// config.webhooks = Some(vec![
-    ///     WebhookConfig::new("https://example.com/hook".to_string(), vec![WebhookEvent::Push])
+    ///     WebhookConfig::new("https://example.com/hook".to_string(), vec![WebhookEvent::Push], true, None)
     /// ]);
     ///
     /// assert_eq!(config.count_additive_items(), 3); // 2 labels + 1 webhook
@@ -2956,11 +2957,11 @@ impl TemplateConfig {
     ///
     /// // Add some labels and webhooks
     /// config.set_labels(Some(vec![
-    ///     LabelConfig::new("bug".to_string(), "d73a4a".to_string(), None),
-    ///     LabelConfig::new("feature".to_string(), "a2eeef".to_string(), None),
+    ///     LabelConfig::new("bug".to_string(), None, "d73a4a".to_string()),
+    ///     LabelConfig::new("feature".to_string(), None, "a2eeef".to_string()),
     /// ]));
     /// config.set_webhooks(Some(vec![
-    ///     WebhookConfig::new("https://example.com/hook".to_string(), vec![WebhookEvent::Push])
+    ///     WebhookConfig::new("https://example.com/hook".to_string(), vec![WebhookEvent::Push], true, None)
     /// ]));
     ///
     /// assert_eq!(config.count_additive_items(), 3); // 2 labels + 1 webhook
@@ -2989,5 +2990,791 @@ impl TemplateConfig {
         }
 
         count
+    }
+}
+
+/// Source of a configuration setting in the hierarchical merge process.
+///
+/// This enum tracks where each configuration setting originates from in the
+/// four-level hierarchy, enabling audit trails and debugging of configuration
+/// resolution. It's essential for understanding why certain settings were
+/// applied and for troubleshooting configuration conflicts.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::ConfigurationSource;
+///
+/// let source = ConfigurationSource::Template;
+/// assert_eq!(format!("{:?}", source), "Template");
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConfigurationSource {
+    /// Setting originated from global defaults.
+    Global,
+    /// Setting originated from repository type configuration.
+    RepositoryType,
+    /// Setting originated from team configuration.
+    Team,
+    /// Setting originated from template configuration (highest precedence).
+    Template,
+}
+
+impl ConfigurationSource {
+    /// Gets the precedence level of this configuration source.
+    ///
+    /// Higher numbers indicate higher precedence in the configuration hierarchy.
+    /// This is used for determining which configuration takes priority during merging.
+    ///
+    /// # Returns
+    ///
+    /// The precedence level as an integer:
+    /// - Global: 1 (lowest precedence)
+    /// - RepositoryType: 2
+    /// - Team: 3  
+    /// - Template: 4 (highest precedence)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::ConfigurationSource;
+    ///
+    /// assert_eq!(ConfigurationSource::Global.precedence(), 1);
+    /// assert_eq!(ConfigurationSource::Template.precedence(), 4);
+    /// assert!(ConfigurationSource::Template.precedence() > ConfigurationSource::Team.precedence());
+    /// ```
+    pub fn precedence(&self) -> u8 {
+        match self {
+            ConfigurationSource::Global => 1,
+            ConfigurationSource::RepositoryType => 2,
+            ConfigurationSource::Team => 3,
+            ConfigurationSource::Template => 4,
+        }
+    }
+
+    /// Checks if this source has higher precedence than another source.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The other configuration source to compare against
+    ///
+    /// # Returns
+    ///
+    /// `true` if this source should override the other source, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::ConfigurationSource;
+    ///
+    /// let template = ConfigurationSource::Template;
+    /// let team = ConfigurationSource::Team;
+    /// let global = ConfigurationSource::Global;
+    ///
+    /// assert!(template.overrides(&team));
+    /// assert!(team.overrides(&global));
+    /// assert!(!global.overrides(&template));
+    /// ```
+    pub fn overrides(&self, other: &ConfigurationSource) -> bool {
+        self.precedence() > other.precedence()
+    }
+}
+
+/// Tracks the source of each configuration setting during hierarchical merging.
+///
+/// This structure maintains an audit trail of where each configuration setting
+/// originated from in the four-level hierarchy. This is crucial for debugging
+/// configuration resolution, understanding why certain settings were applied,
+/// and providing transparency in the configuration process.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+///
+/// let mut trace = ConfigurationSourceTrace::new();
+/// trace.add_source("repository.issues".to_string(), ConfigurationSource::Template);
+/// trace.add_source("labels.bug".to_string(), ConfigurationSource::Team);
+///
+/// assert_eq!(trace.get_source("repository.issues"), Some(&ConfigurationSource::Template));
+/// assert!(trace.has_source("labels.bug"));
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct ConfigurationSourceTrace {
+    /// Maps configuration field paths to their originating sources.
+    /// The key is a dot-separated path like "repository.issues" or "labels.bug".
+    sources: HashMap<String, ConfigurationSource>,
+}
+
+impl ConfigurationSourceTrace {
+    /// Creates a new empty configuration source trace.
+    ///
+    /// # Returns
+    ///
+    /// A new `ConfigurationSourceTrace` with no recorded sources.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::ConfigurationSourceTrace;
+    ///
+    /// let trace = ConfigurationSourceTrace::new();
+    /// assert!(trace.is_empty());
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            sources: HashMap::new(),
+        }
+    }
+
+    /// Adds a source for a configuration field.
+    ///
+    /// If a source already exists for the field, it will be replaced.
+    /// This typically happens when a higher-precedence configuration
+    /// overrides a lower-precedence one.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_path` - Dot-separated path to the configuration field
+    /// * `source` - The source that provided this configuration value
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace = ConfigurationSourceTrace::new();
+    /// trace.add_source("pull_requests.required_reviewers".to_string(), ConfigurationSource::Global);
+    /// trace.add_source("pull_requests.required_reviewers".to_string(), ConfigurationSource::Template);
+    ///
+    /// // Template overrides global
+    /// assert_eq!(trace.get_source("pull_requests.required_reviewers"), Some(&ConfigurationSource::Template));
+    /// ```
+    pub fn add_source(&mut self, field_path: String, source: ConfigurationSource) {
+        self.sources.insert(field_path, source);
+    }
+
+    /// Gets the source for a configuration field.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_path` - Dot-separated path to the configuration field
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the `ConfigurationSource` if the field is tracked.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace = ConfigurationSourceTrace::new();
+    /// trace.add_source("webhooks.ci".to_string(), ConfigurationSource::Team);
+    ///
+    /// assert_eq!(trace.get_source("webhooks.ci"), Some(&ConfigurationSource::Team));
+    /// assert_eq!(trace.get_source("webhooks.deploy"), None);
+    /// ```
+    pub fn get_source(&self, field_path: &str) -> Option<&ConfigurationSource> {
+        self.sources.get(field_path)
+    }
+
+    /// Checks if a source is tracked for the given field.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_path` - Dot-separated path to the configuration field
+    ///
+    /// # Returns
+    ///
+    /// `true` if the field has a tracked source, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace = ConfigurationSourceTrace::new();
+    /// trace.add_source("environments.prod".to_string(), ConfigurationSource::RepositoryType);
+    ///
+    /// assert!(trace.has_source("environments.prod"));
+    /// assert!(!trace.has_source("environments.staging"));
+    /// ```
+    pub fn has_source(&self, field_path: &str) -> bool {
+        self.sources.contains_key(field_path)
+    }
+
+    /// Gets all tracked field paths and their sources.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the HashMap containing all field path to source mappings.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace = ConfigurationSourceTrace::new();
+    /// trace.add_source("labels.bug".to_string(), ConfigurationSource::Global);
+    /// trace.add_source("labels.feature".to_string(), ConfigurationSource::Team);
+    ///
+    /// let all_sources = trace.all_sources();
+    /// assert_eq!(all_sources.len(), 2);
+    /// ```
+    pub fn all_sources(&self) -> &HashMap<String, ConfigurationSource> {
+        &self.sources
+    }
+
+    /// Checks if the trace is empty (no sources recorded).
+    ///
+    /// # Returns
+    ///
+    /// `true` if no sources are recorded, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace = ConfigurationSourceTrace::new();
+    /// assert!(trace.is_empty());
+    ///
+    /// trace.add_source("test".to_string(), ConfigurationSource::Global);
+    /// assert!(!trace.is_empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.sources.is_empty()
+    }
+
+    /// Gets the count of tracked configuration sources.
+    ///
+    /// # Returns
+    ///
+    /// The number of configuration fields with tracked sources.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace = ConfigurationSourceTrace::new();
+    /// assert_eq!(trace.count(), 0);
+    ///
+    /// trace.add_source("setting1".to_string(), ConfigurationSource::Global);
+    /// trace.add_source("setting2".to_string(), ConfigurationSource::Template);
+    /// assert_eq!(trace.count(), 2);
+    /// ```
+    pub fn count(&self) -> usize {
+        self.sources.len()
+    }
+
+    /// Merges another source trace into this one.
+    ///
+    /// Sources from the other trace will be added to this trace. If both traces
+    /// have sources for the same field path, the source with higher precedence
+    /// will be retained.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The source trace to merge into this one
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{ConfigurationSourceTrace, ConfigurationSource};
+    ///
+    /// let mut trace1 = ConfigurationSourceTrace::new();
+    /// trace1.add_source("setting1".to_string(), ConfigurationSource::Global);
+    /// trace1.add_source("setting2".to_string(), ConfigurationSource::Team);
+    ///
+    /// let mut trace2 = ConfigurationSourceTrace::new();
+    /// trace2.add_source("setting2".to_string(), ConfigurationSource::Template);
+    /// trace2.add_source("setting3".to_string(), ConfigurationSource::RepositoryType);
+    ///
+    /// trace1.merge(trace2);
+    ///
+    /// // Template overrides Team for setting2
+    /// assert_eq!(trace1.get_source("setting2"), Some(&ConfigurationSource::Template));
+    /// assert_eq!(trace1.get_source("setting3"), Some(&ConfigurationSource::RepositoryType));
+    /// assert_eq!(trace1.count(), 3);
+    /// ```
+    pub fn merge(&mut self, other: ConfigurationSourceTrace) {
+        for (field_path, source) in other.sources {
+            if let Some(existing_source) = self.sources.get(&field_path) {
+                // Keep the source with higher precedence
+                if source.overrides(existing_source) {
+                    self.sources.insert(field_path, source);
+                }
+            } else {
+                self.sources.insert(field_path, source);
+            }
+        }
+    }
+}
+
+impl Default for ConfigurationSourceTrace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Final resolved configuration after hierarchical merging.
+///
+/// This structure represents the complete, resolved configuration that results
+/// from merging the four-level hierarchy (Template > Team > Repository Type > Global).
+/// It contains all the settings needed to create and configure a repository,
+/// along with audit trail information about where each setting originated.
+///
+/// The merged configuration is the authoritative source for repository settings
+/// and is used by the repository creation workflow to apply all necessary
+/// configurations to the new repository.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::organization::{MergedConfiguration, ConfigurationSourceTrace};
+///
+/// let config = MergedConfiguration::new();
+/// assert!(config.labels().is_empty());
+/// assert!(config.webhooks().is_empty());
+/// assert!(config.source_trace().is_empty());
+/// ```
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MergedConfiguration {
+    /// Repository settings (issues, wiki, security, etc.).
+    repository_settings: RepositorySettings,
+    /// Pull request settings and policies.
+    pull_request_settings: PullRequestSettings,
+    /// Branch protection rules and settings.
+    branch_protection: BranchProtectionSettings,
+    /// Repository labels to be created or maintained.
+    labels: HashMap<String, LabelConfig>,
+    /// Webhooks to be configured on the repository.
+    webhooks: Vec<WebhookConfig>,
+    /// GitHub Apps to be installed or configured for the repository.
+    github_apps: Vec<GitHubAppConfig>,
+    /// Environment configurations for deployment and automation.
+    environments: Vec<EnvironmentConfig>,
+    /// Audit trail of configuration sources for transparency and debugging.
+    source_trace: ConfigurationSourceTrace,
+}
+
+impl MergedConfiguration {
+    /// Creates a new empty merged configuration.
+    ///
+    /// All configuration sections are initialized to their default values,
+    /// and the source trace is empty. This serves as the base for the
+    /// hierarchical merging process.
+    ///
+    /// # Returns
+    ///
+    /// A new `MergedConfiguration` with default values and empty collections.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::MergedConfiguration;
+    ///
+    /// let config = MergedConfiguration::new();
+    /// assert!(config.labels().is_empty());
+    /// assert!(config.webhooks().is_empty());
+    /// assert!(config.source_trace().is_empty());
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            repository_settings: RepositorySettings::default(),
+            pull_request_settings: PullRequestSettings::default(),
+            branch_protection: BranchProtectionSettings::default(),
+            labels: HashMap::new(),
+            webhooks: Vec::new(),
+            github_apps: Vec::new(),
+            environments: Vec::new(),
+            source_trace: ConfigurationSourceTrace::new(),
+        }
+    }
+
+    /// Gets the repository settings.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `RepositorySettings`.
+    pub fn repository_settings(&self) -> &RepositorySettings {
+        &self.repository_settings
+    }
+
+    /// Gets a mutable reference to the repository settings.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the `RepositorySettings`.
+    pub fn repository_settings_mut(&mut self) -> &mut RepositorySettings {
+        &mut self.repository_settings
+    }
+
+    /// Gets the pull request settings.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `PullRequestSettings`.
+    pub fn pull_request_settings(&self) -> &PullRequestSettings {
+        &self.pull_request_settings
+    }
+
+    /// Gets a mutable reference to the pull request settings.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the `PullRequestSettings`.
+    pub fn pull_request_settings_mut(&mut self) -> &mut PullRequestSettings {
+        &mut self.pull_request_settings
+    }
+
+    /// Gets the branch protection settings.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `BranchProtectionSettings`.
+    pub fn branch_protection(&self) -> &BranchProtectionSettings {
+        &self.branch_protection
+    }
+
+    /// Gets a mutable reference to the branch protection settings.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the `BranchProtectionSettings`.
+    pub fn branch_protection_mut(&mut self) -> &mut BranchProtectionSettings {
+        &mut self.branch_protection
+    }
+
+    /// Gets the repository labels.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the HashMap of label names to `LabelConfig`.
+    pub fn labels(&self) -> &HashMap<String, LabelConfig> {
+        &self.labels
+    }
+
+    /// Gets a mutable reference to the repository labels.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the HashMap of labels.
+    pub fn labels_mut(&mut self) -> &mut HashMap<String, LabelConfig> {
+        &mut self.labels
+    }
+
+    /// Adds a label to the configuration.
+    ///
+    /// If a label with the same name already exists, it will be replaced.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` - The label configuration to add
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{MergedConfiguration, LabelConfig};
+    ///
+    /// let mut config = MergedConfiguration::new();
+    /// let label = LabelConfig::new("bug".to_string(), Some("Something isn't working".to_string()), "d73a4a".to_string());
+    /// 
+    /// config.add_label(label);
+    /// assert_eq!(config.labels().len(), 1);
+    /// assert!(config.labels().contains_key("bug"));
+    /// ```
+    pub fn add_label(&mut self, label: LabelConfig) {
+        self.labels.insert(label.name.clone(), label);
+    }
+
+    /// Gets the webhooks.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the vector of `WebhookConfig`.
+    pub fn webhooks(&self) -> &[WebhookConfig] {
+        &self.webhooks
+    }
+
+    /// Gets a mutable reference to the webhooks.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the vector of webhooks.
+    pub fn webhooks_mut(&mut self) -> &mut Vec<WebhookConfig> {
+        &mut self.webhooks
+    }
+
+    /// Adds a webhook to the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `webhook` - The webhook configuration to add
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{MergedConfiguration, WebhookConfig, WebhookEvent};
+    ///
+    /// let mut config = MergedConfiguration::new();
+    /// let webhook = WebhookConfig::new(
+    ///     "https://example.com/hook".to_string(),
+    ///     vec![WebhookEvent::Push],
+    ///     true,
+    ///     None
+    /// );
+    /// 
+    /// config.add_webhook(webhook);
+    /// assert_eq!(config.webhooks().len(), 1);
+    /// ```
+    pub fn add_webhook(&mut self, webhook: WebhookConfig) {
+        self.webhooks.push(webhook);
+    }
+
+    /// Gets the GitHub Apps.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the vector of `GitHubAppConfig`.
+    pub fn github_apps(&self) -> &[GitHubAppConfig] {
+        &self.github_apps
+    }
+
+    /// Gets a mutable reference to the GitHub Apps.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the vector of GitHub Apps.
+    pub fn github_apps_mut(&mut self) -> &mut Vec<GitHubAppConfig> {
+        &mut self.github_apps
+    }
+
+    /// Adds a GitHub App to the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `github_app` - The GitHub App configuration to add
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{MergedConfiguration, GitHubAppConfig};
+    ///
+    /// let mut config = MergedConfiguration::new();
+    /// let app = GitHubAppConfig::new("dependabot".to_string());
+    /// 
+    /// config.add_github_app(app);
+    /// assert_eq!(config.github_apps().len(), 1);
+    /// ```
+    pub fn add_github_app(&mut self, github_app: GitHubAppConfig) {
+        self.github_apps.push(github_app);
+    }
+
+    /// Gets the environments.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the vector of `EnvironmentConfig`.
+    pub fn environments(&self) -> &[EnvironmentConfig] {
+        &self.environments
+    }
+
+    /// Gets a mutable reference to the environments.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the vector of environments.
+    pub fn environments_mut(&mut self) -> &mut Vec<EnvironmentConfig> {
+        &mut self.environments
+    }
+
+    /// Adds an environment to the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `environment` - The environment configuration to add
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{MergedConfiguration, EnvironmentConfig};
+    ///
+    /// let mut config = MergedConfiguration::new();
+    /// let env = EnvironmentConfig::new("production".to_string(), None, None, None);
+    /// 
+    /// config.add_environment(env);
+    /// assert_eq!(config.environments().len(), 1);
+    /// ```
+    pub fn add_environment(&mut self, environment: EnvironmentConfig) {
+        self.environments.push(environment);
+    }
+
+    /// Gets the configuration source trace.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `ConfigurationSourceTrace`.
+    pub fn source_trace(&self) -> &ConfigurationSourceTrace {
+        &self.source_trace
+    }
+
+    /// Gets a mutable reference to the configuration source trace.
+    ///
+    /// This is typically used during the configuration merging process.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the `ConfigurationSourceTrace`.
+    pub fn source_trace_mut(&mut self) -> &mut ConfigurationSourceTrace {
+        &mut self.source_trace
+    }
+
+    /// Sets the configuration source trace.
+    ///
+    /// This replaces the entire source trace with the provided one.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_trace` - The new source trace to set
+    pub fn set_source_trace(&mut self, source_trace: ConfigurationSourceTrace) {
+        self.source_trace = source_trace;
+    }
+
+    /// Counts the total number of configuration items.
+    ///
+    /// This includes labels, webhooks, GitHub Apps, and environments, providing
+    /// a quick overview of the scope of the merged configuration.
+    ///
+    /// # Returns
+    ///
+    /// The total count of additive configuration items.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{MergedConfiguration, LabelConfig, WebhookConfig, WebhookEvent};
+    ///
+    /// let mut config = MergedConfiguration::new();
+    /// assert_eq!(config.count_items(), 0);
+    ///
+    /// let label = LabelConfig::new("bug".to_string(), None, "d73a4a".to_string());
+    /// config.add_label(label);
+    ///
+    /// let webhook = WebhookConfig::new("https://example.com".to_string(), vec![WebhookEvent::Push], true, None);
+    /// config.add_webhook(webhook);
+    ///
+    /// assert_eq!(config.count_items(), 2);
+    /// ```
+    pub fn count_items(&self) -> usize {
+        self.labels.len() + self.webhooks.len() + self.github_apps.len() + self.environments.len()
+    }
+
+    /// Checks if the configuration is empty (has no items configured).
+    ///
+    /// # Returns
+    ///
+    /// `true` if no labels, webhooks, GitHub Apps, or environments are configured, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::{MergedConfiguration, LabelConfig};
+    ///
+    /// let mut config = MergedConfiguration::new();
+    /// assert!(config.is_empty());
+    ///
+    /// let label = LabelConfig::new("bug".to_string(), None, "d73a4a".to_string());
+    /// config.add_label(label);
+    /// assert!(!config.is_empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.count_items() == 0
+    }
+
+    /// Validates the merged configuration for consistency and completeness.
+    ///
+    /// This method performs various validation checks to ensure the merged
+    /// configuration is valid and can be applied to a repository successfully.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the configuration is valid, or a `ConfigurationError` if validation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Required fields are missing
+    /// - Configuration values are invalid
+    /// - Internal consistency checks fail
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::organization::MergedConfiguration;
+    ///
+    /// let config = MergedConfiguration::new();
+    /// assert!(config.validate().is_ok());
+    /// ```
+    pub fn validate(&self) -> Result<(), ConfigurationError> {
+        // Validate repository settings
+        // (This is a placeholder - actual validation logic would be more comprehensive)
+        
+        // Validate all labels have valid colors (hex color format)
+        for (name, label) in &self.labels {
+            if !label.color.chars().all(|c| c.is_ascii_hexdigit()) || label.color.len() != 6 {
+                return Err(ConfigurationError::InvalidValue {
+                    field: format!("labels.{}.color", name),
+                    value: label.color.clone(),
+                    reason: "Must be 6-character hex color".to_string(),
+                });
+            }
+        }
+
+        // Validate webhook URLs
+        for (i, webhook) in self.webhooks.iter().enumerate() {
+            if !webhook.url.starts_with("https://") {
+                return Err(ConfigurationError::InvalidValue {
+                    field: format!("webhooks[{}].url", i),
+                    value: webhook.url.clone(),
+                    reason: "Must use HTTPS".to_string(),
+                });
+            }
+        }
+
+        // Validate environment names are not empty
+        for (i, env) in self.environments.iter().enumerate() {
+            if env.name.trim().is_empty() {
+                return Err(ConfigurationError::InvalidValue {
+                    field: format!("environments[{}].name", i),
+                    value: env.name.clone(),
+                    reason: "Environment name cannot be empty".to_string(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for MergedConfiguration {
+    fn default() -> Self {
+        Self::new()
     }
 }
