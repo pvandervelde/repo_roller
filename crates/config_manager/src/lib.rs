@@ -1,7 +1,16 @@
-//! Manages loading and accessing application configuration for RepoRoller.
+//! Configuration management for the repo_roller system.
 //!
-//! This crate is responsible for reading configuration files (e.g., TOML)
-//! and providing access to settings like template definitions, standard labels, etc.
+//! This crate provides hierarchical configuration management for organization-specific
+//! repository settings, supporting a four-level hierarchy with override controls.
+//!
+//! # Module Organization
+//!
+//! - `types` - Basic configuration types and enums
+//! - `hierarchy` - Hierarchical value types with override control
+//! - `settings` - Configuration setting structures
+//! - `templates` - Template-related structures
+//! - `merged` - Final merged configuration and merging logic
+//! - `errors` - Error types for configuration validation and processing
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,8 +19,21 @@ use std::io;
 use std::path::Path;
 use thiserror::Error;
 
-// Organization-specific repository configuration structures
-pub mod organization;
+// Configuration modules
+pub mod errors;
+pub mod hierarchy;
+pub mod merged;
+pub mod settings;
+pub mod templates;
+pub mod types;
+
+// Re-export commonly used items
+pub use errors::*;
+pub use hierarchy::*;
+pub use merged::*;
+pub use settings::*;
+pub use templates::*;
+pub use types::*;
 
 // Unit tests will be added in a separate file: lib_tests.rs
 #[path = "lib_tests.rs"]
