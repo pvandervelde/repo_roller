@@ -1858,7 +1858,7 @@ pub struct RepositoryTypeConfig {
     ///
     /// let mut config = RepositoryTypeConfig::new();
     /// let mut pr_settings = PullRequestSettings::new();
-    /// pr_settings.required_approving_review_count = Some(OverridableValue::fixed(2));
+    /// pr_settings.allow_squash_merge = Some(OverridableValue::fixed(true));
     /// config.pull_requests = Some(pr_settings);
     /// ```
     pub pull_requests: Option<PullRequestSettings>,
@@ -3031,7 +3031,7 @@ impl ConfigurationSource {
     /// The precedence level as an integer:
     /// - Global: 1 (lowest precedence)
     /// - RepositoryType: 2
-    /// - Team: 3  
+    /// - Team: 3
     /// - Template: 4 (highest precedence)
     ///
     /// # Examples
@@ -3489,7 +3489,7 @@ impl MergedConfiguration {
     ///
     /// let mut config = MergedConfiguration::new();
     /// let label = LabelConfig::new("bug".to_string(), Some("Something isn't working".to_string()), "d73a4a".to_string());
-    /// 
+    ///
     /// config.add_label(label);
     /// assert_eq!(config.labels().len(), 1);
     /// assert!(config.labels().contains_key("bug"));
@@ -3536,7 +3536,7 @@ impl MergedConfiguration {
     ///     true,
     ///     None
     /// );
-    /// 
+    ///
     /// config.add_webhook(webhook);
     /// assert_eq!(config.webhooks().len(), 1);
     /// ```
@@ -3577,7 +3577,7 @@ impl MergedConfiguration {
     ///
     /// let mut config = MergedConfiguration::new();
     /// let app = GitHubAppConfig::new("dependabot".to_string());
-    /// 
+    ///
     /// config.add_github_app(app);
     /// assert_eq!(config.github_apps().len(), 1);
     /// ```
@@ -3618,7 +3618,7 @@ impl MergedConfiguration {
     ///
     /// let mut config = MergedConfiguration::new();
     /// let env = EnvironmentConfig::new("production".to_string(), None, None, None);
-    /// 
+    ///
     /// config.add_environment(env);
     /// assert_eq!(config.environments().len(), 1);
     /// ```
@@ -3735,7 +3735,7 @@ impl MergedConfiguration {
     pub fn validate(&self) -> Result<(), ConfigurationError> {
         // Validate repository settings
         // (This is a placeholder - actual validation logic would be more comprehensive)
-        
+
         // Validate all labels have valid colors (hex color format)
         for (name, label) in &self.labels {
             if !label.color.chars().all(|c| c.is_ascii_hexdigit()) || label.color.len() != 6 {
@@ -3776,5 +3776,226 @@ impl MergedConfiguration {
 impl Default for MergedConfiguration {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl MergedConfiguration {
+    /// Creates a merged configuration from a hierarchy of configurations.
+    ///
+    /// Merges configurations in order of precedence:
+    /// 1. Template-specific configuration (highest precedence)
+    /// 2. Team-specific configuration
+    /// 3. Repository type configuration
+    /// 4. Global defaults (lowest precedence)
+    ///
+    /// # Arguments
+    ///
+    /// * `global` - Global default configuration
+    /// * `repo_type` - Repository type-specific configuration (optional)
+    /// * `team` - Team-specific configuration (optional)
+    /// * `template` - Template-specific configuration (optional)
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the merged configuration or validation errors.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use config_manager::organization::{
+    ///     MergedConfiguration, GlobalDefaults, RepositoryTypeConfig,
+    ///     TeamConfig, TemplateConfig, TemplateMetadata
+    /// };
+    ///
+    /// let global = GlobalDefaults::new();
+    /// let repo_type = RepositoryTypeConfig::new();
+    /// let team = TeamConfig::new();
+    /// let metadata = TemplateMetadata::new(
+    ///     "rust-service".to_string(),
+    ///     "A Rust service template".to_string(),
+    ///     "author".to_string(),
+    ///     vec!["rust".to_string(), "service".to_string()]
+    /// );
+    /// let template = TemplateConfig::new(metadata);
+    ///
+    /// let merged = MergedConfiguration::merge_from_hierarchy(
+    ///     &global,
+    ///     Some(&repo_type),
+    ///     Some(&team),
+    ///     Some(&template)
+    /// );
+    /// assert!(merged.is_ok());
+    /// ```
+    pub fn merge_from_hierarchy(
+        global: &GlobalDefaults,
+        repo_type: Option<&RepositoryTypeConfig>,
+        team: Option<&TeamConfig>,
+        template: Option<&TemplateConfig>,
+    ) -> Result<Self, ConfigurationError> {
+        let mut merged = Self::new();
+
+        // Merge in order of precedence (lowest to highest)
+        merged.merge_global_defaults(global)?;
+
+        if let Some(repo_type_cfg) = repo_type {
+            merged.merge_repository_type_config(repo_type_cfg)?;
+        }
+
+        if let Some(team_cfg) = team {
+            merged.merge_team_config(team_cfg)?;
+        }
+
+        if let Some(template_cfg) = template {
+            merged.merge_template_config(template_cfg)?;
+        }
+
+        // Validate the final merged configuration
+        merged.validate()?;
+
+        Ok(merged)
+    }
+
+    /// Merges global default configuration.
+    fn merge_global_defaults(&mut self, global: &GlobalDefaults) -> Result<(), ConfigurationError> {
+        // TODO: Merge repository settings from global defaults
+        // For now, this is a placeholder implementation
+
+        // Record that global defaults were applied
+        self.source_trace.add_source(
+            "applied_global_defaults".to_string(),
+            ConfigurationSource::Global,
+        );
+
+        Ok(())
+    }
+
+    /// Merges repository type configuration.
+    fn merge_repository_type_config(
+        &mut self,
+        repo_type: &RepositoryTypeConfig,
+    ) -> Result<(), ConfigurationError> {
+        // TODO: Merge repository type configuration
+        // For now, this is a placeholder implementation
+
+        // Record that repository type config was applied
+        self.source_trace.add_source(
+            format!("applied_repository_type_{}", "config"),
+            ConfigurationSource::RepositoryType,
+        );
+
+        Ok(())
+    }
+
+    /// Merges team configuration.
+    fn merge_team_config(&mut self, team: &TeamConfig) -> Result<(), ConfigurationError> {
+        // TODO: Merge team configuration
+        // For now, this is a placeholder implementation
+
+        // Record that team config was applied
+        self.source_trace
+            .add_source("applied_team_config".to_string(), ConfigurationSource::Team);
+
+        Ok(())
+    }
+
+    /// Merges template configuration.
+    fn merge_template_config(
+        &mut self,
+        template: &TemplateConfig,
+    ) -> Result<(), ConfigurationError> {
+        // TODO: Merge template configuration
+        // For now, this is a placeholder implementation
+
+        // Record that template config was applied
+        self.source_trace.add_source(
+            "applied_template_config".to_string(),
+            ConfigurationSource::Template,
+        );
+
+        Ok(())
+    }
+
+    /// Merges an overridable value respecting override settings.
+    fn merge_overridable_value<T: Clone>(
+        &mut self,
+        target: &mut Option<OverridableValue<T>>,
+        source: &OverridableValue<T>,
+        source_type: ConfigurationSource,
+    ) {
+        match target {
+            Some(existing) => {
+                // Only merge if existing allows override or if source has higher precedence
+                if existing.can_override || self.has_higher_precedence(source_type) {
+                    let mut new_value = source.clone();
+                    new_value.can_override = existing.can_override && source.can_override;
+                    *target = Some(new_value);
+                }
+            }
+            None => {
+                *target = Some(source.clone());
+            }
+        }
+    }
+
+    /// Checks if a source has higher precedence than the existing value.
+    fn has_higher_precedence(&self, source_type: ConfigurationSource) -> bool {
+        // Template configuration has highest precedence, then team, then repository type, then global
+        matches!(source_type, ConfigurationSource::Template)
+    }
+
+    /// Adds or replaces a label, tracking its source.
+    fn add_or_replace_label(&mut self, label: LabelConfig, source: ConfigurationSource) {
+        let name = label.name.clone();
+        self.labels.insert(name.clone(), label);
+        self.source_trace
+            .add_source(format!("labels.{}", name), source);
+    }
+
+    /// Adds or replaces a webhook, tracking its source.
+    fn add_or_replace_webhook(&mut self, webhook: WebhookConfig, source: ConfigurationSource) {
+        // Replace existing webhook with same URL or add new one
+        if let Some(pos) = self.webhooks.iter().position(|w| w.url == webhook.url) {
+            self.webhooks[pos] = webhook.clone();
+        } else {
+            self.webhooks.push(webhook.clone());
+        }
+        self.source_trace
+            .add_source(format!("webhooks.{}", webhook.url), source);
+    }
+
+    /// Adds or replaces an environment, tracking its source.
+    fn add_or_replace_environment(
+        &mut self,
+        environment: EnvironmentConfig,
+        source: ConfigurationSource,
+    ) {
+        // Replace existing environment with same name or add new one
+        if let Some(pos) = self
+            .environments
+            .iter()
+            .position(|e| e.name == environment.name)
+        {
+            self.environments[pos] = environment.clone();
+        } else {
+            self.environments.push(environment.clone());
+        }
+        self.source_trace
+            .add_source(format!("environments.{}", environment.name), source);
+    }
+
+    /// Adds or replaces a GitHub App, tracking its source.
+    fn add_or_replace_github_app(&mut self, app: GitHubAppConfig, source: ConfigurationSource) {
+        // Replace existing app with same slug or add new one
+        if let Some(pos) = self
+            .github_apps
+            .iter()
+            .position(|a| a.app_slug == app.app_slug)
+        {
+            self.github_apps[pos] = app.clone();
+        } else {
+            self.github_apps.push(app.clone());
+        }
+        self.source_trace
+            .add_source(format!("github_apps.{}", app.app_slug), source);
     }
 }
