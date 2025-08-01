@@ -789,11 +789,18 @@ impl MergedConfiguration {
             }
 
             // Validate label color format (basic hex color validation)
-            if !label.color.starts_with('#') && label.color.len() != 6 {
+            let is_valid_color = if label.color.starts_with('#') {
+                label.color.len() == 7 && label.color.chars().skip(1).all(|c| c.is_ascii_hexdigit())
+            } else {
+                label.color.len() == 6 && label.color.chars().all(|c| c.is_ascii_hexdigit())
+            };
+
+            if !is_valid_color {
                 return Err(crate::errors::ConfigurationError::InvalidValue {
                     field: "label.color".to_string(),
                     value: label.color.clone(),
-                    reason: "Label color must be a 6-character hex color without #".to_string(),
+                    reason: "Label color must be a 6-character hex color with or without # prefix"
+                        .to_string(),
                 });
             }
         }

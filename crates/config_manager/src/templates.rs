@@ -1,4 +1,4 @@
-//! Template configuration structures.
+//! Template configuration structure.
 //!
 //! This module provides template-related configuration structures that define
 //! how repositories should be created from templates in the organization.
