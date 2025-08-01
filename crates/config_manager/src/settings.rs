@@ -368,25 +368,25 @@ impl Default for GlobalDefaults {
 ///
 /// # Security Considerations
 ///
-/// Global defaults often contain security-critical settings. Individual fields may
-/// have their own override policies to prevent weakening of security requirements
-/// by higher-level configurations.
+/// Organization-wide default settings often contain security-critical settings.
+/// Individual fields may have their own override policies to prevent weakening
+/// of security requirements by higher-level configurations.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use config_manager::settings::{GlobalDefaultsEnhanced, ActionSettings};
+/// use config_manager::settings::{OrganizationDefaults, ActionSettings};
 /// use config_manager::hierarchy::OverridableValue;
 /// use config_manager::types::WorkflowPermission;
 ///
-/// let mut defaults = GlobalDefaultsEnhanced::new();
+/// let mut defaults = OrganizationDefaults::new();
 /// defaults.actions = Some(ActionSettings {
 ///     enabled: Some(OverridableValue::fixed(true)),
 ///     default_workflow_permissions: Some(OverridableValue::overridable(WorkflowPermission::Read)),
 /// });
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-pub struct GlobalDefaultsEnhanced {
+pub struct OrganizationDefaults {
     /// GitHub Actions settings for repositories.
     pub actions: Option<ActionSettings>,
 
@@ -403,12 +403,12 @@ pub struct GlobalDefaultsEnhanced {
     pub repository_settings: Option<RepositorySettings>,
 }
 
-impl GlobalDefaultsEnhanced {
-    /// Creates a new empty `GlobalDefaultsEnhanced` configuration.
+impl OrganizationDefaults {
+    /// Creates a new empty `OrganizationDefaults` configuration.
     ///
     /// # Returns
     ///
-    /// A new `GlobalDefaultsEnhanced` instance with all fields set to `None`.
+    /// A new `OrganizationDefaults` instance with all fields set to `None`.
     pub fn new() -> Self {
         Self {
             actions: None,
@@ -420,7 +420,7 @@ impl GlobalDefaultsEnhanced {
     }
 }
 
-impl Default for GlobalDefaultsEnhanced {
+impl Default for OrganizationDefaults {
     fn default() -> Self {
         Self::new()
     }
