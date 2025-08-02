@@ -491,6 +491,172 @@ impl MetadataRepository {
     pub fn full_name(&self) -> String {
         format!("{}/{}", self.organization, self.repository_name)
     }
+
+    /// Validate the organization assignment for this metadata repository.
+    ///
+    /// This method ensures that the metadata repository belongs to the expected organization,
+    /// which is required for proper access control and configuration isolation. This validation
+    /// helps prevent configuration leakage between organizations and ensures security policies
+    /// are properly enforced.
+    ///
+    /// # Arguments
+    ///
+    /// * `expected_org` - The organization name that should own this repository
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Repository belongs to the expected organization
+    /// * `Err(ConfigurationError::OrganizationMismatch)` - Repository belongs to different organization
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{MetadataRepository, DiscoveryMethod};
+    /// # use chrono::Utc;
+    /// let repo = MetadataRepository::new(
+    ///     "acme-corp".to_string(),
+    ///     "acme-corp-config".to_string(),
+    ///     DiscoveryMethod::ConfigurationBased {
+    ///         repository_name: "acme-corp-config".to_string(),
+    ///     },
+    ///     Utc::now(),
+    /// );
+    ///
+    /// // Valid organization
+    /// assert!(repo.validate_organization("acme-corp").is_ok());
+    ///
+    /// // Invalid organization
+    /// assert!(repo.validate_organization("other-org").is_err());
+    /// ```
+    pub fn validate_organization(&self, expected_org: &str) -> MetadataResult<()> {
+        // TODO: implement organization validation
+        todo!("Organization validation not implemented")
+    }
+
+    /// Check if this repository requires structure validation.
+    ///
+    /// This method determines whether the repository structure needs to be validated
+    /// based on the discovery method and other factors. Some discovery methods may
+    /// provide implicit validation, while others require explicit structure checks.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if structure validation is needed
+    /// * `false` if structure validation can be skipped
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{MetadataRepository, DiscoveryMethod};
+    /// # use chrono::Utc;
+    /// let config_repo = MetadataRepository::new(
+    ///     "acme-corp".to_string(),
+    ///     "acme-corp-config".to_string(),
+    ///     DiscoveryMethod::ConfigurationBased {
+    ///         repository_name: "acme-corp-config".to_string(),
+    ///     },
+    ///     Utc::now(),
+    /// );
+    /// assert!(config_repo.requires_structure_validation());
+    ///
+    /// let topic_repo = MetadataRepository::new(
+    ///     "acme-corp".to_string(),
+    ///     "metadata-repo".to_string(),
+    ///     DiscoveryMethod::TopicBased {
+    ///         topic: "template-metadata".to_string(),
+    ///     },
+    ///     Utc::now(),
+    /// );
+    /// assert!(topic_repo.requires_structure_validation());
+    /// ```
+    pub fn requires_structure_validation(&self) -> bool {
+        // TODO: implement structure validation requirement check
+        todo!("Structure validation requirement check not implemented")
+    }
+
+    /// Validate that this repository can be used for the specified organization.
+    ///
+    /// This method performs comprehensive validation to ensure the metadata repository
+    /// is suitable for use with the specified organization. It combines organization
+    /// validation with other checks to provide a complete validation result.
+    ///
+    /// The validation includes:
+    /// - Organization ownership verification
+    /// - Repository accessibility validation
+    /// - Basic metadata integrity checks
+    ///
+    /// # Arguments
+    ///
+    /// * `target_org` - The organization that will use this metadata repository
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Repository is valid for the specified organization
+    /// * `Err(ConfigurationError::OrganizationMismatch)` - Repository belongs to different organization
+    /// * `Err(ConfigurationError::InvalidRepository)` - Repository has structural or access issues
+    /// * `Err(ConfigurationError::AccessDenied)` - Repository cannot be accessed with current permissions
+    ///
+    /// # Security Considerations
+    ///
+    /// This method enforces security boundaries by ensuring metadata repositories
+    /// can only be used by their owning organization. This prevents configuration
+    /// leakage and unauthorized access to organizational policies.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{MetadataRepository, DiscoveryMethod};
+    /// # use chrono::Utc;
+    /// let repo = MetadataRepository::new(
+    ///     "acme-corp".to_string(),
+    ///     "acme-corp-config".to_string(),
+    ///     DiscoveryMethod::ConfigurationBased {
+    ///         repository_name: "acme-corp-config".to_string(),
+    ///     },
+    ///     Utc::now(),
+    /// );
+    ///
+    /// match repo.validate_for_organization("acme-corp") {
+    ///     Ok(()) => println!("Repository is valid for acme-corp"),
+    ///     Err(e) => eprintln!("Repository validation failed: {}", e),
+    /// }
+    /// ```
+    pub fn validate_for_organization(&self, target_org: &str) -> MetadataResult<()> {
+        // TODO: implement comprehensive organization validation
+        todo!("Comprehensive organization validation not implemented")
+    }
+
+    /// Get a validation summary for this metadata repository.
+    ///
+    /// This method provides a comprehensive overview of the repository's validation
+    /// status, including information about required checks, potential issues, and
+    /// recommendations for ensuring proper configuration management.
+    ///
+    /// # Returns
+    ///
+    /// A `RepositoryValidationSummary` containing validation status and recommendations
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{MetadataRepository, DiscoveryMethod};
+    /// # use chrono::Utc;
+    /// let repo = MetadataRepository::new(
+    ///     "acme-corp".to_string(),
+    ///     "acme-corp-config".to_string(),
+    ///     DiscoveryMethod::ConfigurationBased {
+    ///         repository_name: "acme-corp-config".to_string(),
+    ///     },
+    ///     Utc::now(),
+    /// );
+    ///
+    /// let summary = repo.validation_summary();
+    /// println!("Validation summary: {:?}", summary);
+    /// ```
+    pub fn validation_summary(&self) -> RepositoryValidationSummary {
+        // TODO: implement validation summary generation
+        todo!("Validation summary generation not implemented")
+    }
 }
 
 /// Enumeration of supported metadata repository discovery methods.
@@ -634,5 +800,386 @@ impl DiscoveryMethod {
                 format!("topic-based (topic: {})", topic)
             }
         }
+    }
+}
+
+/// Repository validation summary containing validation status and recommendations.
+///
+/// This structure provides a comprehensive overview of a metadata repository's
+/// validation status, including information about required checks, potential issues,
+/// and recommendations for ensuring proper configuration management functionality.
+///
+/// # Fields
+///
+/// * `repository_valid` - Whether the repository passes basic validation checks
+/// * `organization_valid` - Whether the repository belongs to the expected organization
+/// * `structure_validation_required` - Whether structure validation is needed
+/// * `access_validation_required` - Whether access validation is needed
+/// * `validation_warnings` - List of non-critical validation warnings
+/// * `validation_errors` - List of critical validation errors
+/// * `recommendations` - List of recommendations for improving repository setup
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{RepositoryValidationSummary, ValidationStatus, ValidationIssue};
+///
+/// let summary = RepositoryValidationSummary {
+///     repository_valid: ValidationStatus::Valid,
+///     organization_valid: ValidationStatus::Valid,
+///     structure_validation_required: true,
+///     access_validation_required: true,
+///     validation_warnings: vec![],
+///     validation_errors: vec![],
+///     recommendations: vec![
+///         "Consider adding validation schemas in schemas/ directory".to_string(),
+///     ],
+/// };
+///
+/// println!("Repository validation: {:?}", summary.repository_valid);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryValidationSummary {
+    /// Basic repository validation status.
+    ///
+    /// Indicates whether the repository passes fundamental validation checks
+    /// such as existence, accessibility, and basic metadata integrity.
+    pub repository_valid: ValidationStatus,
+
+    /// Organization ownership validation status.
+    ///
+    /// Indicates whether the repository belongs to the expected organization
+    /// and meets security requirements for cross-organizational access.
+    pub organization_valid: ValidationStatus,
+
+    /// Whether structure validation is required for this repository.
+    ///
+    /// Some repositories may skip structure validation if they were discovered
+    /// through methods that provide implicit validation guarantees.
+    pub structure_validation_required: bool,
+
+    /// Whether access validation is required for this repository.
+    ///
+    /// Indicates whether the current authentication context needs to be
+    /// validated against the repository's access requirements.
+    pub access_validation_required: bool,
+
+    /// List of non-critical validation warnings.
+    ///
+    /// These are issues that don't prevent the repository from functioning
+    /// but may indicate suboptimal configuration or potential future problems.
+    pub validation_warnings: Vec<ValidationIssue>,
+
+    /// List of critical validation errors.
+    ///
+    /// These are issues that prevent the repository from being used for
+    /// configuration management and must be resolved before proceeding.
+    pub validation_errors: Vec<ValidationIssue>,
+
+    /// List of recommendations for improving repository setup.
+    ///
+    /// These are suggestions for enhancing the repository's configuration
+    /// management capabilities, performance, or maintainability.
+    pub recommendations: Vec<String>,
+}
+
+impl RepositoryValidationSummary {
+    /// Create a new validation summary for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_valid` - Basic repository validation status
+    /// * `organization_valid` - Organization ownership validation status
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryValidationSummary` with default values for other fields
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryValidationSummary, ValidationStatus};
+    ///
+    /// let summary = RepositoryValidationSummary::new(
+    ///     ValidationStatus::Valid,
+    ///     ValidationStatus::Valid,
+    /// );
+    /// assert_eq!(summary.repository_valid, ValidationStatus::Valid);
+    /// ```
+    pub fn new(repository_valid: ValidationStatus, organization_valid: ValidationStatus) -> Self {
+        Self {
+            repository_valid,
+            organization_valid,
+            structure_validation_required: true,
+            access_validation_required: true,
+            validation_warnings: Vec::new(),
+            validation_errors: Vec::new(),
+            recommendations: Vec::new(),
+        }
+    }
+
+    /// Check if the repository has any critical validation errors.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if there are critical errors that prevent repository usage
+    /// * `false` if the repository can be used despite any warnings
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryValidationSummary, ValidationStatus, ValidationIssue, ValidationSeverity};
+    ///
+    /// let mut summary = RepositoryValidationSummary::new(
+    ///     ValidationStatus::Valid,
+    ///     ValidationStatus::Valid,
+    /// );
+    /// assert!(!summary.has_errors());
+    ///
+    /// summary.validation_errors.push(ValidationIssue::new(
+    ///     ValidationSeverity::Error,
+    ///     "Missing required global/defaults.toml file".to_string(),
+    ///     Some("Create global/defaults.toml with organization settings".to_string()),
+    /// ));
+    /// assert!(summary.has_errors());
+    /// ```
+    pub fn has_errors(&self) -> bool {
+        !self.validation_errors.is_empty()
+            || self.repository_valid == ValidationStatus::Invalid
+            || self.organization_valid == ValidationStatus::Invalid
+    }
+
+    /// Check if the repository has any validation warnings.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if there are warnings that should be addressed
+    /// * `false` if there are no warnings
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryValidationSummary, ValidationStatus, ValidationIssue, ValidationSeverity};
+    ///
+    /// let mut summary = RepositoryValidationSummary::new(
+    ///     ValidationStatus::Valid,
+    ///     ValidationStatus::Valid,
+    /// );
+    /// assert!(!summary.has_warnings());
+    ///
+    /// summary.validation_warnings.push(ValidationIssue::new(
+    ///     ValidationSeverity::Warning,
+    ///     "No validation schemas found in schemas/ directory".to_string(),
+    ///     Some("Consider adding JSON schemas for configuration validation".to_string()),
+    /// ));
+    /// assert!(summary.has_warnings());
+    /// ```
+    pub fn has_warnings(&self) -> bool {
+        !self.validation_warnings.is_empty()
+    }
+
+    /// Get the overall validation status for this repository.
+    ///
+    /// This combines all validation results to provide a single status indicator
+    /// that can be used for decision making about repository usage.
+    ///
+    /// # Returns
+    ///
+    /// * `ValidationStatus::Valid` - Repository can be used safely
+    /// * `ValidationStatus::ValidWithWarnings` - Repository can be used but has issues
+    /// * `ValidationStatus::Invalid` - Repository cannot be used due to errors
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryValidationSummary, ValidationStatus};
+    ///
+    /// let summary = RepositoryValidationSummary::new(
+    ///     ValidationStatus::Valid,
+    ///     ValidationStatus::Valid,
+    /// );
+    /// assert_eq!(summary.overall_status(), ValidationStatus::Valid);
+    /// ```
+    pub fn overall_status(&self) -> ValidationStatus {
+        // TODO: implement overall status calculation
+        todo!("Overall status calculation not implemented")
+    }
+}
+
+/// Enumeration of validation status values.
+///
+/// This enum represents the possible outcomes of validation operations,
+/// providing clear indication of whether a component can be used safely.
+///
+/// # Variants
+///
+/// * `Valid` - Component passes all validation checks
+/// * `ValidWithWarnings` - Component can be used but has non-critical issues
+/// * `Invalid` - Component fails validation and cannot be used
+/// * `Unknown` - Validation status has not been determined
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::ValidationStatus;
+///
+/// let status = ValidationStatus::Valid;
+/// assert!(matches!(status, ValidationStatus::Valid));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidationStatus {
+    /// Component passes all validation checks and can be used safely.
+    Valid,
+
+    /// Component can be used but has non-critical issues that should be addressed.
+    ValidWithWarnings,
+
+    /// Component fails validation checks and cannot be used.
+    Invalid,
+
+    /// Validation status has not been determined yet.
+    Unknown,
+}
+
+impl ValidationStatus {
+    /// Check if this status indicates the component can be used.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the component can be used (Valid or ValidWithWarnings)
+    /// * `false` if the component cannot be used (Invalid or Unknown)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::ValidationStatus;
+    ///
+    /// assert!(ValidationStatus::Valid.is_usable());
+    /// assert!(ValidationStatus::ValidWithWarnings.is_usable());
+    /// assert!(!ValidationStatus::Invalid.is_usable());
+    /// assert!(!ValidationStatus::Unknown.is_usable());
+    /// ```
+    pub fn is_usable(&self) -> bool {
+        // TODO: implement usability check
+        todo!("Usability check not implemented")
+    }
+}
+
+/// Represents a validation issue found during repository validation.
+///
+/// This structure contains detailed information about validation problems,
+/// including their severity level and potential solutions or recommendations.
+///
+/// # Fields
+///
+/// * `severity` - The severity level of this validation issue
+/// * `message` - Human-readable description of the validation issue
+/// * `suggestion` - Optional suggestion for resolving the issue
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{ValidationIssue, ValidationSeverity};
+///
+/// let issue = ValidationIssue::new(
+///     ValidationSeverity::Error,
+///     "Missing required configuration file".to_string(),
+///     Some("Create the file with default settings".to_string()),
+/// );
+///
+/// println!("Validation issue: {}", issue.message);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValidationIssue {
+    /// The severity level of this validation issue.
+    pub severity: ValidationSeverity,
+
+    /// Human-readable description of the validation issue.
+    pub message: String,
+
+    /// Optional suggestion for resolving the issue.
+    pub suggestion: Option<String>,
+}
+
+impl ValidationIssue {
+    /// Create a new validation issue.
+    ///
+    /// # Arguments
+    ///
+    /// * `severity` - The severity level of the issue
+    /// * `message` - Human-readable description of the issue
+    /// * `suggestion` - Optional suggestion for resolving the issue
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{ValidationIssue, ValidationSeverity};
+    ///
+    /// let issue = ValidationIssue::new(
+    ///     ValidationSeverity::Warning,
+    ///     "Configuration file is outdated".to_string(),
+    ///     Some("Update the file to use the latest schema version".to_string()),
+    /// );
+    /// ```
+    pub fn new(severity: ValidationSeverity, message: String, suggestion: Option<String>) -> Self {
+        Self {
+            severity,
+            message,
+            suggestion,
+        }
+    }
+}
+
+/// Enumeration of validation issue severity levels.
+///
+/// This enum categorizes validation issues by their impact on system functionality,
+/// helping users prioritize which issues to address first.
+///
+/// # Variants
+///
+/// * `Error` - Critical issue that prevents system functionality
+/// * `Warning` - Non-critical issue that should be addressed
+/// * `Info` - Informational message that may be helpful
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::ValidationSeverity;
+///
+/// let severity = ValidationSeverity::Error;
+/// assert!(matches!(severity, ValidationSeverity::Error));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidationSeverity {
+    /// Critical issue that prevents system functionality.
+    Error,
+
+    /// Non-critical issue that should be addressed but doesn't prevent functionality.
+    Warning,
+
+    /// Informational message that may be helpful for optimization or best practices.
+    Info,
+}
+
+impl ValidationSeverity {
+    /// Check if this severity level indicates a critical issue.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the issue is critical and prevents functionality
+    /// * `false` if the issue is non-critical
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::ValidationSeverity;
+    ///
+    /// assert!(ValidationSeverity::Error.is_critical());
+    /// assert!(!ValidationSeverity::Warning.is_critical());
+    /// assert!(!ValidationSeverity::Info.is_critical());
+    /// ```
+    pub fn is_critical(&self) -> bool {
+        // TODO: implement criticality check
+        todo!("Criticality check not implemented")
     }
 }
