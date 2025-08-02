@@ -21,6 +21,7 @@ use thiserror::Error;
 
 // Configuration modules
 pub mod errors;
+pub mod github_provider;
 pub mod hierarchy;
 pub mod merged;
 pub mod metadata;
