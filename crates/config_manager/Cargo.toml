@@ -10,7 +10,10 @@ version.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+base64 = "0.21"
 chrono = { version = "0.4", features = ["serde"] }
+github_client = { path = "../github_client" }
+octocrab = "0.34"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 toml = "0.8"

@@ -601,7 +601,7 @@ mod github_metadata_provider_tests {
     }
 
     #[tokio::test]
-    async fn test_validate_repository_structure_not_implemented() {
+    async fn test_validate_repository_structure_with_missing_items() {
         let github_client = Arc::new(MockGitHubClient::new());
         let provider = GitHubMetadataProvider::new(github_client, DiscoveryConfig::default());
 
@@ -618,16 +618,22 @@ mod github_metadata_provider_tests {
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            crate::ConfigurationError::NetworkError { error, operation } => {
-                assert_eq!(error, "Not implemented");
-                assert_eq!(operation, "repository structure validation");
+            crate::ConfigurationError::InvalidRepositoryStructure {
+                repository,
+                missing_items,
+            } => {
+                assert_eq!(repository, "test-org/test-repo");
+                assert!(missing_items.contains(&"global/ directory".to_string()));
+                assert!(missing_items.contains(&"global/defaults.toml file".to_string()));
+                assert!(missing_items.contains(&"teams/ directory".to_string()));
+                assert!(missing_items.contains(&"types/ directory".to_string()));
             }
-            _ => panic!("Expected NetworkError for not implemented"),
+            _ => panic!("Expected InvalidRepositoryStructure error"),
         }
     }
 
     #[tokio::test]
-    async fn test_load_global_defaults_not_implemented() {
+    async fn test_load_global_defaults_file_not_found() {
         let github_client = Arc::new(MockGitHubClient::new());
         let provider = GitHubMetadataProvider::new(github_client, DiscoveryConfig::default());
 
@@ -644,16 +650,19 @@ mod github_metadata_provider_tests {
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            crate::ConfigurationError::NetworkError { error, operation } => {
-                assert_eq!(error, "Not implemented");
-                assert_eq!(operation, "global defaults loading");
+            crate::ConfigurationError::FileNotFound {
+                file_path,
+                repository,
+            } => {
+                assert_eq!(file_path, "global/defaults.toml");
+                assert_eq!(repository, "test-org/test-repo");
             }
-            _ => panic!("Expected NetworkError for not implemented"),
+            _ => panic!("Expected FileNotFound error"),
         }
     }
 
     #[tokio::test]
-    async fn test_load_team_configuration_not_implemented() {
+    async fn test_load_team_configuration_none_when_file_not_found() {
         let github_client = Arc::new(MockGitHubClient::new());
         let provider = GitHubMetadataProvider::new(github_client, DiscoveryConfig::default());
 
@@ -669,19 +678,12 @@ mod github_metadata_provider_tests {
         let result = provider
             .load_team_configuration(&repo, "platform-team")
             .await;
-        assert!(result.is_err());
-
-        match result.unwrap_err() {
-            crate::ConfigurationError::NetworkError { error, operation } => {
-                assert_eq!(error, "Not implemented");
-                assert_eq!(operation, "team configuration loading");
-            }
-            _ => panic!("Expected NetworkError for not implemented"),
-        }
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 
     #[tokio::test]
-    async fn test_load_repository_type_configuration_not_implemented() {
+    async fn test_load_repository_type_configuration_none_when_file_not_found() {
         let github_client = Arc::new(MockGitHubClient::new());
         let provider = GitHubMetadataProvider::new(github_client, DiscoveryConfig::default());
 
@@ -697,15 +699,8 @@ mod github_metadata_provider_tests {
         let result = provider
             .load_repository_type_configuration(&repo, "library")
             .await;
-        assert!(result.is_err());
-
-        match result.unwrap_err() {
-            crate::ConfigurationError::NetworkError { error, operation } => {
-                assert_eq!(error, "Not implemented");
-                assert_eq!(operation, "repository type configuration loading");
-            }
-            _ => panic!("Expected NetworkError for not implemented"),
-        }
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -723,19 +718,12 @@ mod github_metadata_provider_tests {
         );
 
         let result = provider.list_available_repository_types(&repo).await;
-        assert!(result.is_err());
-
-        match result.unwrap_err() {
-            crate::ConfigurationError::NetworkError { error, operation } => {
-                assert_eq!(error, "Not implemented");
-                assert_eq!(operation, "repository type listing");
-            }
-            _ => panic!("Expected NetworkError for not implemented"),
-        }
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Vec::<String>::new()); // Empty list when types/ directory doesn't exist
     }
 
     #[tokio::test]
-    async fn test_load_standard_labels_not_implemented() {
+    async fn test_load_standard_labels_empty_when_file_not_found() {
         let github_client = Arc::new(MockGitHubClient::new());
         let provider = GitHubMetadataProvider::new(github_client, DiscoveryConfig::default());
 
@@ -749,15 +737,8 @@ mod github_metadata_provider_tests {
         );
 
         let result = provider.load_standard_labels(&repo).await;
-        assert!(result.is_err());
-
-        match result.unwrap_err() {
-            crate::ConfigurationError::NetworkError { error, operation } => {
-                assert_eq!(error, "Not implemented");
-                assert_eq!(operation, "standard labels loading");
-            }
-            _ => panic!("Expected NetworkError for not implemented"),
-        }
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty()); // Empty map when labels file doesn't exist
     }
 }
 
@@ -825,7 +806,7 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_error_handling_consistency() {
-        // Test that all unimplemented methods return consistent error format
+        // Test that methods return appropriate errors when files/directories are missing
         let github_client = Arc::new(MockGitHubClient::new());
         let provider = GitHubMetadataProvider::new(github_client, DiscoveryConfig::default());
 
@@ -838,66 +819,55 @@ mod integration_tests {
             Utc::now(),
         );
 
-        // All methods should return NetworkError with "Not implemented"
-        let methods = vec![
-            (
-                "validate_repository_structure",
-                provider.validate_repository_structure(&repo).await,
-            ),
-            (
-                "load_global_defaults",
-                provider.load_global_defaults(&repo).await.map(|_| ()),
-            ),
-            (
-                "load_team_configuration",
-                provider
-                    .load_team_configuration(&repo, "team")
-                    .await
-                    .map(|_| ()),
-            ),
-            (
-                "load_repository_type_configuration",
-                provider
-                    .load_repository_type_configuration(&repo, "type")
-                    .await
-                    .map(|_| ()),
-            ),
-            (
-                "list_available_repository_types",
-                provider
-                    .list_available_repository_types(&repo)
-                    .await
-                    .map(|_| ()),
-            ),
-            (
-                "load_standard_labels",
-                provider.load_standard_labels(&repo).await.map(|_| ()),
-            ),
-        ];
+        // validate_repository_structure should return InvalidRepositoryStructure
+        let validate_result = provider.validate_repository_structure(&repo).await;
+        assert!(validate_result.is_err());
+        assert!(matches!(
+            validate_result.unwrap_err(),
+            crate::ConfigurationError::InvalidRepositoryStructure { .. }
+        ));
 
-        for (method_name, result) in methods {
-            assert!(
-                result.is_err(),
-                "Method {} should return an error",
-                method_name
-            );
+        // load_global_defaults should return FileNotFound
+        let global_defaults_result = provider.load_global_defaults(&repo).await;
+        assert!(global_defaults_result.is_err());
+        assert!(matches!(
+            global_defaults_result.unwrap_err(),
+            crate::ConfigurationError::FileNotFound { .. }
+        ));
 
-            match result.unwrap_err() {
-                crate::ConfigurationError::NetworkError { error, .. } => {
-                    assert_eq!(
-                        error, "Not implemented",
-                        "Method {} should return 'Not implemented' error",
-                        method_name
-                    );
-                }
-                _ => panic!("Method {} should return NetworkError", method_name),
-            }
-        }
+        // load_team_configuration should return None (not an error)
+        let team_result = provider.load_team_configuration(&repo, "team").await;
+        assert!(team_result.is_ok());
+        assert!(team_result.unwrap().is_none());
+
+        // load_repository_type_configuration should return None (not an error)
+        let repo_type_result = provider
+            .load_repository_type_configuration(&repo, "type")
+            .await;
+        assert!(repo_type_result.is_ok());
+        assert!(repo_type_result.unwrap().is_none());
+
+        // list_available_repository_types should return empty list (not an error)
+        let list_result = provider.list_available_repository_types(&repo).await;
+        assert!(list_result.is_ok());
+        assert!(list_result.unwrap().is_empty());
+
+        // load_standard_labels should return empty map (not an error)
+        let labels_result = provider.load_standard_labels(&repo).await;
+        assert!(labels_result.is_ok());
+        assert!(labels_result.unwrap().is_empty());
     }
 
     /// Mock GitHub client for testing different scenarios
     #[derive(Debug)]
     struct MockGitHubClient;
+
+    impl MockGitHubClient {
+        /// Create a new mock GitHub client
+        fn new() -> Self {
+            Self
+        }
+    }
 
     #[async_trait]
     impl GitHubClientTrait for MockGitHubClient {

@@ -429,17 +429,21 @@ impl GitHubMetadataProvider {
         &self,
         org: &str,
     ) -> MetadataResult<Option<MetadataRepository>> {
-        // TODO: implement - check if repository exists and is accessible
-        let _repository_name = match self.discovery_config.generate_repository_name(org) {
+        let repository_name = match self.discovery_config.generate_repository_name(org) {
             Some(name) => name,
             None => return Ok(None), // Configuration-based discovery not enabled
         };
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "configuration-based discovery".to_string(),
-        })
+        // Check if repository exists and is accessible
+        match self.check_repository_access(org, &repository_name).await? {
+            Some(last_updated) => Ok(Some(MetadataRepository {
+                organization: org.to_string(),
+                repository_name: repository_name.clone(),
+                discovery_method: DiscoveryMethod::ConfigurationBased { repository_name },
+                last_updated,
+            })),
+            None => Ok(None), // Repository doesn't exist or isn't accessible
+        }
     }
 
     /// Attempt topic-based discovery for the given organization.
@@ -461,17 +465,52 @@ impl GitHubMetadataProvider {
         &self,
         org: &str,
     ) -> MetadataResult<Option<MetadataRepository>> {
-        let _topic = match &self.discovery_config.metadata_topic {
+        let topic = match &self.discovery_config.metadata_topic {
             Some(topic) => topic,
             None => return Ok(None), // Topic-based discovery not enabled
         };
 
-        // TODO: implement - search for repositories with the specified topic
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "topic-based discovery".to_string(),
-        })
+        // Search for repositories with the specified topic
+        let max_results = self.discovery_config.max_search_results;
+        let repositories = self
+            .github_client
+            .search_repositories_by_topic(org, topic, max_results)
+            .await
+            .map_err(|e| crate::ConfigurationError::NetworkError {
+                error: format!("Repository search failed: {}", e),
+                operation: "topic-based discovery".to_string(),
+            })?;
+
+        match repositories.len() {
+            0 => Ok(None), // No repositories found with the topic
+            1 => {
+                let repo_name = &repositories[0];
+                // Get repository info to get the last updated time
+                let last_updated = self
+                    .github_client
+                    .get_repository_info(org, repo_name)
+                    .await
+                    .map_err(|e| crate::ConfigurationError::NetworkError {
+                        error: format!("Failed to get repository info: {}", e),
+                        operation: "topic-based discovery".to_string(),
+                    })?
+                    .unwrap_or(Utc::now()); // Fallback to current time if not available
+
+                Ok(Some(MetadataRepository {
+                    organization: org.to_string(),
+                    repository_name: repo_name.clone(),
+                    discovery_method: DiscoveryMethod::TopicBased {
+                        topic: topic.clone(),
+                    },
+                    last_updated,
+                }))
+            }
+            _count => Err(crate::ConfigurationError::MultipleRepositoriesFound {
+                organization: org.to_string(),
+                search_method: format!("topic-based search for '{}'", topic),
+                repositories,
+            }),
+        }
     }
 
     /// Check if a repository exists and is accessible.
@@ -488,15 +527,17 @@ impl GitHubMetadataProvider {
     /// * `Err(ConfigurationError)` - Network error or other failure
     async fn check_repository_access(
         &self,
-        _org: &str,
-        _repo_name: &str,
+        org: &str,
+        repo_name: &str,
     ) -> MetadataResult<Option<DateTime<Utc>>> {
-        // TODO: implement - check repository existence and access
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "repository access check".to_string(),
-        })
+        // Use the trait method to check repository access
+        self.github_client
+            .get_repository_info(org, repo_name)
+            .await
+            .map_err(|e| crate::ConfigurationError::NetworkError {
+                error: format!("Failed to check repository access: {}", e),
+                operation: "repository access check".to_string(),
+            })
     }
 
     /// Load file content from a repository.
@@ -513,15 +554,17 @@ impl GitHubMetadataProvider {
     /// * `Err(ConfigurationError)` - Access denied, network error, or other failure
     async fn load_file_content(
         &self,
-        _repo: &MetadataRepository,
-        _file_path: &str,
+        repo: &MetadataRepository,
+        file_path: &str,
     ) -> MetadataResult<Option<String>> {
-        // TODO: implement - load file content from repository
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "file content loading".to_string(),
-        })
+        // Use the trait method to get file content
+        self.github_client
+            .get_file_content(&repo.organization, &repo.repository_name, file_path)
+            .await
+            .map_err(|e| crate::ConfigurationError::NetworkError {
+                error: format!("Failed to load file content: {}", e),
+                operation: "file content loading".to_string(),
+            })
     }
 
     /// List directory contents in a repository.
@@ -538,15 +581,17 @@ impl GitHubMetadataProvider {
     /// * `Err(ConfigurationError)` - Access denied, network error, or other failure
     async fn list_directory_contents(
         &self,
-        _repo: &MetadataRepository,
-        _dir_path: &str,
+        repo: &MetadataRepository,
+        dir_path: &str,
     ) -> MetadataResult<Option<Vec<String>>> {
-        // TODO: implement - list directory contents
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "directory listing".to_string(),
-        })
+        // Use the trait method to list directory contents
+        self.github_client
+            .list_directory(&repo.organization, &repo.repository_name, dir_path)
+            .await
+            .map_err(|e| crate::ConfigurationError::NetworkError {
+                error: format!("Failed to list directory contents: {}", e),
+                operation: "directory listing".to_string(),
+            })
     }
 }
 
@@ -556,7 +601,7 @@ impl GitHubMetadataProvider {
 /// of GitHub API operations. It defines the minimal interface needed
 /// by the metadata provider.
 #[async_trait]
-pub trait GitHubClientTrait: Send + Sync {
+pub trait GitHubClientTrait: Send + Sync + std::fmt::Debug {
     /// Check if a repository exists and get its last update time.
     ///
     /// # Arguments
@@ -709,23 +754,47 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
     /// * `Err(ConfigurationError::InvalidRepositoryStructure)` - Missing required items
     /// * `Err(ConfigurationError::AccessDenied)` - Cannot access repository contents
     /// * `Err(ConfigurationError::NetworkError)` - API communication failure
-    async fn validate_repository_structure(
-        &self,
-        _repo: &MetadataRepository,
-    ) -> MetadataResult<()> {
-        // TODO: implement repository structure validation
-        // Check for required directories and files:
-        // - global/ directory exists
-        // - global/defaults.toml exists and is readable
-        // - teams/ directory exists
-        // - types/ directory exists
-        // - schemas/ directory (optional)
+    async fn validate_repository_structure(&self, repo: &MetadataRepository) -> MetadataResult<()> {
+        let mut missing_items = Vec::new();
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "repository structure validation".to_string(),
-        })
+        // Check for required global directory
+        if self
+            .list_directory_contents(repo, "global")
+            .await?
+            .is_none()
+        {
+            missing_items.push("global/ directory".to_string());
+        }
+
+        // Check for required global/defaults.toml file
+        if self
+            .load_file_content(repo, "global/defaults.toml")
+            .await?
+            .is_none()
+        {
+            missing_items.push("global/defaults.toml file".to_string());
+        }
+
+        // Check for required teams directory (may be empty)
+        if self.list_directory_contents(repo, "teams").await?.is_none() {
+            missing_items.push("teams/ directory".to_string());
+        }
+
+        // Check for required types directory (may be empty)
+        if self.list_directory_contents(repo, "types").await?.is_none() {
+            missing_items.push("types/ directory".to_string());
+        }
+
+        // schemas/ directory is optional, so we don't check for it
+
+        if !missing_items.is_empty() {
+            return Err(crate::ConfigurationError::InvalidRepositoryStructure {
+                repository: format!("{}/{}", repo.organization, repo.repository_name),
+                missing_items,
+            });
+        }
+
+        Ok(())
     }
 
     /// Load global default configuration from the metadata repository.
@@ -746,16 +815,25 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
     /// * `Err(ConfigurationError::NetworkError)` - API communication failure
     async fn load_global_defaults(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> MetadataResult<GlobalDefaults> {
-        // TODO: implement global defaults loading
-        // Load global/defaults.toml and parse as TOML
+        // Load global/defaults.toml file content
+        let file_content = self.load_file_content(repo, "global/defaults.toml").await?;
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "global defaults loading".to_string(),
-        })
+        match file_content {
+            Some(content) => {
+                // Parse TOML content
+                toml::from_str(&content).map_err(|e| crate::ConfigurationError::ParseError {
+                    file_path: "global/defaults.toml".to_string(),
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    error: format!("TOML parsing error: {}", e),
+                })
+            }
+            None => Err(crate::ConfigurationError::FileNotFound {
+                file_path: "global/defaults.toml".to_string(),
+                repository: format!("{}/{}", repo.organization, repo.repository_name),
+            }),
+        }
     }
 
     /// Load team-specific configuration from the metadata repository.
@@ -776,17 +854,28 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
     /// * `Err(ConfigurationError::NetworkError)` - API communication failure
     async fn load_team_configuration(
         &self,
-        _repo: &MetadataRepository,
-        _team: &str,
+        repo: &MetadataRepository,
+        team: &str,
     ) -> MetadataResult<Option<TeamConfig>> {
-        // TODO: implement team configuration loading
-        // Load teams/{team}/config.toml if it exists
+        let file_path = format!("teams/{}/config.toml", team);
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "team configuration loading".to_string(),
-        })
+        // Load team configuration file if it exists
+        let file_content = self.load_file_content(repo, &file_path).await?;
+
+        match file_content {
+            Some(content) => {
+                // Parse TOML content
+                let team_config = toml::from_str(&content).map_err(|e| {
+                    crate::ConfigurationError::ParseError {
+                        file_path: file_path.clone(),
+                        repository: format!("{}/{}", repo.organization, repo.repository_name),
+                        error: format!("TOML parsing error: {}", e),
+                    }
+                })?;
+                Ok(Some(team_config))
+            }
+            None => Ok(None), // Team configuration file does not exist
+        }
     }
 
     /// Load repository type configuration from the metadata repository.
@@ -808,17 +897,28 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
     /// * `Err(ConfigurationError::NetworkError)` - API communication failure
     async fn load_repository_type_configuration(
         &self,
-        _repo: &MetadataRepository,
-        _repo_type: &str,
+        repo: &MetadataRepository,
+        repo_type: &str,
     ) -> MetadataResult<Option<RepositoryTypeConfig>> {
-        // TODO: implement repository type configuration loading
-        // Load types/{repo_type}/config.toml if it exists
+        let file_path = format!("types/{}/config.toml", repo_type);
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "repository type configuration loading".to_string(),
-        })
+        // Load repository type configuration file if it exists
+        let file_content = self.load_file_content(repo, &file_path).await?;
+
+        match file_content {
+            Some(content) => {
+                // Parse TOML content
+                let repo_type_config = toml::from_str(&content).map_err(|e| {
+                    crate::ConfigurationError::ParseError {
+                        file_path: file_path.clone(),
+                        repository: format!("{}/{}", repo.organization, repo.repository_name),
+                        error: format!("TOML parsing error: {}", e),
+                    }
+                })?;
+                Ok(Some(repo_type_config))
+            }
+            None => Ok(None), // Repository type configuration file does not exist
+        }
     }
 
     /// List all available repository types defined in the metadata repository.
@@ -837,16 +937,30 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
     /// * `Err(ConfigurationError::NetworkError)` - API communication failure
     async fn list_available_repository_types(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> MetadataResult<Vec<String>> {
-        // TODO: implement repository type listing
         // List directories in types/ that contain config.toml files
+        let type_dirs = self.list_directory_contents(repo, "types").await?;
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "repository type listing".to_string(),
-        })
+        match type_dirs {
+            Some(dirs) => {
+                let mut available_types = Vec::new();
+
+                // Check each directory for config.toml file
+                for dir in dirs {
+                    let config_path = format!("types/{}/config.toml", dir);
+                    if self.load_file_content(repo, &config_path).await?.is_some() {
+                        available_types.push(dir);
+                    }
+                }
+
+                Ok(available_types)
+            }
+            None => {
+                // types/ directory doesn't exist, return empty list
+                Ok(Vec::new())
+            }
+        }
     }
 
     /// Load standard label definitions from the metadata repository.
@@ -867,15 +981,24 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
     /// * `Err(ConfigurationError::NetworkError)` - API communication failure
     async fn load_standard_labels(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> MetadataResult<HashMap<String, LabelConfig>> {
-        // TODO: implement standard labels loading
         // Load global/labels.toml if it exists, or return empty map
+        let file_content = self.load_file_content(repo, "global/labels.toml").await?;
 
-        // Placeholder implementation
-        Err(crate::ConfigurationError::NetworkError {
-            error: "Not implemented".to_string(),
-            operation: "standard labels loading".to_string(),
-        })
+        match file_content {
+            Some(content) => {
+                // Parse TOML content into label configuration map
+                toml::from_str(&content).map_err(|e| crate::ConfigurationError::ParseError {
+                    file_path: "global/labels.toml".to_string(),
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    error: format!("TOML parsing error: {}", e),
+                })
+            }
+            None => {
+                // Labels file doesn't exist, return empty map
+                Ok(HashMap::new())
+            }
+        }
     }
 }
