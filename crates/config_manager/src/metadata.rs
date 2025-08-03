@@ -529,8 +529,26 @@ impl MetadataRepository {
     /// assert!(repo.validate_organization("other-org").is_err());
     /// ```
     pub fn validate_organization(&self, expected_org: &str) -> MetadataResult<()> {
-        // TODO: implement organization validation
-        todo!("Organization validation not implemented")
+        if expected_org.is_empty() {
+            return Err(crate::ConfigurationError::InvalidValue {
+                field: "expected_organization".to_string(),
+                value: expected_org.to_string(),
+                reason: "Organization name cannot be empty".to_string(),
+            });
+        }
+
+        if self.organization != expected_org {
+            return Err(crate::ConfigurationError::InvalidValue {
+                field: "organization".to_string(),
+                value: format!("expected '{}', got '{}'", expected_org, self.organization),
+                reason: format!(
+                    "Repository '{}' belongs to organization '{}' but expected organization '{}'",
+                    self.repository_name, self.organization, expected_org
+                ),
+            });
+        }
+
+        Ok(())
     }
 
     /// Check if this repository requires structure validation.
@@ -570,8 +588,9 @@ impl MetadataRepository {
     /// assert!(topic_repo.requires_structure_validation());
     /// ```
     pub fn requires_structure_validation(&self) -> bool {
-        // TODO: implement structure validation requirement check
-        todo!("Structure validation requirement check not implemented")
+        // All repositories require structure validation regardless of discovery method
+        // This ensures consistency and security across all metadata repositories
+        true
     }
 
     /// Validate that this repository can be used for the specified organization.
@@ -622,8 +641,41 @@ impl MetadataRepository {
     /// }
     /// ```
     pub fn validate_for_organization(&self, target_org: &str) -> MetadataResult<()> {
-        // TODO: implement comprehensive organization validation
-        todo!("Comprehensive organization validation not implemented")
+        // Primary validation: organization ownership
+        self.validate_organization(target_org)?;
+
+        // Additional validation: repository name should not be empty
+        if self.repository_name.is_empty() {
+            return Err(crate::ConfigurationError::InvalidValue {
+                field: "repository_name".to_string(),
+                value: self.repository_name.clone(),
+                reason: "Repository name cannot be empty".to_string(),
+            });
+        }
+
+        // Additional validation: discovery method should be valid
+        match &self.discovery_method {
+            DiscoveryMethod::ConfigurationBased { repository_name } => {
+                if repository_name.is_empty() {
+                    return Err(crate::ConfigurationError::InvalidValue {
+                        field: "discovery_method.repository_name".to_string(),
+                        value: repository_name.clone(),
+                        reason: "Configuration-based discovery requires non-empty repository name".to_string(),
+                    });
+                }
+            }
+            DiscoveryMethod::TopicBased { topic } => {
+                if topic.is_empty() {
+                    return Err(crate::ConfigurationError::InvalidValue {
+                        field: "discovery_method.topic".to_string(),
+                        value: topic.clone(),
+                        reason: "Topic-based discovery requires non-empty topic".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Get a validation summary for this metadata repository.
@@ -654,8 +706,68 @@ impl MetadataRepository {
     /// println!("Validation summary: {:?}", summary);
     /// ```
     pub fn validation_summary(&self) -> RepositoryValidationSummary {
-        // TODO: implement validation summary generation
-        todo!("Validation summary generation not implemented")
+        let mut summary = RepositoryValidationSummary::new(
+            ValidationStatus::Unknown,
+            ValidationStatus::Unknown,
+        );
+
+        // Validate basic repository properties
+        let repository_valid = if self.repository_name.is_empty() || self.organization.is_empty() {
+            summary.validation_errors.push(ValidationIssue::new(
+                ValidationSeverity::Error,
+                "Repository or organization name is empty".to_string(),
+                Some("Ensure repository has valid name and organization".to_string()),
+            ));
+            ValidationStatus::Invalid
+        } else {
+            ValidationStatus::Valid
+        };
+
+        summary.repository_valid = repository_valid;
+
+        // Check discovery method validity
+        match &self.discovery_method {
+            DiscoveryMethod::ConfigurationBased { repository_name } => {
+                if repository_name.is_empty() {
+                    summary.validation_errors.push(ValidationIssue::new(
+                        ValidationSeverity::Error,
+                        "Configuration-based discovery has empty repository name".to_string(),
+                        Some("Set a valid repository name for configuration-based discovery".to_string()),
+                    ));
+                } else if repository_name != &self.repository_name {
+                    summary.validation_warnings.push(ValidationIssue::new(
+                        ValidationSeverity::Warning,
+                        "Discovery method repository name differs from actual repository name".to_string(),
+                        Some("Ensure consistency between discovery method and repository name".to_string()),
+                    ));
+                }
+            }
+            DiscoveryMethod::TopicBased { topic } => {
+                if topic.is_empty() {
+                    summary.validation_errors.push(ValidationIssue::new(
+                        ValidationSeverity::Error,
+                        "Topic-based discovery has empty topic".to_string(),
+                        Some("Set a valid topic for topic-based discovery".to_string()),
+                    ));
+                }
+            }
+        }
+
+        // Add recommendations
+        summary.recommendations.push(
+            "Validate repository structure using MetadataRepositoryProvider::validate_repository_structure".to_string(),
+        );
+
+        if self.discovery_method.requires_search() {
+            summary.recommendations.push(
+                "Consider using configuration-based discovery for better performance".to_string(),
+            );
+        }
+
+        // Organization validation status is set to Valid since we can't validate without target org
+        summary.organization_valid = ValidationStatus::Valid;
+
+        summary
     }
 }
 
@@ -1001,8 +1113,32 @@ impl RepositoryValidationSummary {
     /// assert_eq!(summary.overall_status(), ValidationStatus::Valid);
     /// ```
     pub fn overall_status(&self) -> ValidationStatus {
-        // TODO: implement overall status calculation
-        todo!("Overall status calculation not implemented")
+        // If there are critical errors or any component is invalid, return Invalid
+        if self.has_errors() {
+            return ValidationStatus::Invalid;
+        }
+
+        // If there are warnings, return ValidWithWarnings
+        if self.has_warnings() {
+            return ValidationStatus::ValidWithWarnings;
+        }
+
+        // If both repository and organization are valid, return Valid
+        if self.repository_valid == ValidationStatus::Valid
+            && self.organization_valid == ValidationStatus::Valid
+        {
+            return ValidationStatus::Valid;
+        }
+
+        // If any component is unknown, return Unknown
+        if self.repository_valid == ValidationStatus::Unknown
+            || self.organization_valid == ValidationStatus::Unknown
+        {
+            return ValidationStatus::Unknown;
+        }
+
+        // Default to ValidWithWarnings for any other combination
+        ValidationStatus::ValidWithWarnings
     }
 }
 
@@ -1060,8 +1196,7 @@ impl ValidationStatus {
     /// assert!(!ValidationStatus::Unknown.is_usable());
     /// ```
     pub fn is_usable(&self) -> bool {
-        // TODO: implement usability check
-        todo!("Usability check not implemented")
+        matches!(self, ValidationStatus::Valid | ValidationStatus::ValidWithWarnings)
     }
 }
 
@@ -1179,7 +1314,6 @@ impl ValidationSeverity {
     /// assert!(!ValidationSeverity::Info.is_critical());
     /// ```
     pub fn is_critical(&self) -> bool {
-        // TODO: implement criticality check
-        todo!("Criticality check not implemented")
+        matches!(self, ValidationSeverity::Error)
     }
 }
