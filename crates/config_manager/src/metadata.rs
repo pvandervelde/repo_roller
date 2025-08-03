@@ -1480,8 +1480,13 @@ impl RepositoryStructureValidation {
     /// assert!(validation.is_valid());
     /// ```
     pub fn is_valid(&self) -> bool {
-        // TODO: implement validation logic
-        todo!("Structure validation logic not implemented")
+        self.repository_accessible
+            && self.global_directory_present
+            && self.global_defaults_present
+            && self.missing_required_items.is_empty()
+            && self.validation_errors.is_empty()
+            && (self.overall_status == ValidationStatus::Valid
+                || self.overall_status == ValidationStatus::ValidWithWarnings)
     }
 
     /// Check if there are any critical errors in the repository structure.
@@ -1507,8 +1512,10 @@ impl RepositoryStructureValidation {
     /// assert!(validation.has_critical_errors());
     /// ```
     pub fn has_critical_errors(&self) -> bool {
-        // TODO: implement critical error check
-        todo!("Critical error check not implemented")
+        !self.repository_accessible
+            || !self.validation_errors.is_empty()
+            || !self.missing_required_items.is_empty()
+            || self.overall_status == ValidationStatus::Invalid
     }
 
     /// Get a summary of missing required items.
@@ -1531,8 +1538,14 @@ impl RepositoryStructureValidation {
     /// assert!(summary.contains("global/defaults.toml"));
     /// ```
     pub fn missing_required_summary(&self) -> String {
-        // TODO: implement missing required summary
-        todo!("Missing required summary not implemented")
+        if self.missing_required_items.is_empty() {
+            "No missing required items".to_string()
+        } else {
+            format!(
+                "Missing required items: {}",
+                self.missing_required_items.join(", ")
+            )
+        }
     }
 
     /// Get a list of recommendations for improving the repository structure.
@@ -1553,8 +1566,52 @@ impl RepositoryStructureValidation {
     /// assert!(!recommendations.is_empty());
     /// ```
     pub fn get_recommendations(&self) -> Vec<String> {
-        // TODO: implement recommendations generation
-        todo!("Recommendations generation not implemented")
+        let mut recommendations = Vec::new();
+
+        // Recommend adding optional directories that are missing
+        if !self.schemas_directory_present {
+            recommendations.push(
+                "Consider adding a schemas/ directory for configuration validation schemas"
+                    .to_string(),
+            );
+        }
+
+        if !self.types_directory_present {
+            recommendations.push(
+                "Consider adding a types/ directory for repository type configurations".to_string(),
+            );
+        }
+
+        // Recommend fixing critical issues
+        if !self.missing_required_items.is_empty() {
+            recommendations.push(format!(
+                "Fix missing required items: {}",
+                self.missing_required_items.join(", ")
+            ));
+        }
+
+        // Recommend addressing validation errors
+        if !self.validation_errors.is_empty() {
+            recommendations.push(
+                "Address validation errors to ensure repository can be used safely".to_string(),
+            );
+        }
+
+        // General recommendations
+        if self.repository_accessible
+            && self.global_directory_present
+            && self.global_defaults_present
+        {
+            if recommendations.is_empty() {
+                recommendations
+                    .push("Repository structure is optimal - no improvements needed".to_string());
+            }
+        } else {
+            recommendations
+                .push("Ensure repository is accessible and has required structure".to_string());
+        }
+
+        recommendations
     }
 }
 
