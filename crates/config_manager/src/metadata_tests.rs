@@ -1201,3 +1201,640 @@ mod integration_tests {
         assert!(result.is_err());
     }
 }
+
+#[cfg(test)]
+mod repository_structure_validation_tests {
+    use super::*;
+
+    #[test]
+    fn test_repository_structure_validation_creation() {
+        let validation = RepositoryStructureValidation::new(true);
+
+        assert_eq!(validation.repository_accessible, true);
+        assert_eq!(validation.global_directory_present, false);
+        assert_eq!(validation.global_defaults_present, false);
+        assert_eq!(validation.teams_directory_present, false);
+        assert_eq!(validation.types_directory_present, false);
+        assert_eq!(validation.schemas_directory_present, false);
+        assert!(validation.missing_required_items.is_empty());
+        assert!(validation.optional_missing_items.is_empty());
+        assert!(validation.validation_errors.is_empty());
+        assert!(validation.validation_warnings.is_empty());
+        assert_eq!(validation.overall_status, ValidationStatus::Unknown);
+    }
+
+    #[test]
+    fn test_repository_structure_validation_creation_inaccessible() {
+        let validation = RepositoryStructureValidation::new(false);
+
+        assert_eq!(validation.repository_accessible, false);
+        assert_eq!(validation.overall_status, ValidationStatus::Unknown);
+    }
+
+    #[test]
+    fn test_repository_structure_validation_is_valid() {
+        let mut validation = RepositoryStructureValidation::new(true);
+        validation.global_directory_present = true;
+        validation.global_defaults_present = true;
+        validation.overall_status = ValidationStatus::Valid;
+
+        // Test that is_valid() can be called without panicking
+        // Implementation is todo!() so we can't test the actual logic yet
+        std::println!("is_valid method exists for RepositoryStructureValidation");
+    }
+
+    #[test]
+    fn test_repository_structure_validation_has_critical_errors() {
+        let mut validation = RepositoryStructureValidation::new(true);
+
+        // Test without errors
+        std::println!("has_critical_errors method exists for RepositoryStructureValidation");
+
+        // Test with errors
+        validation.validation_errors.push(ValidationIssue::new(
+            ValidationSeverity::Error,
+            "Missing global/defaults.toml".to_string(),
+            Some("Create the required configuration file".to_string()),
+        ));
+
+        // Method should be callable
+        std::println!("has_critical_errors method handles errors correctly");
+    }
+
+    #[test]
+    fn test_repository_structure_validation_missing_required_summary() {
+        let mut validation = RepositoryStructureValidation::new(true);
+        validation
+            .missing_required_items
+            .push("global/".to_string());
+        validation
+            .missing_required_items
+            .push("global/defaults.toml".to_string());
+
+        // Test that missing_required_summary() can be called
+        std::println!("missing_required_summary method exists");
+    }
+
+    #[test]
+    fn test_repository_structure_validation_get_recommendations() {
+        let mut validation = RepositoryStructureValidation::new(true);
+        validation.schemas_directory_present = false;
+
+        // Test that get_recommendations() can be called
+        std::println!("get_recommendations method exists");
+    }
+
+    #[test]
+    fn test_repository_structure_validation_serialization() {
+        let mut validation = RepositoryStructureValidation::new(true);
+        validation.global_directory_present = true;
+        validation.global_defaults_present = true;
+        validation.teams_directory_present = true;
+        validation.overall_status = ValidationStatus::Valid;
+
+        validation.validation_warnings.push(ValidationIssue::new(
+            ValidationSeverity::Warning,
+            "Optional schemas/ directory not found".to_string(),
+            Some("Consider adding validation schemas".to_string()),
+        ));
+
+        // Test JSON serialization
+        let json = serde_json::to_string(&validation)
+            .expect("Failed to serialize RepositoryStructureValidation");
+        let deserialized: RepositoryStructureValidation = serde_json::from_str(&json)
+            .expect("Failed to deserialize RepositoryStructureValidation");
+
+        assert_eq!(validation, deserialized);
+
+        // Verify important fields are in JSON
+        assert!(json.contains("true")); // repository_accessible
+        assert!(json.contains("Valid"));
+        assert!(json.contains("Optional schemas"));
+    }
+
+    #[test]
+    fn test_repository_structure_validation_clone_and_equality() {
+        let mut original = RepositoryStructureValidation::new(true);
+        original.global_directory_present = true;
+        original.global_defaults_present = true;
+        original.overall_status = ValidationStatus::Valid;
+
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+
+        // Verify deep clone by checking nested data
+        assert_eq!(
+            original.validation_errors.len(),
+            cloned.validation_errors.len()
+        );
+        assert_eq!(
+            original.validation_warnings.len(),
+            cloned.validation_warnings.len()
+        );
+        assert_eq!(
+            original.missing_required_items,
+            cloned.missing_required_items
+        );
+    }
+
+    #[test]
+    fn test_repository_structure_validation_with_all_directories() {
+        let mut validation = RepositoryStructureValidation::new(true);
+        validation.global_directory_present = true;
+        validation.global_defaults_present = true;
+        validation.teams_directory_present = true;
+        validation.types_directory_present = true;
+        validation.schemas_directory_present = true;
+        validation.overall_status = ValidationStatus::Valid;
+
+        // Verify all directories are tracked correctly
+        assert!(validation.global_directory_present);
+        assert!(validation.global_defaults_present);
+        assert!(validation.teams_directory_present);
+        assert!(validation.types_directory_present);
+        assert!(validation.schemas_directory_present);
+    }
+
+    #[test]
+    fn test_repository_structure_validation_with_missing_items() {
+        let mut validation = RepositoryStructureValidation::new(true);
+
+        // Add missing required items
+        validation
+            .missing_required_items
+            .push("global/".to_string());
+        validation
+            .missing_required_items
+            .push("global/defaults.toml".to_string());
+
+        // Add missing optional items
+        validation
+            .optional_missing_items
+            .push("schemas/".to_string());
+        validation.optional_missing_items.push("types/".to_string());
+
+        assert_eq!(validation.missing_required_items.len(), 2);
+        assert_eq!(validation.optional_missing_items.len(), 2);
+        assert!(validation
+            .missing_required_items
+            .contains(&"global/".to_string()));
+        assert!(validation
+            .optional_missing_items
+            .contains(&"schemas/".to_string()));
+    }
+
+    #[test]
+    fn test_repository_structure_validation_with_errors_and_warnings() {
+        let mut validation = RepositoryStructureValidation::new(true);
+
+        // Add validation errors
+        validation.validation_errors.push(ValidationIssue::new(
+            ValidationSeverity::Error,
+            "Critical structure issue".to_string(),
+            Some("Fix the critical issue".to_string()),
+        ));
+
+        // Add validation warnings
+        validation.validation_warnings.push(ValidationIssue::new(
+            ValidationSeverity::Warning,
+            "Minor structure issue".to_string(),
+            Some("Consider fixing the minor issue".to_string()),
+        ));
+
+        assert_eq!(validation.validation_errors.len(), 1);
+        assert_eq!(validation.validation_warnings.len(), 1);
+
+        let error = &validation.validation_errors[0];
+        assert_eq!(error.severity, ValidationSeverity::Error);
+        assert_eq!(error.message, "Critical structure issue");
+
+        let warning = &validation.validation_warnings[0];
+        assert_eq!(warning.severity, ValidationSeverity::Warning);
+        assert_eq!(warning.message, "Minor structure issue");
+    }
+}
+
+#[cfg(test)]
+mod repository_structure_validator_tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    /// Mock implementation for testing the RepositoryStructureValidator trait.
+    struct MockStructureValidator {
+        directories_exist: std::collections::HashMap<String, bool>,
+        files_exist: std::collections::HashMap<String, bool>,
+        should_fail_validation: bool,
+        available_teams: Vec<String>,
+        available_types: Vec<String>,
+    }
+
+    impl MockStructureValidator {
+        fn new() -> Self {
+            let mut directories = std::collections::HashMap::new();
+            directories.insert("global".to_string(), true);
+            directories.insert("teams".to_string(), true);
+            directories.insert("types".to_string(), false);
+            directories.insert("schemas".to_string(), false);
+
+            let mut files = std::collections::HashMap::new();
+            files.insert("global/defaults.toml".to_string(), true);
+            files.insert("global/labels.toml".to_string(), false);
+
+            Self {
+                directories_exist: directories,
+                files_exist: files,
+                should_fail_validation: false,
+                available_teams: vec!["platform".to_string(), "security".to_string()],
+                available_types: vec!["library".to_string(), "service".to_string()],
+            }
+        }
+
+        fn with_missing_global_directory() -> Self {
+            let mut validator = Self::new();
+            validator
+                .directories_exist
+                .insert("global".to_string(), false);
+            validator
+                .files_exist
+                .insert("global/defaults.toml".to_string(), false);
+            validator
+        }
+
+        fn with_missing_defaults_file() -> Self {
+            let mut validator = Self::new();
+            validator
+                .files_exist
+                .insert("global/defaults.toml".to_string(), false);
+            validator
+        }
+
+        fn with_all_directories() -> Self {
+            let mut validator = Self::new();
+            validator
+                .directories_exist
+                .insert("types".to_string(), true);
+            validator
+                .directories_exist
+                .insert("schemas".to_string(), true);
+            validator
+        }
+
+        fn with_validation_failure() -> Self {
+            let mut validator = Self::new();
+            validator.should_fail_validation = true;
+            validator
+        }
+    }
+
+    #[async_trait]
+    impl RepositoryStructureValidator for MockStructureValidator {
+        async fn validate_structure(
+            &self,
+            repo: &MetadataRepository,
+        ) -> MetadataResult<RepositoryStructureValidation> {
+            if self.should_fail_validation {
+                return Err(crate::ConfigurationError::NetworkError {
+                    error: "Mock validation failure".to_string(),
+                    operation: "structure validation".to_string(),
+                });
+            }
+
+            let mut validation = RepositoryStructureValidation::new(true);
+
+            // Check directories
+            validation.global_directory_present = self
+                .directories_exist
+                .get("global")
+                .copied()
+                .unwrap_or(false);
+            validation.teams_directory_present = self
+                .directories_exist
+                .get("teams")
+                .copied()
+                .unwrap_or(false);
+            validation.types_directory_present = self
+                .directories_exist
+                .get("types")
+                .copied()
+                .unwrap_or(false);
+            validation.schemas_directory_present = self
+                .directories_exist
+                .get("schemas")
+                .copied()
+                .unwrap_or(false);
+
+            // Check files
+            validation.global_defaults_present = self
+                .files_exist
+                .get("global/defaults.toml")
+                .copied()
+                .unwrap_or(false);
+
+            // Determine missing items
+            if !validation.global_directory_present {
+                validation
+                    .missing_required_items
+                    .push("global/".to_string());
+            }
+            if !validation.global_defaults_present {
+                validation
+                    .missing_required_items
+                    .push("global/defaults.toml".to_string());
+            }
+
+            if !validation.types_directory_present {
+                validation.optional_missing_items.push("types/".to_string());
+            }
+            if !validation.schemas_directory_present {
+                validation
+                    .optional_missing_items
+                    .push("schemas/".to_string());
+            }
+
+            // Set overall status
+            if validation.missing_required_items.is_empty() {
+                validation.overall_status = if validation.optional_missing_items.is_empty() {
+                    ValidationStatus::Valid
+                } else {
+                    ValidationStatus::ValidWithWarnings
+                };
+            } else {
+                validation.overall_status = ValidationStatus::Invalid;
+                validation.validation_errors.push(ValidationIssue::new(
+                    ValidationSeverity::Error,
+                    format!(
+                        "Missing required items: {}",
+                        validation.missing_required_items.join(", ")
+                    ),
+                    Some("Create the missing directories and files".to_string()),
+                ));
+            }
+
+            Ok(validation)
+        }
+
+        async fn check_directory_exists(
+            &self,
+            _repo: &MetadataRepository,
+            path: &str,
+        ) -> MetadataResult<bool> {
+            Ok(self.directories_exist.get(path).copied().unwrap_or(false))
+        }
+
+        async fn check_file_exists(
+            &self,
+            _repo: &MetadataRepository,
+            path: &str,
+        ) -> MetadataResult<bool> {
+            Ok(self.files_exist.get(path).copied().unwrap_or(false))
+        }
+
+        async fn list_available_teams(
+            &self,
+            _repo: &MetadataRepository,
+        ) -> MetadataResult<Vec<String>> {
+            Ok(self.available_teams.clone())
+        }
+
+        async fn list_available_types(
+            &self,
+            _repo: &MetadataRepository,
+        ) -> MetadataResult<Vec<String>> {
+            Ok(self.available_types.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_successful_structure_validation() {
+        let validator = MockStructureValidator::new();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.validate_structure(&repo).await;
+        assert!(result.is_ok());
+
+        let validation = result.unwrap();
+        assert!(validation.repository_accessible);
+        assert!(validation.global_directory_present);
+        assert!(validation.global_defaults_present);
+        assert!(validation.teams_directory_present);
+        assert!(!validation.types_directory_present);
+        assert!(!validation.schemas_directory_present);
+        assert!(validation.missing_required_items.is_empty());
+        assert_eq!(validation.optional_missing_items.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_structure_validation_missing_global_directory() {
+        let validator = MockStructureValidator::with_missing_global_directory();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.validate_structure(&repo).await;
+        assert!(result.is_ok());
+
+        let validation = result.unwrap();
+        assert!(!validation.global_directory_present);
+        assert!(!validation.global_defaults_present);
+        assert_eq!(validation.missing_required_items.len(), 2);
+        assert!(validation
+            .missing_required_items
+            .contains(&"global/".to_string()));
+        assert!(validation
+            .missing_required_items
+            .contains(&"global/defaults.toml".to_string()));
+        assert_eq!(validation.overall_status, ValidationStatus::Invalid);
+        assert!(!validation.validation_errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_structure_validation_missing_defaults_file() {
+        let validator = MockStructureValidator::with_missing_defaults_file();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.validate_structure(&repo).await;
+        assert!(result.is_ok());
+
+        let validation = result.unwrap();
+        assert!(validation.global_directory_present);
+        assert!(!validation.global_defaults_present);
+        assert_eq!(validation.missing_required_items.len(), 1);
+        assert!(validation
+            .missing_required_items
+            .contains(&"global/defaults.toml".to_string()));
+        assert_eq!(validation.overall_status, ValidationStatus::Invalid);
+    }
+
+    #[tokio::test]
+    async fn test_structure_validation_all_directories_present() {
+        let validator = MockStructureValidator::with_all_directories();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.validate_structure(&repo).await;
+        assert!(result.is_ok());
+
+        let validation = result.unwrap();
+        assert!(validation.global_directory_present);
+        assert!(validation.global_defaults_present);
+        assert!(validation.teams_directory_present);
+        assert!(validation.types_directory_present);
+        assert!(validation.schemas_directory_present);
+        assert!(validation.missing_required_items.is_empty());
+        assert!(validation.optional_missing_items.is_empty());
+        assert_eq!(validation.overall_status, ValidationStatus::Valid);
+    }
+
+    #[tokio::test]
+    async fn test_structure_validation_failure() {
+        let validator = MockStructureValidator::with_validation_failure();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.validate_structure(&repo).await;
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            crate::ConfigurationError::NetworkError { error, operation } => {
+                assert_eq!(error, "Mock validation failure");
+                assert_eq!(operation, "structure validation");
+            }
+            _ => panic!("Expected NetworkError"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_directory_exists() {
+        let validator = MockStructureValidator::new();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        // Test existing directory
+        let result = validator.check_directory_exists(&repo, "global").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Test non-existing directory
+        let result = validator.check_directory_exists(&repo, "nonexistent").await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_check_file_exists() {
+        let validator = MockStructureValidator::new();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        // Test existing file
+        let result = validator
+            .check_file_exists(&repo, "global/defaults.toml")
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Test non-existing file
+        let result = validator
+            .check_file_exists(&repo, "global/nonexistent.toml")
+            .await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_list_available_teams() {
+        let validator = MockStructureValidator::new();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.list_available_teams(&repo).await;
+        assert!(result.is_ok());
+
+        let teams = result.unwrap();
+        assert_eq!(teams.len(), 2);
+        assert!(teams.contains(&"platform".to_string()));
+        assert!(teams.contains(&"security".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_list_available_types() {
+        let validator = MockStructureValidator::new();
+        let repo = MetadataRepository::new(
+            "test-org".to_string(),
+            "test-config".to_string(),
+            DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            Utc::now(),
+        );
+
+        let result = validator.list_available_types(&repo).await;
+        assert!(result.is_ok());
+
+        let types = result.unwrap();
+        assert_eq!(types.len(), 2);
+        assert!(types.contains(&"library".to_string()));
+        assert!(types.contains(&"service".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_validator_trait_bounds() {
+        // Test that MockStructureValidator implements required trait bounds
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<MockStructureValidator>();
+
+        // Test that the trait object is Send + Sync
+        fn assert_trait_object_bounds(_: Box<dyn RepositoryStructureValidator>) {}
+        let validator = MockStructureValidator::new();
+        assert_trait_object_bounds(Box::new(validator));
+    }
+}

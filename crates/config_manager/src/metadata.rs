@@ -660,7 +660,8 @@ impl MetadataRepository {
                     return Err(crate::ConfigurationError::InvalidValue {
                         field: "discovery_method.repository_name".to_string(),
                         value: repository_name.clone(),
-                        reason: "Configuration-based discovery requires non-empty repository name".to_string(),
+                        reason: "Configuration-based discovery requires non-empty repository name"
+                            .to_string(),
                     });
                 }
             }
@@ -706,10 +707,8 @@ impl MetadataRepository {
     /// println!("Validation summary: {:?}", summary);
     /// ```
     pub fn validation_summary(&self) -> RepositoryValidationSummary {
-        let mut summary = RepositoryValidationSummary::new(
-            ValidationStatus::Unknown,
-            ValidationStatus::Unknown,
-        );
+        let mut summary =
+            RepositoryValidationSummary::new(ValidationStatus::Unknown, ValidationStatus::Unknown);
 
         // Validate basic repository properties
         let repository_valid = if self.repository_name.is_empty() || self.organization.is_empty() {
@@ -732,13 +731,20 @@ impl MetadataRepository {
                     summary.validation_errors.push(ValidationIssue::new(
                         ValidationSeverity::Error,
                         "Configuration-based discovery has empty repository name".to_string(),
-                        Some("Set a valid repository name for configuration-based discovery".to_string()),
+                        Some(
+                            "Set a valid repository name for configuration-based discovery"
+                                .to_string(),
+                        ),
                     ));
                 } else if repository_name != &self.repository_name {
                     summary.validation_warnings.push(ValidationIssue::new(
                         ValidationSeverity::Warning,
-                        "Discovery method repository name differs from actual repository name".to_string(),
-                        Some("Ensure consistency between discovery method and repository name".to_string()),
+                        "Discovery method repository name differs from actual repository name"
+                            .to_string(),
+                        Some(
+                            "Ensure consistency between discovery method and repository name"
+                                .to_string(),
+                        ),
                     ));
                 }
             }
@@ -1196,7 +1202,10 @@ impl ValidationStatus {
     /// assert!(!ValidationStatus::Unknown.is_usable());
     /// ```
     pub fn is_usable(&self) -> bool {
-        matches!(self, ValidationStatus::Valid | ValidationStatus::ValidWithWarnings)
+        matches!(
+            self,
+            ValidationStatus::Valid | ValidationStatus::ValidWithWarnings
+        )
     }
 }
 
@@ -1316,4 +1325,428 @@ impl ValidationSeverity {
     pub fn is_critical(&self) -> bool {
         matches!(self, ValidationSeverity::Error)
     }
+}
+
+/// Repository structure validation result containing detailed information about required components.
+///
+/// This structure provides comprehensive validation results for metadata repository structure,
+/// including information about directories, files, and their compliance with organizational
+/// configuration management requirements.
+///
+/// # Structure Requirements
+///
+/// According to the organization repository settings specification, metadata repositories
+/// must follow this standardized directory structure:
+///
+/// - `global/` directory containing organization-wide defaults
+///   - `defaults.toml` (required) - baseline repository settings
+///   - `labels.toml` (optional) - standard label definitions
+/// - `teams/` directory (optional) for team-specific configurations
+///   - `{team-name}/config.toml` files for team overrides
+/// - `types/` directory (optional) for repository type configurations
+///   - `{type-name}/config.toml` files for type-specific settings
+/// - `schemas/` directory (optional) for validation schemas
+///   - JSON Schema files for configuration validation
+///
+/// # Fields
+///
+/// * `repository_accessible` - Whether the repository can be accessed
+/// * `global_directory_present` - Whether the global/ directory exists
+/// * `global_defaults_present` - Whether global/defaults.toml exists
+/// * `teams_directory_present` - Whether the teams/ directory exists
+/// * `types_directory_present` - Whether the types/ directory exists
+/// * `schemas_directory_present` - Whether the schemas/ directory exists
+/// * `missing_required_items` - List of required items that are missing
+/// * `optional_missing_items` - List of optional items that are missing
+/// * `validation_errors` - Critical errors that prevent repository usage
+/// * `validation_warnings` - Non-critical issues that should be addressed
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{RepositoryStructureValidation, ValidationStatus};
+///
+/// let validation = RepositoryStructureValidation {
+///     repository_accessible: true,
+///     global_directory_present: true,
+///     global_defaults_present: true,
+///     teams_directory_present: true,
+///     types_directory_present: false,
+///     schemas_directory_present: false,
+///     missing_required_items: vec![],
+///     optional_missing_items: vec!["types/".to_string(), "schemas/".to_string()],
+///     validation_errors: vec![],
+///     validation_warnings: vec![],
+///     overall_status: ValidationStatus::Valid,
+/// };
+///
+/// assert!(validation.is_valid());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryStructureValidation {
+    /// Whether the repository can be accessed for structure validation.
+    pub repository_accessible: bool,
+
+    /// Whether the global/ directory exists in the repository.
+    pub global_directory_present: bool,
+
+    /// Whether the global/defaults.toml file exists.
+    pub global_defaults_present: bool,
+
+    /// Whether the teams/ directory exists (optional).
+    pub teams_directory_present: bool,
+
+    /// Whether the types/ directory exists (optional).
+    pub types_directory_present: bool,
+
+    /// Whether the schemas/ directory exists (optional).
+    pub schemas_directory_present: bool,
+
+    /// List of required directories or files that are missing.
+    pub missing_required_items: Vec<String>,
+
+    /// List of optional directories or files that are missing.
+    pub optional_missing_items: Vec<String>,
+
+    /// Critical validation errors that prevent repository usage.
+    pub validation_errors: Vec<ValidationIssue>,
+
+    /// Non-critical validation warnings that should be addressed.
+    pub validation_warnings: Vec<ValidationIssue>,
+
+    /// Overall validation status for the repository structure.
+    pub overall_status: ValidationStatus,
+}
+
+impl RepositoryStructureValidation {
+    /// Create a new repository structure validation result.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_accessible` - Whether the repository can be accessed
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryStructureValidation` with default values
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryStructureValidation, ValidationStatus};
+    ///
+    /// let validation = RepositoryStructureValidation::new(true);
+    /// assert_eq!(validation.repository_accessible, true);
+    /// assert_eq!(validation.overall_status, ValidationStatus::Unknown);
+    /// ```
+    pub fn new(repository_accessible: bool) -> Self {
+        Self {
+            repository_accessible,
+            global_directory_present: false,
+            global_defaults_present: false,
+            teams_directory_present: false,
+            types_directory_present: false,
+            schemas_directory_present: false,
+            missing_required_items: Vec::new(),
+            optional_missing_items: Vec::new(),
+            validation_errors: Vec::new(),
+            validation_warnings: Vec::new(),
+            overall_status: ValidationStatus::Unknown,
+        }
+    }
+
+    /// Check if the repository structure is valid for use.
+    ///
+    /// A repository structure is considered valid if:
+    /// - The repository is accessible
+    /// - The global/ directory exists
+    /// - The global/defaults.toml file exists
+    /// - There are no critical validation errors
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the repository structure is valid
+    /// * `false` if there are critical issues preventing usage
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryStructureValidation, ValidationStatus};
+    ///
+    /// let mut validation = RepositoryStructureValidation::new(true);
+    /// validation.global_directory_present = true;
+    /// validation.global_defaults_present = true;
+    /// validation.overall_status = ValidationStatus::Valid;
+    ///
+    /// assert!(validation.is_valid());
+    /// ```
+    pub fn is_valid(&self) -> bool {
+        // TODO: implement validation logic
+        todo!("Structure validation logic not implemented")
+    }
+
+    /// Check if there are any critical errors in the repository structure.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if there are critical errors that prevent repository usage
+    /// * `false` if the repository can be used despite any warnings
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryStructureValidation, ValidationIssue, ValidationSeverity};
+    ///
+    /// let mut validation = RepositoryStructureValidation::new(true);
+    /// assert!(!validation.has_critical_errors());
+    ///
+    /// validation.validation_errors.push(ValidationIssue::new(
+    ///     ValidationSeverity::Error,
+    ///     "Missing global/defaults.toml".to_string(),
+    ///     Some("Create the required configuration file".to_string()),
+    /// ));
+    /// assert!(validation.has_critical_errors());
+    /// ```
+    pub fn has_critical_errors(&self) -> bool {
+        // TODO: implement critical error check
+        todo!("Critical error check not implemented")
+    }
+
+    /// Get a summary of missing required items.
+    ///
+    /// # Returns
+    ///
+    /// A formatted string describing missing required directories and files
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryStructureValidation;
+    ///
+    /// let mut validation = RepositoryStructureValidation::new(true);
+    /// validation.missing_required_items.push("global/".to_string());
+    /// validation.missing_required_items.push("global/defaults.toml".to_string());
+    ///
+    /// let summary = validation.missing_required_summary();
+    /// assert!(summary.contains("global/"));
+    /// assert!(summary.contains("global/defaults.toml"));
+    /// ```
+    pub fn missing_required_summary(&self) -> String {
+        // TODO: implement missing required summary
+        todo!("Missing required summary not implemented")
+    }
+
+    /// Get a list of recommendations for improving the repository structure.
+    ///
+    /// # Returns
+    ///
+    /// A vector of recommendations for enhancing the repository structure
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryStructureValidation;
+    ///
+    /// let mut validation = RepositoryStructureValidation::new(true);
+    /// validation.schemas_directory_present = false;
+    ///
+    /// let recommendations = validation.get_recommendations();
+    /// assert!(!recommendations.is_empty());
+    /// ```
+    pub fn get_recommendations(&self) -> Vec<String> {
+        // TODO: implement recommendations generation
+        todo!("Recommendations generation not implemented")
+    }
+}
+
+/// Trait for validating metadata repository structure.
+///
+/// This trait provides methods for performing detailed validation of metadata repository
+/// structure, including checking for required directories, files, and their accessibility.
+/// Implementations should provide comprehensive error reporting and validation results.
+///
+/// # Structure Validation Process
+///
+/// 1. **Repository Access**: Verify the repository can be accessed with current permissions
+/// 2. **Directory Structure**: Check for required and optional directories
+/// 3. **Required Files**: Validate presence of mandatory configuration files
+/// 4. **File Accessibility**: Ensure configuration files can be read
+/// 5. **Structure Completeness**: Verify the repository meets minimum requirements
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{RepositoryStructureValidator, MetadataRepository};
+/// use async_trait::async_trait;
+///
+/// struct MyValidator;
+///
+/// #[async_trait]
+/// impl RepositoryStructureValidator for MyValidator {
+///     async fn validate_structure(&self, repo: &MetadataRepository) -> MetadataResult<RepositoryStructureValidation> {
+///         // Implementation details...
+///         todo!("Not implemented")
+///     }
+///
+///     async fn check_directory_exists(&self, repo: &MetadataRepository, path: &str) -> MetadataResult<bool> {
+///         // Implementation details...
+///         todo!("Not implemented")
+///     }
+///
+///     async fn check_file_exists(&self, repo: &MetadataRepository, path: &str) -> MetadataResult<bool> {
+///         // Implementation details...
+///         todo!("Not implemented")
+///     }
+/// }
+/// ```
+#[async_trait]
+pub trait RepositoryStructureValidator: Send + Sync {
+    /// Perform comprehensive structure validation of a metadata repository.
+    ///
+    /// This method checks the repository structure against the standardized layout
+    /// requirements for organization configuration management, including required
+    /// directories, files, and their accessibility.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The metadata repository to validate
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(RepositoryStructureValidation)` - Detailed validation results
+    /// * `Err(ConfigurationError::NetworkError)` - API communication failure
+    /// * `Err(ConfigurationError::AccessDenied)` - Repository access denied
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{RepositoryStructureValidator, MetadataRepository};
+    /// # async fn example(validator: &dyn RepositoryStructureValidator, repo: &MetadataRepository) {
+    /// match validator.validate_structure(repo).await {
+    ///     Ok(validation) => {
+    ///         if validation.is_valid() {
+    ///             println!("Repository structure is valid");
+    ///         } else {
+    ///             println!("Repository structure has issues: {}", validation.missing_required_summary());
+    ///         }
+    ///     },
+    ///     Err(e) => eprintln!("Structure validation failed: {}", e),
+    /// }
+    /// # }
+    /// ```
+    async fn validate_structure(
+        &self,
+        repo: &MetadataRepository,
+    ) -> MetadataResult<RepositoryStructureValidation>;
+
+    /// Check if a directory exists in the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The metadata repository to check
+    /// * `path` - The directory path to check (relative to repository root)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` - Directory exists and is accessible
+    /// * `Ok(false)` - Directory does not exist
+    /// * `Err(ConfigurationError::NetworkError)` - API communication failure
+    /// * `Err(ConfigurationError::AccessDenied)` - Repository access denied
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{RepositoryStructureValidator, MetadataRepository};
+    /// # async fn example(validator: &dyn RepositoryStructureValidator, repo: &MetadataRepository) {
+    /// let global_exists = validator.check_directory_exists(repo, "global").await.unwrap();
+    /// if global_exists {
+    ///     println!("Global directory found");
+    /// }
+    /// # }
+    /// ```
+    async fn check_directory_exists(
+        &self,
+        repo: &MetadataRepository,
+        path: &str,
+    ) -> MetadataResult<bool>;
+
+    /// Check if a file exists in the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The metadata repository to check
+    /// * `path` - The file path to check (relative to repository root)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` - File exists and is accessible
+    /// * `Ok(false)` - File does not exist
+    /// * `Err(ConfigurationError::NetworkError)` - API communication failure
+    /// * `Err(ConfigurationError::AccessDenied)` - Repository access denied
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{RepositoryStructureValidator, MetadataRepository};
+    /// # async fn example(validator: &dyn RepositoryStructureValidator, repo: &MetadataRepository) {
+    /// let defaults_exists = validator.check_file_exists(repo, "global/defaults.toml").await.unwrap();
+    /// if defaults_exists {
+    ///     println!("Global defaults file found");
+    /// }
+    /// # }
+    /// ```
+    async fn check_file_exists(
+        &self,
+        repo: &MetadataRepository,
+        path: &str,
+    ) -> MetadataResult<bool>;
+
+    /// List available teams by scanning the teams/ directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The metadata repository to scan
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<String>)` - List of team names with configuration files
+    /// * `Err(ConfigurationError::NetworkError)` - API communication failure
+    /// * `Err(ConfigurationError::AccessDenied)` - Repository access denied
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{RepositoryStructureValidator, MetadataRepository};
+    /// # async fn example(validator: &dyn RepositoryStructureValidator, repo: &MetadataRepository) {
+    /// match validator.list_available_teams(repo).await {
+    ///     Ok(teams) => println!("Available teams: {}", teams.join(", ")),
+    ///     Err(e) => eprintln!("Failed to list teams: {}", e),
+    /// }
+    /// # }
+    /// ```
+    async fn list_available_teams(&self, repo: &MetadataRepository) -> MetadataResult<Vec<String>>;
+
+    /// List available repository types by scanning the types/ directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The metadata repository to scan
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<String>)` - List of repository type names with configuration files
+    /// * `Err(ConfigurationError::NetworkError)` - API communication failure
+    /// * `Err(ConfigurationError::AccessDenied)` - Repository access denied
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::{RepositoryStructureValidator, MetadataRepository};
+    /// # async fn example(validator: &dyn RepositoryStructureValidator, repo: &MetadataRepository) {
+    /// match validator.list_available_types(repo).await {
+    ///     Ok(types) => println!("Available types: {}", types.join(", ")),
+    ///     Err(e) => eprintln!("Failed to list types: {}", e),
+    /// }
+    /// # }
+    /// ```
+    async fn list_available_types(&self, repo: &MetadataRepository) -> MetadataResult<Vec<String>>;
 }
