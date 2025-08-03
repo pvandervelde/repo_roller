@@ -1838,3 +1838,493 @@ mod repository_structure_validator_tests {
         assert_trait_object_bounds(Box::new(validator));
     }
 }
+
+#[cfg(test)]
+mod repository_access_failure_tests {
+    use super::*;
+
+    #[test]
+    fn test_repository_access_failure_creation() {
+        let failure = RepositoryAccessFailure::new(
+            "acme-corp/acme-config".to_string(),
+            "discover_metadata_repository".to_string(),
+            AccessFailureType::NetworkError,
+            "Connection timeout after 30 seconds".to_string(),
+        );
+
+        assert_eq!(failure.repository, "acme-corp/acme-config");
+        assert_eq!(failure.operation, "discover_metadata_repository");
+        assert_eq!(failure.failure_type, AccessFailureType::NetworkError);
+        assert_eq!(failure.retry_count, 0);
+        assert_eq!(failure.last_error, "Connection timeout after 30 seconds");
+        assert_eq!(failure.error_history.len(), 1);
+        assert!(!failure.suggested_actions.is_empty());
+        assert!(failure.is_recoverable);
+    }
+
+    #[test]
+    fn test_repository_access_failure_record_retry() {
+        let mut failure = RepositoryAccessFailure::new(
+            "acme-corp/config".to_string(),
+            "load_config".to_string(),
+            AccessFailureType::NetworkError,
+            "First error".to_string(),
+        );
+
+        failure.record_retry("Second error after retry".to_string());
+
+        assert_eq!(failure.retry_count, 1);
+        assert_eq!(failure.last_error, "Second error after retry");
+        assert_eq!(failure.error_history.len(), 2);
+        assert_eq!(failure.error_history[0], "First error");
+        assert_eq!(failure.error_history[1], "Second error after retry");
+    }
+
+    #[test]
+    fn test_repository_access_failure_has_exceeded_retries() {
+        let mut failure = RepositoryAccessFailure::new(
+            "acme-corp/config".to_string(),
+            "load_config".to_string(),
+            AccessFailureType::NetworkError,
+            "Error".to_string(),
+        );
+
+        assert!(!failure.has_exceeded_retries(3));
+
+        failure.record_retry("Retry 1".to_string());
+        failure.record_retry("Retry 2".to_string());
+        failure.record_retry("Retry 3".to_string());
+
+        assert!(failure.has_exceeded_retries(2));
+        assert!(!failure.has_exceeded_retries(5));
+    }
+
+    #[test]
+    fn test_repository_access_failure_summary() {
+        let failure = RepositoryAccessFailure::new(
+            "acme-corp/config".to_string(),
+            "load_config".to_string(),
+            AccessFailureType::NetworkError,
+            "Connection failed".to_string(),
+        );
+
+        let summary = failure.failure_summary();
+        assert!(summary.contains("acme-corp/config"));
+        assert!(summary.contains("load_config"));
+        assert!(summary.contains("NetworkError"));
+        assert!(summary.contains("Connection failed"));
+    }
+
+    #[test]
+    fn test_repository_access_failure_suggested_actions() {
+        // Test NetworkError suggestions
+        let network_failure = RepositoryAccessFailure::new(
+            "test/repo".to_string(),
+            "operation".to_string(),
+            AccessFailureType::NetworkError,
+            "Network error".to_string(),
+        );
+        assert!(network_failure
+            .suggested_actions
+            .iter()
+            .any(|action| action.contains("network connectivity")));
+
+        // Test AuthenticationError suggestions
+        let auth_failure = RepositoryAccessFailure::new(
+            "test/repo".to_string(),
+            "operation".to_string(),
+            AccessFailureType::AuthenticationError,
+            "Auth error".to_string(),
+        );
+        assert!(auth_failure
+            .suggested_actions
+            .iter()
+            .any(|action| action.contains("credentials")));
+
+        // Test RateLimitError suggestions
+        let rate_limit_failure = RepositoryAccessFailure::new(
+            "test/repo".to_string(),
+            "operation".to_string(),
+            AccessFailureType::RateLimitError,
+            "Rate limit exceeded".to_string(),
+        );
+        assert!(rate_limit_failure
+            .suggested_actions
+            .iter()
+            .any(|action| action.contains("rate limit")));
+    }
+
+    #[test]
+    fn test_repository_access_failure_serialization() {
+        let failure = RepositoryAccessFailure::new(
+            "acme-corp/config".to_string(),
+            "load_config".to_string(),
+            AccessFailureType::NetworkError,
+            "Connection failed".to_string(),
+        );
+
+        let json = serde_json::to_string(&failure).expect("Failed to serialize failure");
+        let deserialized: RepositoryAccessFailure =
+            serde_json::from_str(&json).expect("Failed to deserialize failure");
+
+        assert_eq!(failure, deserialized);
+    }
+}
+
+#[cfg(test)]
+mod access_failure_type_tests {
+    use super::*;
+
+    #[test]
+    fn test_access_failure_type_is_retryable() {
+        assert!(AccessFailureType::NetworkError.is_retryable());
+        assert!(AccessFailureType::RateLimitError.is_retryable());
+        assert!(AccessFailureType::TimeoutError.is_retryable());
+        assert!(AccessFailureType::UnknownError.is_retryable());
+
+        assert!(!AccessFailureType::AuthenticationError.is_retryable());
+        assert!(!AccessFailureType::AuthorizationError.is_retryable());
+        assert!(!AccessFailureType::RepositoryNotFound.is_retryable());
+        assert!(!AccessFailureType::InvalidStructure.is_retryable());
+        assert!(!AccessFailureType::ConfigurationError.is_retryable());
+    }
+
+    #[test]
+    fn test_access_failure_type_retry_delay_seconds() {
+        assert_eq!(AccessFailureType::NetworkError.retry_delay_seconds(), 5);
+        assert_eq!(AccessFailureType::RateLimitError.retry_delay_seconds(), 60);
+        assert_eq!(AccessFailureType::TimeoutError.retry_delay_seconds(), 10);
+        assert_eq!(AccessFailureType::UnknownError.retry_delay_seconds(), 15);
+
+        // Non-retryable types should have 0 delay
+        assert_eq!(
+            AccessFailureType::AuthenticationError.retry_delay_seconds(),
+            0
+        );
+        assert_eq!(
+            AccessFailureType::AuthorizationError.retry_delay_seconds(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_access_failure_type_max_retries() {
+        assert_eq!(AccessFailureType::NetworkError.max_retries(), 3);
+        assert_eq!(AccessFailureType::RateLimitError.max_retries(), 5);
+        assert_eq!(AccessFailureType::TimeoutError.max_retries(), 3);
+        assert_eq!(AccessFailureType::UnknownError.max_retries(), 2);
+
+        // Non-retryable types should have 0 retries
+        assert_eq!(AccessFailureType::AuthenticationError.max_retries(), 0);
+        assert_eq!(AccessFailureType::AuthorizationError.max_retries(), 0);
+        assert_eq!(AccessFailureType::RepositoryNotFound.max_retries(), 0);
+        assert_eq!(AccessFailureType::InvalidStructure.max_retries(), 0);
+        assert_eq!(AccessFailureType::ConfigurationError.max_retries(), 0);
+    }
+
+    #[test]
+    fn test_access_failure_type_serialization() {
+        let failure_types = vec![
+            AccessFailureType::NetworkError,
+            AccessFailureType::AuthenticationError,
+            AccessFailureType::AuthorizationError,
+            AccessFailureType::RateLimitError,
+            AccessFailureType::RepositoryNotFound,
+            AccessFailureType::InvalidStructure,
+            AccessFailureType::ConfigurationError,
+            AccessFailureType::TimeoutError,
+            AccessFailureType::UnknownError,
+        ];
+
+        for failure_type in failure_types {
+            let json = serde_json::to_string(&failure_type)
+                .expect("Failed to serialize AccessFailureType");
+            let deserialized: AccessFailureType =
+                serde_json::from_str(&json).expect("Failed to deserialize AccessFailureType");
+            assert_eq!(failure_type, deserialized);
+        }
+    }
+}
+
+#[cfg(test)]
+mod error_recovery_strategy_tests {
+    use super::*;
+
+    #[test]
+    fn test_error_recovery_strategy_new_for_network_error() {
+        let strategy = ErrorRecoveryStrategy::new_for_network_error();
+
+        assert_eq!(strategy.max_retries, 3);
+        assert_eq!(strategy.retry_delay_seconds, 5);
+        assert!(!strategy.exponential_backoff);
+        assert!(strategy.fallback_enabled);
+        assert!(!strategy.requires_user_intervention);
+        assert_eq!(strategy.recovery_actions.len(), 2);
+    }
+
+    #[test]
+    fn test_error_recovery_strategy_new_for_rate_limit() {
+        let strategy = ErrorRecoveryStrategy::new_for_rate_limit();
+
+        assert_eq!(strategy.max_retries, 5);
+        assert_eq!(strategy.retry_delay_seconds, 60);
+        assert!(strategy.exponential_backoff);
+        assert!(!strategy.fallback_enabled);
+        assert!(!strategy.requires_user_intervention);
+        assert_eq!(strategy.recovery_actions.len(), 2);
+    }
+
+    #[test]
+    fn test_error_recovery_strategy_new_for_authentication_error() {
+        let strategy = ErrorRecoveryStrategy::new_for_authentication_error();
+
+        assert_eq!(strategy.max_retries, 1);
+        assert_eq!(strategy.retry_delay_seconds, 0);
+        assert!(!strategy.exponential_backoff);
+        assert!(!strategy.fallback_enabled);
+        assert!(strategy.requires_user_intervention);
+        assert_eq!(strategy.recovery_actions.len(), 2);
+    }
+
+    #[test]
+    fn test_error_recovery_strategy_calculate_delay() {
+        let linear_strategy = ErrorRecoveryStrategy::new_for_network_error();
+        assert_eq!(linear_strategy.calculate_delay(0), 5);
+        assert_eq!(linear_strategy.calculate_delay(1), 5);
+        assert_eq!(linear_strategy.calculate_delay(2), 5);
+
+        let exponential_strategy = ErrorRecoveryStrategy::new_for_rate_limit();
+        assert_eq!(exponential_strategy.calculate_delay(0), 60);
+        assert_eq!(exponential_strategy.calculate_delay(1), 120);
+        assert_eq!(exponential_strategy.calculate_delay(2), 240);
+        assert_eq!(exponential_strategy.calculate_delay(3), 480);
+    }
+
+    #[test]
+    fn test_error_recovery_strategy_serialization() {
+        let strategy = ErrorRecoveryStrategy::new_for_network_error();
+
+        let json =
+            serde_json::to_string(&strategy).expect("Failed to serialize ErrorRecoveryStrategy");
+        let deserialized: ErrorRecoveryStrategy =
+            serde_json::from_str(&json).expect("Failed to deserialize ErrorRecoveryStrategy");
+
+        assert_eq!(strategy, deserialized);
+    }
+}
+
+#[cfg(test)]
+mod recovery_action_tests {
+    use super::*;
+
+    #[test]
+    fn test_recovery_action_variants() {
+        let retry_action = RecoveryAction::RetryWithDelay { seconds: 60 };
+        let refresh_action = RecoveryAction::RefreshCredentials;
+        let fallback_action = RecoveryAction::SwitchToFallbackRepository {
+            repository: "fallback-repo".to_string(),
+        };
+        let default_action = RecoveryAction::UseDefaultConfiguration;
+        let contact_action = RecoveryAction::ContactAdministrator {
+            contact_info: "admin@example.com".to_string(),
+        };
+        let rate_limit_action = RecoveryAction::WaitForRateLimit {
+            reset_time: Utc::now() + chrono::Duration::hours(1),
+        };
+        let permissions_action = RecoveryAction::ValidatePermissions {
+            required_permissions: vec!["contents:read".to_string()],
+        };
+        let structure_action = RecoveryAction::CreateMissingStructure {
+            missing_items: vec!["global/".to_string()],
+        };
+
+        // Test that all variants can be created and match expected patterns
+        match retry_action {
+            RecoveryAction::RetryWithDelay { seconds } => assert_eq!(seconds, 60),
+            _ => panic!("Expected RetryWithDelay variant"),
+        }
+
+        match refresh_action {
+            RecoveryAction::RefreshCredentials => {}
+            _ => panic!("Expected RefreshCredentials variant"),
+        }
+
+        match fallback_action {
+            RecoveryAction::SwitchToFallbackRepository { repository } => {
+                assert_eq!(repository, "fallback-repo");
+            }
+            _ => panic!("Expected SwitchToFallbackRepository variant"),
+        }
+    }
+
+    #[test]
+    fn test_recovery_action_serialization() {
+        let actions = vec![
+            RecoveryAction::RetryWithDelay { seconds: 30 },
+            RecoveryAction::RefreshCredentials,
+            RecoveryAction::SwitchToFallbackRepository {
+                repository: "fallback".to_string(),
+            },
+            RecoveryAction::UseDefaultConfiguration,
+            RecoveryAction::ContactAdministrator {
+                contact_info: "admin".to_string(),
+            },
+            RecoveryAction::WaitForRateLimit {
+                reset_time: Utc::now(),
+            },
+            RecoveryAction::ValidatePermissions {
+                required_permissions: vec!["read".to_string()],
+            },
+            RecoveryAction::CreateMissingStructure {
+                missing_items: vec!["file".to_string()],
+            },
+        ];
+
+        for action in actions {
+            let json = serde_json::to_string(&action).expect("Failed to serialize RecoveryAction");
+            let deserialized: RecoveryAction =
+                serde_json::from_str(&json).expect("Failed to deserialize RecoveryAction");
+            assert_eq!(action, deserialized);
+        }
+    }
+}
+
+#[cfg(test)]
+mod repository_operation_context_tests {
+    use super::*;
+
+    #[test]
+    fn test_repository_operation_context_creation() {
+        let context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "discover_metadata_repository".to_string(),
+        );
+
+        assert_eq!(context.operation_id, "op_123");
+        assert_eq!(context.organization, "acme-corp");
+        assert_eq!(context.operation, "discover_metadata_repository");
+        assert!(context.repository.is_none());
+        assert!(context.failure.is_none());
+        assert!(context.recovery_strategy.is_none());
+        assert!(context.environment_context.is_empty());
+        assert!(context.user_context.is_empty());
+    }
+
+    #[test]
+    fn test_repository_operation_context_set_repository() {
+        let mut context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "validate_structure".to_string(),
+        );
+
+        context.set_repository("acme-corp/acme-config".to_string());
+        assert_eq!(
+            context.repository,
+            Some("acme-corp/acme-config".to_string())
+        );
+    }
+
+    #[test]
+    fn test_repository_operation_context_record_failure() {
+        let mut context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "discover_metadata_repository".to_string(),
+        );
+
+        let failure = RepositoryAccessFailure::new(
+            "acme-corp/config".to_string(),
+            "discover_metadata_repository".to_string(),
+            AccessFailureType::NetworkError,
+            "Connection failed".to_string(),
+        );
+
+        context.record_failure(failure.clone());
+        assert_eq!(context.failure, Some(failure));
+    }
+
+    #[test]
+    fn test_repository_operation_context_set_recovery_strategy() {
+        let mut context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "discover_metadata_repository".to_string(),
+        );
+
+        let strategy = ErrorRecoveryStrategy::new_for_network_error();
+        context.set_recovery_strategy(strategy.clone());
+        assert_eq!(context.recovery_strategy, Some(strategy));
+    }
+
+    #[test]
+    fn test_repository_operation_context_add_context() {
+        let mut context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "discover_metadata_repository".to_string(),
+        );
+
+        context.add_environment_context("api_version".to_string(), "v4".to_string());
+        context.add_environment_context("client_version".to_string(), "1.0.0".to_string());
+        context.add_user_context("user_id".to_string(), "user_123".to_string());
+        context.add_user_context("session_id".to_string(), "sess_456".to_string());
+
+        assert_eq!(context.environment_context.len(), 2);
+        assert_eq!(context.user_context.len(), 2);
+        assert_eq!(
+            context.environment_context.get("api_version"),
+            Some(&"v4".to_string())
+        );
+        assert_eq!(
+            context.user_context.get("user_id"),
+            Some(&"user_123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_repository_operation_context_operation_summary() {
+        let mut context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "discover_metadata_repository".to_string(),
+        );
+
+        context.set_repository("acme-corp/config".to_string());
+
+        let failure = RepositoryAccessFailure::new(
+            "acme-corp/config".to_string(),
+            "discover_metadata_repository".to_string(),
+            AccessFailureType::NetworkError,
+            "Connection failed".to_string(),
+        );
+        context.record_failure(failure);
+
+        let summary = context.operation_summary();
+        assert!(summary.contains("op_123"));
+        assert!(summary.contains("acme-corp"));
+        assert!(summary.contains("discover_metadata_repository"));
+        assert!(summary.contains("acme-corp/config"));
+        assert!(summary.contains("NetworkError"));
+    }
+
+    #[test]
+    fn test_repository_operation_context_serialization() {
+        let mut context = RepositoryOperationContext::new(
+            "op_123".to_string(),
+            "acme-corp".to_string(),
+            "discover_metadata_repository".to_string(),
+        );
+
+        context.set_repository("acme-corp/config".to_string());
+        context.add_environment_context("api_version".to_string(), "v4".to_string());
+
+        let json = serde_json::to_string(&context)
+            .expect("Failed to serialize RepositoryOperationContext");
+        let deserialized: RepositoryOperationContext =
+            serde_json::from_str(&json).expect("Failed to deserialize RepositoryOperationContext");
+
+        assert_eq!(context, deserialized);
+    }
+}

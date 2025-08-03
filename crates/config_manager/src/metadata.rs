@@ -52,6 +52,829 @@ mod tests;
 /// metadata repository operations, using the configuration management error types.
 pub type MetadataResult<T> = Result<T, crate::ConfigurationError>;
 
+/// Repository access failure context for error recovery and retry logic.
+///
+/// This structure provides detailed information about repository access failures,
+/// including retry metadata, failure patterns, and recovery suggestions to help
+/// with automated error handling and user troubleshooting.
+///
+/// # Fields
+///
+/// * `repository` - The full repository name that failed access (org/repo)
+/// * `operation` - The specific operation that failed (discovery, validation, file access)
+/// * `failure_type` - Classification of the failure type for appropriate handling
+/// * `retry_count` - Number of retries attempted for this operation
+/// * `last_error` - The most recent error encountered
+/// * `error_history` - History of errors for pattern analysis
+/// * `suggested_actions` - Recommended actions for resolving the failure
+/// * `is_recoverable` - Whether this failure can potentially be retried
+/// * `failure_timestamp` - When the failure occurred for timeout and rate limit tracking
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{RepositoryAccessFailure, AccessFailureType};
+/// use chrono::Utc;
+///
+/// let failure = RepositoryAccessFailure::new(
+///     "acme-corp/acme-config".to_string(),
+///     "discover_metadata_repository".to_string(),
+///     AccessFailureType::NetworkError,
+///     "Connection timeout after 30 seconds".to_string(),
+/// );
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryAccessFailure {
+    /// The repository that failed access (org/repo format)
+    pub repository: String,
+    /// The operation that failed
+    pub operation: String,
+    /// Classification of the failure type
+    pub failure_type: AccessFailureType,
+    /// Number of retry attempts made
+    pub retry_count: u32,
+    /// The most recent error message
+    pub last_error: String,
+    /// History of error messages for pattern analysis
+    pub error_history: Vec<String>,
+    /// Suggested actions for resolving the failure
+    pub suggested_actions: Vec<String>,
+    /// Whether this failure can be retried
+    pub is_recoverable: bool,
+    /// When the failure occurred
+    pub failure_timestamp: DateTime<Utc>,
+}
+
+impl RepositoryAccessFailure {
+    /// Create a new repository access failure record.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - The repository that failed access (org/repo format)
+    /// * `operation` - The operation that failed
+    /// * `failure_type` - The type of failure that occurred
+    /// * `error_message` - The error message describing the failure
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryAccessFailure` with default values and suggested actions
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryAccessFailure, AccessFailureType};
+    ///
+    /// let failure = RepositoryAccessFailure::new(
+    ///     "acme-corp/acme-config".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    ///     AccessFailureType::NetworkError,
+    ///     "Connection timeout after 30 seconds".to_string(),
+    /// );
+    /// ```
+    pub fn new(
+        repository: String,
+        operation: String,
+        failure_type: AccessFailureType,
+        error_message: String,
+    ) -> Self {
+        let mut suggested_actions = Vec::new();
+        let is_recoverable = failure_type.is_retryable();
+
+        // Add type-specific suggestions
+        match &failure_type {
+            AccessFailureType::NetworkError => {
+                suggested_actions.push("Check network connectivity".to_string());
+                suggested_actions.push("Retry the operation after a short delay".to_string());
+            }
+            AccessFailureType::AuthenticationError => {
+                suggested_actions.push("Verify GitHub App credentials".to_string());
+                suggested_actions.push("Check if authentication token has expired".to_string());
+            }
+            AccessFailureType::AuthorizationError => {
+                suggested_actions.push("Verify repository permissions".to_string());
+                suggested_actions.push("Check if GitHub App has required scopes".to_string());
+            }
+            AccessFailureType::RateLimitError => {
+                suggested_actions.push("Wait for rate limit to reset".to_string());
+                suggested_actions.push("Implement exponential backoff for retries".to_string());
+            }
+            AccessFailureType::RepositoryNotFound => {
+                suggested_actions.push("Verify repository name and organization".to_string());
+                suggested_actions.push("Check if repository exists and is accessible".to_string());
+            }
+            AccessFailureType::InvalidStructure => {
+                suggested_actions.push("Review repository structure requirements".to_string());
+                suggested_actions.push("Create missing directories and files".to_string());
+            }
+            AccessFailureType::ConfigurationError => {
+                suggested_actions.push("Validate configuration file syntax".to_string());
+                suggested_actions.push("Check configuration against schema".to_string());
+            }
+            AccessFailureType::TimeoutError => {
+                suggested_actions.push("Increase timeout duration".to_string());
+                suggested_actions.push("Retry with exponential backoff".to_string());
+            }
+            AccessFailureType::UnknownError => {
+                suggested_actions.push("Review error logs for more details".to_string());
+                suggested_actions.push("Contact support if problem persists".to_string());
+            }
+        }
+
+        Self {
+            repository,
+            operation,
+            failure_type,
+            retry_count: 0,
+            last_error: error_message.clone(),
+            error_history: vec![error_message],
+            suggested_actions,
+            is_recoverable,
+            failure_timestamp: Utc::now(),
+        }
+    }
+
+    /// Record a retry attempt for this failure.
+    ///
+    /// Updates the retry count and adds the new error to the history.
+    ///
+    /// # Arguments
+    ///
+    /// * `error_message` - The error message from the retry attempt
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryAccessFailure, AccessFailureType};
+    ///
+    /// let mut failure = RepositoryAccessFailure::new(
+    ///     "acme-corp/config".to_string(),
+    ///     "load_config".to_string(),
+    ///     AccessFailureType::NetworkError,
+    ///     "First error".to_string(),
+    /// );
+    ///
+    /// failure.record_retry("Second error after retry".to_string());
+    /// assert_eq!(failure.retry_count, 1);
+    /// ```
+    pub fn record_retry(&mut self, error_message: String) {
+        self.retry_count += 1;
+        self.last_error = error_message.clone();
+        self.error_history.push(error_message);
+        self.failure_timestamp = Utc::now();
+    }
+
+    /// Check if this failure has exceeded the maximum retry count.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_retries` - The maximum number of retries allowed
+    ///
+    /// # Returns
+    ///
+    /// `true` if retry count exceeds the maximum, `false` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryAccessFailure, AccessFailureType};
+    ///
+    /// let mut failure = RepositoryAccessFailure::new(
+    ///     "acme-corp/config".to_string(),
+    ///     "load_config".to_string(),
+    ///     AccessFailureType::NetworkError,
+    ///     "Error".to_string(),
+    /// );
+    ///
+    /// failure.record_retry("Retry 1".to_string());
+    /// failure.record_retry("Retry 2".to_string());
+    /// failure.record_retry("Retry 3".to_string());
+    ///
+    /// assert!(failure.has_exceeded_retries(2));
+    /// assert!(!failure.has_exceeded_retries(5));
+    /// ```
+    pub fn has_exceeded_retries(&self, max_retries: u32) -> bool {
+        self.retry_count > max_retries
+    }
+
+    /// Get a summary of the failure for logging and error reporting.
+    ///
+    /// # Returns
+    ///
+    /// A formatted string describing the failure and retry history
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryAccessFailure, AccessFailureType};
+    ///
+    /// let failure = RepositoryAccessFailure::new(
+    ///     "acme-corp/config".to_string(),
+    ///     "load_config".to_string(),
+    ///     AccessFailureType::NetworkError,
+    ///     "Connection failed".to_string(),
+    /// );
+    ///
+    /// let summary = failure.failure_summary();
+    /// assert!(summary.contains("acme-corp/config"));
+    /// assert!(summary.contains("NetworkError"));
+    /// ```
+    pub fn failure_summary(&self) -> String {
+        format!(
+            "Repository: {}, Operation: {}, Type: {:?}, Retries: {}, Last Error: {}",
+            self.repository, self.operation, self.failure_type, self.retry_count, self.last_error
+        )
+    }
+}
+
+/// Classification of repository access failure types.
+///
+/// This enum categorizes different types of repository access failures to enable
+/// appropriate error handling strategies, retry policies, and user messaging.
+///
+/// # Variants
+///
+/// * `NetworkError` - Communication issues with GitHub API
+/// * `AuthenticationError` - Invalid or expired credentials
+/// * `AuthorizationError` - Insufficient permissions for operation
+/// * `RateLimitError` - GitHub API rate limit exceeded
+/// * `RepositoryNotFound` - Repository doesn't exist or is inaccessible
+/// * `InvalidStructure` - Repository exists but has invalid metadata structure
+/// * `ConfigurationError` - Configuration files are malformed or invalid
+/// * `TimeoutError` - Operation timed out waiting for response
+/// * `UnknownError` - Unexpected error that doesn't fit other categories
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::AccessFailureType;
+///
+/// let failure_type = AccessFailureType::RateLimitError;
+/// assert!(failure_type.is_retryable());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AccessFailureType {
+    /// Network communication error with GitHub API
+    NetworkError,
+    /// Authentication credentials are invalid or expired
+    AuthenticationError,
+    /// Insufficient permissions to access repository or perform operation
+    AuthorizationError,
+    /// GitHub API rate limit has been exceeded
+    RateLimitError,
+    /// Repository does not exist or is not accessible
+    RepositoryNotFound,
+    /// Repository structure is invalid for metadata operations
+    InvalidStructure,
+    /// Configuration files contain errors or violations
+    ConfigurationError,
+    /// Operation timed out waiting for response
+    TimeoutError,
+    /// Unexpected error that doesn't match known patterns
+    UnknownError,
+}
+
+impl AccessFailureType {
+    /// Check if this failure type can be retried.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the failure type typically allows for retry attempts, `false` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::AccessFailureType;
+    ///
+    /// assert!(AccessFailureType::NetworkError.is_retryable());
+    /// assert!(AccessFailureType::RateLimitError.is_retryable());
+    /// assert!(!AccessFailureType::AuthorizationError.is_retryable());
+    /// ```
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            AccessFailureType::NetworkError => true,
+            AccessFailureType::RateLimitError => true,
+            AccessFailureType::TimeoutError => true,
+            AccessFailureType::UnknownError => true,
+            AccessFailureType::AuthenticationError => false,
+            AccessFailureType::AuthorizationError => false,
+            AccessFailureType::RepositoryNotFound => false,
+            AccessFailureType::InvalidStructure => false,
+            AccessFailureType::ConfigurationError => false,
+        }
+    }
+
+    /// Get the recommended delay between retry attempts for this failure type.
+    ///
+    /// # Returns
+    ///
+    /// The recommended delay in seconds between retry attempts
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::AccessFailureType;
+    ///
+    /// assert_eq!(AccessFailureType::NetworkError.retry_delay_seconds(), 5);
+    /// assert_eq!(AccessFailureType::RateLimitError.retry_delay_seconds(), 60);
+    /// ```
+    pub fn retry_delay_seconds(&self) -> u64 {
+        match self {
+            AccessFailureType::NetworkError => 5,
+            AccessFailureType::RateLimitError => 60,
+            AccessFailureType::TimeoutError => 10,
+            AccessFailureType::UnknownError => 15,
+            _ => 0, // Non-retryable types have no delay
+        }
+    }
+
+    /// Get the maximum number of retry attempts for this failure type.
+    ///
+    /// # Returns
+    ///
+    /// The maximum number of retry attempts recommended for this failure type
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::AccessFailureType;
+    ///
+    /// assert_eq!(AccessFailureType::NetworkError.max_retries(), 3);
+    /// assert_eq!(AccessFailureType::RateLimitError.max_retries(), 5);
+    /// assert_eq!(AccessFailureType::AuthorizationError.max_retries(), 0);
+    /// ```
+    pub fn max_retries(&self) -> u32 {
+        match self {
+            AccessFailureType::NetworkError => 3,
+            AccessFailureType::RateLimitError => 5,
+            AccessFailureType::TimeoutError => 3,
+            AccessFailureType::UnknownError => 2,
+            _ => 0, // Non-retryable types have no retries
+        }
+    }
+}
+
+/// Error recovery strategy for failed repository operations.
+///
+/// This structure defines how to handle specific types of repository access failures,
+/// including retry policies, fallback mechanisms, and escalation procedures.
+///
+/// # Fields
+///
+/// * `max_retries` - Maximum number of retry attempts for this error type
+/// * `retry_delay_seconds` - Base delay between retry attempts
+/// * `exponential_backoff` - Whether to use exponential backoff for retries
+/// * `fallback_enabled` - Whether fallback mechanisms should be attempted
+/// * `requires_user_intervention` - Whether manual intervention is needed
+/// * `recovery_actions` - Specific actions to take for recovery
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{ErrorRecoveryStrategy, RecoveryAction};
+///
+/// let strategy = ErrorRecoveryStrategy::new_for_rate_limit();
+/// assert_eq!(strategy.max_retries, 5);
+/// assert!(strategy.exponential_backoff);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ErrorRecoveryStrategy {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Base delay between retries in seconds
+    pub retry_delay_seconds: u64,
+    /// Whether to use exponential backoff
+    pub exponential_backoff: bool,
+    /// Whether fallback mechanisms are available
+    pub fallback_enabled: bool,
+    /// Whether manual user intervention is required
+    pub requires_user_intervention: bool,
+    /// Specific recovery actions to attempt
+    pub recovery_actions: Vec<RecoveryAction>,
+}
+
+impl ErrorRecoveryStrategy {
+    /// Create a new error recovery strategy for network-related failures.
+    ///
+    /// # Returns
+    ///
+    /// An `ErrorRecoveryStrategy` configured for network error recovery
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::ErrorRecoveryStrategy;
+    ///
+    /// let strategy = ErrorRecoveryStrategy::new_for_network_error();
+    /// assert_eq!(strategy.max_retries, 3);
+    /// assert!(!strategy.exponential_backoff);
+    /// ```
+    pub fn new_for_network_error() -> Self {
+        Self {
+            max_retries: 3,
+            retry_delay_seconds: 5,
+            exponential_backoff: false,
+            fallback_enabled: true,
+            requires_user_intervention: false,
+            recovery_actions: vec![
+                RecoveryAction::RetryWithDelay { seconds: 5 },
+                RecoveryAction::UseDefaultConfiguration,
+            ],
+        }
+    }
+
+    /// Create a new error recovery strategy for rate limit failures.
+    ///
+    /// # Returns
+    ///
+    /// An `ErrorRecoveryStrategy` configured for rate limit error recovery
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::ErrorRecoveryStrategy;
+    ///
+    /// let strategy = ErrorRecoveryStrategy::new_for_rate_limit();
+    /// assert_eq!(strategy.max_retries, 5);
+    /// assert!(strategy.exponential_backoff);
+    /// ```
+    pub fn new_for_rate_limit() -> Self {
+        Self {
+            max_retries: 5,
+            retry_delay_seconds: 60,
+            exponential_backoff: true,
+            fallback_enabled: false,
+            requires_user_intervention: false,
+            recovery_actions: vec![
+                RecoveryAction::WaitForRateLimit {
+                    reset_time: Utc::now() + chrono::Duration::hours(1),
+                },
+                RecoveryAction::RetryWithDelay { seconds: 300 },
+            ],
+        }
+    }
+
+    /// Create a new error recovery strategy for authentication failures.
+    ///
+    /// # Returns
+    ///
+    /// An `ErrorRecoveryStrategy` configured for authentication error recovery
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::ErrorRecoveryStrategy;
+    ///
+    /// let strategy = ErrorRecoveryStrategy::new_for_authentication_error();
+    /// assert_eq!(strategy.max_retries, 1);
+    /// assert!(strategy.requires_user_intervention);
+    /// ```
+    pub fn new_for_authentication_error() -> Self {
+        Self {
+            max_retries: 1,
+            retry_delay_seconds: 0,
+            exponential_backoff: false,
+            fallback_enabled: false,
+            requires_user_intervention: true,
+            recovery_actions: vec![
+                RecoveryAction::RefreshCredentials,
+                RecoveryAction::ContactAdministrator {
+                    contact_info: "GitHub App administrator".to_string(),
+                },
+            ],
+        }
+    }
+
+    /// Calculate the actual delay for a retry attempt considering exponential backoff.
+    ///
+    /// # Arguments
+    ///
+    /// * `attempt` - The attempt number (0-based)
+    ///
+    /// # Returns
+    ///
+    /// The calculated delay in seconds for this attempt
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::ErrorRecoveryStrategy;
+    ///
+    /// let strategy = ErrorRecoveryStrategy::new_for_rate_limit();
+    /// assert_eq!(strategy.calculate_delay(0), 60);
+    /// assert_eq!(strategy.calculate_delay(1), 120);
+    /// assert_eq!(strategy.calculate_delay(2), 240);
+    /// ```
+    pub fn calculate_delay(&self, attempt: u32) -> u64 {
+        if self.exponential_backoff && attempt > 0 {
+            self.retry_delay_seconds * (2_u64.pow(attempt))
+        } else {
+            self.retry_delay_seconds
+        }
+    }
+}
+
+/// Specific recovery actions for repository access failures.
+///
+/// This enum defines concrete actions that can be taken to recover from
+/// repository access failures, enabling automated error handling and
+/// providing clear guidance to users.
+///
+/// # Variants
+///
+/// * `RetryWithDelay` - Wait and retry the operation
+/// * `RefreshCredentials` - Attempt to refresh authentication tokens
+/// * `SwitchToFallbackRepository` - Use alternative metadata repository
+/// * `UseDefaultConfiguration` - Fall back to built-in defaults
+/// * `ContactAdministrator` - Escalate to organization administrator
+/// * `WaitForRateLimit` - Wait for rate limit reset
+/// * `ValidatePermissions` - Check and request necessary permissions
+/// * `CreateMissingStructure` - Attempt to create required directories/files
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::RecoveryAction;
+///
+/// let action = RecoveryAction::RetryWithDelay { seconds: 60 };
+/// match action {
+///     RecoveryAction::RetryWithDelay { seconds } => {
+///         println!("Will retry after {} seconds", seconds);
+///     }
+///     _ => {}
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RecoveryAction {
+    /// Retry the operation after a delay
+    RetryWithDelay { seconds: u64 },
+    /// Attempt to refresh authentication credentials
+    RefreshCredentials,
+    /// Switch to a fallback metadata repository
+    SwitchToFallbackRepository { repository: String },
+    /// Use built-in default configuration
+    UseDefaultConfiguration,
+    /// Contact organization administrator for assistance
+    ContactAdministrator { contact_info: String },
+    /// Wait for GitHub API rate limit to reset
+    WaitForRateLimit { reset_time: DateTime<Utc> },
+    /// Validate and request necessary permissions
+    ValidatePermissions { required_permissions: Vec<String> },
+    /// Create missing repository structure components
+    CreateMissingStructure { missing_items: Vec<String> },
+}
+
+/// Comprehensive error context for repository operations.
+///
+/// This structure provides detailed context about repository operation failures,
+/// including environmental information, operation metadata, and recovery suggestions
+/// to enable comprehensive error handling and troubleshooting.
+///
+/// # Fields
+///
+/// * `operation_id` - Unique identifier for tracking this operation
+/// * `organization` - The organization being processed
+/// * `repository` - The specific repository involved (if applicable)
+/// * `operation` - The operation that was being performed
+/// * `failure` - Details about the access failure
+/// * `recovery_strategy` - Recommended recovery approach
+/// * `environment_context` - Environmental factors that may affect recovery
+/// * `user_context` - User-specific context for personalized error handling
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::metadata::{RepositoryOperationContext, RepositoryAccessFailure};
+/// use std::collections::HashMap;
+///
+/// let mut context = RepositoryOperationContext::new(
+///     "op_123".to_string(),
+///     "acme-corp".to_string(),
+///     "discover_metadata_repository".to_string(),
+/// );
+/// context.environment_context.insert("api_version".to_string(), "v4".to_string());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryOperationContext {
+    /// Unique identifier for this operation
+    pub operation_id: String,
+    /// Organization being processed
+    pub organization: String,
+    /// Repository involved in the operation (if applicable)
+    pub repository: Option<String>,
+    /// The operation being performed
+    pub operation: String,
+    /// Access failure details (if applicable)
+    pub failure: Option<RepositoryAccessFailure>,
+    /// Recommended recovery strategy
+    pub recovery_strategy: Option<ErrorRecoveryStrategy>,
+    /// Environmental context affecting the operation
+    pub environment_context: HashMap<String, String>,
+    /// User-specific context for personalized handling
+    pub user_context: HashMap<String, String>,
+}
+
+impl RepositoryOperationContext {
+    /// Create a new repository operation context.
+    ///
+    /// # Arguments
+    ///
+    /// * `operation_id` - Unique identifier for this operation
+    /// * `organization` - The organization being processed
+    /// * `operation` - The operation being performed
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryOperationContext` with empty context maps
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryOperationContext;
+    ///
+    /// let context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    /// );
+    /// ```
+    pub fn new(operation_id: String, organization: String, operation: String) -> Self {
+        Self {
+            operation_id,
+            organization,
+            repository: None,
+            operation,
+            failure: None,
+            recovery_strategy: None,
+            environment_context: HashMap::new(),
+            user_context: HashMap::new(),
+        }
+    }
+
+    /// Set the repository involved in this operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - The repository name (org/repo format)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryOperationContext;
+    ///
+    /// let mut context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "validate_structure".to_string(),
+    /// );
+    /// context.set_repository("acme-corp/acme-config".to_string());
+    /// ```
+    pub fn set_repository(&mut self, repository: String) {
+        self.repository = Some(repository);
+    }
+
+    /// Record a failure for this operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `failure` - The access failure details
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryOperationContext, RepositoryAccessFailure, AccessFailureType};
+    ///
+    /// let mut context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    /// );
+    ///
+    /// let failure = RepositoryAccessFailure::new(
+    ///     "acme-corp/config".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    ///     AccessFailureType::NetworkError,
+    ///     "Connection failed".to_string(),
+    /// );
+    ///
+    /// context.record_failure(failure);
+    /// ```
+    pub fn record_failure(&mut self, failure: RepositoryAccessFailure) {
+        self.failure = Some(failure);
+    }
+
+    /// Set the recovery strategy for this operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `strategy` - The error recovery strategy to use
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::{RepositoryOperationContext, ErrorRecoveryStrategy};
+    ///
+    /// let mut context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    /// );
+    ///
+    /// let strategy = ErrorRecoveryStrategy::new_for_network_error();
+    /// context.set_recovery_strategy(strategy);
+    /// ```
+    pub fn set_recovery_strategy(&mut self, strategy: ErrorRecoveryStrategy) {
+        self.recovery_strategy = Some(strategy);
+    }
+
+    /// Add environment context information.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The context key
+    /// * `value` - The context value
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryOperationContext;
+    ///
+    /// let mut context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    /// );
+    ///
+    /// context.add_environment_context("api_version".to_string(), "v4".to_string());
+    /// context.add_environment_context("client_version".to_string(), "1.0.0".to_string());
+    /// ```
+    pub fn add_environment_context(&mut self, key: String, value: String) {
+        self.environment_context.insert(key, value);
+    }
+
+    /// Add user context information.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The context key
+    /// * `value` - The context value
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryOperationContext;
+    ///
+    /// let mut context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    /// );
+    ///
+    /// context.add_user_context("user_id".to_string(), "user_123".to_string());
+    /// context.add_user_context("session_id".to_string(), "sess_456".to_string());
+    /// ```
+    pub fn add_user_context(&mut self, key: String, value: String) {
+        self.user_context.insert(key, value);
+    }
+
+    /// Get a summary of this operation context for logging.
+    ///
+    /// # Returns
+    ///
+    /// A formatted string describing the operation context
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::metadata::RepositoryOperationContext;
+    ///
+    /// let context = RepositoryOperationContext::new(
+    ///     "op_123".to_string(),
+    ///     "acme-corp".to_string(),
+    ///     "discover_metadata_repository".to_string(),
+    /// );
+    ///
+    /// let summary = context.operation_summary();
+    /// assert!(summary.contains("op_123"));
+    /// assert!(summary.contains("acme-corp"));
+    /// ```
+    pub fn operation_summary(&self) -> String {
+        let repo_info = match &self.repository {
+            Some(repo) => format!(" Repository: {}", repo),
+            None => String::new(),
+        };
+
+        let failure_info = match &self.failure {
+            Some(failure) => format!(" Failure: {:?}", failure.failure_type),
+            None => String::new(),
+        };
+
+        format!(
+            "Operation: {} (ID: {}) Organization: {}{}{}",
+            self.operation, self.operation_id, self.organization, repo_info, failure_info
+        )
+    }
+}
+
 /// Core trait for metadata repository providers.
 ///
 /// This trait abstracts access to organization configuration repositories, supporting
