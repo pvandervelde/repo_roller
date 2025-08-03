@@ -2328,3 +2328,1396 @@ mod repository_operation_context_tests {
         assert_eq!(context, deserialized);
     }
 }
+
+#[cfg(test)]
+mod comprehensive_integration_tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+
+    /// Comprehensive mock GitHub metadata provider for integration testing.
+    ///
+    /// This provider simulates realistic GitHub repository structures and responses,
+    /// including error conditions, network delays, and various repository configurations.
+    /// It provides controlled scenarios for testing the complete metadata workflow.
+    ///
+    /// # Test Scenarios Supported
+    ///
+    /// - Multiple organizations with different discovery methods
+    /// - Repositories with various structure completeness levels
+    /// - Network failures and recovery scenarios
+    /// - Authentication and authorization issues
+    /// - Rate limiting simulation
+    /// - Realistic file content and directory structures
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::ComprehensiveMockProvider;
+    /// let provider = ComprehensiveMockProvider::new()
+    ///     .with_organization("acme-corp", "acme-config")
+    ///     .with_complete_structure("acme-corp", "acme-config")
+    ///     .with_network_delay_ms(100);
+    /// ```
+    struct ComprehensiveMockProvider {
+        /// Organizations and their metadata repositories
+        organizations: HashMap<String, MockRepositoryInfo>,
+        /// Simulated network delay in milliseconds
+        network_delay_ms: u64,
+        /// Whether to simulate network failures
+        simulate_network_failures: bool,
+        /// Failure rate for network operations (0.0 to 1.0)
+        failure_rate: f32,
+        /// Whether to simulate authentication failures
+        simulate_auth_failures: bool,
+        /// Whether to simulate rate limiting
+        simulate_rate_limiting: bool,
+        /// Current operation count for rate limiting simulation
+        operation_count: std::sync::Arc<std::sync::Mutex<u32>>,
+    }
+
+    /// Mock repository information for integration testing.
+    ///
+    /// Contains comprehensive information about a mock metadata repository,
+    /// including its structure, available configurations, and simulation settings.
+    ///
+    /// # Fields
+    ///
+    /// * `repository_name` - The name of the metadata repository
+    /// * `discovery_method` - How the repository is discovered
+    /// * `has_global_directory` - Whether global/ directory exists
+    /// * `has_global_defaults` - Whether global/defaults.toml exists
+    /// * `has_teams_directory` - Whether teams/ directory exists
+    /// * `has_types_directory` - Whether types/ directory exists
+    /// * `has_schemas_directory` - Whether schemas/ directory exists
+    /// * `available_teams` - List of teams with configuration files
+    /// * `available_types` - List of repository types with configuration files
+    /// * `global_defaults_content` - Simulated content of global/defaults.toml
+    /// * `team_configs` - Simulated team configuration contents
+    /// * `type_configs` - Simulated repository type configuration contents
+    /// * `standard_labels` - Simulated standard labels configuration
+    /// * `access_errors` - Simulated access errors for specific operations
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::MockRepositoryInfo;
+    /// let repo_info = MockRepositoryInfo::new("acme-config")
+    ///     .with_complete_structure()
+    ///     .with_team("platform")
+    ///     .with_repository_type("library");
+    /// ```
+    #[derive(Debug, Clone)]
+    struct MockRepositoryInfo {
+        repository_name: String,
+        discovery_method: DiscoveryMethod,
+        has_global_directory: bool,
+        has_global_defaults: bool,
+        has_teams_directory: bool,
+        has_types_directory: bool,
+        has_schemas_directory: bool,
+        available_teams: Vec<String>,
+        available_types: Vec<String>,
+        global_defaults_content: Option<String>,
+        team_configs: HashMap<String, String>,
+        type_configs: HashMap<String, String>,
+        standard_labels: HashMap<String, String>,
+        access_errors: HashMap<String, crate::ConfigurationError>,
+    }
+
+    /// Simulated GitHub API response data for integration testing.
+    ///
+    /// Represents the data that would be returned by GitHub API calls,
+    /// allowing for realistic testing of the metadata provider system
+    /// without requiring actual GitHub API access.
+    ///
+    /// # Fields
+    ///
+    /// * `repository_exists` - Whether the repository exists on GitHub
+    /// * `is_accessible` - Whether the repository can be accessed with current permissions
+    /// * `directories` - List of directories in the repository
+    /// * `files` - Map of file paths to their content
+    /// * `topics` - Repository topics for topic-based discovery
+    /// * `last_updated` - When the repository was last updated
+    /// * `default_branch` - The default branch name
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::GitHubApiResponse;
+    /// let response = GitHubApiResponse::new()
+    ///     .with_repository_exists(true)
+    ///     .with_directory("global")
+    ///     .with_file("global/defaults.toml", "[repository]\nvisibility = \"private\"");
+    /// ```
+    #[derive(Debug, Clone)]
+    struct GitHubApiResponse {
+        repository_exists: bool,
+        is_accessible: bool,
+        directories: Vec<String>,
+        files: HashMap<String, String>,
+        topics: Vec<String>,
+        last_updated: DateTime<Utc>,
+        default_branch: String,
+    }
+
+    /// Integration test scenario configuration.
+    ///
+    /// Defines a complete test scenario including the organizations to test,
+    /// expected outcomes, error conditions, and performance characteristics.
+    ///
+    /// # Fields
+    ///
+    /// * `name` - Descriptive name of the test scenario
+    /// * `description` - Detailed description of what the scenario tests
+    /// * `organizations` - List of organizations to test
+    /// * `expected_successes` - Number of operations expected to succeed
+    /// * `expected_failures` - Number of operations expected to fail
+    /// * `expected_error_types` - Types of errors expected during the test
+    /// * `max_execution_time_ms` - Maximum allowed execution time
+    /// * `network_conditions` - Simulated network conditions
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::IntegrationTestScenario;
+    /// let scenario = IntegrationTestScenario::new("basic_discovery")
+    ///     .with_description("Test basic repository discovery for multiple organizations")
+    ///     .with_organizations(vec!["acme-corp", "beta-org"])
+    ///     .with_expected_successes(2)
+    ///     .with_max_execution_time_ms(5000);
+    /// ```
+    #[derive(Debug, Clone)]
+    struct IntegrationTestScenario {
+        name: String,
+        description: String,
+        organizations: Vec<String>,
+        expected_successes: u32,
+        expected_failures: u32,
+        expected_error_types: Vec<String>,
+        max_execution_time_ms: u64,
+        network_conditions: NetworkConditions,
+    }
+
+    /// Network conditions for integration testing.
+    ///
+    /// Simulates various network conditions that can affect metadata repository
+    /// operations, including latency, packet loss, and intermittent failures.
+    ///
+    /// # Variants
+    ///
+    /// * `Perfect` - No network issues
+    /// * `HighLatency` - High network latency simulation
+    /// * `Unreliable` - Intermittent network failures
+    /// * `RateLimited` - API rate limiting simulation
+    /// * `Offline` - Complete network failure
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use config_manager::metadata::NetworkConditions;
+    /// let conditions = NetworkConditions::HighLatency { delay_ms: 500 };
+    /// ```
+    #[derive(Debug, Clone)]
+    enum NetworkConditions {
+        /// Perfect network conditions
+        Perfect,
+        /// High latency network
+        HighLatency { delay_ms: u64 },
+        /// Unreliable network with intermittent failures
+        Unreliable { failure_rate: f32 },
+        /// Rate limited API responses
+        RateLimited { max_requests_per_minute: u32 },
+        /// Complete network failure
+        Offline,
+    }
+
+    impl ComprehensiveMockProvider {
+        /// Create a new comprehensive mock provider for integration testing.
+        ///
+        /// # Returns
+        ///
+        /// A new `ComprehensiveMockProvider` with default settings
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new();
+        /// ```
+        fn new() -> Self {
+            Self {
+                organizations: HashMap::new(),
+                network_delay_ms: 0,
+                simulate_network_failures: false,
+                failure_rate: 0.0,
+                simulate_auth_failures: false,
+                simulate_rate_limiting: false,
+                operation_count: std::sync::Arc::new(std::sync::Mutex::new(0)),
+            }
+        }
+
+        /// Add an organization with its metadata repository configuration.
+        ///
+        /// # Arguments
+        ///
+        /// * `org` - The organization name
+        /// * `repo_name` - The metadata repository name
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new()
+        ///     .with_organization("acme-corp", "acme-config");
+        /// ```
+        fn with_organization(mut self, org: &str, repo_name: &str) -> Self {
+            let repo_info = MockRepositoryInfo::new(repo_name);
+            self.organizations.insert(org.to_string(), repo_info);
+            self
+        }
+
+        /// Configure complete repository structure for an organization.
+        ///
+        /// # Arguments
+        ///
+        /// * `org` - The organization name
+        /// * `repo_name` - The metadata repository name
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new()
+        ///     .with_complete_structure("acme-corp", "acme-config");
+        /// ```
+        fn with_complete_structure(mut self, org: &str, repo_name: &str) -> Self {
+            let repo_info = MockRepositoryInfo::new(repo_name).with_complete_structure();
+            self.organizations.insert(org.to_string(), repo_info);
+            self
+        }
+
+        /// Set network delay simulation.
+        ///
+        /// # Arguments
+        ///
+        /// * `delay_ms` - Network delay in milliseconds
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new()
+        ///     .with_network_delay_ms(100);
+        /// ```
+        fn with_network_delay_ms(mut self, delay_ms: u64) -> Self {
+            self.network_delay_ms = delay_ms;
+            self
+        }
+
+        /// Enable network failure simulation.
+        ///
+        /// # Arguments
+        ///
+        /// * `failure_rate` - Failure rate from 0.0 to 1.0
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new()
+        ///     .with_network_failures(0.1); // 10% failure rate
+        /// ```
+        fn with_network_failures(mut self, failure_rate: f32) -> Self {
+            self.simulate_network_failures = true;
+            self.failure_rate = failure_rate;
+            self
+        }
+
+        /// Enable authentication failure simulation.
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new()
+        ///     .with_auth_failures();
+        /// ```
+        fn with_auth_failures(mut self) -> Self {
+            self.simulate_auth_failures = true;
+            self
+        }
+
+        /// Enable rate limiting simulation.
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::ComprehensiveMockProvider;
+        /// let provider = ComprehensiveMockProvider::new()
+        ///     .with_rate_limiting();
+        /// ```
+        fn with_rate_limiting(mut self) -> Self {
+            self.simulate_rate_limiting = true;
+            self
+        }
+
+        /// Simulate network delay if configured.
+        async fn simulate_network_delay(&self) {
+            if self.network_delay_ms > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.network_delay_ms)).await;
+            }
+        }
+
+        /// Check if operation should fail due to simulated conditions.
+        fn should_fail(&self) -> bool {
+            if self.simulate_network_failures && self.failure_rate > 0.0 {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+
+                let mut hasher = DefaultHasher::new();
+                std::time::SystemTime::now().hash(&mut hasher);
+                let hash = hasher.finish();
+
+                (hash % 100) as f32 / 100.0 < self.failure_rate
+            } else {
+                false
+            }
+        }
+
+        /// Check if operation should be rate limited.
+        fn should_rate_limit(&self) -> bool {
+            if self.simulate_rate_limiting {
+                let mut count = self.operation_count.lock().unwrap();
+                *count += 1;
+                *count > 60 // Simulate 60 requests per minute limit
+            } else {
+                false
+            }
+        }
+    }
+
+    impl MockRepositoryInfo {
+        /// Create a new mock repository info.
+        ///
+        /// # Arguments
+        ///
+        /// * `repo_name` - The repository name
+        ///
+        /// # Returns
+        ///
+        /// A new `MockRepositoryInfo` with default settings
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::MockRepositoryInfo;
+        /// let repo_info = MockRepositoryInfo::new("acme-config");
+        /// ```
+        fn new(repo_name: &str) -> Self {
+            Self {
+                repository_name: repo_name.to_string(),
+                discovery_method: DiscoveryMethod::ConfigurationBased {
+                    repository_name: repo_name.to_string(),
+                },
+                has_global_directory: false,
+                has_global_defaults: false,
+                has_teams_directory: false,
+                has_types_directory: false,
+                has_schemas_directory: false,
+                available_teams: Vec::new(),
+                available_types: Vec::new(),
+                global_defaults_content: None,
+                team_configs: HashMap::new(),
+                type_configs: HashMap::new(),
+                standard_labels: HashMap::new(),
+                access_errors: HashMap::new(),
+            }
+        }
+
+        /// Configure complete repository structure.
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::MockRepositoryInfo;
+        /// let repo_info = MockRepositoryInfo::new("acme-config")
+        ///     .with_complete_structure();
+        /// ```
+        fn with_complete_structure(mut self) -> Self {
+            self.has_global_directory = true;
+            self.has_global_defaults = true;
+            self.has_teams_directory = true;
+            self.has_types_directory = true;
+            self.has_schemas_directory = true;
+            self.available_teams = vec!["platform".to_string(), "security".to_string()];
+            self.available_types = vec!["library".to_string(), "service".to_string()];
+            self.global_defaults_content = Some(
+                r#"
+[branch_protection_enabled]
+value = true
+override_allowed = false
+
+[repository_visibility]
+value = "private"
+override_allowed = true
+
+[merge_configuration]
+value = { squash_merge = true, merge_commit = false, rebase_merge = false }
+override_allowed = true
+"#
+                .to_string(),
+            );
+            self.team_configs.insert(
+                "platform".to_string(),
+                r#"
+repository_visibility = "internal"
+
+[[team_labels]]
+name = "enhancement"
+color = "a2eeef"
+description = "New feature or request"
+"#
+                .to_string(),
+            );
+            self.team_configs.insert(
+                "security".to_string(),
+                r#"
+repository_visibility = "private"
+
+[[team_labels]]
+name = "security"
+color = "ff0000"
+description = "Security-related issue"
+"#
+                .to_string(),
+            );
+            self.type_configs.insert(
+                "library".to_string(),
+                r#"
+[branch_protection]
+required_status_checks = ["ci", "security-scan"]
+dismiss_stale_reviews = true
+require_code_owner_reviews = true
+
+[[custom_properties]]
+name = "type"
+value = "library"
+"#
+                .to_string(),
+            );
+            self.type_configs.insert(
+                "service".to_string(),
+                r#"
+[branch_protection]
+required_status_checks = ["ci", "integration-tests"]
+dismiss_stale_reviews = false
+require_code_owner_reviews = true
+
+[[custom_properties]]
+name = "type"
+value = "service"
+"#
+                .to_string(),
+            );
+            self
+        }
+
+        /// Add a team configuration.
+        ///
+        /// # Arguments
+        ///
+        /// * `team_name` - The team name
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::MockRepositoryInfo;
+        /// let repo_info = MockRepositoryInfo::new("acme-config")
+        ///     .with_team("platform");
+        /// ```
+        fn with_team(mut self, team_name: &str) -> Self {
+            self.available_teams.push(team_name.to_string());
+            self.team_configs.insert(
+                team_name.to_string(),
+                format!(
+                    r#"
+[[team_labels]]
+name = "team-{}"
+color = "cccccc"
+description = "Team {} label"
+"#,
+                    team_name, team_name
+                ),
+            );
+            self
+        }
+
+        /// Add a repository type configuration.
+        ///
+        /// # Arguments
+        ///
+        /// * `type_name` - The repository type name
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::MockRepositoryInfo;
+        /// let repo_info = MockRepositoryInfo::new("acme-config")
+        ///     .with_repository_type("library");
+        /// ```
+        fn with_repository_type(mut self, type_name: &str) -> Self {
+            self.available_types.push(type_name.to_string());
+            self.type_configs.insert(
+                type_name.to_string(),
+                format!(
+                    r#"
+[[custom_properties]]
+name = "type"
+value = "{}"
+"#,
+                    type_name
+                ),
+            );
+            self
+        }
+
+        /// Add an access error for a specific operation.
+        ///
+        /// # Arguments
+        ///
+        /// * `operation` - The operation name
+        /// * `error` - The error to simulate
+        ///
+        /// # Returns
+        ///
+        /// Self for method chaining
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use config_manager::metadata::{MockRepositoryInfo, crate::ConfigurationError};
+        /// let repo_info = MockRepositoryInfo::new("acme-config")
+        ///     .with_access_error("load_global_defaults",
+        ///         crate::ConfigurationError::AccessDenied {
+        ///             repository: "acme-corp/acme-config".to_string(),
+        ///             operation: "load_global_defaults".to_string(),
+        ///         });
+        /// ```
+        fn with_access_error(mut self, operation: &str, error: crate::ConfigurationError) -> Self {
+            self.access_errors.insert(operation.to_string(), error);
+            self
+        }
+    }
+
+    #[async_trait]
+    impl MetadataRepositoryProvider for ComprehensiveMockProvider {
+        /// Discover metadata repository for an organization.
+        async fn discover_metadata_repository(
+            &self,
+            organization: &str,
+        ) -> MetadataResult<MetadataRepository> {
+            self.simulate_network_delay().await;
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/unknown", organization),
+                    operation: "discover_metadata_repository".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: organization.to_string(),
+                    search_method: "configuration-based".to_string(),
+                });
+            }
+
+            if self.simulate_auth_failures {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/unknown", organization),
+                    operation: "discover_metadata_repository".to_string(),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(organization) {
+                Ok(MetadataRepository {
+                    organization: organization.to_string(),
+                    repository_name: repo_info.repository_name.clone(),
+                    discovery_method: repo_info.discovery_method.clone(),
+                    last_updated: Utc::now(),
+                })
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: organization.to_string(),
+                    search_method: "configuration-based".to_string(),
+                })
+            }
+        }
+
+        /// Validate repository structure.
+        async fn validate_repository_structure(
+            &self,
+            repo: &MetadataRepository,
+        ) -> MetadataResult<()> {
+            self.simulate_network_delay().await;
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    operation: "validate_repository_structure".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "validation".to_string(),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(&repo.organization) {
+                let mut missing_items = Vec::new();
+
+                if !repo_info.has_global_directory {
+                    missing_items.push("global directory".to_string());
+                }
+                if !repo_info.has_global_defaults {
+                    missing_items.push("global/defaults.toml".to_string());
+                }
+                if !repo_info.has_teams_directory {
+                    missing_items.push("teams directory".to_string());
+                }
+                if !repo_info.has_types_directory {
+                    missing_items.push("types directory".to_string());
+                }
+
+                if missing_items.is_empty() {
+                    Ok(())
+                } else {
+                    Err(crate::ConfigurationError::InvalidRepositoryStructure {
+                        repository: format!("{}/{}", repo.organization, repo.repository_name),
+                        missing_items,
+                    })
+                }
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "validation".to_string(),
+                })
+            }
+        }
+
+        /// Load global defaults configuration.
+        async fn load_global_defaults(
+            &self,
+            repo: &MetadataRepository,
+        ) -> MetadataResult<GlobalDefaults> {
+            self.simulate_network_delay().await;
+
+            if let Some(error) = self
+                .organizations
+                .get(&repo.organization)
+                .and_then(|repo_info| repo_info.access_errors.get("load_global_defaults"))
+            {
+                return Err(error.clone());
+            }
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    operation: "load_global_defaults".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::FileNotFound {
+                    file_path: "global/defaults.toml".to_string(),
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(&repo.organization) {
+                if let Some(content) = &repo_info.global_defaults_content {
+                    // Parse the TOML content into GlobalDefaults
+                    match toml::from_str::<GlobalDefaults>(content) {
+                        Ok(defaults) => Ok(defaults),
+                        Err(e) => Err(crate::ConfigurationError::ParseError {
+                            file_path: "global/defaults.toml".to_string(),
+                            repository: format!("{}/{}", repo.organization, repo.repository_name),
+                            error: e.to_string(),
+                        }),
+                    }
+                } else {
+                    Err(crate::ConfigurationError::FileNotFound {
+                        file_path: "global/defaults.toml".to_string(),
+                        repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    })
+                }
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "load_global_defaults".to_string(),
+                })
+            }
+        }
+
+        /// Load team configuration.
+        async fn load_team_configuration(
+            &self,
+            repo: &MetadataRepository,
+            team: &str,
+        ) -> MetadataResult<Option<TeamConfig>> {
+            self.simulate_network_delay().await;
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    operation: "load_team_configuration".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::FileNotFound {
+                    file_path: format!("teams/{}/config.toml", team),
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(&repo.organization) {
+                if let Some(content) = repo_info.team_configs.get(team) {
+                    match toml::from_str::<TeamConfig>(content) {
+                        Ok(config) => Ok(Some(config)),
+                        Err(e) => Err(crate::ConfigurationError::ParseError {
+                            file_path: format!("teams/{}/config.toml", team),
+                            repository: format!("{}/{}", repo.organization, repo.repository_name),
+                            error: e.to_string(),
+                        }),
+                    }
+                } else {
+                    Ok(None) // Team configuration doesn't exist, which is valid
+                }
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "load_team_configuration".to_string(),
+                })
+            }
+        }
+
+        /// Load repository type configuration.
+        async fn load_repository_type_configuration(
+            &self,
+            repo: &MetadataRepository,
+            repo_type: &str,
+        ) -> MetadataResult<Option<RepositoryTypeConfig>> {
+            self.simulate_network_delay().await;
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    operation: "load_repository_type_configuration".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::FileNotFound {
+                    file_path: format!("types/{}/config.toml", repo_type),
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(&repo.organization) {
+                if let Some(content) = repo_info.type_configs.get(repo_type) {
+                    match toml::from_str::<RepositoryTypeConfig>(content) {
+                        Ok(config) => Ok(Some(config)),
+                        Err(e) => Err(crate::ConfigurationError::ParseError {
+                            file_path: format!("types/{}/config.toml", repo_type),
+                            repository: format!("{}/{}", repo.organization, repo.repository_name),
+                            error: e.to_string(),
+                        }),
+                    }
+                } else {
+                    Ok(None) // Repository type configuration doesn't exist, which is valid
+                }
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "load_repository_type_configuration".to_string(),
+                })
+            }
+        }
+
+        /// List available repository types.
+        async fn list_available_repository_types(
+            &self,
+            repo: &MetadataRepository,
+        ) -> MetadataResult<Vec<String>> {
+            self.simulate_network_delay().await;
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    operation: "list_available_repository_types".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::NetworkError {
+                    error: "Simulated network failure".to_string(),
+                    operation: "list_available_repository_types".to_string(),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(&repo.organization) {
+                Ok(repo_info.available_types.clone())
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "list_available_repository_types".to_string(),
+                })
+            }
+        }
+
+        /// Load standard labels.
+        async fn load_standard_labels(
+            &self,
+            repo: &MetadataRepository,
+        ) -> MetadataResult<HashMap<String, crate::LabelConfig>> {
+            self.simulate_network_delay().await;
+
+            if self.should_rate_limit() {
+                return Err(crate::ConfigurationError::AccessDenied {
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                    operation: "load_standard_labels".to_string(),
+                });
+            }
+
+            if self.should_fail() {
+                return Err(crate::ConfigurationError::FileNotFound {
+                    file_path: "global/labels.toml".to_string(),
+                    repository: format!("{}/{}", repo.organization, repo.repository_name),
+                });
+            }
+
+            if let Some(repo_info) = self.organizations.get(&repo.organization) {
+                let mut labels = HashMap::new();
+
+                // Create some mock standard labels
+                labels.insert(
+                    "bug".to_string(),
+                    crate::LabelConfig {
+                        name: "bug".to_string(),
+                        color: "d73a4a".to_string(),
+                        description: Some("Something isn't working".to_string()),
+                    },
+                );
+
+                labels.insert(
+                    "enhancement".to_string(),
+                    crate::LabelConfig {
+                        name: "enhancement".to_string(),
+                        color: "a2eeef".to_string(),
+                        description: Some("New feature or request".to_string()),
+                    },
+                );
+
+                Ok(labels)
+            } else {
+                Err(crate::ConfigurationError::RepositoryNotFound {
+                    organization: repo.organization.clone(),
+                    search_method: "load_standard_labels".to_string(),
+                })
+            }
+        }
+    }
+
+    /// Test comprehensive integration scenarios with realistic mock providers.
+    #[tokio::test]
+    async fn test_comprehensive_multi_organization_discovery() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("acme-corp", "acme-config")
+            .with_complete_structure("beta-org", "beta-settings")
+            .with_organization("gamma-inc", "gamma-metadata");
+
+        // Test successful discovery for organizations with complete structures
+        let acme_result = provider.discover_metadata_repository("acme-corp").await;
+        assert!(acme_result.is_ok());
+        if let Ok(repo) = acme_result {
+            assert_eq!(repo.repository_name, "acme-config");
+            assert_eq!(repo.organization, "acme-corp");
+        } else {
+            panic!("Expected successful discovery");
+        }
+
+        let beta_result = provider.discover_metadata_repository("beta-org").await;
+        assert!(beta_result.is_ok());
+
+        // Test discovery for organization with incomplete structure
+        let gamma_result = provider.discover_metadata_repository("gamma-inc").await;
+        assert!(gamma_result.is_ok());
+
+        // Test discovery for non-existent organization
+        let missing_result = provider.discover_metadata_repository("missing-org").await;
+        assert!(missing_result.is_err());
+        if let Err(crate::ConfigurationError::RepositoryNotFound {
+            organization,
+            search_method,
+        }) = missing_result
+        {
+            assert_eq!(organization, "missing-org");
+            assert_eq!(search_method, "configuration-based");
+        } else {
+            panic!("Expected RepositoryNotFound error");
+        }
+    }
+
+    /// Test repository structure validation with various completeness levels.
+    #[tokio::test]
+    async fn test_comprehensive_repository_structure_validation() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("complete-org", "complete-config")
+            .with_organization("partial-org", "partial-config");
+
+        // Create test repositories
+        let complete_repo = MetadataRepository {
+            organization: "complete-org".to_string(),
+            repository_name: "complete-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "complete-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        let partial_repo = MetadataRepository {
+            organization: "partial-org".to_string(),
+            repository_name: "partial-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "partial-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        // Test validation of complete repository structure
+        let complete_result = provider.validate_repository_structure(&complete_repo).await;
+        assert!(complete_result.is_ok());
+
+        // Test validation of partial repository structure
+        let partial_result = provider.validate_repository_structure(&partial_repo).await;
+        assert!(partial_result.is_err());
+        if let Err(crate::ConfigurationError::InvalidRepositoryStructure {
+            repository,
+            missing_items,
+        }) = partial_result
+        {
+            assert_eq!(repository, "partial-org/partial-config");
+            assert!(!missing_items.is_empty());
+            assert!(missing_items.contains(&"global directory".to_string()));
+        } else {
+            panic!("Expected InvalidRepositoryStructure error");
+        }
+    }
+
+    /// Test global defaults loading with various scenarios.
+    #[tokio::test]
+    async fn test_comprehensive_global_defaults_loading() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("test-org", "test-config")
+            .with_organization("no-defaults-org", "no-defaults-config");
+
+        let test_repo = MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: "test-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        let no_defaults_repo = MetadataRepository {
+            organization: "no-defaults-org".to_string(),
+            repository_name: "no-defaults-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "no-defaults-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        // Test successful global defaults loading
+        let success_result = provider.load_global_defaults(&test_repo).await;
+        assert!(success_result.is_ok());
+
+        // Test loading from organization without global defaults
+        let no_defaults_result = provider.load_global_defaults(&no_defaults_repo).await;
+        assert!(no_defaults_result.is_err());
+        if let Err(crate::ConfigurationError::FileNotFound {
+            file_path,
+            repository,
+        }) = no_defaults_result
+        {
+            assert_eq!(file_path, "global/defaults.toml");
+            assert_eq!(repository, "no-defaults-org/no-defaults-config");
+        } else {
+            panic!("Expected FileNotFound error");
+        }
+
+        // Test loading from non-existent organization
+        let missing_repo = MetadataRepository {
+            organization: "missing-org".to_string(),
+            repository_name: "missing-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "missing-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        let missing_org_result = provider.load_global_defaults(&missing_repo).await;
+        assert!(missing_org_result.is_err());
+        if let Err(crate::ConfigurationError::RepositoryNotFound {
+            organization,
+            search_method,
+        }) = missing_org_result
+        {
+            assert_eq!(organization, "missing-org");
+            assert_eq!(search_method, "load_global_defaults");
+        } else {
+            panic!("Expected RepositoryNotFound error");
+        }
+    }
+
+    /// Test team configuration loading with various scenarios.
+    #[tokio::test]
+    async fn test_comprehensive_team_config_loading() {
+        let provider =
+            ComprehensiveMockProvider::new().with_complete_structure("test-org", "test-config");
+
+        let test_repo = MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: "test-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        // Test successful team config loading
+        let platform_result = provider
+            .load_team_configuration(&test_repo, "platform")
+            .await;
+        assert!(platform_result.is_ok());
+        assert!(platform_result.unwrap().is_some());
+
+        let security_result = provider
+            .load_team_configuration(&test_repo, "security")
+            .await;
+        assert!(security_result.is_ok());
+        assert!(security_result.unwrap().is_some());
+
+        // Test loading non-existent team config
+        let missing_team_result = provider
+            .load_team_configuration(&test_repo, "missing-team")
+            .await;
+        assert!(missing_team_result.is_ok());
+        assert!(missing_team_result.unwrap().is_none());
+
+        // Test loading from non-existent organization
+        let missing_repo = MetadataRepository {
+            organization: "missing-org".to_string(),
+            repository_name: "missing-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "missing-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        let missing_org_result = provider
+            .load_team_configuration(&missing_repo, "platform")
+            .await;
+        assert!(missing_org_result.is_err());
+        if let Err(crate::ConfigurationError::RepositoryNotFound {
+            organization,
+            search_method,
+        }) = missing_org_result
+        {
+            assert_eq!(organization, "missing-org");
+            assert_eq!(search_method, "load_team_configuration");
+        } else {
+            panic!("Expected RepositoryNotFound error");
+        }
+    }
+
+    /// Test repository type configuration loading with various scenarios.
+    #[tokio::test]
+    async fn test_comprehensive_type_config_loading() {
+        let provider =
+            ComprehensiveMockProvider::new().with_complete_structure("test-org", "test-config");
+
+        let test_repo = MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: "test-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        // Test successful type config loading
+        let library_result = provider
+            .load_repository_type_configuration(&test_repo, "library")
+            .await;
+        assert!(library_result.is_ok());
+        assert!(library_result.unwrap().is_some());
+
+        let service_result = provider
+            .load_repository_type_configuration(&test_repo, "service")
+            .await;
+        assert!(service_result.is_ok());
+        assert!(service_result.unwrap().is_some());
+
+        // Test loading non-existent type config
+        let missing_type_result = provider
+            .load_repository_type_configuration(&test_repo, "missing-type")
+            .await;
+        assert!(missing_type_result.is_ok());
+        assert!(missing_type_result.unwrap().is_none());
+
+        // Test loading from non-existent organization
+        let missing_repo = MetadataRepository {
+            organization: "missing-org".to_string(),
+            repository_name: "missing-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "missing-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        let missing_org_result = provider
+            .load_repository_type_configuration(&missing_repo, "library")
+            .await;
+        assert!(missing_org_result.is_err());
+        if let Err(crate::ConfigurationError::RepositoryNotFound {
+            organization,
+            search_method,
+        }) = missing_org_result
+        {
+            assert_eq!(organization, "missing-org");
+            assert_eq!(search_method, "load_repository_type_configuration");
+        } else {
+            panic!("Expected RepositoryNotFound error");
+        }
+    }
+
+    /// Test network failure simulation scenarios.
+    #[tokio::test]
+    async fn test_network_failure_scenarios() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("test-org", "test-config")
+            .with_network_failures(1.0); // 100% failure rate
+
+        let test_repo = MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: "test-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        // All operations should fail due to network simulation
+        let discovery_result = provider.discover_metadata_repository("test-org").await;
+        assert!(discovery_result.is_err());
+
+        let validation_result = provider.validate_repository_structure(&test_repo).await;
+        assert!(validation_result.is_err());
+
+        let defaults_result = provider.load_global_defaults(&test_repo).await;
+        assert!(defaults_result.is_err());
+
+        let team_result = provider
+            .load_team_configuration(&test_repo, "platform")
+            .await;
+        assert!(team_result.is_err());
+
+        let type_result = provider
+            .load_repository_type_configuration(&test_repo, "library")
+            .await;
+        assert!(type_result.is_err());
+    }
+
+    /// Test authentication failure simulation scenarios.
+    #[tokio::test]
+    async fn test_authentication_failure_scenarios() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("test-org", "test-config")
+            .with_auth_failures();
+
+        // Discovery should fail with access denied
+        let discovery_result = provider.discover_metadata_repository("test-org").await;
+        assert!(discovery_result.is_err());
+        if let Err(crate::ConfigurationError::AccessDenied {
+            repository,
+            operation,
+        }) = discovery_result
+        {
+            assert_eq!(repository, "test-org/unknown");
+            assert_eq!(operation, "discover_metadata_repository");
+        } else {
+            panic!("Expected AccessDenied error");
+        }
+    }
+
+    /// Test rate limiting simulation scenarios.
+    #[tokio::test]
+    async fn test_rate_limiting_scenarios() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("test-org", "test-config")
+            .with_rate_limiting();
+
+        // First few operations should succeed, then rate limiting should kick in
+        let mut success_count = 0;
+        let mut rate_limited_count = 0;
+
+        for i in 0..100 {
+            let result = provider.discover_metadata_repository("test-org").await;
+            match result {
+                Ok(_) => success_count += 1,
+                Err(crate::ConfigurationError::AccessDenied { .. }) => {
+                    rate_limited_count += 1;
+                    break; // Stop after first rate limit
+                }
+                Err(_) => panic!("Unexpected error at iteration {}", i),
+            }
+        }
+
+        assert!(
+            success_count > 0,
+            "Should have some successful operations before rate limiting"
+        );
+        assert!(rate_limited_count > 0, "Should trigger rate limiting");
+    }
+
+    /// Test network delay simulation.
+    #[tokio::test]
+    async fn test_network_delay_simulation() {
+        let provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("test-org", "test-config")
+            .with_network_delay_ms(100);
+
+        let start_time = std::time::Instant::now();
+        let _result = provider.discover_metadata_repository("test-org").await;
+        let elapsed = start_time.elapsed();
+
+        // Should take at least the simulated delay
+        assert!(
+            elapsed.as_millis() >= 100,
+            "Operation should take at least 100ms due to simulated delay"
+        );
+    }
+
+    /// Test mixed success and failure scenarios with comprehensive error handling.
+    #[tokio::test]
+    async fn test_mixed_success_failure_scenarios() {
+        let mut provider = ComprehensiveMockProvider::new()
+            .with_complete_structure("success-org", "success-config")
+            .with_organization("partial-org", "partial-config")
+            .with_network_failures(0.3); // 30% failure rate
+
+        // Add specific access error for one operation
+        if let Some(repo_info) = provider.organizations.get_mut("partial-org") {
+            repo_info.access_errors.insert(
+                "load_global_defaults".to_string(),
+                crate::ConfigurationError::AccessDenied {
+                    repository: "partial-org/partial-config".to_string(),
+                    operation: "load_global_defaults".to_string(),
+                },
+            );
+        }
+
+        // Test multiple operations and collect results
+        let mut results = Vec::new();
+
+        for org in &["success-org", "partial-org", "missing-org"] {
+            let discovery_result = provider.discover_metadata_repository(org).await;
+            results.push(("discovery", org, discovery_result.is_ok()));
+
+            if org != &"missing-org" {
+                let test_repo = MetadataRepository {
+                    organization: org.to_string(),
+                    repository_name: "test-config".to_string(),
+                    discovery_method: DiscoveryMethod::ConfigurationBased {
+                        repository_name: "test-config".to_string(),
+                    },
+                    last_updated: Utc::now(),
+                };
+                let defaults_result = provider.load_global_defaults(&test_repo).await;
+                results.push(("defaults", org, defaults_result.is_ok()));
+            }
+        }
+
+        // Should have mix of successes and failures
+        let success_count = results.iter().filter(|(_, _, success)| *success).count();
+        let failure_count = results.len() - success_count;
+
+        assert!(success_count > 0, "Should have some successful operations");
+        assert!(failure_count > 0, "Should have some failed operations");
+
+        // Test specific access error
+        let partial_repo = MetadataRepository {
+            organization: "partial-org".to_string(),
+            repository_name: "partial-config".to_string(),
+            discovery_method: DiscoveryMethod::ConfigurationBased {
+                repository_name: "partial-config".to_string(),
+            },
+            last_updated: Utc::now(),
+        };
+
+        let partial_defaults_result = provider.load_global_defaults(&partial_repo).await;
+        assert!(partial_defaults_result.is_err());
+        if let Err(crate::ConfigurationError::AccessDenied {
+            repository,
+            operation,
+        }) = partial_defaults_result
+        {
+            assert_eq!(repository, "partial-org/partial-config");
+            assert_eq!(operation, "load_global_defaults");
+        } else {
+            panic!("Expected AccessDenied error for partial-org");
+        }
+    }
+}
