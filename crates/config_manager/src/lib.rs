@@ -21,8 +21,11 @@ use thiserror::Error;
 
 // Configuration modules
 pub mod errors;
+pub mod github_provider;
 pub mod hierarchy;
 pub mod merged;
+pub mod metadata;
+pub mod organization;
 pub mod settings;
 pub mod templates;
 pub mod types;
@@ -31,6 +34,7 @@ pub mod types;
 pub use errors::*;
 pub use hierarchy::*;
 pub use merged::*;
+pub use metadata::*;
 pub use settings::*;
 pub use templates::*;
 pub use types::*;
