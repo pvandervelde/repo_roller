@@ -26,6 +26,7 @@ pub mod hierarchy;
 pub mod merged;
 pub mod metadata;
 pub mod organization;
+pub mod parsers;
 pub mod settings;
 pub mod templates;
 pub mod types;
