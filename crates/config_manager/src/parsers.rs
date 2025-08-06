@@ -234,8 +234,24 @@ impl GlobalDefaultsParser {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
         let mut fields_parsed = 0;
-        let mut defaults_applied = 0;
+        let defaults_applied = 0;
         let mut has_deprecated_syntax = false;
+
+        // Handle empty content case
+        if toml_content.trim().is_empty() {
+            return ParseResult {
+                config: Some(GlobalDefaults::new()),
+                errors,
+                warnings,
+                metadata: ParseMetadata {
+                    file_path: file_path.to_string(),
+                    repository_context: repository_context.to_string(),
+                    fields_parsed: 0,
+                    defaults_applied: 0,
+                    has_deprecated_syntax: false,
+                },
+            };
+        }
 
         // First, try to parse the TOML syntax
         let parsed_toml = match toml::from_str::<toml::Value>(toml_content) {
@@ -262,9 +278,45 @@ impl GlobalDefaultsParser {
             }
         };
 
+        // Check for deprecated syntax patterns first
+        if let Some(table) = parsed_toml.as_table() {
+            for (key, value) in table {
+                match key.as_str() {
+                    "repository_visibility" | "branch_protection_enabled" => {
+                        if !value.is_table() {
+                            has_deprecated_syntax = true;
+                            let message = "Using deprecated direct value syntax. Use { value = X, override_allowed = Y } instead.";
+                            if self.allow_deprecated_syntax {
+                                warnings.push(ParseWarning {
+                                    field_path: key.clone(),
+                                    value: format!("{:?}", value),
+                                    message: message.to_string(),
+                                    recommendation: Some(format!(
+                                        "Migrate to: {} = {{ value = {:?}, override_allowed = true }}",
+                                        key, value
+                                    )),
+                                });
+                            } else {
+                                errors.push(ParseError {
+                                    field_path: key.clone(),
+                                    invalid_value: format!("{:?}", value),
+                                    reason: format!("Deprecated syntax not allowed: {}", message),
+                                    suggestion: Some(format!(
+                                        "Use {} = {{ value = {:?}, override_allowed = true }}",
+                                        key, value
+                                    )),
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // Try to parse into GlobalDefaults structure
         let config = match toml::from_str::<GlobalDefaults>(toml_content) {
-            Ok(mut config) => {
+            Ok(config) => {
                 // Count non-None fields
                 if config.branch_protection_enabled.is_some() {
                     fields_parsed += 1;
@@ -285,51 +337,17 @@ impl GlobalDefaultsParser {
                     fields_parsed += 1;
                 }
 
-                // Apply defaults if needed
-                if config.branch_protection_enabled.is_none() {
-                    defaults_applied += 1;
-                }
-
                 // Validate security settings if strict security is enabled
                 if self.strict_security_validation {
                     if let Some(webhooks) = &config.organization_webhooks {
                         for (index, webhook) in webhooks.value().iter().enumerate() {
                             if let Err(error) = parsing_utils::validate_secure_url(
                                 &webhook.url,
-                                &format!("organization_webhooks[{}].url", index),
+                                &format!("organization_webhooks.value[{}].url", index),
                             ) {
                                 errors.push(error);
                             }
                         }
-                    }
-                }
-
-                // Check for deprecated syntax patterns
-                if parsed_toml.get("repository_visibility").is_some()
-                    && !parsed_toml.get("repository_visibility").unwrap().is_table()
-                {
-                    has_deprecated_syntax = true;
-                    let message = "Using deprecated direct value syntax. Use { value = X, override_allowed = Y } instead.";
-                    if self.allow_deprecated_syntax {
-                        warnings.push(ParseWarning {
-                            field_path: "repository_visibility".to_string(),
-                            value: format!("{:?}", parsed_toml.get("repository_visibility")),
-                            message: message.to_string(),
-                            recommendation: Some(
-                                "Migrate to: repository_visibility = { value = \"private\", override_allowed = true }"
-                                    .to_string(),
-                            ),
-                        });
-                    } else {
-                        errors.push(ParseError {
-                            field_path: "repository_visibility".to_string(),
-                            invalid_value: format!("{:?}", parsed_toml.get("repository_visibility")),
-                            reason: format!("Deprecated syntax not allowed: {}", message),
-                            suggestion: Some(
-                                "Use repository_visibility = { value = \"private\", override_allowed = true }"
-                                    .to_string(),
-                            ),
-                        });
                     }
                 }
 
@@ -378,7 +396,7 @@ impl GlobalDefaultsParser {
                         repository_context: repository_context.to_string(),
                         fields_parsed: 0,
                         defaults_applied: 0,
-                        has_deprecated_syntax: false,
+                        has_deprecated_syntax,
                     },
                 };
             }
@@ -395,7 +413,7 @@ impl GlobalDefaultsParser {
                     for (index, webhook) in webhooks.value().iter().enumerate() {
                         if let Err(validation_error) = validator(&webhook.url) {
                             errors.push(ParseError {
-                                field_path: format!("webhooks[{}].url", index),
+                                field_path: format!("organization_webhooks.value[{}].url", index),
                                 invalid_value: webhook.url.clone(),
                                 reason: validation_error,
                                 suggestion: None,
@@ -741,12 +759,24 @@ pub mod parsing_utils {
     ///
     /// `Ok(())` if the URL is secure, `Err(ParseError)` otherwise.
     pub fn validate_secure_url(url: &str, field_path: &str) -> Result<(), ParseError> {
+        // First check if it's a valid URL format
+        if !url.contains("://") {
+            return Err(ParseError {
+                field_path: field_path.to_string(),
+                invalid_value: url.to_string(),
+                reason: "Invalid URL format - must be a valid URL".to_string(),
+                suggestion: Some(
+                    "Ensure the URL includes a protocol (e.g., https://example.com)".to_string(),
+                ),
+            });
+        }
+
         // Check if URL starts with https://
         if !url.starts_with("https://") {
             Err(ParseError {
                 field_path: field_path.to_string(),
                 invalid_value: url.to_string(),
-                reason: "URL must use secure HTTPS protocol".to_string(),
+                reason: "URL must use secure protocol (HTTPS)".to_string(),
                 suggestion: Some("Change URL to use https:// instead of http://".to_string()),
             })
         } else {
