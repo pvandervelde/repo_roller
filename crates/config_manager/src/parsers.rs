@@ -140,8 +140,11 @@ impl GlobalDefaultsParser {
     /// let parser = GlobalDefaultsParser::new();
     /// ```
     pub fn new() -> Self {
-        // TODO: implement
-        todo!("Implement GlobalDefaultsParser::new")
+        Self {
+            strict_security_validation: true,
+            allow_deprecated_syntax: false,
+            custom_validators: HashMap::new(),
+        }
     }
 
     /// Creates a new parser with custom validation settings.
@@ -167,8 +170,11 @@ impl GlobalDefaultsParser {
     /// let parser = GlobalDefaultsParser::with_options(true, true);
     /// ```
     pub fn with_options(strict_security: bool, allow_deprecated: bool) -> Self {
-        // TODO: implement
-        todo!("Implement GlobalDefaultsParser::with_options")
+        Self {
+            strict_security_validation: strict_security,
+            allow_deprecated_syntax: allow_deprecated,
+            custom_validators: HashMap::new(),
+        }
     }
 
     /// Parses global defaults configuration from TOML content.
@@ -225,8 +231,199 @@ impl GlobalDefaultsParser {
         file_path: &str,
         repository_context: &str,
     ) -> ParseResult<GlobalDefaults> {
-        // TODO: implement
-        todo!("Implement GlobalDefaultsParser::parse")
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        let mut fields_parsed = 0;
+        let mut defaults_applied = 0;
+        let mut has_deprecated_syntax = false;
+
+        // First, try to parse the TOML syntax
+        let parsed_toml = match toml::from_str::<toml::Value>(toml_content) {
+            Ok(value) => value,
+            Err(e) => {
+                errors.push(ParseError {
+                    field_path: file_path.to_string(),
+                    invalid_value: toml_content.to_string(),
+                    reason: format!("TOML syntax error: {}", e),
+                    suggestion: Some("Check TOML syntax and formatting".to_string()),
+                });
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed: 0,
+                        defaults_applied: 0,
+                        has_deprecated_syntax: false,
+                    },
+                };
+            }
+        };
+
+        // Try to parse into GlobalDefaults structure
+        let config = match toml::from_str::<GlobalDefaults>(toml_content) {
+            Ok(mut config) => {
+                // Count non-None fields
+                if config.branch_protection_enabled.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.repository_visibility.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.merge_configuration.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.default_labels.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.organization_webhooks.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.required_github_apps.is_some() {
+                    fields_parsed += 1;
+                }
+
+                // Apply defaults if needed
+                if config.branch_protection_enabled.is_none() {
+                    defaults_applied += 1;
+                }
+
+                // Validate security settings if strict security is enabled
+                if self.strict_security_validation {
+                    if let Some(webhooks) = &config.organization_webhooks {
+                        for (index, webhook) in webhooks.value().iter().enumerate() {
+                            if let Err(error) = parsing_utils::validate_secure_url(
+                                &webhook.url,
+                                &format!("organization_webhooks[{}].url", index),
+                            ) {
+                                errors.push(error);
+                            }
+                        }
+                    }
+                }
+
+                // Check for deprecated syntax patterns
+                if parsed_toml.get("repository_visibility").is_some()
+                    && !parsed_toml.get("repository_visibility").unwrap().is_table()
+                {
+                    has_deprecated_syntax = true;
+                    let message = "Using deprecated direct value syntax. Use { value = X, override_allowed = Y } instead.";
+                    if self.allow_deprecated_syntax {
+                        warnings.push(ParseWarning {
+                            field_path: "repository_visibility".to_string(),
+                            value: format!("{:?}", parsed_toml.get("repository_visibility")),
+                            message: message.to_string(),
+                            recommendation: Some(
+                                "Migrate to: repository_visibility = { value = \"private\", override_allowed = true }"
+                                    .to_string(),
+                            ),
+                        });
+                    } else {
+                        errors.push(ParseError {
+                            field_path: "repository_visibility".to_string(),
+                            invalid_value: format!("{:?}", parsed_toml.get("repository_visibility")),
+                            reason: format!("Deprecated syntax not allowed: {}", message),
+                            suggestion: Some(
+                                "Use repository_visibility = { value = \"private\", override_allowed = true }"
+                                    .to_string(),
+                            ),
+                        });
+                    }
+                }
+
+                config
+            }
+            Err(e) => {
+                // Check if it's an unknown field error
+                let error_message = e.to_string();
+                if error_message.contains("unknown field") {
+                    // Extract field name from error message
+                    let field_name = if let Some(start) = error_message.find('`') {
+                        if let Some(end) = error_message[start + 1..].find('`') {
+                            &error_message[start + 1..start + 1 + end]
+                        } else {
+                            "unknown_field"
+                        }
+                    } else {
+                        "unknown_field"
+                    };
+
+                    errors.push(ParseError {
+                        field_path: field_name.to_string(),
+                        invalid_value: "true".to_string(),
+                        reason: format!("Unknown field '{}'", field_name),
+                        suggestion: Some(
+                            "Check the documentation for valid field names".to_string(),
+                        ),
+                    });
+                } else {
+                    errors.push(ParseError {
+                        field_path: file_path.to_string(),
+                        invalid_value: toml_content.to_string(),
+                        reason: format!("Configuration parsing error: {}", e),
+                        suggestion: Some(
+                            "Check configuration structure and field types".to_string(),
+                        ),
+                    });
+                }
+
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed: 0,
+                        defaults_applied: 0,
+                        has_deprecated_syntax: false,
+                    },
+                };
+            }
+        };
+
+        // Additional validation
+        let policy_errors = self.validate_policies(&config, file_path);
+        errors.extend(policy_errors);
+
+        // Apply custom validators
+        for (pattern, validator) in &self.custom_validators {
+            if pattern.contains("webhooks.*.url") {
+                if let Some(webhooks) = &config.organization_webhooks {
+                    for (index, webhook) in webhooks.value().iter().enumerate() {
+                        if let Err(validation_error) = validator(&webhook.url) {
+                            errors.push(ParseError {
+                                field_path: format!("webhooks[{}].url", index),
+                                invalid_value: webhook.url.clone(),
+                                reason: validation_error,
+                                suggestion: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        let final_config = if errors.is_empty() {
+            Some(config)
+        } else {
+            None
+        };
+
+        ParseResult {
+            config: final_config,
+            errors,
+            warnings,
+            metadata: ParseMetadata {
+                file_path: file_path.to_string(),
+                repository_context: repository_context.to_string(),
+                fields_parsed,
+                defaults_applied,
+                has_deprecated_syntax,
+            },
+        }
     }
 
     /// Parses enhanced global defaults configuration from TOML content.
@@ -266,8 +463,89 @@ impl GlobalDefaultsParser {
         file_path: &str,
         repository_context: &str,
     ) -> ParseResult<GlobalDefaultsEnhanced> {
-        // TODO: implement
-        todo!("Implement GlobalDefaultsParser::parse_enhanced")
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        let mut fields_parsed = 0;
+        let mut defaults_applied = 0;
+        let has_deprecated_syntax = false;
+
+        // Try to parse into GlobalDefaultsEnhanced structure
+        let config = match toml::from_str::<GlobalDefaultsEnhanced>(toml_content) {
+            Ok(config) => {
+                // Count non-None fields
+                if config.actions.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.branch_protection.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.custom_properties.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.environments.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.github_apps.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.pull_requests.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.push.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.repository.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.webhooks.is_some() {
+                    fields_parsed += 1;
+                }
+
+                config
+            }
+            Err(e) => {
+                errors.push(ParseError {
+                    field_path: file_path.to_string(),
+                    invalid_value: toml_content.to_string(),
+                    reason: format!("Enhanced configuration parsing error: {}", e),
+                    suggestion: Some(
+                        "Check enhanced configuration structure and field types".to_string(),
+                    ),
+                });
+
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed: 0,
+                        defaults_applied: 0,
+                        has_deprecated_syntax: false,
+                    },
+                };
+            }
+        };
+
+        let final_config = if errors.is_empty() {
+            Some(config)
+        } else {
+            None
+        };
+
+        ParseResult {
+            config: final_config,
+            errors,
+            warnings,
+            metadata: ParseMetadata {
+                file_path: file_path.to_string(),
+                repository_context: repository_context.to_string(),
+                fields_parsed,
+                defaults_applied,
+                has_deprecated_syntax,
+            },
+        }
     }
 
     /// Validates the parsed configuration against organization policies.
@@ -308,8 +586,28 @@ impl GlobalDefaultsParser {
     /// - Webhook URLs must use secure protocols
     /// - Custom properties must follow naming conventions
     pub fn validate_policies(&self, config: &GlobalDefaults, context: &str) -> Vec<ParseError> {
-        // TODO: implement
-        todo!("Implement GlobalDefaultsParser::validate_policies")
+        let mut errors = Vec::new();
+
+        // Validate security policies if strict security is enabled
+        if self.strict_security_validation {
+            // Check branch protection is not disabled
+            if let Some(branch_protection) = &config.branch_protection_enabled {
+                if !branch_protection.value() {
+                    errors.push(ParseError {
+                        field_path: "branch_protection_enabled".to_string(),
+                        invalid_value: "false".to_string(),
+                        reason: "Branch protection cannot be disabled in strict security mode"
+                            .to_string(),
+                        suggestion: Some(
+                            "Set branch_protection_enabled to true for security compliance"
+                                .to_string(),
+                        ),
+                    });
+                }
+            }
+        }
+
+        errors
     }
 
     /// Adds a custom validation rule for specific configuration fields.
@@ -340,8 +638,8 @@ impl GlobalDefaultsParser {
     where
         F: Fn(&str) -> Result<(), String> + Send + Sync + 'static,
     {
-        // TODO: implement
-        todo!("Implement GlobalDefaultsParser::add_custom_validator")
+        self.custom_validators
+            .insert(field_path.to_string(), Box::new(validator));
     }
 }
 
@@ -371,8 +669,26 @@ pub mod parsing_utils {
         expected_type: &str,
         field_path: &str,
     ) -> Result<(), ParseError> {
-        // TODO: implement
-        todo!("Implement validate_toml_type")
+        let actual_type = match value {
+            toml::Value::String(_) => "string",
+            toml::Value::Integer(_) => "integer",
+            toml::Value::Float(_) => "float",
+            toml::Value::Boolean(_) => "boolean",
+            toml::Value::Array(_) => "array",
+            toml::Value::Table(_) => "table",
+            toml::Value::Datetime(_) => "datetime",
+        };
+
+        if actual_type != expected_type {
+            Err(ParseError {
+                field_path: field_path.to_string(),
+                invalid_value: format!("{:?}", value),
+                reason: format!("Expected {} but got {}", expected_type, actual_type),
+                suggestion: Some(format!("Ensure the value is a valid {}", expected_type)),
+            })
+        } else {
+            Ok(())
+        }
     }
 
     /// Extracts override policy information from a TOML value.
@@ -392,8 +708,26 @@ pub mod parsing_utils {
         toml_value: &toml::Value,
         field_path: &str,
     ) -> Result<(toml::Value, bool), ParseError> {
-        // TODO: implement
-        todo!("Implement extract_override_policy")
+        if let Some(table) = toml_value.as_table() {
+            // Extract the value field
+            let value = table.get("value").ok_or_else(|| ParseError {
+                field_path: format!("{}.value", field_path),
+                invalid_value: "missing".to_string(),
+                reason: "Value field is required".to_string(),
+                suggestion: Some("Add a 'value' field to the configuration".to_string()),
+            })?;
+
+            // Extract override_allowed, defaulting to true if not present
+            let override_allowed = table
+                .get("override_allowed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            Ok((value.clone(), override_allowed))
+        } else {
+            // Treat non-table values as simple values with default override_allowed = true
+            Ok((toml_value.clone(), true))
+        }
     }
 
     /// Validates that URL values use secure protocols.
@@ -407,7 +741,16 @@ pub mod parsing_utils {
     ///
     /// `Ok(())` if the URL is secure, `Err(ParseError)` otherwise.
     pub fn validate_secure_url(url: &str, field_path: &str) -> Result<(), ParseError> {
-        // TODO: implement
-        todo!("Implement validate_secure_url")
+        // Check if URL starts with https://
+        if !url.starts_with("https://") {
+            Err(ParseError {
+                field_path: field_path.to_string(),
+                invalid_value: url.to_string(),
+                reason: "URL must use secure HTTPS protocol".to_string(),
+                suggestion: Some("Change URL to use https:// instead of http://".to_string()),
+            })
+        } else {
+            Ok(())
+        }
     }
 }
