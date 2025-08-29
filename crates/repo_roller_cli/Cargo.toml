@@ -28,4 +28,4 @@ thiserror = { workspace = true }
 tokio = { version = "1.45.1", features = ["full"] }
 toml = "0.8.21"
 tracing.workspace = true
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
