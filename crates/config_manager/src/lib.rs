@@ -36,6 +36,7 @@ pub use errors::*;
 pub use hierarchy::*;
 pub use merged::*;
 pub use metadata::*;
+pub use parsers::*;
 pub use settings::*;
 pub use templates::*;
 pub use types::*;

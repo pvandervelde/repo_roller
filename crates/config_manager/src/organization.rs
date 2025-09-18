@@ -433,6 +433,7 @@ pub struct OverridableValue<T: Clone> {
     value: T,
     /// Whether this value can be overridden by higher levels in the hierarchy.
     /// When `false`, this value is considered fixed and must not be changed.
+    #[serde(rename = "override_allowed")]
     can_override: bool,
 }
 
