@@ -616,6 +616,7 @@ impl<T: Clone> OverridableValue<T> {
 /// defaults.repository_visibility = Some(OverridableValue::overridable(RepositoryVisibility::Private));
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalDefaults {
     /// Default branch protection settings for all repositories.
     /// When fixed, ensures minimum security standards across the organization.
@@ -740,6 +741,7 @@ impl Default for GlobalDefaults {
 /// team_config.team_github_apps = Some(vec!["team-specific-app".to_string()]);
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TeamConfig {
     /// Override for repository visibility setting.
     ///
@@ -1753,6 +1755,7 @@ impl Default for GlobalDefaultsEnhanced {
 /// - **Missing Dependencies**: If the configuration references undefined custom properties or environments
 /// - **Serialization Errors**: If the configuration cannot be loaded from TOML/JSON files
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct RepositoryTypeConfig {
     /// Branch protection settings for repositories of this type.
     ///
@@ -1977,6 +1980,20 @@ impl RepositoryTypeConfig {
     /// assert!(config.validate().is_err());
     /// ```
     pub fn validate(&self) -> Result<(), ConfigurationError> {
+        self.validate_with_options(true)
+    }
+
+    /// Validates the repository type configuration with configurable security enforcement.
+    ///
+    /// # Arguments
+    ///
+    /// * `strict_security` - Whether to enforce strict security policies (e.g., require HTTPS)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the configuration is valid
+    /// * `Err(ConfigurationError)` if validation fails
+    pub fn validate_with_options(&self, strict_security: bool) -> Result<(), ConfigurationError> {
         // Validate labels if present - basic validation for now
         if let Some(labels) = &self.labels {
             for label in labels {
@@ -2015,7 +2032,8 @@ impl RepositoryTypeConfig {
                         reason: "Webhook URL cannot be empty".to_string(),
                     });
                 }
-                if !webhook.url.starts_with("https://") {
+                // Only enforce HTTPS requirement if strict security is enabled
+                if strict_security && !webhook.url.starts_with("https://") {
                     return Err(ConfigurationError::InvalidValue {
                         field: "webhook.url".to_string(),
                         value: webhook.url.clone(),

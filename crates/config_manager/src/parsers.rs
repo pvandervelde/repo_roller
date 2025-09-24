@@ -5,7 +5,9 @@
 //! configurations. Each parser handles TOML format with comprehensive validation
 //! and error reporting.
 
-use crate::organization::{GlobalDefaults, GlobalDefaultsEnhanced, TeamConfig};
+use crate::organization::{
+    GlobalDefaults, GlobalDefaultsEnhanced, RepositoryTypeConfig, TeamConfig,
+};
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -433,7 +435,7 @@ impl GlobalDefaultsParser {
         }
 
         // Only return None for fatal parsing errors, not validation warnings
-        // Fatal errors include TOML syntax errors, unknown fields, and type errors
+        // Fatal errors include TOML syntax errors, unknown fields, type errors, and custom validator failures
         // Security policy violations in strict mode are also considered fatal
         let has_fatal_errors = errors.iter().any(|e| {
             e.reason.contains("TOML syntax error")
@@ -446,6 +448,12 @@ impl GlobalDefaultsParser {
                         || e.reason
                             .contains("cannot be disabled in strict security mode")))
                 || e.field_path == file_path // File-level parsing issues
+                // Custom validator errors are considered fatal - they don't contain built-in error messages
+                || (!e.reason.contains("URL must use secure protocol")
+                    && !e.reason.contains("Webhook URL must use HTTPS")
+                    && !e.reason.contains("cannot be disabled in strict security mode")
+                    && e.field_path.contains("webhooks")
+                    && e.field_path.contains(".url"))
         });
 
         let final_config = if has_fatal_errors { None } else { Some(config) };
@@ -1237,6 +1245,444 @@ impl TeamConfigParser {
 }
 
 impl Default for TeamConfigParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Parser for repository type configuration files.
+///
+/// This parser handles the `types/{type}/config.toml` file format and provides
+/// comprehensive validation for type-specific repository settings. Repository types
+/// allow organizations to define standard configurations for different categories
+/// of repositories (e.g., "library", "service", "documentation", "action").
+///
+/// Repository type configurations define settings that apply to all repositories
+/// of a specific type, providing a middle layer in the configuration hierarchy:
+/// Template → Team → **Repository Type** → Global
+///
+/// # Validation Features
+///
+/// - **Syntax Validation**: Ensures valid TOML format and structure
+/// - **Field Validation**: Validates field types and values
+/// - **Security Policy Validation**: Validates webhooks and GitHub Apps for security compliance
+/// - **Dependency Validation**: Ensures configuration consistency
+///
+/// # Error Handling
+///
+/// The parser provides detailed error information including:
+/// - TOML syntax errors with line numbers
+/// - Invalid field values with suggested corrections
+/// - Security violations with specific recommendations
+/// - Type-specific validation failures
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::parsers::RepositoryTypeConfigParser;
+///
+/// let parser = RepositoryTypeConfigParser::new();
+/// let toml_content = r#"
+/// [[labels]]
+/// name = "enhancement"
+/// color = "a2eeef"
+/// description = "New feature or request"
+///
+/// [[webhooks]]
+/// url = "https://api.example.com/webhook"
+/// events = ["push", "pull_request"]
+/// active = true
+/// "#;
+///
+/// let result = parser.parse(toml_content, "types/library/config.toml", "org/config-repo");
+/// if result.config.is_some() {
+///     println!("Successfully parsed repository type configuration");
+/// }
+/// ```
+pub struct RepositoryTypeConfigParser {
+    /// Whether to enforce strict security validation for webhooks and GitHub Apps.
+    strict_security_validation: bool,
+    /// Whether to allow deprecated configuration syntax.
+    allow_deprecated_syntax: bool,
+    /// Custom validation rules for specific fields.
+    custom_validators: HashMap<String, Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+}
+
+impl RepositoryTypeConfigParser {
+    /// Creates a new repository type configuration parser with default settings.
+    ///
+    /// The parser is configured with standard validation rules appropriate
+    /// for most organizations. Security validation is enabled by default,
+    /// and deprecated syntax is not allowed.
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryTypeConfigParser` instance with default configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::RepositoryTypeConfigParser;
+    ///
+    /// let parser = RepositoryTypeConfigParser::new();
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            strict_security_validation: true,
+            allow_deprecated_syntax: false,
+            custom_validators: HashMap::new(),
+        }
+    }
+
+    /// Creates a new repository type configuration parser with custom options.
+    ///
+    /// This method allows customization of the parser behavior for specific
+    /// organizational requirements or testing scenarios.
+    ///
+    /// # Arguments
+    ///
+    /// * `strict_security` - Whether to enforce strict security validation
+    /// * `allow_deprecated` - Whether to allow deprecated configuration syntax
+    ///
+    /// # Returns
+    ///
+    /// A new `RepositoryTypeConfigParser` instance with the specified settings.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::RepositoryTypeConfigParser;
+    ///
+    /// // Create parser that allows deprecated syntax but enforces strict security
+    /// let parser = RepositoryTypeConfigParser::with_options(true, true);
+    /// ```
+    pub fn with_options(strict_security: bool, allow_deprecated: bool) -> Self {
+        Self {
+            strict_security_validation: strict_security,
+            allow_deprecated_syntax: allow_deprecated,
+            custom_validators: HashMap::new(),
+        }
+    }
+
+    /// Parses repository type configuration from TOML content.
+    ///
+    /// This method performs complete parsing and validation of repository type configuration,
+    /// including verification of field types, security policies, and business rules.
+    /// It validates type-specific configurations and ensures compliance with
+    /// organizational security policies.
+    ///
+    /// # Arguments
+    ///
+    /// * `toml_content` - The raw TOML content to parse
+    /// * `file_path` - The file path for error reporting context
+    /// * `repository_context` - The repository context (e.g., "org/config-repo")
+    ///
+    /// # Returns
+    ///
+    /// A `ParseResult<RepositoryTypeConfig>` containing:
+    /// - The parsed configuration if successful
+    /// - Any parsing errors that occurred
+    /// - Warnings about potential issues
+    /// - Metadata about the parsing operation
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::RepositoryTypeConfigParser;
+    ///
+    /// let parser = RepositoryTypeConfigParser::new();
+    /// let toml_content = r#"
+    /// [[labels]]
+    /// name = "bug"
+    /// color = "d73a4a"
+    /// description = "Something isn't working"
+    ///
+    /// [[webhooks]]
+    /// url = "https://api.example.com/webhook"
+    /// events = ["push"]
+    /// active = true
+    /// "#;
+    ///
+    /// let result = parser.parse(toml_content, "types/service/config.toml", "org/config");
+    /// if !result.errors.is_empty() {
+    ///     for error in &result.errors {
+    ///         eprintln!("Error in {}: {}", error.field_path, error.reason);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Error Conditions
+    ///
+    /// Returns errors for:
+    /// - Invalid TOML syntax
+    /// - Security policy violations (insecure webhook URLs, invalid GitHub Apps)
+    /// - Invalid field values or types
+    /// - Repository type-specific validation failures
+    /// - Business rule violations
+    pub fn parse(
+        &self,
+        toml_content: &str,
+        file_path: &str,
+        repository_context: &str,
+    ) -> ParseResult<RepositoryTypeConfig> {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        let mut fields_parsed = 0;
+        let defaults_applied = 0;
+        let mut has_deprecated_syntax = false;
+
+        // Handle empty content case
+        if toml_content.trim().is_empty() {
+            return ParseResult {
+                config: Some(RepositoryTypeConfig::new()),
+                errors,
+                warnings,
+                metadata: ParseMetadata {
+                    file_path: file_path.to_string(),
+                    repository_context: repository_context.to_string(),
+                    fields_parsed: 0,
+                    defaults_applied: 0,
+                    has_deprecated_syntax: false,
+                },
+            };
+        }
+
+        // First, try to parse the TOML syntax
+        let parsed_toml = match toml::from_str::<toml::Value>(toml_content) {
+            Ok(value) => value,
+            Err(e) => {
+                errors.push(ParseError {
+                    field_path: file_path.to_string(),
+                    invalid_value: toml_content.to_string(),
+                    reason: format!("TOML syntax error: {}", e),
+                    suggestion: Some("Check TOML syntax and formatting".to_string()),
+                });
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed: 0,
+                        defaults_applied: 0,
+                        has_deprecated_syntax: false,
+                    },
+                };
+            }
+        };
+
+        // Check for deprecated syntax patterns (none specific to repository types yet)
+        if let Some(table) = parsed_toml.as_table() {
+            for (key, value) in table {
+                match key.as_str() {
+                    // Repository type configs should not have deprecated patterns yet
+                    // but we can check for potential issues
+                    _ => {
+                        // Could add future deprecated syntax detection here
+                    }
+                }
+            }
+        }
+
+        // Try to parse into RepositoryTypeConfig structure
+        let config = match toml::from_str::<RepositoryTypeConfig>(toml_content) {
+            Ok(config) => {
+                // Count non-None fields
+                if config.branch_protection.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.custom_properties.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.environments.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.github_apps.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.labels.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.pull_requests.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.repository.is_some() {
+                    fields_parsed += 1;
+                }
+                if config.webhooks.is_some() {
+                    fields_parsed += 1;
+                }
+
+                // Validate webhooks security
+                if let Some(webhooks) = &config.webhooks {
+                    for (index, webhook) in webhooks.iter().enumerate() {
+                        let field_path = format!("webhooks[{}].url", index);
+                        if let Err(security_error) =
+                            parsing_utils::validate_secure_url(&webhook.url, &field_path)
+                        {
+                            if self.strict_security_validation {
+                                // In strict mode, security violations are errors
+                                errors.push(security_error);
+                            } else {
+                                // In non-strict mode, security violations are warnings
+                                warnings.push(ParseWarning {
+                                    field_path: security_error.field_path,
+                                    value: security_error.invalid_value,
+                                    message: security_error.reason,
+                                    recommendation: security_error.suggestion,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                config
+            }
+            Err(e) => {
+                // Check if it's an unknown field error
+                let error_message = e.to_string();
+                if error_message.contains("unknown field") {
+                    // Extract field name from error message
+                    let field_name = if let Some(start) = error_message.find('`') {
+                        if let Some(end) = error_message[start + 1..].find('`') {
+                            &error_message[start + 1..start + 1 + end]
+                        } else {
+                            "unknown_field"
+                        }
+                    } else {
+                        "unknown_field"
+                    };
+
+                    errors.push(ParseError {
+                        field_path: field_name.to_string(),
+                        invalid_value: "true".to_string(),
+                        reason: format!("Unknown field '{}' in repository type configuration", field_name),
+                        suggestion: Some(
+                            "Check the documentation for valid repository type configuration fields"
+                                .to_string(),
+                        ),
+                    });
+                } else {
+                    errors.push(ParseError {
+                        field_path: file_path.to_string(),
+                        invalid_value: toml_content.to_string(),
+                        reason: format!("Repository type configuration parsing error: {}", e),
+                        suggestion: Some(
+                            "Check repository type configuration structure and field types"
+                                .to_string(),
+                        ),
+                    });
+                }
+
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed: 0,
+                        defaults_applied: 0,
+                        has_deprecated_syntax,
+                    },
+                };
+            }
+        };
+
+        // Apply custom validators
+        for (pattern, validator) in &self.custom_validators {
+            if pattern.contains("webhooks.*.url") {
+                if let Some(webhooks) = &config.webhooks {
+                    for (index, webhook) in webhooks.iter().enumerate() {
+                        if let Err(validation_error) = validator(&webhook.url) {
+                            errors.push(ParseError {
+                                field_path: format!("webhooks[{}].url", index),
+                                invalid_value: webhook.url.clone(),
+                                reason: validation_error,
+                                suggestion: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Validate the configuration structure
+        if let Err(validation_error) = config.validate_with_options(self.strict_security_validation)
+        {
+            errors.push(ParseError {
+                field_path: file_path.to_string(),
+                invalid_value: "configuration".to_string(),
+                reason: format!("Configuration validation failed: {:?}", validation_error),
+                suggestion: Some("Check configuration structure and dependencies".to_string()),
+            });
+        }
+
+        // Determine if there are fatal errors that prevent config use
+        let has_fatal_errors = errors.iter().any(|e| {
+            e.reason.contains("TOML syntax error")
+                || e.reason.contains("unknown field")
+                || e.reason.contains("parsing error")
+                || e.reason
+                    .contains("Repository type configuration parsing error")
+                || e.reason.contains("Configuration validation failed")
+                || (self.strict_security_validation
+                    && (e.reason.contains("secure protocol")
+                        || e.reason.contains("security policy violation")))
+                || e.field_path == file_path // File-level parsing issues
+        });
+
+        let final_config = if has_fatal_errors { None } else { Some(config) };
+
+        ParseResult {
+            config: final_config,
+            errors,
+            warnings,
+            metadata: ParseMetadata {
+                file_path: file_path.to_string(),
+                repository_context: repository_context.to_string(),
+                fields_parsed,
+                defaults_applied,
+                has_deprecated_syntax,
+            },
+        }
+    }
+
+    /// Adds a custom validation rule for specific repository type configuration fields.
+    ///
+    /// This method allows organizations to define custom validation logic
+    /// for repository type-specific configuration fields beyond the standard validation rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_path` - The dot-separated path to the field (e.g., "webhooks.*.url")
+    /// * `validator` - A closure that validates the field value
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::RepositoryTypeConfigParser;
+    ///
+    /// let mut parser = RepositoryTypeConfigParser::new();
+    /// parser.add_custom_validator("webhooks.*.url", |url| {
+    ///     if url.contains("internal.company.com") {
+    ///         Ok(())
+    ///     } else {
+    ///         Err("Webhooks must use internal company domain".to_string())
+    ///     }
+    /// });
+    /// ```
+    pub fn add_custom_validator<F>(&mut self, field_path: &str, validator: F)
+    where
+        F: Fn(&str) -> Result<(), String> + Send + Sync + 'static,
+    {
+        self.custom_validators
+            .insert(field_path.to_string(), Box::new(validator));
+    }
+}
+
+impl Default for RepositoryTypeConfigParser {
     fn default() -> Self {
         Self::new()
     }
