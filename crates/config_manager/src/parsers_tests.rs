@@ -845,6 +845,545 @@ mod team_config_parser_tests {
 }
 
 #[cfg(test)]
+mod template_config_parser_tests {
+    use super::*;
+    use crate::organization::{
+        RepositoryTypePolicy, RepositoryTypeSpec, TemplateConfig, TemplateMetadata,
+    };
+    use crate::templates::TemplateVariable;
+
+    #[test]
+    fn new_creates_parser_with_default_settings() {
+        let parser = TemplateConfigParser::new();
+        // We can't test private fields directly, but we can test the behavior
+        // by parsing content that would trigger strict security validation
+        let result = parser.parse(
+            r#"
+            [template]
+            name = "test-template"
+            description = "Test template"
+            author = "Test Team"
+
+            [[webhooks]]
+            url = "http://insecure.example.com/webhook"
+            events = ["push"]
+            active = true
+            "#,
+            "templates/test/template.toml",
+            "org/templates",
+        );
+
+        // With strict security enabled by default, this should produce an error
+        assert!(!result.errors.is_empty());
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("secure protocol")));
+    }
+
+    #[test]
+    fn with_options_creates_parser_with_custom_settings() {
+        let parser = TemplateConfigParser::with_options(false, true);
+        // Test that strict security is disabled
+        let result = parser.parse(
+            r#"
+            [template]
+            name = "test-template"
+            description = "Test template"
+            author = "Test Team"
+
+            [[webhooks]]
+            url = "http://insecure.example.com/webhook"
+            events = ["push"]
+            active = true
+            "#,
+            "templates/test/template.toml",
+            "org/templates",
+        );
+
+        // With strict security disabled, this should only produce warnings
+        assert!(result.config.is_some());
+        assert!(!result.warnings.is_empty());
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("secure protocol")));
+    }
+
+    #[test]
+    fn default_creates_parser_same_as_new() {
+        let parser1 = TemplateConfigParser::new();
+        let parser2 = TemplateConfigParser::default();
+
+        // Test that both parsers behave the same way
+        let toml_content = r#"
+        [template]
+        name = "test"
+        description = "Test template"
+        author = "Test Team"
+
+        [[labels]]
+        name = "test"
+        color = "ffffff"
+        "#;
+
+        let result1 = parser1.parse(
+            toml_content,
+            "templates/test/template.toml",
+            "org/templates",
+        );
+        let result2 = parser2.parse(
+            toml_content,
+            "templates/test/template.toml",
+            "org/templates",
+        );
+
+        assert_eq!(result1.config.is_some(), result2.config.is_some());
+        assert_eq!(result1.errors.len(), result2.errors.len());
+        assert_eq!(result1.warnings.len(), result2.warnings.len());
+    }
+
+    #[test]
+    fn parse_valid_empty_toml_returns_error_missing_template() {
+        let parser = TemplateConfigParser::new();
+
+        let result = parser.parse("", "templates/empty/template.toml", "org/templates");
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("Missing required template metadata")));
+    }
+
+    #[test]
+    fn parse_valid_template_config_succeeds() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "rust-service"
+        description = "Rust microservice template"
+        author = "Platform Team"
+        tags = ["rust", "microservice", "service"]
+
+        [repository_type]
+        repository_type = "microservice"
+        policy = "fixed"
+
+        [[labels]]
+        name = "rust"
+        color = "dea584"
+        description = "Rust programming language"
+
+        [[labels]]
+        name = "microservice"
+        color = "0075ca"
+        description = "Microservice architecture"
+
+        [[webhooks]]
+        url = "https://api.example.com/webhook"
+        events = ["push", "pull_request"]
+        active = true
+        secret = "webhook_secret"
+
+        [variables.service_name]
+        description = "Name of the microservice"
+        required = true
+        example = "user-service"
+
+        [variables.port]
+        description = "Service port number"
+        required = false
+        default = "8080"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/rust-service/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_some());
+        assert!(result.errors.is_empty());
+        assert!(result.warnings.is_empty());
+
+        let config = result.config.unwrap();
+        assert_eq!(config.template().name(), "rust-service");
+        assert_eq!(
+            config.template().description(),
+            "Rust microservice template"
+        );
+        assert_eq!(config.template().author(), "Platform Team");
+        assert_eq!(config.template().tags().len(), 3);
+
+        // Check repository type specification
+        assert!(config.repository_type().is_some());
+        let repo_type = config.repository_type().unwrap();
+        assert_eq!(repo_type.repository_type(), "microservice");
+        assert_eq!(repo_type.policy(), &RepositoryTypePolicy::Fixed);
+        assert!(!config.can_override_repository_type());
+
+        // Check labels
+        assert!(config.labels().is_some());
+        assert_eq!(config.labels().unwrap().len(), 2);
+
+        // Check variables
+        assert!(config.variables().is_some());
+        let variables = config.variables().unwrap();
+        assert_eq!(variables.len(), 2);
+        assert!(variables.contains_key("service_name"));
+        assert!(variables.contains_key("port"));
+        assert!(variables["service_name"].required().unwrap_or(false));
+        assert!(!variables["port"].required().unwrap_or(true));
+    }
+
+    #[test]
+    fn parse_invalid_toml_syntax_returns_error() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "invalid-template
+        # Missing closing quote
+        description = "Test template"
+        author = "Test Team"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/invalid/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result.errors[0].reason.contains("TOML syntax error"));
+        assert!(result.errors[0].suggestion.is_some());
+    }
+
+    #[test]
+    fn parse_unknown_field_returns_error() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "test-template"
+        description = "Test template"
+        author = "Test Team"
+
+        invalid_field = "value"
+
+        [[labels]]
+        name = "test"
+        color = "ffffff"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/test/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result.errors[0]
+            .reason
+            .contains("Unknown field 'invalid_field'"));
+        assert!(result.errors[0].suggestion.is_some());
+    }
+
+    #[test]
+    fn parse_missing_required_template_metadata_returns_error() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "incomplete-template"
+        # Missing description and author
+
+        [[labels]]
+        name = "test"
+        color = "ffffff"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/incomplete/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("Missing required field 'description'")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("Missing required field 'author'")));
+    }
+
+    #[test]
+    fn parse_invalid_repository_type_policy_returns_error() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "test-template"
+        description = "Test template"
+        author = "Test Team"
+
+        [repository_type]
+        repository_type = "service"
+        policy = "invalid_policy"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/test/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("Invalid repository type policy")));
+    }
+
+    #[test]
+    fn parse_preferable_repository_type_allows_override() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "flexible-template"
+        description = "Flexible template"
+        author = "Platform Team"
+
+        [repository_type]
+        repository_type = "library"
+        policy = "preferable"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/flexible/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_some());
+        assert!(result.errors.is_empty());
+
+        let config = result.config.unwrap();
+        assert!(config.repository_type().is_some());
+        assert_eq!(
+            config.repository_type().unwrap().policy(),
+            &RepositoryTypePolicy::Preferable
+        );
+        assert!(config.can_override_repository_type());
+    }
+
+    #[test]
+    fn parse_template_variables_with_validation() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "variable-test"
+        description = "Template with variables"
+        author = "Test Team"
+
+        [variables.required_var]
+        description = "A required variable"
+        required = true
+        example = "example-value"
+
+        [variables.optional_var]
+        description = "An optional variable"
+        required = false
+        default = "default-value"
+
+        [variables.invalid_var]
+        # Missing description - should cause error
+        required = true
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/variable-test/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result.errors.iter().any(|e| e
+            .reason
+            .contains("Variable 'invalid_var' missing required field 'description'")));
+    }
+
+    #[test]
+    fn parse_insecure_webhook_url_produces_error_in_strict_mode() {
+        let parser = TemplateConfigParser::new(); // Strict mode by default
+
+        let toml_content = r#"
+        [template]
+        name = "webhook-test"
+        description = "Template with insecure webhook"
+        author = "Test Team"
+
+        [[webhooks]]
+        url = "http://insecure.example.com/webhook"
+        events = ["push"]
+        active = true
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/webhook-test/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("secure protocol")));
+    }
+
+    #[test]
+    fn parse_insecure_webhook_url_produces_warning_in_non_strict_mode() {
+        let parser = TemplateConfigParser::with_options(false, false);
+
+        let toml_content = r#"
+        [template]
+        name = "webhook-test"
+        description = "Template with insecure webhook"
+        author = "Test Team"
+
+        [[webhooks]]
+        url = "http://insecure.example.com/webhook"
+        events = ["push"]
+        active = true
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/webhook-test/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_some());
+        assert!(!result.warnings.is_empty());
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("secure protocol")));
+    }
+
+    #[test]
+    fn parse_template_with_environments_succeeds() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "deployment-template"
+        description = "Template with environments"
+        author = "DevOps Team"
+
+        [[environments]]
+        name = "staging"
+
+        [[environments]]
+        name = "production"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/deployment/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_some());
+        assert!(result.errors.is_empty());
+
+        let config = result.config.unwrap();
+        assert!(config.environments().is_some());
+        assert_eq!(config.environments().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn metadata_fields_are_correctly_populated() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "metadata-test"
+        description = "Template for metadata testing"
+        author = "Test Team"
+        tags = ["test"]
+
+        [[labels]]
+        name = "feature"
+        color = "00ff00"
+
+        [variables.test_var]
+        description = "Test variable"
+        required = true
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/metadata-test/template.toml",
+            "org/templates",
+        );
+
+        assert_eq!(
+            result.metadata.file_path,
+            "templates/metadata-test/template.toml"
+        );
+        assert_eq!(result.metadata.repository_context, "org/templates");
+        assert_eq!(result.metadata.fields_parsed, 3); // template, labels, variables
+        assert_eq!(result.metadata.defaults_applied, 0);
+        assert!(!result.metadata.has_deprecated_syntax);
+    }
+
+    #[test]
+    fn template_configuration_validation_fails_with_invalid_structure() {
+        let parser = TemplateConfigParser::new();
+
+        let toml_content = r#"
+        [template]
+        name = "validation-test"
+        description = "Template with validation issues"
+        author = "Test Team"
+
+        [[labels]]
+        # Missing required name field
+        color = "ffffff"
+        "#;
+
+        let result = parser.parse(
+            toml_content,
+            "templates/validation-test/template.toml",
+            "org/templates",
+        );
+
+        assert!(result.config.is_none());
+        assert!(!result.errors.is_empty());
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.reason.contains("Configuration validation failed")));
+    }
+}
+
+#[cfg(test)]
 mod repository_type_config_parser_tests {
     use super::*;
     use crate::organization::{BranchProtectionSettings, RepositorySettings, RepositoryTypeConfig};

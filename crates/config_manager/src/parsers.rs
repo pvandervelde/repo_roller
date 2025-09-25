@@ -1688,6 +1688,538 @@ impl Default for RepositoryTypeConfigParser {
     }
 }
 
+/// Parser for template configuration files.
+///
+/// This parser handles template configuration TOML files and provides comprehensive
+/// validation for template-specific settings including repository type specifications,
+/// variable definitions, and template constraints. Template configurations define
+/// the highest-precedence settings in the configuration hierarchy.
+///
+/// Template configurations include several key features:
+/// - **Repository Type Specification**: Define and enforce repository types with policies
+/// - **Template Variables**: Define user-configurable variables with validation
+/// - **Template Constraints**: Specify settings that templates require or enforce
+/// - **Override Policies**: Control what settings users can override during repository creation
+///
+/// # Repository Type Policies
+///
+/// The parser supports two repository type policies:
+/// - **Fixed**: Users cannot override the repository type - template requirement is enforced
+/// - **Preferable**: Users can override the repository type during repository creation
+///
+/// # Validation Features
+///
+/// - **Syntax Validation**: Ensures valid TOML format and structure
+/// - **Field Validation**: Validates field types and values
+/// - **Variable Validation**: Ensures template variables are properly defined
+/// - **Repository Type Validation**: Validates repository type specifications and policies
+/// - **Security Policy Validation**: Validates webhooks and GitHub Apps for security compliance
+/// - **Template Metadata Validation**: Ensures template metadata is complete and valid
+///
+/// # Error Handling
+///
+/// The parser provides detailed error information including:
+/// - TOML syntax errors with line numbers
+/// - Invalid field values with suggested corrections
+/// - Security violations with specific recommendations
+/// - Template-specific validation failures
+/// - Variable definition errors
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::parsers::TemplateConfigParser;
+///
+/// let parser = TemplateConfigParser::new();
+/// let toml_content = r#"
+/// [template]
+/// name = "rust-service"
+/// description = "Rust microservice template"
+/// author = "Platform Team"
+/// tags = ["rust", "microservice"]
+///
+/// [repository_type]
+/// repository_type = "microservice"
+/// policy = "fixed"
+///
+/// [[labels]]
+/// name = "rust"
+/// color = "dea584"
+/// description = "Rust programming language"
+///
+/// [variables.service_name]
+/// description = "Name of the microservice"
+/// required = true
+/// "#;
+///
+/// let result = parser.parse(toml_content, "templates/rust-service/template.toml", "org/templates");
+/// if result.config.is_some() {
+///     println!("Successfully parsed template configuration");
+/// }
+/// ```
+pub struct TemplateConfigParser {
+    /// Whether to enforce strict security validation for webhooks and GitHub Apps.
+    strict_security_validation: bool,
+    /// Whether to allow deprecated configuration syntax.
+    allow_deprecated_syntax: bool,
+    /// Custom validation rules for specific fields.
+    custom_validators: HashMap<String, Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+}
+
+impl TemplateConfigParser {
+    /// Creates a new template configuration parser with default settings.
+    ///
+    /// The parser is configured with standard validation rules appropriate
+    /// for most organizations. Security validation is enabled by default,
+    /// and deprecated syntax is not allowed.
+    ///
+    /// # Returns
+    ///
+    /// A new `TemplateConfigParser` instance with default configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::TemplateConfigParser;
+    ///
+    /// let parser = TemplateConfigParser::new();
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            strict_security_validation: true,
+            allow_deprecated_syntax: false,
+            custom_validators: HashMap::new(),
+        }
+    }
+
+    /// Creates a new template configuration parser with custom options.
+    ///
+    /// This method allows customization of the parser behavior for specific
+    /// organizational requirements or testing scenarios.
+    ///
+    /// # Arguments
+    ///
+    /// * `strict_security` - Whether to enforce strict security validation
+    /// * `allow_deprecated` - Whether to allow deprecated configuration syntax
+    ///
+    /// # Returns
+    ///
+    /// A new `TemplateConfigParser` instance with the specified settings.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::TemplateConfigParser;
+    ///
+    /// // Create parser that allows deprecated syntax but enforces strict security
+    /// let parser = TemplateConfigParser::with_options(true, true);
+    /// ```
+    pub fn with_options(strict_security: bool, allow_deprecated: bool) -> Self {
+        Self {
+            strict_security_validation: strict_security,
+            allow_deprecated_syntax: allow_deprecated,
+            custom_validators: HashMap::new(),
+        }
+    }
+
+    /// Parses template configuration from TOML content.
+    ///
+    /// This method performs complete parsing and validation of template configuration,
+    /// including verification of template metadata, repository type specifications,
+    /// variable definitions, and template constraints. It validates template-specific
+    /// configurations and ensures compliance with organizational security policies.
+    ///
+    /// # Arguments
+    ///
+    /// * `toml_content` - The raw TOML content to parse
+    /// * `file_path` - The file path for error reporting context
+    /// * `repository_context` - The repository context (e.g., "org/templates")
+    ///
+    /// # Returns
+    ///
+    /// A `ParseResult<TemplateConfig>` containing:
+    /// - The parsed configuration if successful
+    /// - Any parsing errors that occurred
+    /// - Warnings about potential issues
+    /// - Metadata about the parsing operation
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::TemplateConfigParser;
+    ///
+    /// let parser = TemplateConfigParser::new();
+    /// let toml_content = r#"
+    /// [template]
+    /// name = "library-template"
+    /// description = "Standard library template"
+    /// author = "Core Team"
+    ///
+    /// [repository_type]
+    /// repository_type = "library"
+    /// policy = "preferable"
+    ///
+    /// [variables.package_name]
+    /// description = "Name of the library package"
+    /// required = true
+    /// "#;
+    ///
+    /// let result = parser.parse(toml_content, "templates/library/template.toml", "org/templates");
+    /// if !result.errors.is_empty() {
+    ///     for error in &result.errors {
+    ///         eprintln!("Error in {}: {}", error.field_path, error.reason);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Error Conditions
+    ///
+    /// Returns errors for:
+    /// - Invalid TOML syntax
+    /// - Missing required template metadata (name, description, author)
+    /// - Invalid repository type policy values
+    /// - Security policy violations (insecure webhook URLs, invalid GitHub Apps)
+    /// - Invalid variable definitions
+    /// - Template-specific validation failures
+    /// - Business rule violations
+    pub fn parse(
+        &self,
+        toml_content: &str,
+        file_path: &str,
+        repository_context: &str,
+    ) -> ParseResult<crate::organization::TemplateConfig> {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        let mut fields_parsed = 0;
+        let defaults_applied = 0;
+        let mut has_deprecated_syntax = false;
+
+        // Handle empty content case
+        if toml_content.trim().is_empty() {
+            errors.push(ParseError {
+                field_path: "template".to_string(),
+                invalid_value: "".to_string(),
+                reason: "Missing required template metadata section".to_string(),
+                suggestion: Some(
+                    "Add a [template] section with name, description, and author fields"
+                        .to_string(),
+                ),
+            });
+            return ParseResult {
+                config: None,
+                errors,
+                warnings,
+                metadata: ParseMetadata {
+                    file_path: file_path.to_string(),
+                    repository_context: repository_context.to_string(),
+                    fields_parsed,
+                    defaults_applied,
+                    has_deprecated_syntax: false,
+                },
+            };
+        }
+
+        // First, try to parse the TOML syntax
+        let parsed_toml = match toml::from_str::<toml::Value>(toml_content) {
+            Ok(value) => value,
+            Err(e) => {
+                errors.push(ParseError {
+                    field_path: file_path.to_string(),
+                    invalid_value: "".to_string(),
+                    reason: format!("TOML syntax error: {}", e),
+                    suggestion: Some("Check TOML syntax and formatting".to_string()),
+                });
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed,
+                        defaults_applied,
+                        has_deprecated_syntax,
+                    },
+                };
+            }
+        };
+
+        // Check for deprecated syntax patterns (none specific to templates yet)
+        if let Some(table) = parsed_toml.as_table() {
+            for (key, _value) in table {
+                // Currently no deprecated syntax patterns for templates
+                // This is a placeholder for future deprecated syntax detection
+                if !self.allow_deprecated_syntax && key.starts_with("deprecated_") {
+                    has_deprecated_syntax = true;
+                    errors.push(ParseError {
+                        field_path: key.clone(),
+                        invalid_value: "deprecated syntax".to_string(),
+                        reason: "Deprecated syntax not allowed".to_string(),
+                        suggestion: Some("Update to current syntax".to_string()),
+                    });
+                }
+            }
+        }
+
+        // Try to parse into TemplateConfig structure
+        let config = match toml::from_str::<crate::organization::TemplateConfig>(toml_content) {
+            Ok(config) => {
+                // Count non-None fields
+                if config.repository_type().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.repository().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.pull_requests().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.branch_protection().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.labels().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.webhooks().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.github_apps().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.environments().is_some() {
+                    fields_parsed += 1;
+                }
+                if config.variables().is_some() {
+                    fields_parsed += 1;
+                }
+                // Always count template metadata as 1 field
+                fields_parsed += 1;
+
+                // Validate template metadata requirements
+                let template_metadata = config.template();
+                if template_metadata.name().is_empty() {
+                    errors.push(ParseError {
+                        field_path: "template.name".to_string(),
+                        invalid_value: "".to_string(),
+                        reason: "Missing required field 'name'".to_string(),
+                        suggestion: Some("Add a name field to the [template] section".to_string()),
+                    });
+                }
+                if template_metadata.description().is_empty() {
+                    errors.push(ParseError {
+                        field_path: "template.description".to_string(),
+                        invalid_value: "".to_string(),
+                        reason: "Missing required field 'description'".to_string(),
+                        suggestion: Some(
+                            "Add a description field to the [template] section".to_string(),
+                        ),
+                    });
+                }
+                if template_metadata.author().is_empty() {
+                    errors.push(ParseError {
+                        field_path: "template.author".to_string(),
+                        invalid_value: "".to_string(),
+                        reason: "Missing required field 'author'".to_string(),
+                        suggestion: Some(
+                            "Add an author field to the [template] section".to_string(),
+                        ),
+                    });
+                }
+
+                // Validate template variables
+                if let Some(variables) = config.variables() {
+                    for (var_name, variable) in variables {
+                        if variable.description().is_empty() {
+                            errors.push(ParseError {
+                                field_path: format!("variables.{}.description", var_name),
+                                invalid_value: "".to_string(),
+                                reason: format!(
+                                    "Variable '{}' missing required field 'description'",
+                                    var_name
+                                ),
+                                suggestion: Some(
+                                    "Add a description field to the variable definition"
+                                        .to_string(),
+                                ),
+                            });
+                        }
+                    }
+                }
+
+                // Validate security settings for webhooks
+                if let Some(webhooks) = config.webhooks() {
+                    for (index, webhook) in webhooks.iter().enumerate() {
+                        if let Err(url_error) = super::parsing_utils::validate_secure_url(
+                            &webhook.url,
+                            &format!("webhooks[{}].url", index),
+                        ) {
+                            if self.strict_security_validation {
+                                errors.push(url_error);
+                            } else {
+                                warnings.push(ParseWarning {
+                                    field_path: format!("webhooks[{}].url", index),
+                                    value: webhook.url.clone(),
+                                    message: "URL does not use secure protocol (https)".to_string(),
+                                    recommendation: Some(
+                                        "Consider using https:// for security".to_string(),
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                config
+            }
+            Err(e) => {
+                // Check if it's an unknown field error
+                let error_message = e.to_string();
+                if error_message.contains("unknown field") {
+                    // Extract field name from error message
+                    let field_name = if let Some(start) = error_message.find("unknown field `") {
+                        let start = start + "unknown field `".len();
+                        if let Some(end) = error_message[start..].find('`') {
+                            error_message[start..start + end].to_string()
+                        } else {
+                            "unknown".to_string()
+                        }
+                    } else {
+                        "unknown".to_string()
+                    };
+
+                    errors.push(ParseError {
+                        field_path: field_name.clone(),
+                        invalid_value: "unknown field".to_string(),
+                        reason: format!("Unknown field '{}'", field_name),
+                        suggestion: Some("Remove the unknown field or check the documentation for valid field names".to_string()),
+                    });
+                } else {
+                    errors.push(ParseError {
+                        field_path: file_path.to_string(),
+                        invalid_value: "".to_string(),
+                        reason: format!("Template configuration parsing error: {}", e),
+                        suggestion: Some(
+                            "Check configuration structure and field types".to_string(),
+                        ),
+                    });
+                }
+
+                return ParseResult {
+                    config: None,
+                    errors,
+                    warnings,
+                    metadata: ParseMetadata {
+                        file_path: file_path.to_string(),
+                        repository_context: repository_context.to_string(),
+                        fields_parsed,
+                        defaults_applied,
+                        has_deprecated_syntax,
+                    },
+                };
+            }
+        };
+
+        // Apply custom validators
+        for (pattern, validator) in &self.custom_validators {
+            if pattern.contains("template.name") {
+                if let Err(validation_error) = validator(config.template().name()) {
+                    errors.push(ParseError {
+                        field_path: "template.name".to_string(),
+                        invalid_value: config.template().name().to_string(),
+                        reason: validation_error,
+                        suggestion: None,
+                    });
+                }
+            }
+
+            if pattern.contains("webhooks.*.url") {
+                if let Some(webhooks) = config.webhooks() {
+                    for (index, webhook) in webhooks.iter().enumerate() {
+                        if let Err(validation_error) = validator(&webhook.url) {
+                            errors.push(ParseError {
+                                field_path: format!("webhooks[{}].url", index),
+                                invalid_value: webhook.url.clone(),
+                                reason: validation_error,
+                                suggestion: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Determine if there are fatal errors that prevent config use
+        let has_fatal_errors = errors.iter().any(|e| {
+            e.reason.contains("TOML syntax error")
+                || e.reason.contains("unknown field")
+                || e.reason.contains("parsing error")
+                || e.reason.contains("Template configuration parsing error")
+                || e.reason.contains("Missing required field")
+                || e.reason.contains("missing required field")
+                || e.reason.contains("Deprecated syntax not allowed")
+                || (self.strict_security_validation && e.reason.contains("secure protocol"))
+                || e.field_path == file_path // File-level parsing issues
+        });
+
+        let final_config = if has_fatal_errors { None } else { Some(config) };
+
+        ParseResult {
+            config: final_config,
+            errors,
+            warnings,
+            metadata: ParseMetadata {
+                file_path: file_path.to_string(),
+                repository_context: repository_context.to_string(),
+                fields_parsed,
+                defaults_applied,
+                has_deprecated_syntax,
+            },
+        }
+    }
+
+    /// Adds a custom validation rule for specific template configuration fields.
+    ///
+    /// This method allows organizations to define custom validation logic
+    /// for template-specific fields beyond the standard validation rules.
+    /// Custom validators are applied after standard parsing and validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_pattern` - Pattern matching field paths (e.g., "variables.*.required")
+    /// * `validator` - Validation function that returns `Ok(())` for valid values
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::parsers::TemplateConfigParser;
+    ///
+    /// let mut parser = TemplateConfigParser::new();
+    /// parser.add_validator(
+    ///     "template.name".to_string(),
+    ///     Box::new(|name| {
+    ///         if name.starts_with("internal-") {
+    ///             Ok(())
+    ///         } else {
+    ///             Err("Template names must start with 'internal-'".to_string())
+    ///         }
+    ///     })
+    /// );
+    /// ```
+    pub fn add_validator<F>(&mut self, field_pattern: String, validator: F)
+    where
+        F: Fn(&str) -> Result<(), String> + Send + Sync + 'static,
+    {
+        self.custom_validators
+            .insert(field_pattern, Box::new(validator));
+    }
+}
+
+impl Default for TemplateConfigParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Helper functions for configuration parsing and validation.
 pub mod parsing_utils {
     use super::*;
