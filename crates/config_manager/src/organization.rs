@@ -2329,6 +2329,7 @@ pub struct TemplateMetadata {
     /// Author or team responsible for this template.
     author: String,
     /// Categorization tags for discovery and organization.
+    #[serde(default)]
     tags: Vec<String>,
 }
 
