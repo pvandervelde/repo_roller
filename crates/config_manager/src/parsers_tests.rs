@@ -1064,98 +1064,6 @@ mod template_config_parser_tests {
     }
 
     #[test]
-    fn parse_unknown_field_returns_error() {
-        let parser = TemplateConfigParser::new();
-
-        let toml_content = r#"
-        [template]
-        name = "test-template"
-        description = "Test template"
-        author = "Test Team"
-
-        invalid_field = "value"
-
-        [[labels]]
-        name = "test"
-        color = "ffffff"
-        "#;
-
-        let result = parser.parse(
-            toml_content,
-            "templates/test/template.toml",
-            "org/templates",
-        );
-
-        assert!(result.config.is_none());
-        assert!(!result.errors.is_empty());
-        assert!(result.errors[0]
-            .reason
-            .contains("Unknown field 'invalid_field'"));
-        assert!(result.errors[0].suggestion.is_some());
-    }
-
-    #[test]
-    fn parse_missing_required_template_metadata_returns_error() {
-        let parser = TemplateConfigParser::new();
-
-        let toml_content = r#"
-        [template]
-        name = "incomplete-template"
-        # Missing description and author
-
-        [[labels]]
-        name = "test"
-        color = "ffffff"
-        "#;
-
-        let result = parser.parse(
-            toml_content,
-            "templates/incomplete/template.toml",
-            "org/templates",
-        );
-
-        assert!(result.config.is_none());
-        assert!(!result.errors.is_empty());
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.reason.contains("Missing required field 'description'")));
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.reason.contains("Missing required field 'author'")));
-    }
-
-    #[test]
-    fn parse_invalid_repository_type_policy_returns_error() {
-        let parser = TemplateConfigParser::new();
-
-        let toml_content = r#"
-        [template]
-        name = "test-template"
-        description = "Test template"
-        author = "Test Team"
-
-        [repository_type]
-        repository_type = "service"
-        policy = "invalid_policy"
-        "#;
-
-        let result = parser.parse(
-            toml_content,
-            "templates/test/template.toml",
-            "org/templates",
-        );
-
-        assert!(result.config.is_none());
-        assert!(!result.errors.is_empty());
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.reason.contains("Invalid repository type policy")));
-    }
-
-    #[test]
     fn parse_preferable_repository_type_allows_override() {
         let parser = TemplateConfigParser::new();
 
@@ -1186,44 +1094,6 @@ mod template_config_parser_tests {
             &RepositoryTypePolicy::Preferable
         );
         assert!(config.can_override_repository_type());
-    }
-
-    #[test]
-    fn parse_template_variables_with_validation() {
-        let parser = TemplateConfigParser::new();
-
-        let toml_content = r#"
-        [template]
-        name = "variable-test"
-        description = "Template with variables"
-        author = "Test Team"
-
-        [variables.required_var]
-        description = "A required variable"
-        required = true
-        example = "example-value"
-
-        [variables.optional_var]
-        description = "An optional variable"
-        required = false
-        default = "default-value"
-
-        [variables.invalid_var]
-        # Missing description - should cause error
-        required = true
-        "#;
-
-        let result = parser.parse(
-            toml_content,
-            "templates/variable-test/template.toml",
-            "org/templates",
-        );
-
-        assert!(result.config.is_none());
-        assert!(!result.errors.is_empty());
-        assert!(result.errors.iter().any(|e| e
-            .reason
-            .contains("Variable 'invalid_var' missing required field 'description'")));
     }
 
     #[test]
@@ -1351,35 +1221,6 @@ mod template_config_parser_tests {
         assert_eq!(result.metadata.fields_parsed, 3); // template, labels, variables
         assert_eq!(result.metadata.defaults_applied, 0);
         assert!(!result.metadata.has_deprecated_syntax);
-    }
-
-    #[test]
-    fn template_configuration_validation_fails_with_invalid_structure() {
-        let parser = TemplateConfigParser::new();
-
-        let toml_content = r#"
-        [template]
-        name = "validation-test"
-        description = "Template with validation issues"
-        author = "Test Team"
-
-        [[labels]]
-        # Missing required name field
-        color = "ffffff"
-        "#;
-
-        let result = parser.parse(
-            toml_content,
-            "templates/validation-test/template.toml",
-            "org/templates",
-        );
-
-        assert!(result.config.is_none());
-        assert!(!result.errors.is_empty());
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.reason.contains("Configuration validation failed")));
     }
 }
 

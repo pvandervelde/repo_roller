@@ -2615,6 +2615,7 @@ impl TemplateVariable {
 /// assert!(config.repository_type().is_some());
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TemplateConfig {
     /// Template identification and metadata information.
     template: TemplateMetadata,
