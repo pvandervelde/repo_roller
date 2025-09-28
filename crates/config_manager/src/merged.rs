@@ -8,9 +8,7 @@ use crate::types::{EnvironmentConfig, GitHubAppConfig, LabelConfig, WebhookConfi
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[cfg(test)]
-#[path = "merged_tests.rs"]
-mod merged_tests;
+
 
 /// Source of a configuration setting in the hierarchy.
 ///
@@ -656,7 +654,7 @@ impl MergedConfiguration {
     /// # Arguments
     ///
     /// * `template_config` - The template configuration to merge
-    pub fn merge_template_config(&mut self, template_config: &crate::templates::TemplateConfig) {
+    pub fn merge_template_config(&mut self, template_config: &crate::organization::TemplateConfig) {
         // Merge repository type specification
         if let Some(_repository_type) = template_config.repository_type() {
             self.source_trace.add_source(

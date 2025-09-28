@@ -849,8 +849,8 @@ mod template_config_parser_tests {
     use super::*;
     use crate::organization::{
         RepositoryTypePolicy, RepositoryTypeSpec, TemplateConfig, TemplateMetadata,
+        TemplateVariable,
     };
-    use crate::templates::TemplateVariable;
 
     #[test]
     fn new_creates_parser_with_default_settings() {

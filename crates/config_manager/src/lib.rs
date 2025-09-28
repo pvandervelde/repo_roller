@@ -28,7 +28,6 @@ pub mod metadata;
 pub mod organization;
 pub mod parsers;
 pub mod settings;
-pub mod templates;
 pub mod types;
 
 // Re-export commonly used items
@@ -38,8 +37,16 @@ pub use merged::*;
 pub use metadata::*;
 pub use parsers::*;
 pub use settings::*;
-pub use templates::*;
 pub use types::*;
+
+// Re-export organization module items selectively to avoid conflicts
+pub use organization::{
+    GlobalDefaultsEnhanced, MergedConfiguration as OrgMergedConfiguration,
+    RepositoryTypeConfig, TeamConfig as OrgTeamConfig, TemplateConfig as OrgTemplateConfig,
+    TemplateMetadata as OrgTemplateMetadata, TemplateVariable as OrgTemplateVariable,
+    ConfigurationSource as OrgConfigurationSource,
+    ConfigurationSourceTrace as OrgConfigurationSourceTrace,
+};
 
 // Unit tests will be added in a separate file: lib_tests.rs
 #[path = "lib_tests.rs"]
