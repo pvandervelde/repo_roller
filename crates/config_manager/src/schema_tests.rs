@@ -3,14 +3,16 @@
 //! This module contains comprehensive tests for the schema validation system,
 //! including validation result handling, custom validators, and schema compilation.
 
-use super::*;
 use crate::organization::{
     GlobalDefaults, RepositoryTypeConfig, TeamConfig, TemplateConfig, TemplateMetadata,
+};
+use crate::schema::{
+    CustomValidator, SchemaValidator, ValidationIssue, ValidationResult, ValidationSeverity,
 };
 
 /// Tests for ValidationIssue creation and accessors.
 mod validation_issue_tests {
-    use super::*;
+    use crate::schema::{ValidationIssue, ValidationSeverity};
 
     #[test]
     fn test_validation_issue_creation() {
@@ -69,7 +71,7 @@ mod validation_issue_tests {
 
 /// Tests for ValidationResult functionality.
 mod validation_result_tests {
-    use super::*;
+    use crate::schema::{ValidationIssue, ValidationResult, ValidationSeverity};
 
     #[test]
     fn test_validation_result_creation() {
@@ -201,7 +203,7 @@ mod validation_result_tests {
 
 /// Tests for CustomValidator functionality.
 mod custom_validator_tests {
-    use super::*;
+    use crate::schema::{CustomValidator, ValidationSeverity};
 
     #[test]
     fn test_custom_validator_creation() {
@@ -255,15 +257,15 @@ mod custom_validator_tests {
 
 /// Tests for SchemaValidator basic functionality.
 mod schema_validator_tests {
-    use super::*;
+    use crate::schema::{CustomValidator, SchemaValidator};
 
     #[test]
     fn test_schema_validator_creation() {
         let validator = SchemaValidator::new();
 
         // Test that default validator is created successfully
-        assert_eq!(validator.custom_validators.len(), 0);
-        assert!(validator.strict_mode);
+        assert_eq!(validator.custom_validator_count(), 0);
+        assert!(validator.is_strict_mode());
     }
 
     #[test]
@@ -271,8 +273,8 @@ mod schema_validator_tests {
         let strict_validator = SchemaValidator::with_strict_mode(true);
         let lenient_validator = SchemaValidator::with_strict_mode(false);
 
-        assert!(strict_validator.strict_mode);
-        assert!(!lenient_validator.strict_mode);
+        assert!(strict_validator.is_strict_mode());
+        assert!(!lenient_validator.is_strict_mode());
     }
 
     #[test]
@@ -287,22 +289,26 @@ mod schema_validator_tests {
 
         validator.add_custom_validator(custom_validator);
 
-        assert_eq!(validator.custom_validators.len(), 1);
-        assert_eq!(validator.custom_validators[0].field_pattern(), "test.field");
+        assert_eq!(validator.custom_validator_count(), 1);
+        assert_eq!(
+            validator.custom_validators()[0].field_pattern(),
+            "test.field"
+        );
     }
 
     #[test]
     fn test_schema_validator_default() {
         let validator = SchemaValidator::default();
 
-        assert_eq!(validator.custom_validators.len(), 0);
-        assert!(validator.strict_mode);
+        assert_eq!(validator.custom_validator_count(), 0);
+        assert!(validator.is_strict_mode());
     }
 }
 
 /// Tests for global defaults validation.
 mod global_defaults_validation_tests {
-    use super::*;
+    use crate::organization::GlobalDefaults;
+    use crate::schema::{CustomValidator, SchemaValidator};
 
     #[test]
     fn test_validate_empty_global_defaults() {
@@ -338,7 +344,8 @@ mod global_defaults_validation_tests {
 
 /// Tests for team configuration validation.
 mod team_config_validation_tests {
-    use super::*;
+    use crate::organization::TeamConfig;
+    use crate::schema::SchemaValidator;
 
     #[test]
     fn test_validate_empty_team_config() {
@@ -355,7 +362,8 @@ mod team_config_validation_tests {
 
 /// Tests for repository type configuration validation.
 mod repository_type_config_validation_tests {
-    use super::*;
+    use crate::organization::RepositoryTypeConfig;
+    use crate::schema::SchemaValidator;
 
     #[test]
     fn test_validate_empty_repository_type_config() {
@@ -372,7 +380,8 @@ mod repository_type_config_validation_tests {
 
 /// Tests for template configuration validation.
 mod template_config_validation_tests {
-    use super::*;
+    use crate::organization::{TemplateConfig, TemplateMetadata};
+    use crate::schema::SchemaValidator;
 
     #[test]
     fn test_validate_empty_template_config() {
@@ -395,7 +404,8 @@ mod template_config_validation_tests {
 
 /// Tests for schema generation functionality.
 mod schema_generation_tests {
-    use super::*;
+    use crate::organization::{GlobalDefaults, RepositoryTypeConfig, TeamConfig, TemplateConfig};
+    use crate::schema::SchemaValidator;
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
 
@@ -427,7 +437,7 @@ mod schema_generation_tests {
 
 /// Tests for schema validation error handling.
 mod schema_error_tests {
-    use super::*;
+    use crate::schema::{SchemaValidationError, ValidationSeverity};
 
     #[test]
     fn test_schema_validation_error_display() {
@@ -506,7 +516,8 @@ mod schema_error_tests {
 
 /// Integration tests combining multiple validation features.
 mod integration_tests {
-    use super::*;
+    use crate::organization::{GlobalDefaults, RepositoryTypeConfig, TeamConfig, TemplateConfig};
+    use crate::schema::{CustomValidator, SchemaValidator, ValidationResult};
 
     #[test]
     fn test_schema_validator_with_multiple_custom_validators() {
@@ -540,7 +551,7 @@ mod integration_tests {
         validator.add_custom_validator(url_validator);
         validator.add_custom_validator(name_validator);
 
-        assert_eq!(validator.custom_validators.len(), 2);
+        assert_eq!(validator.custom_validator_count(), 2);
     }
 
     #[test]

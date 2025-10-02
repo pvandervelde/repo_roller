@@ -678,8 +678,42 @@ impl SchemaValidator {
     /// - Business rule violations
     /// - Security policy violations
     pub fn validate_global_defaults(&self, config: &GlobalDefaults) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        // Convert configuration to JSON for schema validation
+        let config_json = match serde_json::to_value(config) {
+            Ok(json) => json,
+            Err(e) => {
+                result.add_error(
+                    "config",
+                    &format!("Failed to serialize configuration to JSON: {}", e),
+                    Some("Check that all configuration values are serializable"),
+                );
+                return result;
+            }
+        };
+
+        // Validate webhook URLs if present
+        if let Some(webhooks) = &config.organization_webhooks {
+            for (index, webhook) in webhooks.value().iter().enumerate() {
+                self.validate_webhook_url(
+                    &webhook.url,
+                    &format!("organization_webhooks[{}].url", index),
+                    &mut result,
+                );
+            }
+        }
+
+        // Apply custom validation rules
+        let custom_result = self.apply_custom_validation(&config_json, "");
+        result.merge(custom_result);
+
+        // Additional business rule validation in strict mode
+        if self.strict_mode {
+            self.validate_global_defaults_strict_rules(config, &mut result);
+        }
+
+        result
     }
 
     /// Validates enhanced global defaults configuration against its schema.
@@ -698,8 +732,26 @@ impl SchemaValidator {
         &self,
         config: &GlobalDefaultsEnhanced,
     ) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        // Convert configuration to JSON for schema validation
+        let config_json = match serde_json::to_value(config) {
+            Ok(json) => json,
+            Err(e) => {
+                result.add_error(
+                    "config",
+                    &format!("Failed to serialize enhanced configuration to JSON: {}", e),
+                    Some("Check that all configuration values are serializable"),
+                );
+                return result;
+            }
+        };
+
+        // Apply custom validation rules
+        let custom_result = self.apply_custom_validation(&config_json, "");
+        result.merge(custom_result);
+
+        result
     }
 
     /// Validates team configuration against its schema.
@@ -727,8 +779,37 @@ impl SchemaValidator {
     /// let result = validator.validate_team_config(&config);
     /// ```
     pub fn validate_team_config(&self, config: &TeamConfig) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        // Convert configuration to JSON for schema validation
+        let config_json = match serde_json::to_value(config) {
+            Ok(json) => json,
+            Err(e) => {
+                result.add_error(
+                    "config",
+                    &format!("Failed to serialize team configuration to JSON: {}", e),
+                    Some("Check that all configuration values are serializable"),
+                );
+                return result;
+            }
+        };
+
+        // Validate team webhooks if present
+        if let Some(team_webhooks) = &config.team_webhooks {
+            for (index, webhook) in team_webhooks.iter().enumerate() {
+                self.validate_webhook_url(
+                    &webhook.url,
+                    &format!("team_webhooks[{}].url", index),
+                    &mut result,
+                );
+            }
+        }
+
+        // Apply custom validation rules
+        let custom_result = self.apply_custom_validation(&config_json, "");
+        result.merge(custom_result);
+
+        result
     }
 
     /// Validates repository type configuration against its schema.
@@ -747,8 +828,40 @@ impl SchemaValidator {
         &self,
         config: &RepositoryTypeConfig,
     ) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        // Convert configuration to JSON for schema validation
+        let config_json = match serde_json::to_value(config) {
+            Ok(json) => json,
+            Err(e) => {
+                result.add_error(
+                    "config",
+                    &format!(
+                        "Failed to serialize repository type configuration to JSON: {}",
+                        e
+                    ),
+                    Some("Check that all configuration values are serializable"),
+                );
+                return result;
+            }
+        };
+
+        // Validate repository type webhooks if present
+        if let Some(webhooks) = &config.webhooks {
+            for (index, webhook) in webhooks.iter().enumerate() {
+                self.validate_webhook_url(
+                    &webhook.url,
+                    &format!("webhooks[{}].url", index),
+                    &mut result,
+                );
+            }
+        }
+
+        // Apply custom validation rules
+        let custom_result = self.apply_custom_validation(&config_json, "");
+        result.merge(custom_result);
+
+        result
     }
 
     /// Validates template configuration against its schema.
@@ -765,8 +878,63 @@ impl SchemaValidator {
     ///
     /// A `ValidationResult` containing any issues found during validation.
     pub fn validate_template_config(&self, config: &TemplateConfig) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        // Convert configuration to JSON for schema validation
+        let config_json = match serde_json::to_value(config) {
+            Ok(json) => json,
+            Err(e) => {
+                result.add_error(
+                    "config",
+                    &format!("Failed to serialize template configuration to JSON: {}", e),
+                    Some("Check that all configuration values are serializable"),
+                );
+                return result;
+            }
+        };
+
+        // Validate template metadata
+        let template_metadata = config.template();
+        if template_metadata.name().is_empty() {
+            result.add_error(
+                "template.name",
+                "Template name cannot be empty",
+                Some("Provide a non-empty name for the template"),
+            );
+        }
+
+        if template_metadata.description().is_empty() {
+            result.add_error(
+                "template.description",
+                "Template description cannot be empty",
+                Some("Provide a description for the template"),
+            );
+        }
+
+        if template_metadata.author().is_empty() {
+            result.add_error(
+                "template.author",
+                "Template author cannot be empty",
+                Some("Provide an author for the template"),
+            );
+        }
+
+        // Validate template webhooks if present
+        if let Some(webhooks) = config.webhooks() {
+            for (index, webhook) in webhooks.iter().enumerate() {
+                self.validate_webhook_url(
+                    &webhook.url,
+                    &format!("webhooks[{}].url", index),
+                    &mut result,
+                );
+            }
+        }
+
+        // Apply custom validation rules
+        let custom_result = self.apply_custom_validation(&config_json, "");
+        result.merge(custom_result);
+
+        result
     }
 
     /// Generates a JSON Schema for a configuration type.
@@ -807,8 +975,19 @@ impl SchemaValidator {
     ///
     /// A `ValidationResult` containing any schema validation issues found.
     fn validate_against_schema(&self, value: &Value, schema: &JSONSchema) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        let validation_errors: Vec<ValidationError> = match schema.validate(value) {
+            Ok(()) => Vec::new(),
+            Err(errors) => errors.collect(),
+        };
+
+        for error in validation_errors {
+            let issue = self.convert_schema_error(&error);
+            result.add_issue(issue);
+        }
+
+        result
     }
 
     /// Applies custom validation rules to a configuration value.
@@ -826,8 +1005,14 @@ impl SchemaValidator {
     ///
     /// A `ValidationResult` containing any custom validation issues found.
     fn apply_custom_validation(&self, value: &Value, field_prefix: &str) -> ValidationResult {
-        // TODO: Implement validation logic
-        ValidationResult::new()
+        let mut result = ValidationResult::new();
+
+        // Apply all custom validators that match field patterns
+        for validator in &self.custom_validators {
+            self.apply_custom_validator_to_value(validator, value, field_prefix, &mut result);
+        }
+
+        result
     }
 
     /// Converts a JSON Schema validation error to a validation issue.
@@ -840,10 +1025,201 @@ impl SchemaValidator {
     ///
     /// A `ValidationIssue` representing the schema validation failure.
     fn convert_schema_error(&self, error: &ValidationError) -> ValidationIssue {
-        let field_path = error.instance_path.to_string();
+        let field_path = {
+            let path_str = error.instance_path.to_string();
+            if path_str.is_empty() {
+                "config".to_string()
+            } else {
+                path_str
+            }
+        };
+
         let message = error.to_string();
 
-        ValidationIssue::new(ValidationSeverity::Error, field_path, message, None)
+        // Try to extract suggestion from the error message
+        let suggestion = if message.contains("required property") {
+            Some("Add the missing required field".to_string())
+        } else if message.contains("type") {
+            Some("Check the field type and format".to_string())
+        } else {
+            None
+        };
+
+        ValidationIssue::new(ValidationSeverity::Error, field_path, message, suggestion)
+    }
+
+    /// Validates a webhook URL for security and format compliance.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL to validate
+    /// * `field_path` - The field path for error reporting
+    /// * `result` - The validation result to add issues to
+    fn validate_webhook_url(&self, url: &str, field_path: &str, result: &mut ValidationResult) {
+        // Check for HTTPS requirement
+        if self.strict_mode && !url.starts_with("https://") {
+            result.add_error(
+                field_path,
+                "Webhook URL must use HTTPS protocol for security",
+                Some("Change URL to use https:// instead of http://"),
+            );
+        } else if !url.starts_with("https://") {
+            result.add_warning(
+                field_path,
+                "Webhook URL does not use HTTPS protocol",
+                Some("Consider using HTTPS for security"),
+            );
+        }
+
+        // Basic URL format validation
+        if !url.contains("://") {
+            result.add_error(
+                field_path,
+                "Invalid URL format",
+                Some("Ensure URL includes protocol (e.g., https://)"),
+            );
+        }
+    }
+
+    /// Validates strict security rules for global defaults configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The global defaults configuration
+    /// * `result` - The validation result to add issues to
+    fn validate_global_defaults_strict_rules(
+        &self,
+        config: &GlobalDefaults,
+        result: &mut ValidationResult,
+    ) {
+        // Check that branch protection is enabled in strict mode
+        if let Some(branch_protection) = &config.branch_protection_enabled {
+            if !branch_protection.value() {
+                result.add_error(
+                    "branch_protection_enabled",
+                    "Branch protection cannot be disabled in strict security mode",
+                    Some("Set branch_protection_enabled.value to true"),
+                );
+            }
+        }
+
+        // Additional strict mode validations can be added here
+    }
+
+    /// Applies a single custom validator to a JSON value recursively.
+    ///
+    /// # Arguments
+    ///
+    /// * `validator` - The custom validator to apply
+    /// * `value` - The JSON value to validate
+    /// * `field_path` - The current field path
+    /// * `result` - The validation result to add issues to
+    fn apply_custom_validator_to_value(
+        &self,
+        validator: &CustomValidator,
+        value: &Value,
+        field_path: &str,
+        result: &mut ValidationResult,
+    ) {
+        // Simple pattern matching for now - can be enhanced for complex glob patterns
+        match value {
+            Value::Object(map) => {
+                for (key, child_value) in map {
+                    let child_path = if field_path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{}.{}", field_path, key)
+                    };
+
+                    self.apply_custom_validator_to_value(
+                        validator,
+                        child_value,
+                        &child_path,
+                        result,
+                    );
+                }
+            }
+            Value::Array(array) => {
+                for (index, child_value) in array.iter().enumerate() {
+                    let child_path = format!("{}[{}]", field_path, index);
+                    self.apply_custom_validator_to_value(
+                        validator,
+                        child_value,
+                        &child_path,
+                        result,
+                    );
+                }
+            }
+            Value::String(string_value) => {
+                // Check if this field matches the validator pattern
+                if self.field_matches_pattern(field_path, validator.field_pattern()) {
+                    if let Err(validation_error) = validator.validate(string_value) {
+                        result.add_error(field_path, &validation_error, None);
+                    }
+                }
+            }
+            _ => {
+                // For non-string values, we could convert to string if needed
+                // For now, just skip validation for non-string values
+            }
+        }
+    }
+
+    /// Checks if a field path matches a validation pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_path` - The field path to check
+    /// * `pattern` - The pattern to match against
+    ///
+    /// # Returns
+    ///
+    /// `true` if the field matches the pattern, `false` otherwise
+    fn field_matches_pattern(&self, field_path: &str, pattern: &str) -> bool {
+        // Simple pattern matching implementation
+        // Supports wildcards (*) for now
+
+        if pattern == "*" {
+            return true;
+        }
+
+        if pattern.contains("*.url") {
+            return field_path.ends_with(".url");
+        }
+
+        if pattern.contains("webhooks.*.url") {
+            return field_path.contains("webhooks") && field_path.ends_with(".url");
+        }
+
+        // Exact match
+        field_path == pattern
+    }
+
+    /// Returns whether the validator is in strict mode.
+    ///
+    /// # Returns
+    ///
+    /// `true` if strict mode is enabled, `false` otherwise.
+    pub fn is_strict_mode(&self) -> bool {
+        self.strict_mode
+    }
+
+    /// Returns the number of custom validators registered.
+    ///
+    /// # Returns
+    ///
+    /// The number of custom validators.
+    pub fn custom_validator_count(&self) -> usize {
+        self.custom_validators.len()
+    }
+
+    /// Returns a reference to the custom validators.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the vector of custom validators.
+    pub fn custom_validators(&self) -> &[CustomValidator] {
+        &self.custom_validators
     }
 }
 

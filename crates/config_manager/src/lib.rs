@@ -67,6 +67,11 @@ pub use organization::{
 #[cfg(test)]
 mod tests;
 
+// Schema validation tests
+#[path = "schema_tests.rs"]
+#[cfg(test)]
+mod schema_tests;
+
 /// Trait for loading configuration from various sources.
 ///
 /// This trait abstracts the configuration loading mechanism, allowing for different
