@@ -26,18 +26,41 @@ pub mod hierarchy;
 pub mod merged;
 pub mod metadata;
 pub mod organization;
+pub mod parsers;
+pub mod schema;
 pub mod settings;
-pub mod templates;
 pub mod types;
 
 // Re-export commonly used items
 pub use errors::*;
+pub use github_provider::*;
 pub use hierarchy::*;
 pub use merged::*;
-pub use metadata::*;
+// Re-export metadata items selectively to avoid conflicts with schema module
+pub use metadata::{
+    AccessFailureType, DiscoveryMethod, ErrorRecoveryStrategy, MetadataRepository, RecoveryAction,
+    RepositoryAccessFailure, RepositoryOperationContext, RepositoryStructureValidation,
+    RepositoryValidationSummary, ValidationIssue as MetadataValidationIssue,
+    ValidationSeverity as MetadataValidationSeverity, ValidationStatus,
+};
+pub use parsers::*;
+// Re-export schema items selectively to avoid conflicts
+pub use schema::{
+    CustomValidator, SchemaValidationError, SchemaValidator,
+    ValidationIssue as SchemaValidationIssue, ValidationResult as SchemaValidationResult,
+    ValidationSeverity as SchemaValidationSeverity,
+};
 pub use settings::*;
-pub use templates::*;
 pub use types::*;
+
+// Re-export organization module items selectively to avoid conflicts
+pub use organization::{
+    ConfigurationSource as OrgConfigurationSource,
+    ConfigurationSourceTrace as OrgConfigurationSourceTrace, GlobalDefaultsEnhanced,
+    MergedConfiguration as OrgMergedConfiguration, RepositoryTypeConfig,
+    TeamConfig as OrgTeamConfig, TemplateConfig as OrgTemplateConfig,
+    TemplateMetadata as OrgTemplateMetadata, TemplateVariable as OrgTemplateVariable,
+};
 
 // Unit tests will be added in a separate file: lib_tests.rs
 #[path = "lib_tests.rs"]

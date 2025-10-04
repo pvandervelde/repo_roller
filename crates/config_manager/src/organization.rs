@@ -433,6 +433,7 @@ pub struct OverridableValue<T: Clone> {
     value: T,
     /// Whether this value can be overridden by higher levels in the hierarchy.
     /// When `false`, this value is considered fixed and must not be changed.
+    #[serde(rename = "override_allowed")]
     can_override: bool,
 }
 
@@ -615,6 +616,7 @@ impl<T: Clone> OverridableValue<T> {
 /// defaults.repository_visibility = Some(OverridableValue::overridable(RepositoryVisibility::Private));
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalDefaults {
     /// Default branch protection settings for all repositories.
     /// When fixed, ensures minimum security standards across the organization.
@@ -739,6 +741,7 @@ impl Default for GlobalDefaults {
 /// team_config.team_github_apps = Some(vec!["team-specific-app".to_string()]);
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TeamConfig {
     /// Override for repository visibility setting.
     ///
@@ -1752,6 +1755,7 @@ impl Default for GlobalDefaultsEnhanced {
 /// - **Missing Dependencies**: If the configuration references undefined custom properties or environments
 /// - **Serialization Errors**: If the configuration cannot be loaded from TOML/JSON files
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct RepositoryTypeConfig {
     /// Branch protection settings for repositories of this type.
     ///
@@ -1976,6 +1980,20 @@ impl RepositoryTypeConfig {
     /// assert!(config.validate().is_err());
     /// ```
     pub fn validate(&self) -> Result<(), ConfigurationError> {
+        self.validate_with_options(true)
+    }
+
+    /// Validates the repository type configuration with configurable security enforcement.
+    ///
+    /// # Arguments
+    ///
+    /// * `strict_security` - Whether to enforce strict security policies (e.g., require HTTPS)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the configuration is valid
+    /// * `Err(ConfigurationError)` if validation fails
+    pub fn validate_with_options(&self, strict_security: bool) -> Result<(), ConfigurationError> {
         // Validate labels if present - basic validation for now
         if let Some(labels) = &self.labels {
             for label in labels {
@@ -2014,7 +2032,8 @@ impl RepositoryTypeConfig {
                         reason: "Webhook URL cannot be empty".to_string(),
                     });
                 }
-                if !webhook.url.starts_with("https://") {
+                // Only enforce HTTPS requirement if strict security is enabled
+                if strict_security && !webhook.url.starts_with("https://") {
                     return Err(ConfigurationError::InvalidValue {
                         field: "webhook.url".to_string(),
                         value: webhook.url.clone(),
@@ -2310,6 +2329,7 @@ pub struct TemplateMetadata {
     /// Author or team responsible for this template.
     author: String,
     /// Categorization tags for discovery and organization.
+    #[serde(default)]
     tags: Vec<String>,
 }
 
@@ -2595,6 +2615,7 @@ impl TemplateVariable {
 /// assert!(config.repository_type().is_some());
 /// ```
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TemplateConfig {
     /// Template identification and metadata information.
     template: TemplateMetadata,
@@ -3856,7 +3877,11 @@ impl MergedConfiguration {
     }
 
     /// Merges global default configuration.
-    fn merge_global_defaults(&mut self, global: &GlobalDefaults) -> Result<(), ConfigurationError> {
+    #[allow(dead_code)]
+    fn merge_global_defaults(
+        &mut self,
+        _global: &GlobalDefaults,
+    ) -> Result<(), ConfigurationError> {
         // TODO: Merge repository settings from global defaults
         // For now, this is a placeholder implementation
 
@@ -3870,9 +3895,10 @@ impl MergedConfiguration {
     }
 
     /// Merges repository type configuration.
+    #[allow(dead_code)]
     fn merge_repository_type_config(
         &mut self,
-        repo_type: &RepositoryTypeConfig,
+        _repo_type: &RepositoryTypeConfig,
     ) -> Result<(), ConfigurationError> {
         // TODO: Merge repository type configuration
         // For now, this is a placeholder implementation
@@ -3887,7 +3913,8 @@ impl MergedConfiguration {
     }
 
     /// Merges team configuration.
-    fn merge_team_config(&mut self, team: &TeamConfig) -> Result<(), ConfigurationError> {
+    #[allow(dead_code)]
+    fn merge_team_config(&mut self, _team: &TeamConfig) -> Result<(), ConfigurationError> {
         // TODO: Merge team configuration
         // For now, this is a placeholder implementation
 
@@ -3899,9 +3926,10 @@ impl MergedConfiguration {
     }
 
     /// Merges template configuration.
+    #[allow(dead_code)]
     fn merge_template_config(
         &mut self,
-        template: &TemplateConfig,
+        _template: &TemplateConfig,
     ) -> Result<(), ConfigurationError> {
         // TODO: Merge template configuration
         // For now, this is a placeholder implementation
@@ -3916,6 +3944,7 @@ impl MergedConfiguration {
     }
 
     /// Merges an overridable value respecting override settings.
+    #[allow(dead_code)]
     fn merge_overridable_value<T: Clone>(
         &mut self,
         target: &mut Option<OverridableValue<T>>,
@@ -3938,12 +3967,14 @@ impl MergedConfiguration {
     }
 
     /// Checks if a source has higher precedence than the existing value.
+    #[allow(dead_code)]
     fn has_higher_precedence(&self, source_type: ConfigurationSource) -> bool {
         // Template configuration has highest precedence, then team, then repository type, then global
         matches!(source_type, ConfigurationSource::Template)
     }
 
     /// Adds or replaces a label, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_label(&mut self, label: LabelConfig, source: ConfigurationSource) {
         let name = label.name.clone();
         self.labels.insert(name.clone(), label);
@@ -3952,6 +3983,7 @@ impl MergedConfiguration {
     }
 
     /// Adds or replaces a webhook, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_webhook(&mut self, webhook: WebhookConfig, source: ConfigurationSource) {
         // Replace existing webhook with same URL or add new one
         if let Some(pos) = self.webhooks.iter().position(|w| w.url == webhook.url) {
@@ -3964,6 +3996,7 @@ impl MergedConfiguration {
     }
 
     /// Adds or replaces an environment, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_environment(
         &mut self,
         environment: EnvironmentConfig,
@@ -3984,6 +4017,7 @@ impl MergedConfiguration {
     }
 
     /// Adds or replaces a GitHub App, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_github_app(&mut self, app: GitHubAppConfig, source: ConfigurationSource) {
         // Replace existing app with same slug or add new one
         if let Some(pos) = self
