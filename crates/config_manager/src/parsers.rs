@@ -1485,7 +1485,7 @@ impl RepositoryTypeConfigParser {
             for (_key, _value) in table {
                 // Repository type configs should not have deprecated patterns yet
                 // but we can check for potential issues
-                fields_parsed += 1;
+                // Note: We don't count fields here as they will be counted during actual parsing
             }
         }
 
@@ -2053,7 +2053,7 @@ impl TemplateConfigParser {
                 // Validate security settings for webhooks
                 if let Some(webhooks) = config.webhooks() {
                     for (index, webhook) in webhooks.iter().enumerate() {
-                        if let Err(url_error) = super::parsing_utils::validate_secure_url(
+                        if let Err(url_error) = parsing_utils::validate_secure_url(
                             &webhook.url,
                             &format!("webhooks[{}].url", index),
                         ) {
