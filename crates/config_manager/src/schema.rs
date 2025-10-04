@@ -48,6 +48,9 @@ use schemars::{schema_for, JsonSchema};
 use serde_json::Value;
 use thiserror::Error;
 
+/// Type alias for validator functions to reduce type complexity
+type ValidatorFunction = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
 #[cfg(test)]
 #[path = "schema_tests.rs"]
 mod tests;
@@ -485,7 +488,7 @@ pub struct CustomValidator {
     /// Human-readable description of what this validator checks
     description: String,
     /// The validation function
-    validator: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+    validator: ValidatorFunction,
 }
 
 impl CustomValidator {
@@ -974,6 +977,7 @@ impl SchemaValidator {
     /// # Returns
     ///
     /// A `ValidationResult` containing any schema validation issues found.
+    #[allow(dead_code)]
     fn validate_against_schema(&self, value: &Value, schema: &JSONSchema) -> ValidationResult {
         let mut result = ValidationResult::new();
 
@@ -1024,6 +1028,7 @@ impl SchemaValidator {
     /// # Returns
     ///
     /// A `ValidationIssue` representing the schema validation failure.
+    #[allow(dead_code)]
     fn convert_schema_error(&self, error: &ValidationError) -> ValidationIssue {
         let field_path = {
             let path_str = error.instance_path.to_string();

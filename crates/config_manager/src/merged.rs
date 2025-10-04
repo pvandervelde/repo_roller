@@ -8,8 +8,6 @@ use crate::types::{EnvironmentConfig, GitHubAppConfig, LabelConfig, WebhookConfi
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-
-
 /// Source of a configuration setting in the hierarchy.
 ///
 /// This enum identifies which level of the configuration hierarchy provided

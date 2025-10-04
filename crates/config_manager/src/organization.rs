@@ -3877,7 +3877,11 @@ impl MergedConfiguration {
     }
 
     /// Merges global default configuration.
-    fn merge_global_defaults(&mut self, global: &GlobalDefaults) -> Result<(), ConfigurationError> {
+    #[allow(dead_code)]
+    fn merge_global_defaults(
+        &mut self,
+        _global: &GlobalDefaults,
+    ) -> Result<(), ConfigurationError> {
         // TODO: Merge repository settings from global defaults
         // For now, this is a placeholder implementation
 
@@ -3891,9 +3895,10 @@ impl MergedConfiguration {
     }
 
     /// Merges repository type configuration.
+    #[allow(dead_code)]
     fn merge_repository_type_config(
         &mut self,
-        repo_type: &RepositoryTypeConfig,
+        _repo_type: &RepositoryTypeConfig,
     ) -> Result<(), ConfigurationError> {
         // TODO: Merge repository type configuration
         // For now, this is a placeholder implementation
@@ -3908,7 +3913,8 @@ impl MergedConfiguration {
     }
 
     /// Merges team configuration.
-    fn merge_team_config(&mut self, team: &TeamConfig) -> Result<(), ConfigurationError> {
+    #[allow(dead_code)]
+    fn merge_team_config(&mut self, _team: &TeamConfig) -> Result<(), ConfigurationError> {
         // TODO: Merge team configuration
         // For now, this is a placeholder implementation
 
@@ -3920,9 +3926,10 @@ impl MergedConfiguration {
     }
 
     /// Merges template configuration.
+    #[allow(dead_code)]
     fn merge_template_config(
         &mut self,
-        template: &TemplateConfig,
+        _template: &TemplateConfig,
     ) -> Result<(), ConfigurationError> {
         // TODO: Merge template configuration
         // For now, this is a placeholder implementation
@@ -3937,6 +3944,7 @@ impl MergedConfiguration {
     }
 
     /// Merges an overridable value respecting override settings.
+    #[allow(dead_code)]
     fn merge_overridable_value<T: Clone>(
         &mut self,
         target: &mut Option<OverridableValue<T>>,
@@ -3959,12 +3967,14 @@ impl MergedConfiguration {
     }
 
     /// Checks if a source has higher precedence than the existing value.
+    #[allow(dead_code)]
     fn has_higher_precedence(&self, source_type: ConfigurationSource) -> bool {
         // Template configuration has highest precedence, then team, then repository type, then global
         matches!(source_type, ConfigurationSource::Template)
     }
 
     /// Adds or replaces a label, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_label(&mut self, label: LabelConfig, source: ConfigurationSource) {
         let name = label.name.clone();
         self.labels.insert(name.clone(), label);
@@ -3973,6 +3983,7 @@ impl MergedConfiguration {
     }
 
     /// Adds or replaces a webhook, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_webhook(&mut self, webhook: WebhookConfig, source: ConfigurationSource) {
         // Replace existing webhook with same URL or add new one
         if let Some(pos) = self.webhooks.iter().position(|w| w.url == webhook.url) {
@@ -3985,6 +3996,7 @@ impl MergedConfiguration {
     }
 
     /// Adds or replaces an environment, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_environment(
         &mut self,
         environment: EnvironmentConfig,
@@ -4005,6 +4017,7 @@ impl MergedConfiguration {
     }
 
     /// Adds or replaces a GitHub App, tracking its source.
+    #[allow(dead_code)]
     fn add_or_replace_github_app(&mut self, app: GitHubAppConfig, source: ConfigurationSource) {
         // Replace existing app with same slug or add new one
         if let Some(pos) = self

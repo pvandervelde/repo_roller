@@ -10,6 +10,9 @@ use crate::organization::{
 };
 use std::collections::HashMap;
 
+/// Type alias for custom validator functions to reduce type complexity
+type CustomValidator = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
 #[cfg(test)]
 #[path = "parsers_tests.rs"]
 mod tests;
@@ -117,7 +120,7 @@ pub struct GlobalDefaultsParser {
     /// Whether to allow deprecated configuration syntax
     allow_deprecated_syntax: bool,
     /// Custom validation rules specific to the organization
-    custom_validators: HashMap<String, Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+    custom_validators: HashMap<String, CustomValidator>,
 }
 
 impl GlobalDefaultsParser {
@@ -510,9 +513,9 @@ impl GlobalDefaultsParser {
         repository_context: &str,
     ) -> ParseResult<GlobalDefaultsEnhanced> {
         let mut errors = Vec::new();
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
         let mut fields_parsed = 0;
-        let mut defaults_applied = 0;
+        let defaults_applied = 0;
         let has_deprecated_syntax = false;
 
         // Try to parse into GlobalDefaultsEnhanced structure
@@ -631,7 +634,7 @@ impl GlobalDefaultsParser {
     /// - Required security features must be enabled
     /// - Webhook URLs must use secure protocols
     /// - Custom properties must follow naming conventions
-    pub fn validate_policies(&self, config: &GlobalDefaults, context: &str) -> Vec<ParseError> {
+    pub fn validate_policies(&self, config: &GlobalDefaults, _context: &str) -> Vec<ParseError> {
         let mut errors = Vec::new();
 
         // Validate security policies if strict security is enabled
@@ -747,7 +750,7 @@ pub struct TeamConfigParser {
     /// Whether to allow deprecated configuration syntax
     allow_deprecated_syntax: bool,
     /// Custom validation rules specific to the organization
-    custom_validators: HashMap<String, Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+    custom_validators: HashMap<String, CustomValidator>,
 }
 
 impl TeamConfigParser {
@@ -1144,7 +1147,7 @@ impl TeamConfigParser {
         &self,
         team_config: &TeamConfig,
         global_defaults: &GlobalDefaults,
-        context: &str,
+        _context: &str,
     ) -> Vec<ParseError> {
         let mut errors = Vec::new();
 
@@ -1305,7 +1308,7 @@ pub struct RepositoryTypeConfigParser {
     /// Whether to allow deprecated configuration syntax.
     allow_deprecated_syntax: bool,
     /// Custom validation rules for specific fields.
-    custom_validators: HashMap<String, Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+    custom_validators: HashMap<String, CustomValidator>,
 }
 
 impl RepositoryTypeConfigParser {
@@ -1362,6 +1365,11 @@ impl RepositoryTypeConfigParser {
             allow_deprecated_syntax: allow_deprecated,
             custom_validators: HashMap::new(),
         }
+    }
+
+    /// Returns whether deprecated syntax is allowed.
+    pub fn allows_deprecated_syntax(&self) -> bool {
+        self.allow_deprecated_syntax
     }
 
     /// Parses repository type configuration from TOML content.
@@ -1429,7 +1437,7 @@ impl RepositoryTypeConfigParser {
         let mut warnings = Vec::new();
         let mut fields_parsed = 0;
         let defaults_applied = 0;
-        let mut has_deprecated_syntax = false;
+        let has_deprecated_syntax = false;
 
         // Handle empty content case
         if toml_content.trim().is_empty() {
@@ -1474,14 +1482,10 @@ impl RepositoryTypeConfigParser {
 
         // Check for deprecated syntax patterns (none specific to repository types yet)
         if let Some(table) = parsed_toml.as_table() {
-            for (key, value) in table {
-                match key.as_str() {
-                    // Repository type configs should not have deprecated patterns yet
-                    // but we can check for potential issues
-                    _ => {
-                        // Could add future deprecated syntax detection here
-                    }
-                }
+            for (_key, _value) in table {
+                // Repository type configs should not have deprecated patterns yet
+                // but we can check for potential issues
+                fields_parsed += 1;
             }
         }
 
@@ -1763,7 +1767,7 @@ pub struct TemplateConfigParser {
     /// Whether to allow deprecated configuration syntax.
     allow_deprecated_syntax: bool,
     /// Custom validation rules for specific fields.
-    custom_validators: HashMap<String, Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+    custom_validators: HashMap<String, CustomValidator>,
 }
 
 impl TemplateConfigParser {
