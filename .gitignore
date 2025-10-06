@@ -30,3 +30,6 @@ config.toml
 .llm/
 lcov.info
 .aider*
+
+# Ignore the review files
+reviews/
