@@ -22,8 +22,11 @@ Technical system design and component organization.
 
 - [**System Overview**](architecture/system-overview.md) - High-level architecture and data flow
 - [**Components**](architecture/components.md) - Core modules and their responsibilities
-- [**Data Flow**](architecture/data-flow.md) - Request processing workflows
-- [**Deployment**](architecture/deployment.md) - Infrastructure and deployment strategy
+- [**Responsibilities**](responsibilities.md) - Component responsibilities using RDD analysis
+- [**Vocabulary**](vocabulary.md) - Domain concepts and naming conventions
+- [**Constraints**](constraints.md) - Implementation constraints and architectural rules
+- [**Assertions**](assertions.md) - Behavioral specifications and testable requirements
+- [**Tradeoffs**](tradeoffs.md) - Architectural alternatives and decisions
 
 ### 📝 Requirements
 
@@ -54,9 +57,10 @@ Detailed design specifications for key system areas.
 
 Security considerations and implementation details.
 
+- [**Threat Model**](security/threat-model.md) - Security threats and attack vectors
 - [**Authentication & Authorization**](security/authentication-authorization.md) - Authentication flows and RBAC
-- [**Secrets Management**](security/secrets-management.md) - Credential storage and Azure Key Vault
 - [**Input Validation**](security/input-validation.md) - Security validation and protection
+- [**Secrets Management**](security/secrets-management.md) - Credential storage and Azure Key Vault
 
 ### 🔧 Operations
 
@@ -65,6 +69,14 @@ Running, monitoring, and maintaining the system.
 - [**Observability**](operations/observability.md) - Logging, metrics, and tracing
 - [**Deployment Infrastructure**](operations/deployment-infrastructure.md) - Azure setup and Infrastructure as Code
 - [**Maintenance**](operations/maintenance.md) - Operational procedures and troubleshooting
+
+### 🔌 Interfaces
+
+System boundaries and integration contracts.
+
+- [**Port Definitions**](interfaces/ports.md) - Abstract interfaces for external dependencies
+- [**Domain Types**](interfaces/domain-types.md) - Core domain type specifications
+- [**API Contracts**](interfaces/api-contracts.md) - External API interface definitions
 
 ### 🧪 Testing
 
@@ -79,27 +91,39 @@ Testing strategies and implementation.
 ### For Developers
 
 - Start with [Overview](overview/) to understand the system fundamentals
-- Review [Architecture](architecture/) for technical design
+- Review [Architecture](architecture/) for technical design and [Vocabulary](vocabulary.md) for domain language
+- Study [Responsibilities](responsibilities.md) for component collaboration patterns
+- Reference [Constraints](constraints.md) for implementation rules and [Assertions](assertions.md) for behavior contracts
 - Check [Design](design/) for detailed component specifications
-- Reference [Testing](testing/) for validation strategies
+
+### For Interface Designers
+
+- Begin with [Vocabulary](vocabulary.md) to understand domain concepts
+- Review [Responsibilities](responsibilities.md) for component boundaries and collaboration
+- Study [Interfaces](interfaces/) for port definitions and contracts
+- Reference [Constraints](constraints.md) for type system and architectural rules
+- Use [Assertions](assertions.md) as acceptance criteria for interface design
 
 ### For Product/Business
 
 - Read [Problem Statement](overview/problem-statement.md) for context
 - Review [Functional Requirements](requirements/functional-requirements.md) for capabilities
 - Check [Solution Overview](overview/solution-overview.md) for high-level approach
+- Reference [Tradeoffs](tradeoffs.md) for architectural decisions and rationale
 
 ### For Operations/DevOps
 
 - Focus on [Operations](operations/) for deployment and monitoring
-- Review [Security](security/) for security considerations
+- Review [Security](security/) for security considerations and threat model
 - Check [Deployment](architecture/deployment.md) for infrastructure needs
+- Study [Observability](operations/observability.md) for monitoring requirements
 
 ### For QA/Testing
 
-- Start with [Testing](testing/) for test strategies
-- Review [Requirements](requirements/) for test scenarios
-- Check [Error Handling](design/error-handling.md) for failure cases
+- Start with [Assertions](assertions.md) for behavioral specifications and test cases
+- Review [Requirements](requirements/) for test scenarios and acceptance criteria
+- Reference [Security](security/) for security testing requirements
+- Check [Error Handling](design/error-handling.md) for failure case validation
 
 ## Contributing to the Specification
 
@@ -113,10 +137,10 @@ This specification is a living document that evolves with the project. When maki
 
 ## Quick Links
 
-- **Latest Changes**: Check git history for recent updates
-- **Implementation Status**: See [Development Phases](implementation/development-phases.md)
-- **Architecture Diagram**: [System Overview](architecture/system-overview.md)
-- **Getting Started**: [Solution Overview](overview/solution-overview.md)
+- **Architecture Foundation**: [Vocabulary](vocabulary.md) → [Responsibilities](responsibilities.md) → [Constraints](constraints.md)
+- **Implementation Guidance**: [Interfaces](interfaces/) → [Assertions](assertions.md) → [Security](security/)
+- **System Context**: [Problem Statement](overview/problem-statement.md) → [Solution Overview](overview/solution-overview.md)
+- **Technical Design**: [System Overview](architecture/system-overview.md) → [Components](architecture/components.md)
 
 ---
 
