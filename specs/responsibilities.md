@@ -2,7 +2,7 @@
 
 This document defines the responsibilities of each component using Responsibility-Driven Design (RDD) analysis. Each component is analyzed for what it **knows** (data/information), what it **does** (operations/behavior), and how it **collaborates** (relationships with other components).
 
-## Core Domain Layer
+## Business Logic Components
 
 ### RepositoryCreationOrchestrator
 
@@ -65,7 +65,7 @@ This document defines the responsibilities of each component using Responsibilit
 - **Security Guardian**: Prevents security violations during processing
 - **Validator**: Ensures template and variable correctness
 
-## Service Layer
+## Application Services
 
 ### AuthenticationService
 
@@ -76,7 +76,7 @@ This document defines the responsibilities of each component using Responsibilit
 
 **Collaborators:**
 
-- **GitHubApiClient** (validates tokens and retrieves user information)
+- **GitHubClient** (validates tokens and retrieves user information)
 - **PermissionResolver** (determines user permissions based on organization/team membership)
 - **TokenManager** (manages token lifecycle and refresh)
 - **SessionManager** (maintains user sessions for web interfaces)
@@ -96,7 +96,7 @@ This document defines the responsibilities of each component using Responsibilit
 
 **Collaborators:**
 
-- **GitHubApiClient** (low-level GitHub API communication)
+- **GitHubClient** (low-level GitHub REST communication)
 - **RateLimitManager** (manages API rate limits and retries)
 - **RepositorySettingsApplier** (applies configuration to created repositories)
 - **PermissionManager** (sets repository and team permissions)
@@ -116,7 +116,7 @@ This document defines the responsibilities of each component using Responsibilit
 
 **Collaborators:**
 
-- **GitHubApiClient** (accesses metadata repository content)
+- **GitHubClient** (accesses metadata repository content)
 - **ConfigurationFileParser** (parses TOML/YAML configuration files)
 - **RepositoryStructureValidator** (validates metadata repository structure)
 - **ContentCache** (caches frequently accessed configuration content)
@@ -127,9 +127,9 @@ This document defines the responsibilities of each component using Responsibilit
 - **Content Provider**: Loads and parses configuration content
 - **Structure Validator**: Ensures metadata repositories follow conventions
 
-## Infrastructure Layer
+## External System Integrations
 
-### GitHubApiClient
+### GitHubClient
 
 **Responsibilities:**
 
@@ -145,9 +145,9 @@ This document defines the responsibilities of each component using Responsibilit
 
 **Roles:**
 
-- **API Client**: Low-level communication with GitHub's REST API
+- **GitHub Client**: Low-level communication with GitHub's REST service
 - **Protocol Handler**: Manages HTTP protocol specifics
-- **Error Translator**: Converts API errors to domain errors
+- **Error Translator**: Converts GitHub service errors to business errors
 
 ### ConfigurationCache
 
@@ -189,14 +189,14 @@ This document defines the responsibilities of each component using Responsibilit
 - **Helper Executor**: Runs custom template helper functions
 - **Compiler**: Converts template syntax into executable form
 
-## Interface Layer
+## User Interfaces
 
-### RepositoryCreationApi
+### RepositoryCreationWebService
 
 **Responsibilities:**
 
-- **Knows**: HTTP request/response formats, API endpoint specifications, request validation rules
-- **Does**: Handles HTTP requests for repository creation, validates request format, converts between HTTP and domain objects, returns appropriate HTTP responses
+- **Knows**: HTTP request/response formats, web service endpoint specifications, request validation rules
+- **Does**: Handles HTTP requests for repository creation, validates request format, converts between HTTP and business objects, returns appropriate HTTP responses
 
 **Collaborators:**
 
@@ -207,11 +207,11 @@ This document defines the responsibilities of each component using Responsibilit
 
 **Roles:**
 
-- **API Gateway**: Entry point for HTTP-based repository creation requests
-- **Protocol Adapter**: Converts between HTTP and domain representations
-- **Request Handler**: Processes incoming API requests
+- **Web Service**: Entry point for HTTP-based repository creation requests
+- **Protocol Handler**: Converts between HTTP and business representations
+- **Request Processor**: Processes incoming web requests
 
-### CliInterface
+### CommandLineInterface
 
 **Responsibilities:**
 
@@ -231,7 +231,7 @@ This document defines the responsibilities of each component using Responsibilit
 - **User Interface**: Provides terminal-based interaction for repository creation
 - **Input Validator**: Validates command-line arguments and options
 
-### WebInterface
+### BrowserInterface
 
 **Responsibilities:**
 
@@ -253,7 +253,7 @@ This document defines the responsibilities of each component using Responsibilit
 - **Progress Reporter**: Displays real-time status during repository creation operations
 - **Form Handler**: Validates and processes user input from web forms
 
-### McpServer
+### ModelContextProtocolServer
 
 **Responsibilities:**
 
@@ -283,7 +283,7 @@ This document defines the responsibilities of each component using Responsibilit
 4. **Template Processing**: TemplateProcessor transforms template content with variables
 5. **Repository Creation**: GitHubRepository creates repository via GitHub API
 6. **Configuration Application**: GitHubRepository applies resolved configuration to repository
-7. **Result Reporting**: Interface layer returns success/failure response to user
+7. **Result Reporting**: User interface returns success/failure response to user
 
 ### Configuration Resolution Workflow
 
@@ -306,22 +306,22 @@ This document defines the responsibilities of each component using Responsibilit
 
 ## Boundary Definitions
 
-### Domain Boundary
+### Business Logic Boundary
 
-**Inside Domain:**
+**Inside Business Logic:**
 
 - RepositoryCreationOrchestrator
 - ConfigurationManager
 - TemplateProcessor
-- Core domain value objects and entities
+- Core business value objects and entities
 
-**Outside Domain:**
+**Outside Business Logic:**
 
-- All infrastructure components (GitHubApiClient, ConfigurationCache, etc.)
-- All interface components (API, CLI, MCP)
-- External services (GitHub API, Azure services)
+- All external system integrations (GitHubClient, ConfigurationCache, etc.)
+- All user interface components (Web Service, CLI, MCP Server)
+- External services (GitHub REST service, Azure services)
 
-### Service Boundary
+### Application Service Boundary
 
 **Authentication Services:**
 
@@ -341,21 +341,21 @@ This document defines the responsibilities of each component using Responsibilit
 - Security validation for template content
 - File path validation and sanitization
 
-### Infrastructure Boundary
+### External System Boundary
 
-**External API Integration:**
+**GitHub Integration:**
 
-- GitHub REST API communication
+- GitHub REST service communication
+- Repository and organization management
+- User authentication through GitHub
+
+**Azure Integration:**
+
 - Azure service integration
-- HTTP client management and error handling
+- Credential storage and management
+- Monitoring and logging services
 
-**Data Storage:**
-
-- Configuration caching mechanisms
-- Audit log storage
-- Template compilation caching
-
-**System Integration:**
+**System Resources:**
 
 - File system operations
 - Network communication

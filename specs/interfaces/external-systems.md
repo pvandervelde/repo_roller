@@ -1,12 +1,12 @@
-# Port Definitions
+# External System Interfaces
 
-This document defines the abstract interfaces (ports) that represent the boundaries between RepoRoller's core domain and external systems. These ports define contracts that infrastructure adapters must implement.
+This document defines the abstract interfaces that represent the boundaries between RepoRoller's business logic and external systems. These interfaces define contracts that concrete implementations must fulfill.
 
-## Repository Management Ports
+## Repository Management Interfaces
 
-### GitHubRepository Port
+### RepositoryProvider
 
-**Purpose**: Abstract interface for all GitHub repository operations and management.
+**Purpose**: Abstract interface for all repository operations and management.
 
 **Responsibilities**:
 
@@ -32,9 +32,9 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - GitHub API rate limit handling
 - Network connectivity issues
 
-### TemplateRepository Port
+### TemplateSource
 
-**Purpose**: Abstract interface for accessing and retrieving template repository content.
+**Purpose**: Abstract interface for accessing and retrieving template content.
 
 **Responsibilities**:
 
@@ -56,9 +56,9 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Invalid template structure or configuration
 - Template repository permission issues
 
-## Configuration Management Ports
+## Configuration Management Interfaces
 
-### ConfigurationStorage Port
+### OrganizationConfigurationProvider
 
 **Purpose**: Abstract interface for loading and caching hierarchical configuration.
 
@@ -84,7 +84,7 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Configuration access permission issues
 - Cache consistency and invalidation failures
 
-### OverridePolicyEnforcer Port
+### ConfigurationPolicyValidator
 
 **Purpose**: Abstract interface for validating configuration override permissions and policies.
 
@@ -108,9 +108,9 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Configuration conflicts requiring resolution
 - Security policy enforcement failures
 
-## Authentication and Authorization Ports
+## Authentication and Authorization Interfaces
 
-### AuthenticationProvider Port
+### UserAuthenticationService
 
 **Purpose**: Abstract interface for user authentication and token management.
 
@@ -135,7 +135,7 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Token refresh failures
 - OAuth flow interruptions and errors
 
-### PermissionResolver Port
+### OrganizationPermissionService
 
 **Purpose**: Abstract interface for determining user permissions and authorization.
 
@@ -159,9 +159,9 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Permission resolution failures
 - Team membership validation issues
 
-## Template Processing Ports
+## Template Processing Interfaces
 
-### TemplateRenderer Port
+### TemplateEngine
 
 **Purpose**: Abstract interface for template processing and variable substitution.
 
@@ -187,7 +187,7 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Template processing timeouts
 - Security violations in template content
 
-### SecurityValidator Port
+### TemplateSecurityValidator
 
 **Purpose**: Abstract interface for validating security aspects of template processing.
 
@@ -212,9 +212,9 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Dangerous content detection
 - Template security policy violations
 
-## Audit and Logging Ports
+## Audit and Logging Interfaces
 
-### AuditLogger Port
+### ComplianceAuditService
 
 **Purpose**: Abstract interface for comprehensive audit trail and compliance logging.
 
@@ -239,7 +239,7 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Audit data corruption or loss
 - External audit system integration issues
 
-### MetricsCollector Port
+### SystemMetricsService
 
 **Purpose**: Abstract interface for collecting system performance and usage metrics.
 
@@ -264,9 +264,9 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - External monitoring system integration issues
 - Metrics storage and export problems
 
-## External Service Integration Ports
+## External Service Integration Interfaces
 
-### SecretManager Port
+### CredentialVault
 
 **Purpose**: Abstract interface for secure credential and secret management.
 
@@ -292,7 +292,7 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Credential rotation failures
 - External secret service integration issues
 
-### NotificationProvider Port
+### UserNotificationService
 
 **Purpose**: Abstract interface for sending notifications and alerts to users and systems.
 
@@ -317,32 +317,32 @@ This document defines the abstract interfaces (ports) that represent the boundar
 - Invalid recipient or channel configuration
 - External notification service issues
 
-## Port Implementation Guidelines
+## Interface Implementation Guidelines
 
 ### Contract Requirements
 
-**Input Validation**: All port implementations must validate inputs at the adapter boundary and return appropriate domain errors for invalid input.
+**Input Validation**: All interface implementations must validate inputs at the system boundary and return appropriate business errors for invalid input.
 
-**Error Translation**: Adapters must translate infrastructure-specific errors into appropriate domain error types while preserving relevant context.
+**Error Translation**: Concrete implementations must translate external system errors into appropriate business error types while preserving relevant context.
 
-**Resource Management**: Port implementations must handle resource cleanup and connection management appropriately for their infrastructure.
+**Resource Management**: Interface implementations must handle resource cleanup and connection management appropriately for their external systems.
 
 **Timeout Handling**: All operations must respect configured timeout values and handle timeout scenarios gracefully.
 
 ### Testing Requirements
 
-**Contract Tests**: Each port must have contract tests that verify the interface behavior independent of specific implementations.
+**Contract Tests**: Each interface must have contract tests that verify the behavior independent of specific implementations.
 
-**Mock Implementations**: Ports must provide mock implementations for testing that support behavior verification.
+**Test Implementations**: Interfaces must provide test implementations for testing that support behavior verification.
 
-**Integration Tests**: Real adapter implementations must be tested against actual external services in integration test environments.
+**Integration Tests**: Real implementations must be tested against actual external services in integration test environments.
 
 ### Documentation Requirements
 
-**Interface Documentation**: All port operations must be thoroughly documented with parameters, return values, and error conditions.
+**Interface Documentation**: All interface operations must be thoroughly documented with parameters, return values, and error conditions.
 
-**Implementation Guidelines**: Each port must provide guidelines for implementing adapters, including common patterns and pitfalls.
+**Implementation Guidelines**: Each interface must provide guidelines for implementing concrete versions, including common patterns and pitfalls.
 
-**Error Mapping**: Documentation must specify how infrastructure errors should be mapped to domain errors.
+**Error Mapping**: Documentation must specify how external system errors should be mapped to business errors.
 
-These port definitions establish clear contracts between RepoRoller's core domain and external systems, enabling testable, maintainable, and replaceable infrastructure components.
+These interface definitions establish clear contracts between RepoRoller's business logic and external systems, enabling testable, maintainable, and replaceable external system integrations.

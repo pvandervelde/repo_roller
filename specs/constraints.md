@@ -50,56 +50,63 @@ This document defines the architectural rules, constraints, and policies that mu
 
 ### Dependency Direction Rules
 
-**Constraint**: Dependency flow must follow hexagonal architecture principles.
+**Constraint**: Dependency flow must follow clean separation principles.
 
-**Core Dependencies**:
+**Business Logic Dependencies**:
 
-- Core domain depends only on standard library and essential crates (`serde`, `chrono`, `uuid`)
-- Core domain never imports infrastructure or interface modules
-- Service layer can depend on core domain and define abstract ports
-- Infrastructure layer implements ports but never imports other infrastructure
+- Business logic depends only on standard library and essential crates (`serde`, `chrono`, `uuid`)
+- Business logic never imports external system integrations or user interface modules
+- Application services can depend on business logic and define abstract interfaces
+- External system integrations implement interfaces but never import other integrations
 
-**Interface Dependencies**:
+**User Interface Dependencies**:
 
-- Interface layer depends on core domain through service layer
-- Multiple interface implementations (CLI, API, MCP) can coexist
-- Interface layer handles protocol-specific concerns only
+- User interfaces depend on business logic through application services
+- Multiple user interface implementations (CLI, Web Service, MCP Server) can coexist
+- User interfaces handle protocol-specific concerns only
 
-### Port/Adapter Pattern Enforcement
+### Interface Pattern Enforcement
 
-**Constraint**: All external system interactions must go through defined ports.
+**Constraint**: All external system interactions must go through defined interfaces following hexagonal architecture principles without exposing architectural terminology in naming.
 
-**Port Requirements**:
+**Interface Requirements**:
 
-- All external dependencies represented as traits (ports)
+- All external dependencies represented as traits (interfaces) using business domain names
 - Traits define only abstract behavior, no implementation details
-- Implementation (adapters) lives in infrastructure layer
+- Implementation (concrete types) lives in external system integration modules
+- No architectural terminology (ports, adapters, domain, infrastructure) in public interfaces
 
-**Examples of Required Ports**:
+**Examples of Required Interfaces**:
 
-- `GitHubRepository` trait for all GitHub API operations
-- `ConfigurationStorage` trait for configuration persistence
-- `AuditLogger` trait for audit trail recording
-- `TemplateRenderer` trait for template processing
+- `RepositoryProvider` trait for all GitHub repository operations
+- `OrganizationConfigurationProvider` trait for configuration persistence
+- `ComplianceAuditService` trait for audit trail recording
+- `TemplateEngine` trait for template processing
+
+**Business Domain Naming Convention**:
+
+- Use business concepts: `UserAuthenticationService`, `TemplateSource`, `CredentialVault`
+- Avoid architectural terms: `UserPort`, `TemplateAdapter`, `DomainService`, `InfrastructureClient`
+- Focus on business capability: what the interface provides from a user/business perspective
 
 ### Import Restrictions
 
 **Constraint**: Strict import rules prevent architectural violations.
 
-**Domain Layer Imports**:
+**Business Logic Imports**:
 
 - May import: `std`, `serde`, `chrono`, `uuid`, `thiserror`
-- May not import: HTTP clients, database drivers, external APIs
+- May not import: HTTP clients, database drivers, external system clients
 
-**Service Layer Imports**:
+**Application Service Imports**:
 
-- May import: Domain layer, async runtime (`tokio`), trait definitions
-- May not import: Specific infrastructure implementations
+- May import: Business logic, async runtime (`tokio`), interface trait definitions
+- May not import: Specific external system implementations
 
-**Infrastructure Layer Imports**:
+**External System Integration Imports**:
 
-- May import: Service layer traits, external service clients
-- May not import: Other infrastructure implementations
+- May import: Application service interface traits, external service clients
+- May not import: Other external system integration implementations
 
 ## Error Handling Constraints
 
@@ -308,7 +315,7 @@ This document defines the architectural rules, constraints, and policies that mu
 **Coverage Requirements**:
 
 - Unit tests: 90%+ coverage of domain logic
-- Integration tests: All port implementations tested against real services
+- Integration tests: All interface implementations tested against real services
 - Contract tests: Port interface contracts verified
 - End-to-end tests: Complete workflows from interface to external services
 

@@ -2,6 +2,8 @@
 
 Welcome to the RepoRoller specification documentation. This living document serves as the comprehensive guide for understanding, implementing, and maintaining the RepoRoller system.
 
+> **Architecture Note**: RepoRoller follows hexagonal architecture principles with clean separation between business logic and external systems. However, all public interfaces, file names, and documentation use business domain terminology rather than architectural concepts (ports, adapters, layers) to maintain focus on business value and user needs.
+
 ## What is RepoRoller?
 
 RepoRoller is a GitHub repository automation tool that standardizes the creation and initial setup of new repositories based on predefined templates. It eliminates the manual, error-prone process of copying templates, replacing placeholders, and configuring repository settings.
@@ -74,7 +76,7 @@ Running, monitoring, and maintaining the system.
 
 System boundaries and integration contracts.
 
-- [**Port Definitions**](interfaces/ports.md) - Abstract interfaces for external dependencies
+- [**External System Interfaces**](interfaces/external-systems.md) - Abstract interfaces for external dependencies
 - [**Domain Types**](interfaces/domain-types.md) - Core domain type specifications
 - [**API Contracts**](interfaces/api-contracts.md) - External API interface definitions
 
@@ -100,7 +102,7 @@ Testing strategies and implementation.
 
 - Begin with [Vocabulary](vocabulary.md) to understand domain concepts
 - Review [Responsibilities](responsibilities.md) for component boundaries and collaboration
-- Study [Interfaces](interfaces/) for port definitions and contracts
+- Study [Interfaces](interfaces/) for external system interface definitions and contracts
 - Reference [Constraints](constraints.md) for type system and architectural rules
 - Use [Assertions](assertions.md) as acceptance criteria for interface design
 
