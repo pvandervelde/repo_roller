@@ -428,6 +428,10 @@ impl RepositoryClient for GitHubClient {
 /// This struct represents the claims included in JSON Web Tokens used
 /// for GitHub App authentication. It contains the standard JWT fields
 /// required by GitHub's authentication system.
+///
+/// Note: Currently not used as JWT encoding is handled by octocrab internally,
+/// but kept for potential future use or custom JWT implementation.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct JWTClaims {
     /// Issued at time (Unix timestamp)
