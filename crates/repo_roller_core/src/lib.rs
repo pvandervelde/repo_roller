@@ -20,6 +20,15 @@
 //! - [`CreateRepoRequest`] - Request structure for repository creation
 //! - [`CreateRepoResult`] - Result structure containing success/failure information
 //!
+//! ## New Type System (Interface Design)
+//!
+//! The crate is transitioning to a new type system with:
+//! - Branded types for type safety ([`types`] module)
+//! - Interface traits for clean architecture boundaries
+//! - Comprehensive error handling with domain-specific errors
+//!
+//! See `specs/interfaces/` for complete interface specifications.
+//!
 //! ## Examples
 //!
 //! ```no_run
@@ -79,6 +88,61 @@ use walkdir::WalkDir;
 
 mod errors;
 use errors::Error;
+
+// Domain-specific types organized by business area
+// See specs/interfaces/shared-types.md for complete specifications
+
+/// Repository domain types (RepositoryName, OrganizationName)
+pub mod repository;
+
+/// Template domain types (TemplateName)
+pub mod template;
+
+/// GitHub integration types (InstallationId, GitHubToken)
+pub mod github;
+
+/// Authentication domain types (UserId, SessionId)
+pub mod authentication;
+
+// Cross-cutting types used across all domains
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// UTC timestamp wrapper
+///
+/// Represents a point in time in UTC timezone.
+/// See specs/interfaces/shared-types.md#timestamp
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Timestamp(DateTime<Utc>);
+
+impl Timestamp {
+    /// Create a timestamp for the current moment
+    pub fn now() -> Self {
+        Self(Utc::now())
+    }
+
+    /// Create a timestamp from a DateTime<Utc>
+    pub fn from_datetime(dt: DateTime<Utc>) -> Self {
+        Self(dt)
+    }
+
+    /// Get the inner DateTime<Utc>
+    pub fn as_datetime(&self) -> &DateTime<Utc> {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_rfc3339())
+    }
+}
+
+impl From<DateTime<Utc>> for Timestamp {
+    fn from(dt: DateTime<Utc>) -> Self {
+        Self::from_datetime(dt)
+    }
+}
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]
@@ -759,6 +823,12 @@ fn create_additional_files(
 }
 
 /// Create a new repository from a template with dependency injection for testability.
+///
+/// TODO (Interface Design): Refactor to use new type system with branded types:
+/// - Replace `String` parameters with `RepositoryName`, `OrganizationName`, `TemplateName`
+/// - Use `RepoRollerResult` instead of `CreateRepoResult`
+/// - Separate orchestration logic from infrastructure concerns
+/// - See specs/interfaces/repository-domain.md for target interface
 ///
 /// This is the core orchestration function that handles the complete repository creation
 /// workflow. It coordinates multiple services and performs all steps required to create

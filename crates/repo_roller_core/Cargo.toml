@@ -9,6 +9,7 @@ version.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = { version = "0.4", features = ["serde"] }
 config_manager = { path = "../config_manager" }
 git2 = "0.19"
 github_client = { path = "../github_client" }
@@ -20,6 +21,7 @@ thiserror = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing.workspace = true
 url.workspace = true
+uuid = { version = "1.0", features = ["serde", "v4"] }
 walkdir = "2.5"
 
 [dev-dependencies]
