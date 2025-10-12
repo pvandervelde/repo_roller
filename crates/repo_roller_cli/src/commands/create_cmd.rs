@@ -12,6 +12,14 @@
 //! - Organization-specific repository naming rules
 //! - GitHub App and Personal Access Token authentication
 //! - Template-based repository creation
+//!
+//! ## TODO (Interface Design)
+//!
+//! This module should be refactored to use the new interface design:
+//! - Use branded types from `repo_roller_core::repository` (RepositoryName, OrganizationName)
+//! - Use branded types from `repo_roller_core::template` (TemplateName)
+//! - Integrate `auth_handler` traits for authentication instead of ad-hoc keyring access
+//! - See specs/interfaces/authentication-interfaces.md for auth service interfaces
 
 use crate::{
     commands::auth_cmd::{KEY_RING_APP_ID, KEY_RING_APP_PRIVATE_KEY_PATH, KEY_RING_SERVICE_NAME},

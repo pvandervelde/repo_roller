@@ -48,11 +48,11 @@ graph TD
     style AzureFn fill:#ccf,stroke:#333,stroke-width:2px
 ```
 
-## Architectural Layers
+## System Organization
 
-### User Interface Layer
+### User Interfaces
 
-The top layer provides multiple interfaces for different user needs and integration scenarios:
+Multiple interfaces support different user needs and integration scenarios:
 
 **CLI Tool (`repo_roller_cli`)**
 
@@ -78,15 +78,15 @@ The top layer provides multiple interfaces for different user needs and integrat
 - Exposes repository creation as structured tools
 - Enables AI agents to create repositories autonomously
 
-**Azure Function Adapter (`repo_roller_azure_fn`)**
+**Azure Function Host (`repo_roller_azure_fn`)**
 
 - Serverless deployment wrapper for the REST API
 - Handles Azure-specific context and response formatting
 - Enables cloud-native deployment with auto-scaling
 
-### Business Logic Layer
+### Business Logic Components
 
-The core layer contains all business logic and orchestration:
+The core components contain all business logic and orchestration:
 
 **Core Business Logic (`repo_roller_core`)**
 
@@ -95,7 +95,7 @@ The core layer contains all business logic and orchestration:
 - Defines primary data structures and interfaces
 - Implements error handling and result reporting
 
-### Service Layer
+### Application Services
 
 Specialized services handle specific technical concerns:
 
@@ -127,7 +127,7 @@ Specialized services handle specific technical concerns:
 - Handles GitHub OAuth and token validation
 - Provides session management for web interfaces
 
-### External Integration Layer
+### External Service Integrations
 
 The system integrates with several external services:
 
