@@ -32,7 +32,7 @@ pub struct TemplateConfig {
     pub name: String,
     pub source_repo: String,
     pub variable_configs: Option<HashMap<String, VariableConfig>>,
-    
+
     // Additional fields for integration tests compatibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
