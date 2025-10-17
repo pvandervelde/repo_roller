@@ -11,7 +11,7 @@ mod tests;
 ///
 /// DO NOT USE in new code. Use the domain-specific error types instead:
 /// - ValidationError for input validation
-/// - RepositoryError for repository operations  
+/// - RepositoryError for repository operations
 /// - SystemError for infrastructure failures
 /// - etc.
 #[derive(Error, Debug)]
