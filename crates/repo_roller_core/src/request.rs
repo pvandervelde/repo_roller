@@ -67,27 +67,46 @@ pub struct RepositoryCreationRequest {
 /// ```
 #[derive(Debug, Clone)]
 pub struct RepositoryCreationRequestBuilder {
-    // TODO: Implement builder fields
+    name: RepositoryName,
+    owner: OrganizationName,
+    template: TemplateName,
+    variables: HashMap<String, String>,
 }
 
 impl RepositoryCreationRequestBuilder {
     /// Create a new builder with required fields.
     pub fn new(name: RepositoryName, owner: OrganizationName, template: TemplateName) -> Self {
-        todo!()
+        Self {
+            name,
+            owner,
+            template,
+            variables: HashMap::new(),
+        }
     }
 
     /// Add a single template variable.
-    pub fn variable(self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        todo!()
+    ///
+    /// If a variable with the same key already exists, it will be overwritten.
+    pub fn variable(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.variables.insert(key.into(), value.into());
+        self
     }
 
     /// Add multiple template variables at once.
-    pub fn variables(self, vars: HashMap<String, String>) -> Self {
-        todo!()
+    ///
+    /// Existing variables with the same keys will be overwritten.
+    pub fn variables(mut self, vars: HashMap<String, String>) -> Self {
+        self.variables.extend(vars);
+        self
     }
 
     /// Build the final RepositoryCreationRequest.
     pub fn build(self) -> RepositoryCreationRequest {
-        todo!()
+        RepositoryCreationRequest {
+            name: self.name,
+            owner: self.owner,
+            template: self.template,
+            variables: self.variables,
+        }
     }
 }
