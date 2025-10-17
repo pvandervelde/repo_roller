@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::{OrganizationName, RepositoryName, TemplateName};
+use crate::{OrganizationName, RepositoryName, TemplateName, Timestamp};
 
 #[cfg(test)]
 #[path = "request_tests.rs"]
@@ -45,6 +45,40 @@ pub struct RepositoryCreationRequest {
     /// Template variables for variable substitution during processing
     pub variables: HashMap<String, String>,
 }
+
+/// Result of a successful repository creation operation.
+///
+/// Contains metadata about the newly created repository.
+///
+/// # Examples
+///
+/// ```rust
+/// use repo_roller_core::{RepositoryCreationResult, Timestamp};
+///
+/// let result = RepositoryCreationResult {
+///     repository_url: "https://github.com/my-org/my-repo".to_string(),
+///     repository_id: "R_kgDOABCDEF".to_string(),
+///     created_at: Timestamp::now(),
+///     default_branch: "main".to_string(),
+/// };
+/// ```
+///
+/// See specs/interfaces/repository-domain.md#repositorycreationresult
+#[derive(Debug, Clone)]
+pub struct RepositoryCreationResult {
+    /// The URL of the created repository
+    pub repository_url: String,
+
+    /// The GitHub repository ID
+    pub repository_id: String,
+
+    /// When the repository was created
+    pub created_at: Timestamp,
+
+    /// The default branch name
+    pub default_branch: String,
+}
+
 
 /// Builder for constructing RepositoryCreationRequest instances.
 ///

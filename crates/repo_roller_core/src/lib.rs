@@ -111,7 +111,7 @@ pub mod authentication;
 pub use authentication::{SessionId, UserId};
 pub use github::{GitHubToken, InstallationId};
 pub use repository::{OrganizationName, RepositoryName};
-pub use request::{RepositoryCreationRequest, RepositoryCreationRequestBuilder};
+pub use request::{RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult};
 pub use template::TemplateName;
 
 // Cross-cutting types used across all domains

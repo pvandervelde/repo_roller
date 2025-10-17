@@ -308,3 +308,155 @@ fn test_builder_into_string() {
     // Should have one entry (second overwrites first)
     assert_eq!(request.variables.len(), 1);
 }
+
+// ============================================================================
+// RepositoryCreationResult Tests
+// ============================================================================
+
+/// Verify that RepositoryCreationResult can be created with all required fields.
+#[test]
+fn test_repository_creation_result_creation() {
+    let result = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/my-repo".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    assert_eq!(result.repository_url, "https://github.com/my-org/my-repo");
+    assert_eq!(result.repository_id, "R_kgDOABCDEF");
+    assert_eq!(result.default_branch, "main");
+}
+
+/// Verify that RepositoryCreationResult stores the creation timestamp.
+#[test]
+fn test_repository_creation_result_timestamp() {
+    let timestamp = Timestamp::now();
+    let result = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/my-repo".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: timestamp.clone(),
+        default_branch: "main".to_string(),
+    };
+
+    assert_eq!(result.created_at, timestamp);
+}
+
+/// Verify that RepositoryCreationResult is cloneable.
+#[test]
+fn test_repository_creation_result_clone() {
+    let result = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/my-repo".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    let cloned = result.clone();
+
+    assert_eq!(result.repository_url, cloned.repository_url);
+    assert_eq!(result.repository_id, cloned.repository_id);
+    assert_eq!(result.created_at, cloned.created_at);
+    assert_eq!(result.default_branch, cloned.default_branch);
+}
+
+/// Verify that RepositoryCreationResult has Debug output.
+#[test]
+fn test_repository_creation_result_debug() {
+    let result = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/my-repo".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    let debug_output = format!("{:?}", result);
+    assert!(debug_output.contains("RepositoryCreationResult"));
+    assert!(debug_output.contains("https://github.com/my-org/my-repo"));
+    assert!(debug_output.contains("R_kgDOABCDEF"));
+    assert!(debug_output.contains("main"));
+}
+
+/// Verify that RepositoryCreationResult handles various branch names.
+#[test]
+fn test_repository_creation_result_different_branches() {
+    let result_main = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/repo1".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    let result_master = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/repo2".to_string(),
+        repository_id: "R_kgDOGHIJKL".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "master".to_string(),
+    };
+
+    let result_custom = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/repo3".to_string(),
+        repository_id: "R_kgDOMNOPQR".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "develop".to_string(),
+    };
+
+    assert_eq!(result_main.default_branch, "main");
+    assert_eq!(result_master.default_branch, "master");
+    assert_eq!(result_custom.default_branch, "develop");
+}
+
+/// Verify that RepositoryCreationResult handles different GitHub URL formats.
+#[test]
+fn test_repository_creation_result_url_formats() {
+    let https_result = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/my-repo".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    let ssh_result = RepositoryCreationResult {
+        repository_url: "git@github.com:my-org/my-repo.git".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    assert!(https_result.repository_url.starts_with("https://"));
+    assert!(ssh_result.repository_url.starts_with("git@"));
+}
+
+/// Verify that RepositoryCreationResult stores GitHub repository IDs correctly.
+#[test]
+fn test_repository_creation_result_repository_id() {
+    // GitHub uses base64-encoded IDs with prefix
+    let result = RepositoryCreationResult {
+        repository_url: "https://github.com/my-org/my-repo".to_string(),
+        repository_id: "R_kgDOABCDEF".to_string(),
+        created_at: Timestamp::now(),
+        default_branch: "main".to_string(),
+    };
+
+    assert!(result.repository_id.starts_with("R_"));
+    assert!(!result.repository_id.is_empty());
+}
+
+/// Verify that RepositoryCreationResult can represent successful creation.
+#[test]
+fn test_repository_creation_result_success_scenario() {
+    let timestamp = Timestamp::now();
+
+    let result = RepositoryCreationResult {
+        repository_url: "https://github.com/acme-corp/awesome-project".to_string(),
+        repository_id: "R_kgDOHXjK7A".to_string(),
+        created_at: timestamp.clone(),
+        default_branch: "main".to_string(),
+    };
+
+    // Verify all fields are populated correctly
+    assert!(!result.repository_url.is_empty());
+    assert!(!result.repository_id.is_empty());
+    assert_eq!(result.created_at, timestamp);
+    assert!(!result.default_branch.is_empty());
+}
