@@ -98,11 +98,21 @@ pub mod repository;
 /// Template domain types (TemplateName)
 pub mod template;
 
+/// Repository creation request types
+pub mod request;
+
 /// GitHub integration types (InstallationId, GitHubToken)
 pub mod github;
 
 /// Authentication domain types (UserId, SessionId)
 pub mod authentication;
+
+// Re-export commonly used types
+pub use authentication::{SessionId, UserId};
+pub use github::{GitHubToken, InstallationId};
+pub use repository::{OrganizationName, RepositoryName};
+pub use request::RepositoryCreationRequest;
+pub use template::TemplateName;
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};
