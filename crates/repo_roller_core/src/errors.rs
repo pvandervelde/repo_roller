@@ -4,30 +4,24 @@ use thiserror::Error;
 #[path = "errors_tests.rs"]
 mod tests;
 
-/// Errors that can occur in the repo roller core functionality.
+/// DEPRECATED: Internal-only error type for lib.rs orchestration code.
 ///
-/// This enum represents all the different types of errors that can happen
-/// during repository creation, template processing, and related operations.
+/// This type exists temporarily to support the legacy orchestration code in lib.rs.
+/// It will be removed when lib.rs is refactored (Tasks 1.8.10 and 2.0+).
 ///
-/// TODO: Expand this to full error hierarchy from specs/interfaces/error-types.md
+/// DO NOT USE in new code. Use the domain-specific error types instead:
+/// - ValidationError for input validation
+/// - RepositoryError for repository operations  
+/// - SystemError for infrastructure failures
+/// - etc.
 #[derive(Error, Debug)]
 pub enum Error {
-    /// An error occurred during a git operation.
-    ///
-    /// This includes failures in git commands such as clone, commit, push, etc.
     #[error("Git operation failed: {0}")]
     GitOperation(String),
 
-    /// An error occurred during a file system operation.
-    ///
-    /// This includes failures in reading, writing, creating, or deleting files and directories.
     #[error("File system operation failed: {0}")]
     FileSystem(String),
 
-    /// An error occurred during template processing.
-    ///
-    /// This includes failures in variable substitution, file filtering, or other
-    /// template-related operations.
     #[error("Template processing failed: {0}")]
     TemplateProcessing(String),
 }
@@ -40,7 +34,6 @@ pub enum Error {
 /// See specs/interfaces/error-types.md#validationerror for complete specification
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum ValidationError {
-    // Legacy variants (kept for backward compatibility)
     #[error("Field '{field}' cannot be empty")]
     EmptyField { field: String },
 
@@ -61,7 +54,6 @@ pub enum ValidationError {
     #[error("Field '{field}' has invalid format: {reason}")]
     InvalidFormat { field: String, reason: String },
 
-    // Domain-specific validation errors
     #[error("Invalid repository name: {reason}")]
     InvalidRepositoryName { reason: String },
 
@@ -246,10 +238,7 @@ pub enum AuthenticationError {
     AuthenticationFailed { reason: String },
 
     #[error("Insufficient permissions: {required} permission required for {operation}")]
-    InsufficientPermissions {
-        operation: String,
-        required: String,
-    },
+    InsufficientPermissions { operation: String, required: String },
 
     #[error("User not found: {user_id}")]
     UserNotFound { user_id: String },

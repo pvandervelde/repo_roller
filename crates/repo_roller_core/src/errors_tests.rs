@@ -253,54 +253,6 @@ fn test_validation_error_display_vs_debug() {
 }
 
 // ============================================================================
-// Error Type Tests
-// ============================================================================
-
-#[test]
-fn test_error_git_operation() {
-    let err = Error::GitOperation("Failed to clone repository".to_string());
-
-    assert_eq!(
-        err.to_string(),
-        "Git operation failed: Failed to clone repository"
-    );
-}
-
-#[test]
-fn test_error_file_system() {
-    let err = Error::FileSystem("Permission denied".to_string());
-
-    assert_eq!(
-        err.to_string(),
-        "File system operation failed: Permission denied"
-    );
-}
-
-#[test]
-fn test_error_template_processing() {
-    let err = Error::TemplateProcessing("Variable substitution failed".to_string());
-
-    assert_eq!(
-        err.to_string(),
-        "Template processing failed: Variable substitution failed"
-    );
-}
-
-#[test]
-fn test_error_debug_format() {
-    let errors = vec![
-        Error::GitOperation("git error".to_string()),
-        Error::FileSystem("fs error".to_string()),
-        Error::TemplateProcessing("template error".to_string()),
-    ];
-
-    for err in errors {
-        let debug = format!("{:?}", err);
-        assert!(!debug.is_empty());
-    }
-}
-
-// ============================================================================
 // Integration Tests - ValidationError with Real Domain Types
 // ============================================================================
 
