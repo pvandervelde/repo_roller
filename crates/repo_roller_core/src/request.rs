@@ -45,3 +45,49 @@ pub struct RepositoryCreationRequest {
     /// Template variables for variable substitution during processing
     pub variables: HashMap<String, String>,
 }
+
+/// Builder for constructing RepositoryCreationRequest instances.
+///
+/// Provides an ergonomic API for building repository creation requests
+/// with optional template variables.
+///
+/// # Examples
+///
+/// ```rust
+/// use repo_roller_core::{RepositoryCreationRequestBuilder, RepositoryName, OrganizationName, TemplateName};
+///
+/// let request = RepositoryCreationRequestBuilder::new(
+///     RepositoryName::new("my-repo").unwrap(),
+///     OrganizationName::new("my-org").unwrap(),
+///     TemplateName::new("rust-library").unwrap(),
+/// )
+/// .variable("project_name", "MyProject")
+/// .variable("author", "John Doe")
+/// .build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct RepositoryCreationRequestBuilder {
+    // TODO: Implement builder fields
+}
+
+impl RepositoryCreationRequestBuilder {
+    /// Create a new builder with required fields.
+    pub fn new(name: RepositoryName, owner: OrganizationName, template: TemplateName) -> Self {
+        todo!()
+    }
+
+    /// Add a single template variable.
+    pub fn variable(self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        todo!()
+    }
+
+    /// Add multiple template variables at once.
+    pub fn variables(self, vars: HashMap<String, String>) -> Self {
+        todo!()
+    }
+
+    /// Build the final RepositoryCreationRequest.
+    pub fn build(self) -> RepositoryCreationRequest {
+        todo!()
+    }
+}

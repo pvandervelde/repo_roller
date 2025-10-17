@@ -139,3 +139,172 @@ fn test_repository_creation_request_validates_names() {
 
     assert_eq!(request.name.as_str(), "valid-repo");
 }
+
+// ============================================================================
+// RepositoryCreationRequestBuilder Tests
+// ============================================================================
+
+/// Verify that builder can create a basic request with no variables.
+#[test]
+fn test_builder_basic() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .build();
+
+    assert_eq!(request.name.as_str(), "my-repo");
+    assert_eq!(request.owner.as_str(), "my-org");
+    assert_eq!(request.template.as_str(), "rust-library");
+    assert!(request.variables.is_empty());
+}
+
+/// Verify that builder can add a single variable.
+#[test]
+fn test_builder_single_variable() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variable("project_name", "MyProject")
+    .build();
+
+    assert_eq!(request.variables.len(), 1);
+    assert_eq!(request.variables.get("project_name").unwrap(), "MyProject");
+}
+
+/// Verify that builder can chain multiple variables.
+#[test]
+fn test_builder_multiple_variables_chained() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variable("project_name", "MyProject")
+    .variable("author", "John Doe")
+    .variable("license", "MIT")
+    .build();
+
+    assert_eq!(request.variables.len(), 3);
+    assert_eq!(request.variables.get("project_name").unwrap(), "MyProject");
+    assert_eq!(request.variables.get("author").unwrap(), "John Doe");
+    assert_eq!(request.variables.get("license").unwrap(), "MIT");
+}
+
+/// Verify that builder can add variables in bulk.
+#[test]
+fn test_builder_bulk_variables() {
+    let mut vars = HashMap::new();
+    vars.insert("project_name".to_string(), "MyProject".to_string());
+    vars.insert("author".to_string(), "John Doe".to_string());
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variables(vars)
+    .build();
+
+    assert_eq!(request.variables.len(), 2);
+    assert_eq!(request.variables.get("project_name").unwrap(), "MyProject");
+    assert_eq!(request.variables.get("author").unwrap(), "John Doe");
+}
+
+/// Verify that builder can mix individual and bulk variables.
+#[test]
+fn test_builder_mixed_variables() {
+    let mut bulk_vars = HashMap::new();
+    bulk_vars.insert("author".to_string(), "John Doe".to_string());
+    bulk_vars.insert("license".to_string(), "MIT".to_string());
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variable("project_name", "MyProject")
+    .variables(bulk_vars)
+    .variable("version", "0.1.0")
+    .build();
+
+    assert_eq!(request.variables.len(), 4);
+    assert_eq!(request.variables.get("project_name").unwrap(), "MyProject");
+    assert_eq!(request.variables.get("author").unwrap(), "John Doe");
+    assert_eq!(request.variables.get("license").unwrap(), "MIT");
+    assert_eq!(request.variables.get("version").unwrap(), "0.1.0");
+}
+
+/// Verify that builder overwrites variables with same key.
+#[test]
+fn test_builder_variable_overwrite() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variable("author", "First Author")
+    .variable("author", "Second Author")
+    .build();
+
+    assert_eq!(request.variables.len(), 1);
+    assert_eq!(request.variables.get("author").unwrap(), "Second Author");
+}
+
+/// Verify that builder is cloneable for reuse.
+#[test]
+fn test_builder_clone() {
+    let builder = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variable("project_name", "MyProject");
+
+    let builder_clone = builder.clone();
+
+    let request1 = builder.variable("author", "Author 1").build();
+    let request2 = builder_clone.variable("author", "Author 2").build();
+
+    // Both should have project_name, but different authors
+    assert_eq!(request1.variables.get("project_name").unwrap(), "MyProject");
+    assert_eq!(request1.variables.get("author").unwrap(), "Author 1");
+
+    assert_eq!(request2.variables.get("project_name").unwrap(), "MyProject");
+    assert_eq!(request2.variables.get("author").unwrap(), "Author 2");
+}
+
+/// Verify that builder has Debug output.
+#[test]
+fn test_builder_debug() {
+    let builder = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    );
+
+    let debug_output = format!("{:?}", builder);
+    assert!(debug_output.contains("RepositoryCreationRequestBuilder"));
+}
+
+/// Verify that builder accepts Into<String> for ergonomics.
+#[test]
+fn test_builder_into_string() {
+    let key = String::from("project_name");
+    let value = String::from("MyProject");
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+        TemplateName::new("rust-library").unwrap(),
+    )
+    .variable(&key, &value) // &str
+    .variable(key.clone(), value.clone()) // String
+    .build();
+
+    // Should have one entry (second overwrites first)
+    assert_eq!(request.variables.len(), 1);
+}
