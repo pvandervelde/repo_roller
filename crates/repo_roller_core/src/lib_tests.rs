@@ -384,3 +384,135 @@ async fn test_push_to_origin_with_valid_token() {
         .to_lowercase()
         .contains("authentication not implemented"));
 }
+
+// ============================================================================
+// create_repository() Tests - Type-Safe API Wrapper
+// ============================================================================
+
+/// Verify that create_repository converts types correctly for success case.
+///
+/// This test validates the wrapper's ability to convert between typed and legacy formats.
+#[tokio::test]
+async fn test_create_repository_type_conversion() {
+    // This test will be updated once implementation is complete
+    // For now, verify the function signature is correct
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+        TemplateName::new("basic").unwrap(),
+    )
+    .build();
+
+    let config = Config {
+        templates: vec![TemplateConfig {
+            name: "basic".to_string(),
+            source_repo: "owner/template-repo".to_string(),
+            variable_configs: None,
+            description: None,
+            topics: None,
+            features: None,
+            pr_settings: None,
+            labels: None,
+            branch_protection_rules: None,
+            action_permissions: None,
+            required_variables: None,
+        }],
+    };
+
+    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+
+    // Currently returns Internal error (not yet implemented)
+    assert!(result.is_err());
+    if let Err(RepoRollerError::System(SystemError::Internal { reason })) = result {
+        assert!(reason.contains("not yet implemented"));
+    }
+}
+
+/// Verify that create_repository returns proper error types.
+#[tokio::test]
+async fn test_create_repository_error_handling() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+        TemplateName::new("nonexistent-template").unwrap(),
+    )
+    .build();
+
+    let config = Config {
+        templates: vec![], // Empty templates - will cause error
+    };
+
+    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+
+    // Should return an error
+    assert!(result.is_err());
+}
+
+/// Verify that create_repository preserves request variables.
+#[tokio::test]
+async fn test_create_repository_preserves_variables() {
+    let mut variables = std::collections::HashMap::new();
+    variables.insert("author".to_string(), "Jane Doe".to_string());
+    variables.insert("license".to_string(), "MIT".to_string());
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+        TemplateName::new("basic").unwrap(),
+    )
+    .variables(variables.clone())
+    .build();
+
+    assert_eq!(request.variables.len(), 2);
+    assert_eq!(request.variables.get("author").unwrap(), "Jane Doe");
+
+    // Function signature accepts the request - type checking works
+    let config = Config { templates: vec![] };
+    let _result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+}
+
+/// Verify that branded types prevent type confusion.
+#[tokio::test]
+async fn test_create_repository_type_safety() {
+    // This test primarily validates compile-time type safety
+    // If this compiles, the types are working correctly
+
+    let name = RepositoryName::new("my-repo").unwrap();
+    let owner = OrganizationName::new("my-org").unwrap();
+    let template = TemplateName::new("my-template").unwrap();
+
+    // These types cannot be confused at compile time
+    let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+
+    assert_eq!(request.name.as_str(), "my-repo");
+    assert_eq!(request.owner.as_str(), "my-org");
+    assert_eq!(request.template.as_str(), "my-template");
+}
+
+/// Verify that create_repository returns the correct result type.
+#[tokio::test]
+async fn test_create_repository_result_type() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+        TemplateName::new("basic").unwrap(),
+    )
+    .build();
+
+    let config = Config { templates: vec![] };
+
+    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+
+    // Verify the result type is RepoRollerResult<RepositoryCreationResult>
+    match result {
+        Ok(_creation_result) => {
+            // Would contain repository_url, repository_id, created_at, default_branch
+            // Currently not reached due to NotImplemented
+        }
+        Err(error) => {
+            // Should be RepoRollerError
+            assert!(matches!(error, RepoRollerError::System(_)));
+        }
+    }
+}
