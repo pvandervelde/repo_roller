@@ -6,6 +6,10 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg(test)]
+#[path = "authentication_tests.rs"]
+mod tests;
+
 /// Unique user identifier
 ///
 /// Represents a unique identifier for a user in the system.
@@ -87,38 +91,5 @@ impl std::fmt::Display for SessionId {
 impl From<Uuid> for SessionId {
     fn from(uuid: Uuid) -> Self {
         Self::from_uuid(uuid)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_user_id_creation() {
-        let id1 = UserId::new();
-        let id2 = UserId::new();
-        assert_ne!(id1, id2); // Should be unique
-    }
-
-    #[test]
-    fn test_user_id_from_uuid() {
-        let uuid = Uuid::new_v4();
-        let user_id = UserId::from_uuid(uuid);
-        assert_eq!(user_id.as_uuid(), &uuid);
-    }
-
-    #[test]
-    fn test_session_id_creation() {
-        let id1 = SessionId::new();
-        let id2 = SessionId::new();
-        assert_ne!(id1, id2); // Should be unique
-    }
-
-    #[test]
-    fn test_session_id_from_uuid() {
-        let uuid = Uuid::new_v4();
-        let session_id = SessionId::from_uuid(uuid);
-        assert_eq!(session_id.as_uuid(), &uuid);
     }
 }
