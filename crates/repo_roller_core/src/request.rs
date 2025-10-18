@@ -79,7 +79,6 @@ pub struct RepositoryCreationResult {
     pub default_branch: String,
 }
 
-
 /// Builder for constructing RepositoryCreationRequest instances.
 ///
 /// Provides an ergonomic API for building repository creation requests
