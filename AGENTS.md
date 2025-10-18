@@ -2,6 +2,17 @@
 
 This document provides guidelines and conventions for AI agents working on this codebase.
 
+## Project Status
+
+**Pre-Release Development**: This project has not been released yet. Follow these principles:
+
+- **No Deprecation Needed**: Remove obsolete code immediately instead of deprecating it
+- **Clean Evolution**: When migrating APIs or refactoring, delete the old code once the new implementation works
+- **No Compatibility Burden**: No need to maintain backward compatibility during pre-release development
+- **Exception**: Only keep old code if there's an active migration in progress (document clearly why)
+
+Once the project reaches its first release, switch to standard deprecation practices.
+
 ## Pre-Implementation Checklist
 
 Before implementing features, verify:
