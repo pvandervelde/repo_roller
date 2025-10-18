@@ -89,6 +89,12 @@ use walkdir::WalkDir;
 mod errors;
 use errors::Error;
 
+// Re-export error types for public API
+pub use errors::{
+    AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
+    RepositoryError, SystemError, TemplateError, ValidationError,
+};
+
 // Domain-specific types organized by business area
 // See specs/interfaces/shared-types.md for complete specifications
 
@@ -111,7 +117,9 @@ pub mod authentication;
 pub use authentication::{SessionId, UserId};
 pub use github::{GitHubToken, InstallationId};
 pub use repository::{OrganizationName, RepositoryName};
-pub use request::{RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult};
+pub use request::{
+    RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
+};
 pub use template::TemplateName;
 
 // Cross-cutting types used across all domains
@@ -1189,6 +1197,105 @@ pub async fn create_repository_with_config(
     let template_fetcher = template_engine::GitHubTemplateFetcher::new(GitHubClient::new(provider));
 
     create_repository_with_custom_settings(request, config, &template_fetcher, &repo_client).await
+}
+
+/// Create a new repository with type-safe API (TEMPORARY WRAPPER - See TODO).
+///
+/// **⚠️ IMPLEMENTATION NOTE**: This is a temporary wrapper function created during API migration
+/// (Task 1.8.6). It provides a type-safe interface while delegating to the legacy implementation.
+///
+/// ## TODO (Task 7.2 - Complete Refactoring)
+///
+/// When implementing Task 7.2 "Update repository creation workflow in repo_roller_core",
+/// this function must be **completely rewritten** to:
+///
+/// ### Required Changes
+/// 1. **Trait-Based Dependencies**: Accept `&dyn ConfigurationManager` and `&dyn UserAuthenticationService`
+///    instead of concrete types and raw credentials
+/// 2. **Remove Raw Credentials**: Eliminate `app_id`/`app_key` parameters - use auth service abstraction
+/// 3. **Direct Implementation**: Implement orchestration logic directly instead of delegating to legacy code
+/// 4. **Configuration Integration**: Use new configuration system from Tasks 2.0-5.0
+/// 5. **Structured Metadata**: Collect and return complete `RepositoryCreationResult` with actual data
+///    from GitHub API responses (url, id, created_at, default_branch)
+///
+/// ### Current Limitations
+/// - **String Parsing**: Extracts repository metadata from legacy success/failure messages (fragile)
+/// - **Incomplete Data**: Some `RepositoryCreationResult` fields use placeholder or default values
+/// - **Concrete Dependencies**: Still uses `config_manager::Config` directly instead of trait objects
+/// - **No Error Context**: Limited error information due to string-based legacy error handling
+/// - **Delegation Overhead**: Unnecessary type conversions back and forth
+///
+/// ### Migration Path
+/// 1. Implement new configuration system (Tasks 2.0-5.0)
+/// 2. Define `ConfigurationManager` and `UserAuthenticationService` traits
+/// 3. Rewrite this function to use traits and return structured data
+/// 4. Update all call sites to use new interface
+/// 5. Remove legacy `create_repository_with_config()` and associated types
+///
+/// See `specs/interfaces/repository-domain.md` for target interface specification.
+///
+/// ---
+///
+/// ## Current Behavior
+///
+/// This function provides type-safe repository creation by:
+/// 1. Converting typed request to legacy format
+/// 2. Calling existing `create_repository_with_config()`
+/// 3. Parsing result and converting back to typed format
+///
+/// # Parameters
+///
+/// * `request` - Type-safe repository creation request with branded types
+/// * `config` - Configuration containing template definitions
+/// * `app_id` - GitHub App ID for authentication
+/// * `app_key` - GitHub App private key for authentication
+///
+/// # Returns
+///
+/// * `Ok(RepositoryCreationResult)` - Repository created successfully with metadata
+/// * `Err(RepoRollerError)` - Creation failed with categorized error
+///
+/// # Examples
+///
+/// ```no_run
+/// use repo_roller_core::{
+///     RepositoryCreationRequestBuilder, RepositoryName,
+///     OrganizationName, TemplateName, create_repository
+/// };
+/// use config_manager::Config;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let request = RepositoryCreationRequestBuilder::new(
+///     RepositoryName::new("my-service")?,
+///     OrganizationName::new("my-org")?,
+///     TemplateName::new("rust-service")?,
+/// )
+/// .variable("author", "Jane Doe")
+/// .build();
+///
+/// let config = Config { templates: vec![] };
+///
+/// match create_repository(request, &config, 12345, "private-key".to_string()).await {
+///     Ok(result) => {
+///         println!("Created: {}", result.repository_url);
+///         println!("ID: {}", result.repository_id);
+///     }
+///     Err(e) => eprintln!("Failed: {}", e),
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub async fn create_repository(
+    _request: RepositoryCreationRequest,
+    _config: &config_manager::Config,
+    _app_id: u64,
+    _app_key: String,
+) -> RepoRollerResult<RepositoryCreationResult> {
+    // TODO: Implement actual logic - this is a placeholder that will be replaced
+    // For now, return an error indicating this is not yet implemented
+    Err(RepoRollerError::System(SystemError::Internal {
+        reason: "create_repository() wrapper not yet implemented - function signature created for Task 1.8.6, implementation pending".to_string(),
+    }))
 }
 
 /// Initialize a new Git repository with the specified default branch.
