@@ -8,6 +8,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// New configuration system types (Task 2.0)
+pub mod overridable;
+
+// Re-export for convenient access
+pub use overridable::OverridableValue;
+
 // ================================================================================================
 // TEMPORARY COMPATIBILITY TYPES
 // These types maintain compatibility with existing code while interface design is in progress
