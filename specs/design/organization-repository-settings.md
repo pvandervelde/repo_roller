@@ -104,7 +104,27 @@ pub struct OverridableValue<T> {
     pub override_allowed: bool,
     pub value: T,
 }
+```
 
+**Flexible Deserialization**: `OverridableValue<T>` supports two TOML formats through custom deserialization:
+
+1. **Explicit format** (for GlobalDefaults):
+
+   ```toml
+   setting = { value = true, override_allowed = false }
+   ```
+
+2. **Simple format** (for Team/RepositoryType/Template configs):
+
+   ```toml
+   setting = true
+   ```
+
+   The simple format automatically wraps the value with `override_allowed = true`.
+
+This allows all configuration levels to use the same setting types (`RepositorySettings`, `PullRequestSettings`, etc.) while supporting different TOML syntaxes. GlobalDefaults uses explicit format to control override policies, while Team/RepositoryType/Template configs use simple format since they're doing the overriding.
+
+```rust
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GlobalDefaults {
     pub actions: Option<ActionSettings>,

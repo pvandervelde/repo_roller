@@ -6,7 +6,7 @@
 //!
 //! See: specs/design/organization-repository-settings.md
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A value that can optionally be overridden by higher-precedence configuration levels.
 ///
@@ -36,12 +36,19 @@ use serde::{Deserialize, Serialize};
 ///
 /// # TOML Format
 ///
-/// When serialized to TOML, the format is:
+/// Supports two deserialization formats:
 ///
+/// **Explicit format** (for GlobalDefaults):
 /// ```toml
 /// setting_name = { value = true, override_allowed = false }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// **Simple format** (for Team/RepositoryType/Template configs):
+/// ```toml
+/// setting_name = true
+/// ```
+/// The simple format automatically wraps the value with `override_allowed = true`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OverridableValue<T> {
     /// The actual value of the setting.
     pub value: T,
@@ -142,6 +149,192 @@ impl<T> OverridableValue<T> {
             value: f(self.value),
             override_allowed: self.override_allowed,
         }
+    }
+}
+
+// Custom deserialization to support both explicit and simple formats
+impl<'de, T> Deserialize<'de> for OverridableValue<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+        use std::marker::PhantomData;
+
+        // Helper struct for explicit format deserialization
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Value,
+            OverrideAllowed,
+        }
+
+        struct OverridableValueVisitor<T> {
+            marker: PhantomData<T>,
+        }
+
+        impl<'de, T> Visitor<'de> for OverridableValueVisitor<T>
+        where
+            T: Deserialize<'de>,
+        {
+            type Value = OverridableValue<T>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an OverridableValue in either explicit or simple format")
+            }
+
+            // Handle explicit format: { value = X, override_allowed = Y }
+            fn visit_map<V>(self, mut map: V) -> Result<OverridableValue<T>, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut value = None;
+                let mut override_allowed = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Value => {
+                            if value.is_some() {
+                                return Err(de::Error::duplicate_field("value"));
+                            }
+                            value = Some(map.next_value()?);
+                        }
+                        Field::OverrideAllowed => {
+                            if override_allowed.is_some() {
+                                return Err(de::Error::duplicate_field("override_allowed"));
+                            }
+                            override_allowed = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let value = value.ok_or_else(|| de::Error::missing_field("value"))?;
+                let override_allowed =
+                    override_allowed.ok_or_else(|| de::Error::missing_field("override_allowed"))?;
+
+                Ok(OverridableValue {
+                    value,
+                    override_allowed,
+                })
+            }
+
+            // Handle simple format: just the value directly
+            // This delegates to T's deserializer for any type
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+                T: Deserialize<'de>,
+            {
+                // Deserialize bool directly into T (if T is bool)
+                let value = T::deserialize(de::value::BoolDeserializer::new(v)).map_err(
+                    |_: de::value::Error| {
+                        E::invalid_type(
+                            de::Unexpected::Bool(v),
+                            &"explicit OverridableValue format",
+                        )
+                    },
+                )?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let value = T::deserialize(de::value::I64Deserializer::new(v)).map_err(
+                    |_: de::value::Error| {
+                        E::invalid_type(
+                            de::Unexpected::Signed(v),
+                            &"explicit OverridableValue format",
+                        )
+                    },
+                )?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let value = T::deserialize(de::value::U64Deserializer::new(v)).map_err(
+                    |_: de::value::Error| {
+                        E::invalid_type(
+                            de::Unexpected::Unsigned(v),
+                            &"explicit OverridableValue format",
+                        )
+                    },
+                )?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
+
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let value = T::deserialize(de::value::F64Deserializer::new(v)).map_err(
+                    |_: de::value::Error| {
+                        E::invalid_type(
+                            de::Unexpected::Float(v),
+                            &"explicit OverridableValue format",
+                        )
+                    },
+                )?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let value = T::deserialize(de::value::StrDeserializer::new(v)).map_err(
+                    |_: de::value::Error| {
+                        E::invalid_type(de::Unexpected::Str(v), &"explicit OverridableValue format")
+                    },
+                )?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let value = T::deserialize(de::value::StringDeserializer::new(v.clone())).map_err(
+                    |_: de::value::Error| {
+                        E::invalid_type(
+                            de::Unexpected::Str(&v),
+                            &"explicit OverridableValue format",
+                        )
+                    },
+                )?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(OverridableValueVisitor {
+            marker: PhantomData,
+        })
     }
 }
 

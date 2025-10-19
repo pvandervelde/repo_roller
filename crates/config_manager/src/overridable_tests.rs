@@ -253,3 +253,124 @@ fn test_debug_format() {
     assert!(debug_str.contains("42"));
     assert!(debug_str.contains("true"));
 }
+
+// Flexible deserialization tests
+
+#[test]
+fn test_deserialize_from_full_format() {
+    // Test deserialization from explicit { value, override_allowed } format (GlobalDefaults style)
+    let toml = r#"
+        setting = { value = true, override_allowed = false }
+    "#;
+
+    #[derive(Deserialize)]
+    struct Config {
+        setting: OverridableValue<bool>,
+    }
+
+    let config: Config = toml::from_str(toml).expect("Failed to deserialize");
+    assert_eq!(config.setting.value, true);
+    assert!(!config.setting.override_allowed);
+}
+
+#[test]
+fn test_deserialize_from_simple_format() {
+    // Test deserialization from simple value format (Team/Template style)
+    // Should auto-wrap with override_allowed = true
+    let toml = r#"
+        setting = true
+    "#;
+
+    #[derive(Deserialize)]
+    struct Config {
+        setting: OverridableValue<bool>,
+    }
+
+    let config: Config = toml::from_str(toml).expect("Failed to deserialize");
+    assert_eq!(config.setting.value, true);
+    assert!(
+        config.setting.override_allowed,
+        "Simple format should default to override_allowed = true"
+    );
+}
+
+#[test]
+fn test_deserialize_simple_integer() {
+    // Test simple format with integer value
+    let toml = r#"
+        count = 42
+    "#;
+
+    #[derive(Deserialize)]
+    struct Config {
+        count: OverridableValue<i32>,
+    }
+
+    let config: Config = toml::from_str(toml).expect("Failed to deserialize");
+    assert_eq!(config.count.value, 42);
+    assert!(config.count.override_allowed);
+}
+
+#[test]
+fn test_deserialize_simple_string() {
+    // Test simple format with string value
+    let toml = r#"
+        name = "test-value"
+    "#;
+
+    #[derive(Deserialize)]
+    struct Config {
+        name: OverridableValue<String>,
+    }
+
+    let config: Config = toml::from_str(toml).expect("Failed to deserialize");
+    assert_eq!(config.name.value, "test-value");
+    assert!(config.name.override_allowed);
+}
+
+#[test]
+fn test_mixed_formats_in_same_config() {
+    // Test that both formats can coexist in the same configuration
+    // This is critical for the configuration hierarchy to work
+    let toml = r#"
+        [global]
+        issues = { value = true, override_allowed = false }
+        wiki = { value = false, override_allowed = true }
+
+        [team]
+        discussions = true
+        projects = false
+    "#;
+
+    #[derive(Deserialize)]
+    struct GlobalSettings {
+        issues: OverridableValue<bool>,
+        wiki: OverridableValue<bool>,
+    }
+
+    #[derive(Deserialize)]
+    struct TeamSettings {
+        discussions: OverridableValue<bool>,
+        projects: OverridableValue<bool>,
+    }
+
+    #[derive(Deserialize)]
+    struct Config {
+        global: GlobalSettings,
+        team: TeamSettings,
+    }
+
+    let config: Config = toml::from_str(toml).expect("Failed to deserialize");
+
+    // Global (explicit format)
+    assert_eq!(config.global.issues.value, true);
+    assert!(!config.global.issues.override_allowed);
+    assert_eq!(config.global.wiki.value, false);
+    assert!(config.global.wiki.override_allowed);
+
+    // Team (simple format)
+    assert_eq!(config.team.discussions.value, true);
+    assert!(config.team.discussions.override_allowed);
+    assert_eq!(config.team.projects.value, false);
+    assert!(config.team.projects.override_allowed);
+}
