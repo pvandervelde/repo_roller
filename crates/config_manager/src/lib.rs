@@ -14,12 +14,19 @@ pub mod overridable;
 pub mod repository_type_config;
 pub mod settings;
 pub mod team_config;
+pub mod template_config;
 
 // Re-export for convenient access
 pub use global_defaults::GlobalDefaults;
 pub use overridable::OverridableValue;
 pub use repository_type_config::RepositoryTypeConfig;
 pub use team_config::TeamConfig;
+pub use template_config::{
+    RepositoryTypePolicy, RepositoryTypeSpec, TemplateMetadata, TemplateVariable,
+};
+
+// Re-export new TemplateConfig with different name to avoid conflict with legacy type
+pub use template_config::TemplateConfig as NewTemplateConfig;
 
 // ================================================================================================
 // TEMPORARY COMPATIBILITY TYPES
