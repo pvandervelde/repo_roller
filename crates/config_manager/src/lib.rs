@@ -9,14 +9,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // New configuration system types (Task 2.0)
-pub mod overridable;
-pub mod settings;
 pub mod global_defaults;
+pub mod overridable;
+pub mod repository_type_config;
+pub mod settings;
 pub mod team_config;
 
 // Re-export for convenient access
-pub use overridable::OverridableValue;
 pub use global_defaults::GlobalDefaults;
+pub use overridable::OverridableValue;
+pub use repository_type_config::RepositoryTypeConfig;
 pub use team_config::TeamConfig;
 
 // ================================================================================================
@@ -65,7 +67,7 @@ pub struct TemplateConfig {
 
 /// Temporary VariableConfig structure for existing code compatibility
 ///
-/// TODO: Replace with new variable configuration types  
+/// TODO: Replace with new variable configuration types
 /// See: specs/interfaces/configuration-interfaces.md
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VariableConfig {
