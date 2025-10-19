@@ -12,10 +12,12 @@ use std::collections::HashMap;
 pub mod overridable;
 pub mod settings;
 pub mod global_defaults;
+pub mod team_config;
 
 // Re-export for convenient access
 pub use overridable::OverridableValue;
 pub use global_defaults::GlobalDefaults;
+pub use team_config::TeamConfig;
 
 // ================================================================================================
 // TEMPORARY COMPATIBILITY TYPES
