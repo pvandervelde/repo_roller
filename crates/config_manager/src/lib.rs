@@ -10,9 +10,12 @@ use std::collections::HashMap;
 
 // New configuration system types (Task 2.0)
 pub mod overridable;
+pub mod settings;
+pub mod global_defaults;
 
 // Re-export for convenient access
 pub use overridable::OverridableValue;
+pub use global_defaults::GlobalDefaults;
 
 // ================================================================================================
 // TEMPORARY COMPATIBILITY TYPES
