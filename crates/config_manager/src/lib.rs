@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 // New configuration system types (Task 2.0)
 pub mod global_defaults;
+pub mod merged_config;
 pub mod overridable;
 pub mod repository_type_config;
 pub mod settings;
@@ -18,6 +19,7 @@ pub mod template_config;
 
 // Re-export for convenient access
 pub use global_defaults::GlobalDefaults;
+pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
 pub use overridable::OverridableValue;
 pub use repository_type_config::RepositoryTypeConfig;
 pub use team_config::TeamConfig;
