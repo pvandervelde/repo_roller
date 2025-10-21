@@ -233,7 +233,10 @@ fn test_merged_configuration_clone() {
     let cloned = config.clone();
 
     assert_eq!(config, cloned);
-    assert_eq!(cloned.repository.issues, Some(OverridableValue::allowed(true)));
+    assert_eq!(
+        cloned.repository.issues,
+        Some(OverridableValue::allowed(true))
+    );
     assert_eq!(
         cloned.get_source("repository.issues"),
         Some(ConfigurationSource::Global)
@@ -388,7 +391,10 @@ fn test_configuration_source_trace_operations() {
     assert!(fields.contains(&"field3"));
 
     // Verify get_source
-    assert_eq!(trace.get_source("field1"), Some(ConfigurationSource::Global));
+    assert_eq!(
+        trace.get_source("field1"),
+        Some(ConfigurationSource::Global)
+    );
     assert_eq!(trace.get_source("field2"), Some(ConfigurationSource::Team));
     assert_eq!(
         trace.get_source("field3"),
@@ -422,8 +428,7 @@ fn test_serialization_roundtrip_simple() {
 
     // RepositoryTypeConfig
     let repo_type = RepositoryTypeConfig::default();
-    let toml =
-        toml::to_string(&repo_type).expect("Failed to serialize RepositoryTypeConfig");
+    let toml = toml::to_string(&repo_type).expect("Failed to serialize RepositoryTypeConfig");
     let back: RepositoryTypeConfig =
         toml::from_str(&toml).expect("Failed to deserialize RepositoryTypeConfig");
     assert_eq!(repo_type, back);
