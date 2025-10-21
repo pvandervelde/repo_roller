@@ -17,6 +17,10 @@ pub mod settings;
 pub mod team_config;
 pub mod template_config;
 
+// Integration tests (Task 2.7)
+#[cfg(test)]
+mod integration_tests;
+
 // Re-export for convenient access
 pub use global_defaults::GlobalDefaults;
 pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
