@@ -8,6 +8,32 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// New configuration system types (Task 2.0)
+pub mod global_defaults;
+pub mod merged_config;
+pub mod overridable;
+pub mod repository_type_config;
+pub mod settings;
+pub mod team_config;
+pub mod template_config;
+
+// Integration tests (Task 2.7)
+#[cfg(test)]
+mod integration_tests;
+
+// Re-export for convenient access
+pub use global_defaults::GlobalDefaults;
+pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
+pub use overridable::OverridableValue;
+pub use repository_type_config::RepositoryTypeConfig;
+pub use team_config::TeamConfig;
+pub use template_config::{
+    RepositoryTypePolicy, RepositoryTypeSpec, TemplateMetadata, TemplateVariable,
+};
+
+// Re-export new TemplateConfig with different name to avoid conflict with legacy type
+pub use template_config::TemplateConfig as NewTemplateConfig;
+
 // ================================================================================================
 // TEMPORARY COMPATIBILITY TYPES
 // These types maintain compatibility with existing code while interface design is in progress
@@ -54,7 +80,7 @@ pub struct TemplateConfig {
 
 /// Temporary VariableConfig structure for existing code compatibility
 ///
-/// TODO: Replace with new variable configuration types  
+/// TODO: Replace with new variable configuration types
 /// See: specs/interfaces/configuration-interfaces.md
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VariableConfig {

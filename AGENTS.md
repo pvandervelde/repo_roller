@@ -299,6 +299,43 @@ impl std::fmt::Debug for SecretToken {
 }
 ```
 
+## Git and Branch Management
+
+### Branch Protection Rules
+
+**CRITICAL**: Never commit directly to protected branches:
+
+- **NEVER** commit to `master` or `main` directly
+- **ALWAYS** create a feature branch before making commits
+- Feature branch naming: `feature/<task-id>-<brief-description>` (e.g., `feature/task-2.1-overridable-value`)
+- Bug fix branch naming: `fix/<issue-description>`
+
+### Workflow
+
+1. **Before any work**: Create and checkout a feature branch
+
+   ```bash
+   git checkout -b feature/task-X.Y-description
+   ```
+
+2. Make your commits on the feature branch
+3. When ready, push the branch and create a pull request
+
+### Recovery from Accidental Master Commit
+
+If you accidentally commit to master:
+
+```bash
+# Create a branch at the current commit
+git branch feature/branch-name
+
+# Reset master to the previous commit
+git reset --hard HEAD~1
+
+# Switch to the feature branch
+git checkout feature/branch-name
+```
+
 ## Commit Guidelines
 
 When working as an automated agent:
@@ -306,6 +343,7 @@ When working as an automated agent:
 1. **Atomic Commits**: Each commit should represent one logical change
 2. **Descriptive Messages**: Use conventional commit format `<type>(<scope>): <description> (auto via agent)`
 3. **Separate Concerns**: Tests and implementation in different commits when following TDD
+4. **Branch Safety**: Always verify you're on a feature branch before committing
 
 ## Dependencies
 

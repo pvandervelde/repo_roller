@@ -9,8 +9,7 @@ on:
     branches:
       - master
 
-      - name: Generate code coverage
-        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json --exclude integration_tests
+permissions:
   contents: read
 
 jobs:
