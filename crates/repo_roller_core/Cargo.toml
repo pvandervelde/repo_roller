@@ -11,7 +11,7 @@ version.workspace = true
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 config_manager = { path = "../config_manager" }
-git2 = "0.19"
+git2 = "0.20"
 github_client = { path = "../github_client" }
 serde = { version = "1.0", features = ["derive"] }
 std_prelude = "0.2.12"
