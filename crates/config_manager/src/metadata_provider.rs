@@ -35,9 +35,16 @@ use std::collections::HashMap;
 #[path = "metadata_provider_tests.rs"]
 mod tests;
 
-/// Discovery method for finding the metadata repository.
+/// Records how a metadata repository was actually discovered.
 ///
-/// Organizations can configure how their metadata repository is discovered:
+/// **This is a result/output type** that documents the discovery method used
+/// to find a repository. It's part of `MetadataRepository` and tells consumers
+/// how the repository was located (after the fact).
+///
+/// For **configuring** how to search (input), see `MetadataProviderConfig` in
+/// the `github_metadata_provider` module.
+///
+/// Organizations can discover their metadata repository through:
 /// - Configuration-based: Explicitly named in application configuration
 /// - Topic-based: Discovered by searching for a specific GitHub topic
 ///

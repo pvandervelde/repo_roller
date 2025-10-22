@@ -19,6 +19,7 @@ pub mod team_config;
 pub mod template_config;
 
 // Metadata repository provider (Task 3.0)
+pub mod github_metadata_provider;
 pub mod metadata_provider;
 
 // Integration tests (Task 2.7)
@@ -27,6 +28,7 @@ mod integration_tests;
 
 // Re-export for convenient access
 pub use errors::{ConfigurationError, ConfigurationResult};
+pub use github_metadata_provider::{GitHubMetadataProvider, MetadataProviderConfig};
 pub use global_defaults::GlobalDefaults;
 pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
 pub use metadata_provider::{DiscoveryMethod, MetadataRepository, MetadataRepositoryProvider};
