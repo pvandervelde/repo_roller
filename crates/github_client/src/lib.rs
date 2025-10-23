@@ -336,7 +336,8 @@ impl GitHubClient {
                                     owner = owner,
                                     repo = repo,
                                     path = path,
-                                    "Failed to decode base64 content: {}", e
+                                    "Failed to decode base64 content: {}",
+                                    e
                                 );
                                 Error::InvalidResponse
                             })?;
