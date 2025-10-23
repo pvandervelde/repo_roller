@@ -10,7 +10,7 @@ version.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-base64 = "0.21"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 github_client = { path = "../github_client" }
 jsonschema = "0.17"
