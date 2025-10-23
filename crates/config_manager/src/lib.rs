@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // New configuration system types (Task 2.0)
+pub mod errors;
 pub mod global_defaults;
 pub mod merged_config;
 pub mod overridable;
@@ -17,15 +18,23 @@ pub mod settings;
 pub mod team_config;
 pub mod template_config;
 
+// Metadata repository provider (Task 3.0)
+pub mod github_metadata_provider;
+pub mod metadata_provider;
+
 // Integration tests (Task 2.7)
 #[cfg(test)]
 mod integration_tests;
 
 // Re-export for convenient access
+pub use errors::{ConfigurationError, ConfigurationResult};
+pub use github_metadata_provider::{GitHubMetadataProvider, MetadataProviderConfig};
 pub use global_defaults::GlobalDefaults;
 pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
+pub use metadata_provider::{DiscoveryMethod, MetadataRepository, MetadataRepositoryProvider};
 pub use overridable::OverridableValue;
 pub use repository_type_config::RepositoryTypeConfig;
+pub use settings::LabelConfig;
 pub use team_config::TeamConfig;
 pub use template_config::{
     RepositoryTypePolicy, RepositoryTypeSpec, TemplateMetadata, TemplateVariable,

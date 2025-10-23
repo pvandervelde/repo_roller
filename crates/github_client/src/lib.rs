@@ -4,6 +4,7 @@
 //! authenticating as a GitHub App using its ID and private key.
 
 use async_trait::async_trait;
+use base64::Engine;
 use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, Result as OctocrabResult};
 use secrecy::ExposeSecret;
@@ -247,6 +248,130 @@ impl GitHubClient {
                     "Failed to list installations - this likely means JWT authentication failed"
                 );
                 log_octocrab_error("Failed to list installations", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    /// Gets the content of a file from a repository.
+    ///
+    /// This method retrieves the contents of a file from the specified path in
+    /// the repository. The file content is returned as a UTF-8 string.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `path` - The path to the file within the repository (e.g., "README.md" or "src/main.rs")
+    ///
+    /// # Returns
+    ///
+    /// Returns the file content as a `String` if successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if:
+    /// - The file doesn't exist (404)
+    /// - The path points to a directory, not a file
+    /// - The file content cannot be decoded as UTF-8
+    /// - The API request fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use github_client::{GitHubClient, create_app_client};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let app_id = 123456;
+    /// #     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+    /// #     let client_octocrab = create_app_client(app_id, private_key).await?;
+    /// #     let client = GitHubClient::new(client_octocrab);
+    ///
+    ///     let content = client.get_file_content("my-org", "my-repo", "README.md").await?;
+    ///     println!("README content: {}", content);
+    ///
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %path))]
+    pub async fn get_file_content(
+        &self,
+        owner: &str,
+        repo: &str,
+        path: &str,
+    ) -> Result<String, Error> {
+        debug!(
+            owner = owner,
+            repo = repo,
+            path = path,
+            "Fetching file content from repository"
+        );
+
+        // Use the repos API to get file contents
+        let result = self
+            .client
+            .repos(owner, repo)
+            .get_content()
+            .path(path)
+            .send()
+            .await;
+
+        match result {
+            Ok(content) => {
+                // The GitHub API returns content items
+                // For a file path, we expect items with content field
+                let items = content.items;
+
+                // Get the first item (should be the file)
+                if let Some(item) = items.first() {
+                    // Decode the base64 content
+                    if let Some(encoded_content) = &item.content {
+                        // Remove newlines from base64 encoding
+                        let cleaned = encoded_content.replace('\n', "");
+
+                        let decoded_bytes = base64::engine::general_purpose::STANDARD
+                            .decode(&cleaned)
+                            .map_err(|e| {
+                                error!(
+                                    owner = owner,
+                                    repo = repo,
+                                    path = path,
+                                    "Failed to decode base64 content: {}",
+                                    e
+                                );
+                                Error::InvalidResponse
+                            })?;
+
+                        let decoded = String::from_utf8(decoded_bytes).map_err(|_| {
+                            error!(
+                                owner = owner,
+                                repo = repo,
+                                path = path,
+                                "Failed to decode file content as UTF-8"
+                            );
+                            Error::InvalidResponse
+                        })?;
+
+                        debug!(
+                            size = decoded.len(),
+                            "Successfully retrieved and decoded file content"
+                        );
+
+                        return Ok(decoded);
+                    }
+                }
+
+                error!("File content not found in response");
+                Err(Error::InvalidResponse)
+            }
+            Err(e) => {
+                error!(
+                    owner = owner,
+                    repo = repo,
+                    path = path,
+                    "Failed to get file content"
+                );
+                log_octocrab_error("Failed to get file content", e);
                 Err(Error::InvalidResponse)
             }
         }
