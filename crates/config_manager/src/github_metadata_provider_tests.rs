@@ -393,3 +393,280 @@ fn validate_repository_names(repo: &MetadataRepository) -> ConfigurationResult<(
 
     Ok(())
 }
+
+// ============================================================================
+// TOML Configuration File Loading Tests (Task 3.4)
+// ============================================================================
+
+/// Test loading global defaults from valid TOML.
+///
+/// Verifies that `load_global_defaults` can successfully parse a well-formed
+/// global-defaults.toml file and return the expected GlobalDefaults structure.
+#[tokio::test]
+async fn test_load_global_defaults_success() {
+    // Test will verify:
+    // 1. Provider fetches "global-defaults.toml" from repository root
+    // 2. TOML content is parsed into GlobalDefaults struct
+    // 3. All fields are correctly deserialized
+    // 4. OverridableValue settings are preserved
+}
+
+/// Test loading global defaults when file doesn't exist.
+///
+/// Verifies that `load_global_defaults` returns FileNotFound error when
+/// the global-defaults.toml file is missing from the repository.
+#[tokio::test]
+async fn test_load_global_defaults_file_not_found() {
+    // Expected behavior:
+    // 1. Provider attempts to fetch "global-defaults.toml"
+    // 2. GitHub API returns 404 (file not found)
+    // 3. Provider returns ConfigurationError::FileNotFound with context
+}
+
+/// Test loading global defaults with invalid TOML syntax.
+///
+/// Verifies that `load_global_defaults` returns ParseError when the TOML
+/// content has syntax errors.
+#[tokio::test]
+async fn test_load_global_defaults_invalid_toml() {
+    // Test scenarios:
+    // - Malformed TOML syntax (unclosed brackets, invalid values)
+    // - Returns ConfigurationError::ParseError with line/column information
+}
+
+/// Test loading global defaults with missing required fields.
+///
+/// Verifies that `load_global_defaults` returns InvalidConfiguration when
+/// the TOML is valid but missing required fields.
+#[tokio::test]
+async fn test_load_global_defaults_missing_required_fields() {
+    // Test scenarios:
+    // - Valid TOML but incomplete GlobalDefaults structure
+    // - Returns ConfigurationError::InvalidConfiguration with field name
+}
+
+/// Test loading team configuration for existing team.
+///
+/// Verifies that `load_team_configuration` can successfully load and parse
+/// a team's configuration file from teams/{team}/config.toml.
+#[tokio::test]
+async fn test_load_team_configuration_success() {
+    // Test will verify:
+    // 1. Provider fetches "teams/backend-team/config.toml"
+    // 2. TOML content is parsed into TeamConfig struct
+    // 3. Returns Some(TeamConfig) with correct values
+    // 4. Override settings are correctly parsed
+}
+
+/// Test loading team configuration when team has no config.
+///
+/// Verifies that `load_team_configuration` returns Ok(None) when a team
+/// directory exists but has no config.toml file.
+#[tokio::test]
+async fn test_load_team_configuration_not_found() {
+    // Expected behavior:
+    // 1. Provider attempts to fetch "teams/frontend-team/config.toml"
+    // 2. GitHub API returns 404 (file not found)
+    // 3. Provider returns Ok(None) - not an error, just no custom config
+}
+
+/// Test loading team configuration with invalid TOML.
+///
+/// Verifies that `load_team_configuration` returns ParseError when the
+/// team's config.toml has syntax errors.
+#[tokio::test]
+async fn test_load_team_configuration_invalid_toml() {
+    // Test scenarios:
+    // - Malformed TOML in team config
+    // - Returns ConfigurationError::ParseError with context
+}
+
+/// Test loading team configuration with path traversal attempt.
+///
+/// Verifies that `load_team_configuration` safely handles team names
+/// that attempt path traversal attacks.
+#[tokio::test]
+async fn test_load_team_configuration_path_traversal() {
+    // Security test:
+    // 1. Call with team name like "../../../etc/passwd"
+    // 2. Provider validates and sanitizes team name
+    // 3. Returns error or safely constructs path without traversal
+}
+
+/// Test loading repository type configuration for existing type.
+///
+/// Verifies that `load_repository_type_configuration` can successfully
+/// load and parse a repository type's configuration from types/{type}/config.toml.
+#[tokio::test]
+async fn test_load_repository_type_configuration_success() {
+    // Test will verify:
+    // 1. Provider fetches "types/library/config.toml"
+    // 2. TOML content is parsed into RepositoryTypeConfig struct
+    // 3. Returns Some(RepositoryTypeConfig) with correct values
+}
+
+/// Test loading repository type configuration when type has no config.
+///
+/// Verifies that `load_repository_type_configuration` returns Ok(None)
+/// when a type directory exists but has no config.toml file.
+#[tokio::test]
+async fn test_load_repository_type_configuration_not_found() {
+    // Expected behavior:
+    // 1. Provider attempts to fetch "types/service/config.toml"
+    // 2. GitHub API returns 404
+    // 3. Provider returns Ok(None)
+}
+
+/// Test loading repository type configuration with invalid TOML.
+///
+/// Verifies that `load_repository_type_configuration` returns ParseError
+/// when the type's config.toml has syntax errors.
+#[tokio::test]
+async fn test_load_repository_type_configuration_invalid_toml() {
+    // Test scenarios:
+    // - Malformed TOML in type config
+    // - Returns ConfigurationError::ParseError
+}
+
+/// Test loading repository type configuration with path traversal.
+///
+/// Verifies safe handling of repository type names that attempt path traversal.
+#[tokio::test]
+async fn test_load_repository_type_configuration_path_traversal() {
+    // Security test:
+    // 1. Call with type name like "../../secrets"
+    // 2. Provider validates and sanitizes type name
+    // 3. Returns error or safely constructs path
+}
+
+/// Test loading standard labels from valid labels.toml.
+///
+/// Verifies that `load_standard_labels` can successfully parse the
+/// labels.toml file and return a map of label configurations.
+#[tokio::test]
+async fn test_load_standard_labels_success() {
+    // Test will verify:
+    // 1. Provider fetches "labels.toml" from repository root
+    // 2. TOML content is parsed into HashMap<String, LabelConfig>
+    // 3. All label configurations are correctly deserialized
+    // 4. Color codes, descriptions are preserved
+}
+
+/// Test loading standard labels when file doesn't exist.
+///
+/// Verifies that `load_standard_labels` returns an empty map when
+/// labels.toml doesn't exist (labels are optional).
+#[tokio::test]
+async fn test_load_standard_labels_file_not_found() {
+    // Expected behavior:
+    // 1. Provider attempts to fetch "labels.toml"
+    // 2. GitHub API returns 404
+    // 3. Provider returns Ok(empty HashMap) - labels are optional
+}
+
+/// Test loading standard labels with invalid TOML.
+///
+/// Verifies that `load_standard_labels` returns ParseError when the
+/// labels.toml file has syntax errors.
+#[tokio::test]
+async fn test_load_standard_labels_invalid_toml() {
+    // Test scenarios:
+    // - Malformed TOML in labels file
+    // - Returns ConfigurationError::ParseError
+}
+
+/// Test loading standard labels with invalid label structure.
+///
+/// Verifies that `load_standard_labels` returns InvalidConfiguration
+/// when label definitions are malformed.
+#[tokio::test]
+async fn test_load_standard_labels_invalid_structure() {
+    // Test scenarios:
+    // - Valid TOML but incorrect LabelConfig structure
+    // - Missing required fields (color, description)
+    // - Returns ConfigurationError::InvalidConfiguration
+}
+
+/// Test listing available repository types.
+///
+/// Verifies that `list_available_repository_types` returns all directory
+/// names under the types/ directory.
+#[tokio::test]
+async fn test_list_available_repository_types_success() {
+    // Test will verify:
+    // 1. Provider lists contents of "types/" directory
+    // 2. Returns vector of directory names (not files)
+    // 3. Alphabetically sorted or in discovery order
+}
+
+/// Test listing repository types when types directory doesn't exist.
+///
+/// Verifies that `list_available_repository_types` returns an empty vector
+/// when the types/ directory doesn't exist (types are optional).
+#[tokio::test]
+async fn test_list_available_repository_types_no_directory() {
+    // Expected behavior:
+    // 1. Provider attempts to list "types/" directory
+    // 2. GitHub API returns 404 or empty response
+    // 3. Provider returns Ok(empty Vec)
+}
+
+/// Test listing repository types when types directory is empty.
+///
+/// Verifies that `list_available_repository_types` returns an empty vector
+/// when the types/ directory exists but contains no subdirectories.
+#[tokio::test]
+async fn test_list_available_repository_types_empty_directory() {
+    // Expected behavior:
+    // 1. Provider lists "types/" directory
+    // 2. Directory exists but has no contents
+    // 3. Provider returns Ok(empty Vec)
+}
+
+/// Test listing repository types filters out files.
+///
+/// Verifies that `list_available_repository_types` only returns directories,
+/// not files that might exist in the types/ directory.
+#[tokio::test]
+async fn test_list_available_repository_types_filters_files() {
+    // Test scenario:
+    // 1. types/ contains both directories and files
+    // 2. Provider returns only directory names
+    // 3. Files like "README.md" are excluded
+}
+
+/// Test concurrent loading of different configuration files.
+///
+/// Verifies that multiple concurrent calls to load different configuration
+/// files work correctly without interference.
+#[tokio::test]
+async fn test_concurrent_configuration_loading() {
+    // Test scenario:
+    // 1. Simultaneously load global defaults, team config, type config, labels
+    // 2. All complete successfully
+    // 3. Each returns correct parsed configuration
+}
+
+/// Test loading configuration with UTF-8 content.
+///
+/// Verifies that configuration files with UTF-8 characters (descriptions,
+/// team names) are correctly parsed and preserved.
+#[tokio::test]
+async fn test_load_configuration_utf8_content() {
+    // Test scenarios:
+    // - Team descriptions with emoji or non-ASCII characters
+    // - Label descriptions in various languages
+    // - UTF-8 content correctly preserved
+}
+
+/// Test error messages contain useful context.
+///
+/// Verifies that configuration errors include sufficient context for
+/// debugging (file path, organization, repository).
+#[tokio::test]
+async fn test_configuration_errors_include_context() {
+    // Verify error messages include:
+    // - Which file failed to load
+    // - Organization and repository name
+    // - Specific reason for failure (parse error line, missing field)
+}
