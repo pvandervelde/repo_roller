@@ -332,12 +332,22 @@ impl GitHubClient {
                         let decoded_bytes = base64::engine::general_purpose::STANDARD
                             .decode(&cleaned)
                             .map_err(|e| {
-                                error!("Failed to decode base64 content: {}", e);
+                                error!(
+                                    owner = owner,
+                                    repo = repo,
+                                    path = path,
+                                    "Failed to decode base64 content: {}", e
+                                );
                                 Error::InvalidResponse
                             })?;
 
                         let decoded = String::from_utf8(decoded_bytes).map_err(|_| {
-                            error!("Failed to decode file content as UTF-8");
+                            error!(
+                                owner = owner,
+                                repo = repo,
+                                path = path,
+                                "Failed to decode file content as UTF-8"
+                            );
                             Error::InvalidResponse
                         })?;
 

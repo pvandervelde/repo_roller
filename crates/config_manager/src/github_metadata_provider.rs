@@ -229,11 +229,12 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
             .client
             .get_file_content(&repo.organization, &repo.repository_name, file_path)
             .await
-            .map_err(|_| ConfigurationError::FileNotFound {
+            .map_err(|e| ConfigurationError::FileAccessError {
                 path: format!(
                     "{}/{}/{}",
                     repo.organization, repo.repository_name, file_path
                 ),
+                reason: format!("{}", e),
             })?;
 
         toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
@@ -246,7 +247,11 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         repo: &MetadataRepository,
         team: &str,
     ) -> ConfigurationResult<Option<TeamConfig>> {
-        // Security: validate team name doesn't contain path traversal
+        // Security: validate team name doesn't contain path traversal attempts.
+        // We check for backslashes in addition to forward slashes as a defense-in-depth
+        // measure, even though GitHub API paths use forward slashes. This prevents
+        // potential injection attacks from Windows users or malicious input, and has
+        // negligible performance cost while providing additional security assurance.
         if team.contains("..") || team.contains('/') || team.contains('\\') {
             return Err(ConfigurationError::InvalidConfiguration {
                 field: "team".to_string(),
@@ -280,7 +285,11 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         repo: &MetadataRepository,
         repo_type: &str,
     ) -> ConfigurationResult<Option<RepositoryTypeConfig>> {
-        // Security: validate repo_type doesn't contain path traversal
+        // Security: validate repo_type doesn't contain path traversal attempts.
+        // We check for backslashes in addition to forward slashes as a defense-in-depth
+        // measure, even though GitHub API paths use forward slashes. This prevents
+        // potential injection attacks from Windows users or malicious input, and has
+        // negligible performance cost while providing additional security assurance.
         if repo_type.contains("..") || repo_type.contains('/') || repo_type.contains('\\') {
             return Err(ConfigurationError::InvalidConfiguration {
                 field: "repo_type".to_string(),

@@ -19,6 +19,9 @@ pub enum ConfigurationError {
     #[error("Configuration file not found: {path}")]
     FileNotFound { path: String },
 
+    #[error("Failed to access configuration file: {path} - {reason}")]
+    FileAccessError { path: String, reason: String },
+
     #[error("Failed to parse configuration: {reason}")]
     ParseError { reason: String },
 
