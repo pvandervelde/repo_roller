@@ -113,7 +113,7 @@ impl MetadataProviderConfig {
 /// # Examples
 ///
 /// ```no_run
-/// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
+/// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig, MetadataRepositoryProvider};
 /// use github_client::GitHubClient;
 ///
 /// # async fn example(github_client: GitHubClient) {
@@ -264,9 +264,33 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
 
     async fn validate_repository_structure(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> ConfigurationResult<()> {
-        // TODO: Implement in Task 3.3
-        todo!("Task 3.3: Implement repository structure validation")
+        // For now, we validate that the repository exists (already confirmed in discovery)
+        // Full file-level validation will be implemented in Task 3.4 when we add
+        // file content reading capabilities to GitHubClient.
+
+        // The repository structure validation includes:
+        // 1. Repository exists (already validated during discovery)
+        // 2. global-defaults.toml exists (will be validated when we try to load it in Task 3.4)
+        // 3. Optional: labels.toml, teams/, types/ directories (validated during loading)
+
+        // Security validation: ensure no path traversal in repository/org names
+        if repo.organization.contains("..") || repo.organization.contains('/') {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "organization".to_string(),
+                reason: "Organization name contains invalid characters".to_string(),
+            });
+        }
+
+        if repo.repository_name.contains("..") || repo.repository_name.contains('/') {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_name".to_string(),
+                reason: "Repository name contains invalid characters".to_string(),
+            });
+        }
+
+        // Repository exists and names are valid
+        Ok(())
     }
 }

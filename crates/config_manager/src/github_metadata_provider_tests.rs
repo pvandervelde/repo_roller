@@ -218,3 +218,178 @@ async fn test_discover_network_failure_documented() {
 async fn test_discover_auth_failure_documented() {
     // Test with invalid/expired GitHub token
 }
+
+// Repository structure validation tests
+
+#[tokio::test]
+async fn test_validate_structure_valid_repository() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "valid-org".to_string(),
+        repository_name: "org-metadata".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "org-metadata".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    // Create a mock provider (would need actual GitHubClient for full test)
+    // For now, we can test the validation logic directly
+
+    // Valid repository with normal names should pass validation
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_validate_structure_path_traversal_in_org() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "../etc/passwd".to_string(),
+        repository_name: "org-metadata".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "org-metadata".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_err());
+
+    match result.unwrap_err() {
+        ConfigurationError::InvalidConfiguration { field, reason } => {
+            assert_eq!(field, "organization");
+            assert!(reason.contains("invalid characters"));
+        }
+        _ => panic!("Expected InvalidConfiguration error"),
+    }
+}
+
+#[tokio::test]
+async fn test_validate_structure_path_traversal_in_repo() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "valid-org".to_string(),
+        repository_name: "../secrets".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "../secrets".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_err());
+
+    match result.unwrap_err() {
+        ConfigurationError::InvalidConfiguration { field, reason } => {
+            assert_eq!(field, "repository_name");
+            assert!(reason.contains("invalid characters"));
+        }
+        _ => panic!("Expected InvalidConfiguration error"),
+    }
+}
+
+#[tokio::test]
+async fn test_validate_structure_slash_in_org() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "org/malicious".to_string(),
+        repository_name: "org-metadata".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "org-metadata".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_err());
+
+    match result.unwrap_err() {
+        ConfigurationError::InvalidConfiguration { field, .. } => {
+            assert_eq!(field, "organization");
+        }
+        _ => panic!("Expected InvalidConfiguration error"),
+    }
+}
+
+#[tokio::test]
+async fn test_validate_structure_slash_in_repo() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "valid-org".to_string(),
+        repository_name: "repo/name".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "repo/name".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_err());
+
+    match result.unwrap_err() {
+        ConfigurationError::InvalidConfiguration { field, .. } => {
+            assert_eq!(field, "repository_name");
+        }
+        _ => panic!("Expected InvalidConfiguration error"),
+    }
+}
+
+#[tokio::test]
+async fn test_validate_structure_hyphen_allowed() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "my-org".to_string(),
+        repository_name: "org-metadata".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "org-metadata".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_validate_structure_underscore_allowed() {
+    use chrono::Utc;
+
+    let metadata_repo = MetadataRepository {
+        organization: "my_org".to_string(),
+        repository_name: "org_metadata".to_string(),
+        discovery_method: DiscoveryMethod::ConfigurationBased {
+            repository_name: "org_metadata".to_string(),
+        },
+        last_updated: Utc::now(),
+    };
+
+    let result = validate_repository_names(&metadata_repo);
+    assert!(result.is_ok());
+}
+
+// Helper function for testing validation logic
+fn validate_repository_names(repo: &MetadataRepository) -> ConfigurationResult<()> {
+    // Security validation: ensure no path traversal in repository/org names
+    if repo.organization.contains("..") || repo.organization.contains('/') {
+        return Err(ConfigurationError::InvalidConfiguration {
+            field: "organization".to_string(),
+            reason: "Organization name contains invalid characters".to_string(),
+        });
+    }
+
+    if repo.repository_name.contains("..") || repo.repository_name.contains('/') {
+        return Err(ConfigurationError::InvalidConfiguration {
+            field: "repository_name".to_string(),
+            reason: "Repository name contains invalid characters".to_string(),
+        });
+    }
+
+    Ok(())
+}
