@@ -222,44 +222,123 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
 
     async fn load_global_defaults(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> ConfigurationResult<GlobalDefaults> {
-        // TODO: Implement in Task 3.4
-        todo!("Task 3.4: Implement TOML configuration file parsing")
+        let file_path = "global-defaults.toml";
+        let content = self
+            .client
+            .get_file_content(&repo.organization, &repo.repository_name, file_path)
+            .await
+            .map_err(|_| ConfigurationError::FileNotFound {
+                path: format!(
+                    "{}/{}/{}",
+                    repo.organization, repo.repository_name, file_path
+                ),
+            })?;
+
+        toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
+            reason: format!("{}: {}", file_path, e),
+        })
     }
 
     async fn load_team_configuration(
         &self,
-        _repo: &MetadataRepository,
-        _team: &str,
+        repo: &MetadataRepository,
+        team: &str,
     ) -> ConfigurationResult<Option<TeamConfig>> {
-        // TODO: Implement in Task 3.4
-        todo!("Task 3.4: Implement TOML configuration file parsing")
+        // Security: validate team name doesn't contain path traversal
+        if team.contains("..") || team.contains('/') || team.contains('\\') {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "team".to_string(),
+                reason: "Team name contains invalid characters".to_string(),
+            });
+        }
+
+        let file_path = format!("teams/{}/config.toml", team);
+
+        match self
+            .client
+            .get_file_content(&repo.organization, &repo.repository_name, &file_path)
+            .await
+        {
+            Ok(content) => {
+                let config =
+                    toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
+                        reason: format!("{}: {}", file_path, e),
+                    })?;
+                Ok(Some(config))
+            }
+            Err(_) => {
+                // File not found is OK for team configurations - they're optional
+                Ok(None)
+            }
+        }
     }
 
     async fn load_repository_type_configuration(
         &self,
-        _repo: &MetadataRepository,
-        _repo_type: &str,
+        repo: &MetadataRepository,
+        repo_type: &str,
     ) -> ConfigurationResult<Option<RepositoryTypeConfig>> {
-        // TODO: Implement in Task 3.4
-        todo!("Task 3.4: Implement TOML configuration file parsing")
+        // Security: validate repo_type doesn't contain path traversal
+        if repo_type.contains("..") || repo_type.contains('/') || repo_type.contains('\\') {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repo_type".to_string(),
+                reason: "Repository type name contains invalid characters".to_string(),
+            });
+        }
+
+        let file_path = format!("types/{}/config.toml", repo_type);
+
+        match self
+            .client
+            .get_file_content(&repo.organization, &repo.repository_name, &file_path)
+            .await
+        {
+            Ok(content) => {
+                let config =
+                    toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
+                        reason: format!("{}: {}", file_path, e),
+                    })?;
+                Ok(Some(config))
+            }
+            Err(_) => {
+                // File not found is OK for type configurations - they're optional
+                Ok(None)
+            }
+        }
     }
 
     async fn load_standard_labels(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> ConfigurationResult<HashMap<String, LabelConfig>> {
-        // TODO: Implement in Task 3.4
-        todo!("Task 3.4: Implement TOML configuration file parsing")
+        let file_path = "labels.toml";
+
+        match self
+            .client
+            .get_file_content(&repo.organization, &repo.repository_name, file_path)
+            .await
+        {
+            Ok(content) => toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
+                reason: format!("{}: {}", file_path, e),
+            }),
+            Err(_) => {
+                // Labels are optional - return empty map if file doesn't exist
+                Ok(HashMap::new())
+            }
+        }
     }
 
     async fn list_available_repository_types(
         &self,
         _repo: &MetadataRepository,
     ) -> ConfigurationResult<Vec<String>> {
-        // TODO: Implement in Task 3.4
-        todo!("Task 3.4: Implement TOML configuration file parsing")
+        // TODO: Implement directory listing via GitHub API
+        // This requires using the GitHub tree API to list directory contents
+        // For now, return empty vector
+        // Full implementation will come when we have tree listing capability in GitHubClient
+        Ok(Vec::new())
     }
 
     async fn validate_repository_structure(
