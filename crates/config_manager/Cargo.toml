@@ -15,7 +15,7 @@ chrono = { version = "0.4", features = ["serde"] }
 github_client = { path = "../github_client" }
 jsonschema = "0.17"
 octocrab = "0.34"
-schemars = { version = "0.9", features = ["derive"] }
+schemars = { version = "1.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
