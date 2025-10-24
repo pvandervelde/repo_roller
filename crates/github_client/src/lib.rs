@@ -160,7 +160,7 @@ impl GitHubClient {
             installation_id = installation.id,
             "Successfully retrieved installation token"
         );
-        Ok(token.expose_secret().clone())
+        Ok(token.expose_secret().to_string())
     }
 
     /// Fetches details for a specific repository.
