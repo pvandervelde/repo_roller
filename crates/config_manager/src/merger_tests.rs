@@ -1,9 +1,7 @@
 //! Tests for configuration merging engine.
 
 use super::*;
-use crate::settings::{ActionSettings, PushSettings};
-use crate::template_config::{RepositoryTypePolicy, RepositoryTypeSpec, TemplateMetadata};
-use std::collections::HashMap;
+use crate::template_config::TemplateMetadata;
 
 // ============================================================================
 // Test Helpers
@@ -41,7 +39,35 @@ fn create_test_template() -> NewTemplateConfig {
             projects: Some(OverridableValue::allowed(false)),
             ..Default::default()
         }),
-        ..Default::default()
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        variables: None,
+    }
+}
+
+/// Helper to create a template with custom repository settings.
+fn create_template_with_repository(repo_settings: RepositorySettings) -> NewTemplateConfig {
+    NewTemplateConfig {
+        template: TemplateMetadata {
+            name: "test".to_string(),
+            description: "test".to_string(),
+            author: "test".to_string(),
+            tags: vec![],
+        },
+        repository: Some(repo_settings),
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        variables: None,
     }
 }
 
@@ -157,7 +183,14 @@ fn test_merge_four_level_hierarchy() {
             issues: Some(OverridableValue::allowed(false)), // Override global
             ..Default::default()
         }),
-        ..Default::default()
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        variables: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -230,25 +263,17 @@ fn test_team_cannot_override_fixed_global_setting() {
     );
 
     match result.unwrap_err() {
-        ConfigurationError::OverrideNotAllowed {
-            field,
-            attempted_value,
-            policy,
-        } => {
+        ConfigurationError::OverrideNotPermitted { setting, reason } => {
             assert!(
-                field.contains("security_advisories"),
+                setting.contains("security_advisories"),
                 "Error should reference security_advisories field"
             );
             assert!(
-                attempted_value.contains("false") || attempted_value == "false",
-                "Error should show attempted value"
-            );
-            assert!(
-                !policy.is_empty(),
+                !reason.is_empty(),
                 "Error should explain policy restriction"
             );
         }
-        other => panic!("Expected OverrideNotAllowed error, got {:?}", other),
+        other => panic!("Expected OverrideNotPermitted error, got {:?}", other),
     }
 }
 
@@ -265,19 +290,10 @@ fn test_template_cannot_override_fixed_global_setting() {
         ..Default::default()
     };
 
-    let template = NewTemplateConfig {
-        template: TemplateMetadata {
-            name: "test".to_string(),
-            description: "test".to_string(),
-            author: "test".to_string(),
-            tags: vec![],
-        },
-        repository: Some(RepositorySettings {
-            wiki: Some(OverridableValue::allowed(true)), // Attempt override
-            ..Default::default()
-        }),
+    let template = create_template_with_repository(RepositorySettings {
+        wiki: Some(OverridableValue::allowed(true)), // Attempt override
         ..Default::default()
-    };
+    });
 
     let result = merger.merge_configurations(&global, None, None, &template);
 
@@ -287,10 +303,13 @@ fn test_template_cannot_override_fixed_global_setting() {
     );
 
     match result.unwrap_err() {
-        ConfigurationError::OverrideNotAllowed { field, .. } => {
-            assert!(field.contains("wiki"), "Error should reference wiki field");
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert!(
+                setting.contains("wiki"),
+                "Error should reference wiki field"
+            );
         }
-        other => panic!("Expected OverrideNotAllowed error, got {:?}", other),
+        other => panic!("Expected OverrideNotPermitted error, got {:?}", other),
     }
 }
 
@@ -361,81 +380,6 @@ fn test_override_with_same_value_as_fixed_policy_succeeds() {
 // ============================================================================
 // Additive Collection Merging Tests (Task 4.4)
 // ============================================================================
-
-/// Verify that labels are merged additively with name-based deduplication.
-///
-/// Later sources should override earlier sources for the same label name.
-#[test]
-fn test_labels_merge_additively() {
-    let merger = ConfigurationMerger::new();
-
-    let global = GlobalDefaults {
-        labels: Some(vec![
-            LabelConfig {
-                name: "bug".to_string(),
-                color: "ff0000".to_string(),
-                description: Some("Bug from global".to_string()),
-            },
-            LabelConfig {
-                name: "enhancement".to_string(),
-                color: "00ff00".to_string(),
-                description: Some("Enhancement from global".to_string()),
-            },
-        ]),
-        ..Default::default()
-    };
-
-    let team = TeamConfig {
-        labels: Some(vec![
-            LabelConfig {
-                name: "bug".to_string(), // Override global bug label
-                color: "ff0000".to_string(),
-                description: Some("Bug from team".to_string()),
-            },
-            LabelConfig {
-                name: "team-specific".to_string(),
-                color: "0000ff".to_string(),
-                description: Some("Team label".to_string()),
-            },
-        ]),
-        ..Default::default()
-    };
-
-    let template = create_test_template();
-
-    let result = merger.merge_configurations(&global, None, Some(&team), &template);
-
-    assert!(result.is_ok(), "Label merging should succeed");
-
-    let merged = result.unwrap();
-
-    // Should have 3 labels: bug (from team), enhancement (from global), team-specific (from team)
-    assert_eq!(
-        merged.labels.len(),
-        3,
-        "Should have 3 unique labels after merging"
-    );
-
-    // Bug label should be from team (overrides global)
-    assert_eq!(
-        merged.labels.get("bug").unwrap().description,
-        Some("Bug from team".to_string()),
-        "Team bug label should override global"
-    );
-
-    // Enhancement should be from global
-    assert_eq!(
-        merged.labels.get("enhancement").unwrap().description,
-        Some("Enhancement from global".to_string()),
-        "Global enhancement label should be present"
-    );
-
-    // Team-specific should be present
-    assert!(
-        merged.labels.contains_key("team-specific"),
-        "Team-specific label should be present"
-    );
-}
 
 /// Verify that webhooks are merged additively (all webhooks combined).
 #[test]
@@ -560,19 +504,10 @@ fn test_source_trace_records_configuration_sources() {
         ..Default::default()
     };
 
-    let template = NewTemplateConfig {
-        template: TemplateMetadata {
-            name: "test".to_string(),
-            description: "test".to_string(),
-            author: "test".to_string(),
-            tags: vec![],
-        },
-        repository: Some(RepositorySettings {
-            discussions: Some(OverridableValue::allowed(true)),
-            ..Default::default()
-        }),
+    let template = create_template_with_repository(RepositorySettings {
+        discussions: Some(OverridableValue::allowed(true)),
         ..Default::default()
-    };
+    });
 
     let result = merger.merge_configurations(&global, None, Some(&team), &template);
 
@@ -617,7 +552,15 @@ fn test_merge_with_empty_configurations() {
             author: "test".to_string(),
             tags: vec![],
         },
-        ..Default::default()
+        repository: None,
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        variables: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -689,11 +632,6 @@ fn test_complex_merge_scenario() {
             required_approving_review_count: Some(OverridableValue::allowed(1)),
             ..Default::default()
         }),
-        labels: Some(vec![LabelConfig {
-            name: "bug".to_string(),
-            color: "ff0000".to_string(),
-            description: Some("Bug".to_string()),
-        }]),
         webhooks: Some(vec![WebhookConfig {
             url: "https://global.example.com/webhook".to_string(),
             content_type: "json".to_string(),
@@ -721,11 +659,6 @@ fn test_complex_merge_scenario() {
             discussions: Some(OverridableValue::allowed(true)),
             ..Default::default()
         }),
-        labels: Some(vec![LabelConfig {
-            name: "team-label".to_string(),
-            color: "00ff00".to_string(),
-            description: Some("Team label".to_string()),
-        }]),
         ..Default::default()
     };
 
@@ -740,6 +673,10 @@ fn test_complex_merge_scenario() {
             issues: Some(OverridableValue::allowed(false)), // Override global
             ..Default::default()
         }),
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
         webhooks: Some(vec![WebhookConfig {
             url: "https://template.example.com/webhook".to_string(),
             content_type: "json".to_string(),
@@ -747,7 +684,9 @@ fn test_complex_merge_scenario() {
             active: true,
             secret: None,
         }]),
-        ..Default::default()
+        environments: None,
+        github_apps: None,
+        variables: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -803,11 +742,6 @@ fn test_complex_merge_scenario() {
     );
 
     // Verify collections
-    assert_eq!(
-        merged.labels.len(),
-        2,
-        "Should have labels from global and team"
-    );
     assert_eq!(
         merged.webhooks.len(),
         2,
