@@ -21,11 +21,27 @@
 //! # Examples
 //!
 //! ```rust
-//! use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig};
+//! use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig, TemplateMetadata};
 //!
 //! let merger = ConfigurationMerger::new();
 //! let global = GlobalDefaults::default();
-//! let template = NewTemplateConfig::default();
+//! let template = NewTemplateConfig {
+//!     template: TemplateMetadata {
+//!         name: "example".to_string(),
+//!         description: "Example template".to_string(),
+//!         author: "Test".to_string(),
+//!         tags: vec![],
+//!     },
+//!     repository: None,
+//!     repository_type: None,
+//!     pull_requests: None,
+//!     branch_protection: None,
+//!     labels: None,
+//!     webhooks: None,
+//!     environments: None,
+//!     github_apps: None,
+//!     variables: None,
+//! };
 //!
 //! // Merge configurations with precedence rules
 //! let merged = merger.merge_configurations(
@@ -62,9 +78,32 @@ use crate::{
 /// # Examples
 ///
 /// ```rust
-/// use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig};
+/// use config_manager::{
+///     ConfigurationMerger, GlobalDefaults, RepositoryTypeConfig,
+///     TeamConfig, NewTemplateConfig, TemplateMetadata
+/// };
 ///
 /// let merger = ConfigurationMerger::new();
+/// let global_defaults = GlobalDefaults::default();
+/// let repository_type_config = RepositoryTypeConfig::default();
+/// let team_config = TeamConfig::default();
+/// let template_config = NewTemplateConfig {
+///     template: TemplateMetadata {
+///         name: "example".to_string(),
+///         description: "Example".to_string(),
+///         author: "Test".to_string(),
+///         tags: vec![],
+///     },
+///     repository: None,
+///     repository_type: None,
+///     pull_requests: None,
+///     branch_protection: None,
+///     labels: None,
+///     webhooks: None,
+///     environments: None,
+///     github_apps: None,
+///     variables: None,
+/// };
 ///
 /// // Merge with all configuration levels
 /// let merged = merger.merge_configurations(
@@ -122,11 +161,27 @@ impl ConfigurationMerger {
     /// # Examples
     ///
     /// ```rust
-    /// use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig};
+    /// use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig, TemplateMetadata};
     ///
     /// let merger = ConfigurationMerger::new();
     /// let global = GlobalDefaults::default();
-    /// let template = NewTemplateConfig::default();
+    /// let template = NewTemplateConfig {
+    ///     template: TemplateMetadata {
+    ///         name: "example".to_string(),
+    ///         description: "Example".to_string(),
+    ///         author: "Test".to_string(),
+    ///         tags: vec![],
+    ///     },
+    ///     repository: None,
+    ///     repository_type: None,
+    ///     pull_requests: None,
+    ///     branch_protection: None,
+    ///     labels: None,
+    ///     webhooks: None,
+    ///     environments: None,
+    ///     github_apps: None,
+    ///     variables: None,
+    /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
     /// # Ok::<(), config_manager::ConfigurationError>(())
