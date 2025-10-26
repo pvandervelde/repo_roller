@@ -26,6 +26,7 @@ pub mod metadata_provider;
 pub mod merger;
 
 // Organization settings manager (Task 5.0)
+pub mod configuration_context;
 pub mod organization_settings_manager;
 
 // Integration tests (Task 2.7)
@@ -33,6 +34,7 @@ pub mod organization_settings_manager;
 mod integration_tests;
 
 // Re-export for convenient access
+pub use configuration_context::ConfigurationContext;
 pub use errors::{ConfigurationError, ConfigurationResult};
 pub use github_metadata_provider::{GitHubMetadataProvider, MetadataProviderConfig};
 pub use global_defaults::GlobalDefaults;
