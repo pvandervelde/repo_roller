@@ -25,6 +25,9 @@ pub mod metadata_provider;
 // Configuration merger (Task 4.0)
 pub mod merger;
 
+// Organization settings manager (Task 5.0)
+pub mod organization_settings_manager;
+
 // Integration tests (Task 2.7)
 #[cfg(test)]
 mod integration_tests;
@@ -36,6 +39,7 @@ pub use global_defaults::GlobalDefaults;
 pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
 pub use merger::ConfigurationMerger;
 pub use metadata_provider::{DiscoveryMethod, MetadataRepository, MetadataRepositoryProvider};
+pub use organization_settings_manager::OrganizationSettingsManager;
 pub use overridable::OverridableValue;
 pub use repository_type_config::RepositoryTypeConfig;
 pub use settings::LabelConfig;
