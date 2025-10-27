@@ -18,8 +18,9 @@ octocrab = "0.47"
 schemars = { version = "1.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
+thiserror = { workspace = true }
 toml = "0.9"
+tracing = { workspace = true }
 
 [dev-dependencies]
 serde_json = "=1.0.145"

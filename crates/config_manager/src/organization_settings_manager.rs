@@ -50,6 +50,7 @@ use crate::{
     metadata_provider::MetadataRepositoryProvider,
 };
 use std::sync::Arc;
+use tracing::{debug, info, instrument, warn};
 
 /// Organization settings manager.
 ///
@@ -176,43 +177,100 @@ impl OrganizationSettingsManager {
     /// # Ok(())
     /// # }
     /// ```
+    #[instrument(
+        skip(self),
+        fields(
+            organization = %context.organization(),
+            template = %context.template(),
+            team = ?context.team(),
+            repository_type = ?context.repository_type()
+        )
+    )]
     pub async fn resolve_configuration(
         &self,
         context: &crate::ConfigurationContext,
     ) -> ConfigurationResult<crate::merged_config::MergedConfiguration> {
+        info!("Starting configuration resolution");
+
         // Step 1: Discover metadata repository
+        debug!("Discovering metadata repository");
         let metadata_repo = self
             .metadata_provider
             .discover_metadata_repository(context.organization())
-            .await?;
+            .await
+            .map_err(|e| {
+                warn!("Failed to discover metadata repository: {}", e);
+                e
+            })?;
+        
+        info!(
+            "Discovered metadata repository: {} (method: {:?})",
+            metadata_repo.repository_name, metadata_repo.discovery_method
+        );
 
         // Step 2: Load global defaults
+        debug!("Loading global defaults");
         let global_defaults = self
             .metadata_provider
             .load_global_defaults(&metadata_repo)
-            .await?;
+            .await
+            .map_err(|e| {
+                warn!("Failed to load global defaults: {}", e);
+                e
+            })?;
+        
+        debug!("Global defaults loaded successfully");
 
         // Step 3: Load repository type configuration (if specified)
         let repository_type_config = if let Some(repo_type) = context.repository_type() {
-            self.metadata_provider
+            debug!("Loading repository type configuration: {}", repo_type);
+            let config = self.metadata_provider
                 .load_repository_type_configuration(&metadata_repo, repo_type)
-                .await?
+                .await
+                .map_err(|e| {
+                    warn!("Failed to load repository type configuration: {}", e);
+                    e
+                })?;
+            
+            if config.is_some() {
+                info!("Repository type configuration loaded: {}", repo_type);
+            } else {
+                debug!("No repository type configuration found for: {}", repo_type);
+            }
+            
+            config
         } else {
+            debug!("No repository type specified");
             None
         };
 
         // Step 4: Load team configuration (if specified)
         let team_config = if let Some(team) = context.team() {
-            self.metadata_provider
+            debug!("Loading team configuration: {}", team);
+            let config = self.metadata_provider
                 .load_team_configuration(&metadata_repo, team)
-                .await?
+                .await
+                .map_err(|e| {
+                    warn!("Failed to load team configuration: {}", e);
+                    e
+                })?;
+            
+            if config.is_some() {
+                info!("Team configuration loaded: {}", team);
+            } else {
+                debug!("No team configuration found for: {}", team);
+            }
+            
+            config
         } else {
+            debug!("No team specified");
             None
         };
 
         // Step 5: Create minimal template configuration
         // TODO: Load actual template configuration from template repository
         // For now, create a minimal template config to enable testing
+        debug!("Creating minimal template configuration");
         let template_config = crate::template_config::TemplateConfig {
             template: crate::template_config::TemplateMetadata {
                 name: context.template().to_string(),
@@ -232,12 +290,23 @@ impl OrganizationSettingsManager {
         };
 
         // Step 6: Merge all configurations using ConfigurationMerger
-        self.merger.merge_configurations(
+        debug!("Merging configurations");
+        let merged = self.merger.merge_configurations(
             &global_defaults,
             repository_type_config.as_ref(),
             team_config.as_ref(),
             &template_config,
-        )
+        ).map_err(|e| {
+            warn!("Configuration merge failed: {}", e);
+            e
+        })?;
+
+        info!(
+            "Configuration resolution completed successfully (fields configured: {})",
+            merged.source_trace.field_count()
+        );
+
+        Ok(merged)
     }
 }
 
