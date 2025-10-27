@@ -16,6 +16,9 @@ pub use errors::Error;
 
 pub mod models;
 
+pub mod custom_property_payload;
+pub use custom_property_payload::CustomPropertiesPayload;
+
 // Reference the tests module in the separate file
 #[cfg(test)]
 #[path = "lib_tests.rs"]
@@ -546,6 +549,25 @@ impl RepositoryClient for GitHubClient {
             }
         }
     }
+
+    async fn set_repository_custom_properties(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &CustomPropertiesPayload,
+    ) -> Result<(), Error> {
+        // TODO: Implement custom property setting via GitHub API
+        // - Use PATCH /repos/{owner}/{repo}/properties/values
+        // - Serialize payload to JSON
+        // - Handle API response and errors
+        info!(
+            owner = owner,
+            repo = repo,
+            "Setting custom properties on repository (stub)"
+        );
+        let _ = payload; // Suppress unused parameter warning
+        Err(Error::ApiError())
+    }
 }
 
 /// JWT claims structure for GitHub App authentication.
@@ -771,6 +793,55 @@ pub trait RepositoryClient: Send + Sync {
     /// - The organization is not found
     /// - The default branch setting is not available
     async fn get_organization_default_branch(&self, org_name: &str) -> Result<String, Error>;
+
+    /// Sets custom properties on a repository.
+    ///
+    /// This method updates repository custom properties using the GitHub API.
+    /// Custom property definitions must already exist at the organization level
+    /// before they can be assigned to repositories.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `payload` - The custom properties payload containing properties to set
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the custom properties were successfully updated.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if:
+    /// - The repository doesn't exist or is not accessible
+    /// - The authenticated app lacks permission to set custom properties
+    /// - A referenced custom property doesn't exist at the organization level
+    /// - The GitHub API request fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use github_client::{GitHubClient, CustomPropertiesPayload};
+    /// use serde_json::json;
+    ///
+    /// # async fn example(client: GitHubClient) -> Result<(), github_client::Error> {
+    /// let payload = CustomPropertiesPayload::new(vec![
+    ///     json!({
+    ///         "property_name": "repository_type",
+    ///         "value": "library"
+    ///     })
+    /// ]);
+    ///
+    /// client.set_repository_custom_properties("my-org", "my-repo", &payload).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn set_repository_custom_properties(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &CustomPropertiesPayload,
+    ) -> Result<(), Error>;
 }
 
 /// Settings that can be updated for an existing repository.

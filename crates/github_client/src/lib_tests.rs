@@ -510,3 +510,214 @@ async fn test_get_installation_token_case_insensitive() {
     let token = result.unwrap();
     assert_eq!(token, test_token);
 }
+
+/// Verify that set_repository_custom_properties sends correct API request.
+///
+/// Tests that the method properly formats the PATCH request to GitHub's
+/// custom properties endpoint with the correct payload structure.
+#[tokio::test]
+async fn test_set_repository_custom_properties_success() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = CustomPropertiesPayload::new(vec![
+        json!({
+            "property_name": "repository_type",
+            "value": "library"
+        }),
+        json!({
+            "property_name": "team",
+            "value": "backend"
+        }),
+    ]);
+
+    // GitHub API endpoint for custom properties
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .respond_with(ResponseTemplate::new(204)) // GitHub returns 204 No Content on success
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_repository_custom_properties(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Setting custom properties should succeed, got: {:?}",
+        result
+    );
+}
+
+/// Verify that setting custom properties handles API errors correctly.
+#[tokio::test]
+async fn test_set_repository_custom_properties_api_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = CustomPropertiesPayload::new(vec![json!({
+        "property_name": "invalid_property",
+        "value": "test"
+    })]);
+
+    // GitHub API returns 422 if property doesn't exist
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Custom property not found",
+            "errors": [
+                {
+                    "resource": "CustomProperty",
+                    "code": "not_found",
+                    "field": "property_name"
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_repository_custom_properties(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Setting invalid custom property should fail"
+    );
+}
+
+/// Verify that setting empty custom properties list succeeds.
+#[tokio::test]
+async fn test_set_repository_custom_properties_empty() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = CustomPropertiesPayload::new(vec![]);
+
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_repository_custom_properties(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Setting empty custom properties should succeed"
+    );
+}
+
+/// Verify that setting custom properties handles permission errors.
+#[tokio::test]
+async fn test_set_repository_custom_properties_permission_denied() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = CustomPropertiesPayload::new(vec![json!({
+        "property_name": "repository_type",
+        "value": "library"
+    })]);
+
+    // GitHub API returns 403 if app lacks permissions
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+            "message": "Resource not accessible by integration",
+            "documentation_url": "https://docs.github.com/rest/repos/custom-properties"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_repository_custom_properties(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Setting custom properties without permission should fail"
+    );
+}
+
+/// Verify that setting custom properties handles repository not found.
+#[tokio::test]
+async fn test_set_repository_custom_properties_repo_not_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "nonexistent-repo";
+
+    let payload = CustomPropertiesPayload::new(vec![json!({
+        "property_name": "repository_type",
+        "value": "library"
+    })]);
+
+    // GitHub API returns 404 if repository doesn't exist
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_repository_custom_properties(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Setting custom properties on nonexistent repo should fail"
+    );
+}
