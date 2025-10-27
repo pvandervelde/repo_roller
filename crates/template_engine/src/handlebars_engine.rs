@@ -47,7 +47,8 @@
 
 use chrono;
 use handlebars::{
-    Context, Handlebars, Helper, HelperDef, JsonRender, Output, RenderContext, RenderError,
+    Context, Handlebars, Helper, HelperDef, HelperResult, JsonRender, Output, RenderContext,
+    RenderErrorReason,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -67,16 +68,16 @@ struct SnakeCaseHelper;
 impl HelperDef for SnakeCaseHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let param = h
             .param(0)
             .and_then(|v| v.value().as_str())
-            .ok_or_else(|| RenderError::new("snake_case helper requires a string parameter"))?;
+            .ok_or(RenderErrorReason::ParamNotFoundForIndex("snake_case", 0))?;
 
         let snake_case = param
             .trim()
@@ -98,16 +99,16 @@ struct KebabCaseHelper;
 impl HelperDef for KebabCaseHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let param = h
             .param(0)
             .and_then(|v| v.value().as_str())
-            .ok_or_else(|| RenderError::new("kebab_case helper requires a string parameter"))?;
+            .ok_or(RenderErrorReason::ParamNotFoundForIndex("kebab_case", 0))?;
 
         let kebab_case = param
             .trim()
@@ -129,16 +130,16 @@ struct UpperCaseHelper;
 impl HelperDef for UpperCaseHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let param = h
             .param(0)
             .and_then(|v| v.value().as_str())
-            .ok_or_else(|| RenderError::new("upper_case helper requires a string parameter"))?;
+            .ok_or(RenderErrorReason::ParamNotFoundForIndex("upper_case", 0))?;
 
         out.write(&param.to_uppercase())?;
         Ok(())
@@ -151,16 +152,16 @@ struct LowerCaseHelper;
 impl HelperDef for LowerCaseHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let param = h
             .param(0)
             .and_then(|v| v.value().as_str())
-            .ok_or_else(|| RenderError::new("lower_case helper requires a string parameter"))?;
+            .ok_or(RenderErrorReason::ParamNotFoundForIndex("lower_case", 0))?;
 
         out.write(&param.to_lowercase())?;
         Ok(())
@@ -173,16 +174,16 @@ struct CapitalizeHelper;
 impl HelperDef for CapitalizeHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let param = h
             .param(0)
             .and_then(|v| v.value().as_str())
-            .ok_or_else(|| RenderError::new("capitalize helper requires a string parameter"))?;
+            .ok_or(RenderErrorReason::ParamNotFoundForIndex("capitalize", 0))?;
 
         let capitalized = if let Some(first_char) = param.chars().next() {
             let mut result = first_char.to_uppercase().collect::<String>();
@@ -203,16 +204,16 @@ struct DefaultHelper;
 impl HelperDef for DefaultHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let value = h.param(0);
         let default_value = h
             .param(1)
-            .ok_or_else(|| RenderError::new("default helper requires a default value parameter"))?;
+            .ok_or(RenderErrorReason::ParamNotFoundForIndex("default", 1))?;
 
         if let Some(val) = value {
             if !val.value().is_null() {
@@ -234,12 +235,12 @@ struct TimestampHelper;
 impl HelperDef for TimestampHelper {
     fn call<'reg: 'rc, 'rc>(
         &self,
-        h: &Helper<'reg, 'rc>,
+        h: &Helper<'rc>,
         _: &'reg Handlebars<'reg>,
         _: &'rc Context,
         _: &mut RenderContext<'reg, 'rc>,
         out: &mut dyn Output,
-    ) -> Result<(), RenderError> {
+    ) -> HelperResult {
         let format = h
             .param(0)
             .and_then(|v| v.value().as_str())
@@ -817,7 +818,9 @@ impl HandlebarsTemplateEngine {
                 let err_msg = e.to_string();
 
                 // Check for missing variable errors in strict mode
-                if err_msg.contains("Variable") && err_msg.contains("not found") {
+                if err_msg.contains("Failed to access variable")
+                    || (err_msg.contains("Variable") && err_msg.contains("not found"))
+                {
                     HandlebarsError::VariableValidation {
                         variable: "unknown".to_string(), // Could parse from error message
                         reason: err_msg,
