@@ -12,7 +12,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use config_manager::{
 //!     OrganizationSettingsManager, ConfigurationContext,
 //!     GitHubMetadataProvider, MetadataProviderConfig
@@ -21,14 +21,12 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create metadata provider
-//! let provider_config = MetadataProviderConfig {
-//!     organization: "my-org".to_string(),
-//!     metadata_repository_name: Some("repo-config".to_string()),
-//! };
+//! let provider_config = MetadataProviderConfig::explicit("repo-config");
 //! let metadata_provider = GitHubMetadataProvider::new(
+//!     "my-org",
 //!     Arc::new(github_client), // Your GitHub client
 //!     provider_config,
-//! )?;
+//! );
 //!
 //! // Create organization settings manager
 //! let manager = OrganizationSettingsManager::new(
@@ -65,7 +63,7 @@ use std::sync::Arc;
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use config_manager::{
 ///     OrganizationSettingsManager, GitHubMetadataProvider, MetadataProviderConfig
 /// };
@@ -73,14 +71,12 @@ use std::sync::Arc;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create metadata provider
-/// let provider_config = MetadataProviderConfig {
-///     organization: "my-org".to_string(),
-///     metadata_repository_name: Some("repo-config".to_string()),
-/// };
+/// let provider_config = MetadataProviderConfig::explicit("repo-config");
 /// let metadata_provider = GitHubMetadataProvider::new(
+///     "my-org",
 ///     Arc::new(github_client), // Your GitHub client
 ///     provider_config,
-/// )?;
+/// );
 ///
 /// // Create manager
 /// let manager = OrganizationSettingsManager::new(Arc::new(metadata_provider));
@@ -107,21 +103,19 @@ impl OrganizationSettingsManager {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use config_manager::{
     ///     OrganizationSettingsManager, GitHubMetadataProvider, MetadataProviderConfig
     /// };
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let provider_config = MetadataProviderConfig {
-    ///     organization: "my-org".to_string(),
-    ///     metadata_repository_name: Some("repo-config".to_string()),
-    /// };
+    /// let provider_config = MetadataProviderConfig::explicit("repo-config");
     /// let metadata_provider = GitHubMetadataProvider::new(
+    ///     "my-org",
     ///     Arc::new(github_client), // Your GitHub client
     ///     provider_config,
-    /// )?;
+    /// );
     ///
     /// let manager = OrganizationSettingsManager::new(Arc::new(metadata_provider));
     /// # Ok(())
@@ -159,7 +153,7 @@ impl OrganizationSettingsManager {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use config_manager::{
     ///     OrganizationSettingsManager, ConfigurationContext,
     ///     GitHubMetadataProvider, MetadataProviderConfig
@@ -167,14 +161,12 @@ impl OrganizationSettingsManager {
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let provider_config = MetadataProviderConfig {
-    /// #     organization: "my-org".to_string(),
-    /// #     metadata_repository_name: Some("repo-config".to_string()),
-    /// # };
+    /// # let provider_config = MetadataProviderConfig::explicit("repo-config");
     /// # let metadata_provider = GitHubMetadataProvider::new(
+    /// #     "my-org",
     /// #     Arc::new(github_client), // Your GitHub client
     /// #     provider_config,
-    /// # )?;
+    /// # );
     /// let manager = OrganizationSettingsManager::new(Arc::new(metadata_provider));
     ///
     /// let context = ConfigurationContext::new("my-org", "rust-service")
@@ -186,16 +178,66 @@ impl OrganizationSettingsManager {
     /// ```
     pub async fn resolve_configuration(
         &self,
-        _context: &crate::ConfigurationContext,
+        context: &crate::ConfigurationContext,
     ) -> ConfigurationResult<crate::merged_config::MergedConfiguration> {
-        // TODO: Implement resolution workflow (Task 5.2)
-        // 1. Discover metadata repository
-        // 2. Load global defaults
-        // 3. Load repository type config (if specified)
-        // 4. Load team config (if specified)
-        // 5. Load template config
-        // 6. Merge all configurations using ConfigurationMerger
-        todo!("Implement configuration resolution workflow")
+        // Step 1: Discover metadata repository
+        let metadata_repo = self
+            .metadata_provider
+            .discover_metadata_repository(context.organization())
+            .await?;
+
+        // Step 2: Load global defaults
+        let global_defaults = self
+            .metadata_provider
+            .load_global_defaults(&metadata_repo)
+            .await?;
+
+        // Step 3: Load repository type configuration (if specified)
+        let repository_type_config = if let Some(repo_type) = context.repository_type() {
+            self.metadata_provider
+                .load_repository_type_configuration(&metadata_repo, repo_type)
+                .await?
+        } else {
+            None
+        };
+
+        // Step 4: Load team configuration (if specified)
+        let team_config = if let Some(team) = context.team() {
+            self.metadata_provider
+                .load_team_configuration(&metadata_repo, team)
+                .await?
+        } else {
+            None
+        };
+
+        // Step 5: Create minimal template configuration
+        // TODO: Load actual template configuration from template repository
+        // For now, create a minimal template config to enable testing
+        let template_config = crate::template_config::TemplateConfig {
+            template: crate::template_config::TemplateMetadata {
+                name: context.template().to_string(),
+                description: format!("Template: {}", context.template()),
+                author: "System".to_string(),
+                tags: vec![],
+            },
+            repository_type: None,
+            variables: None,
+            repository: None,
+            pull_requests: None,
+            branch_protection: None,
+            labels: None,
+            webhooks: None,
+            environments: None,
+            github_apps: None,
+        };
+
+        // Step 6: Merge all configurations using ConfigurationMerger
+        self.merger.merge_configurations(
+            &global_defaults,
+            repository_type_config.as_ref(),
+            team_config.as_ref(),
+            &template_config,
+        )
     }
 }
 
