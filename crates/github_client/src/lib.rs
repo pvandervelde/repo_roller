@@ -556,17 +556,40 @@ impl RepositoryClient for GitHubClient {
         repo: &str,
         payload: &CustomPropertiesPayload,
     ) -> Result<(), Error> {
-        // TODO: Implement custom property setting via GitHub API
-        // - Use PATCH /repos/{owner}/{repo}/properties/values
-        // - Serialize payload to JSON
-        // - Handle API response and errors
         info!(
             owner = owner,
             repo = repo,
-            "Setting custom properties on repository (stub)"
+            property_count = payload.properties.len(),
+            "Setting custom properties on repository"
         );
-        let _ = payload; // Suppress unused parameter warning
-        Err(Error::ApiError())
+
+        let path = format!("/repos/{owner}/{repo}/custom-properties");
+
+        debug!("Making API call to: {}", path);
+        // Use Option<serde_json::Value> to handle 204 No Content responses
+        let response: OctocrabResult<Option<serde_json::Value>> =
+            self.client.patch(path, Some(payload)).await;
+
+        match response {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Successfully set custom properties on repository"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!(
+                    owner = owner,
+                    repo = repo,
+                    "Failed to set custom properties: {}",
+                    e
+                );
+                log_octocrab_error("Failed to set repository custom properties", e);
+                Err(Error::ApiError())
+            }
+        }
     }
 }
 

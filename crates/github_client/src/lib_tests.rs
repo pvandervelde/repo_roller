@@ -534,8 +534,8 @@ async fn test_set_repository_custom_properties_success() {
 
     // GitHub API endpoint for custom properties
     Mock::given(method("PATCH"))
-        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
-        .respond_with(ResponseTemplate::new(204)) // GitHub returns 204 No Content on success
+        .and(path(format!("/repos/{owner}/{repo}/custom-properties")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({}))) // Try 200 with empty JSON
         .mount(&mock_server)
         .await;
 
@@ -573,7 +573,7 @@ async fn test_set_repository_custom_properties_api_error() {
 
     // GitHub API returns 422 if property doesn't exist
     Mock::given(method("PATCH"))
-        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .and(path(format!("/repos/{owner}/{repo}/custom-properties")))
         .respond_with(ResponseTemplate::new(422).set_body_json(json!({
             "message": "Custom property not found",
             "errors": [
@@ -616,8 +616,8 @@ async fn test_set_repository_custom_properties_empty() {
     let payload = CustomPropertiesPayload::new(vec![]);
 
     Mock::given(method("PATCH"))
-        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
-        .respond_with(ResponseTemplate::new(204))
+        .and(path(format!("/repos/{owner}/{repo}/custom-properties")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .mount(&mock_server)
         .await;
 
@@ -654,7 +654,7 @@ async fn test_set_repository_custom_properties_permission_denied() {
 
     // GitHub API returns 403 if app lacks permissions
     Mock::given(method("PATCH"))
-        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .and(path(format!("/repos/{owner}/{repo}/custom-properties")))
         .respond_with(ResponseTemplate::new(403).set_body_json(json!({
             "message": "Resource not accessible by integration",
             "documentation_url": "https://docs.github.com/rest/repos/custom-properties"
@@ -695,7 +695,7 @@ async fn test_set_repository_custom_properties_repo_not_found() {
 
     // GitHub API returns 404 if repository doesn't exist
     Mock::given(method("PATCH"))
-        .and(path(format!("/repos/{owner}/{repo}/properties/values")))
+        .and(path(format!("/repos/{owner}/{repo}/custom-properties")))
         .respond_with(ResponseTemplate::new(404).set_body_json(json!({
             "message": "Not Found",
             "documentation_url": "https://docs.github.com/rest"
