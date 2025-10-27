@@ -29,6 +29,10 @@ pub mod merger;
 pub mod configuration_context;
 pub mod organization_settings_manager;
 
+// Repository type management (Task 6.0)
+pub mod repository_type_name;
+pub mod repository_type_validator;
+
 // Integration tests (Task 2.7)
 #[cfg(test)]
 mod integration_tests;
@@ -44,6 +48,8 @@ pub use metadata_provider::{DiscoveryMethod, MetadataRepository, MetadataReposit
 pub use organization_settings_manager::OrganizationSettingsManager;
 pub use overridable::OverridableValue;
 pub use repository_type_config::RepositoryTypeConfig;
+pub use repository_type_name::RepositoryTypeName;
+pub use repository_type_validator::RepositoryTypeValidator;
 pub use settings::LabelConfig;
 pub use team_config::TeamConfig;
 pub use template_config::{
