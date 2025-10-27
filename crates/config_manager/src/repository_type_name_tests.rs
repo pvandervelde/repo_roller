@@ -177,25 +177,48 @@ fn test_equality() {
 /// Verify serialization to TOML.
 #[test]
 fn test_serialize() {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct Wrapper {
+        name: RepositoryTypeName,
+    }
+
     let name = RepositoryTypeName::try_new("library").unwrap();
-    let serialized = toml::to_string(&name).expect("Failed to serialize");
-    assert_eq!(serialized.trim(), "\"library\"");
+    let wrapper = Wrapper { name };
+    let serialized = toml::to_string(&wrapper).expect("Failed to serialize");
+    assert!(serialized.contains("library"));
 }
 
 /// Verify deserialization from TOML.
 #[test]
 fn test_deserialize() {
-    let toml = "\"library\"";
-    let name: RepositoryTypeName = toml::from_str(toml).expect("Failed to deserialize");
-    assert_eq!(name.as_str(), "library");
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Wrapper {
+        name: RepositoryTypeName,
+    }
+
+    let toml = r#"name = "library""#;
+    let wrapper: Wrapper = toml::from_str(toml).expect("Failed to deserialize");
+    assert_eq!(wrapper.name.as_str(), "library");
 }
 
 /// Verify round-trip serialization/deserialization.
 #[test]
 fn test_serialize_deserialize_round_trip() {
-    let original = RepositoryTypeName::try_new("microservice").unwrap();
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    struct Wrapper {
+        name: RepositoryTypeName,
+    }
+
+    let original = Wrapper {
+        name: RepositoryTypeName::try_new("microservice").unwrap(),
+    };
     let serialized = toml::to_string(&original).expect("Failed to serialize");
-    let deserialized: RepositoryTypeName =
-        toml::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: Wrapper = toml::from_str(&serialized).expect("Failed to deserialize");
     assert_eq!(original, deserialized);
 }

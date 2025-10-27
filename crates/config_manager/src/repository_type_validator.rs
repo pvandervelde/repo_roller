@@ -73,10 +73,31 @@ impl RepositoryTypeValidator {
         type_name: &RepositoryTypeName,
         available_types: &[String],
     ) -> ConfigurationResult<()> {
-        // TODO: Implement validation
-        // - Check available_types is not empty
-        // - Check type_name is in available_types (case-insensitive)
-        // - Return helpful error if not found
+        // Check available_types is not empty
+        if available_types.is_empty() {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: "No repository types are defined in the organization configuration"
+                    .to_string(),
+            });
+        }
+
+        // Check type_name is in available_types (case-insensitive)
+        let type_name_lower = type_name.as_str().to_lowercase();
+        let found = available_types
+            .iter()
+            .any(|t| t.to_lowercase() == type_name_lower);
+
+        if !found {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: format!(
+                    "Repository type '{}' is not defined in organization configuration. Available types: {}",
+                    type_name,
+                    available_types.join(", ")
+                ),
+            });
+        }
 
         Ok(())
     }
@@ -133,12 +154,32 @@ impl RepositoryTypeValidator {
         spec: &RepositoryTypeSpec,
         user_override: Option<&RepositoryTypeName>,
     ) -> ConfigurationResult<RepositoryTypeName> {
-        // TODO: Implement policy enforcement
-        // - If Fixed policy and user_override provided, return error
-        // - If Preferable policy and user_override provided, return user_override
-        // - Otherwise return spec.repository_type (converted to RepositoryTypeName)
-
-        RepositoryTypeName::try_new(&spec.repository_type)
+        match spec.policy {
+            RepositoryTypePolicy::Fixed => {
+                // Fixed policy: user cannot override
+                if user_override.is_some() {
+                    return Err(ConfigurationError::InvalidConfiguration {
+                        field: "repository_type".to_string(),
+                        reason: format!(
+                            "Repository type '{}' is fixed by template and cannot be overridden",
+                            spec.repository_type
+                        ),
+                    });
+                }
+                // Return template type
+                RepositoryTypeName::try_new(&spec.repository_type)
+            }
+            RepositoryTypePolicy::Preferable => {
+                // Preferable policy: user can override, but template type is default
+                if let Some(user_type) = user_override {
+                    // Return user override
+                    Ok(user_type.clone())
+                } else {
+                    // Return template type
+                    RepositoryTypeName::try_new(&spec.repository_type)
+                }
+            }
+        }
     }
 
     /// Create a GitHub custom property for the repository type.

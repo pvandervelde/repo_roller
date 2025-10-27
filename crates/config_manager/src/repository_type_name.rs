@@ -63,11 +63,52 @@ impl RepositoryTypeName {
     pub fn try_new(name: impl Into<String>) -> ConfigurationResult<Self> {
         let name = name.into();
 
-        // TODO: Implement validation
-        // - Check length (1-50)
-        // - Check character set (lowercase alphanumeric, hyphen, underscore)
-        // - Check doesn't start/end with hyphen
-        // - Provide helpful error messages
+        // Validate length
+        if name.is_empty() {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: "Repository type name cannot be empty".to_string(),
+            });
+        }
+
+        if name.len() > 50 {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: format!(
+                    "Repository type name too long ({} characters, maximum 50)",
+                    name.len()
+                ),
+            });
+        }
+
+        // Validate character set: lowercase alphanumeric, hyphen, underscore only
+        if !name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: format!(
+                    "Repository type name '{}' contains invalid characters (only lowercase letters, digits, hyphens, and underscores allowed)",
+                    name
+                ),
+            });
+        }
+
+        // Validate doesn't start or end with hyphen
+        if name.starts_with('-') {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: format!("Repository type name '{}' cannot start with a hyphen", name),
+            });
+        }
+
+        if name.ends_with('-') {
+            return Err(ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: format!("Repository type name '{}' cannot end with a hyphen", name),
+            });
+        }
 
         Ok(Self(name))
     }
