@@ -202,7 +202,7 @@ impl OrganizationSettingsManager {
                 warn!("Failed to discover metadata repository: {}", e);
                 e
             })?;
-        
+
         info!(
             "Discovered metadata repository: {} (method: {:?})",
             metadata_repo.repository_name, metadata_repo.discovery_method
@@ -218,26 +218,27 @@ impl OrganizationSettingsManager {
                 warn!("Failed to load global defaults: {}", e);
                 e
             })?;
-        
+
         debug!("Global defaults loaded successfully");
 
         // Step 3: Load repository type configuration (if specified)
         let repository_type_config = if let Some(repo_type) = context.repository_type() {
             debug!("Loading repository type configuration: {}", repo_type);
-            let config = self.metadata_provider
+            let config = self
+                .metadata_provider
                 .load_repository_type_configuration(&metadata_repo, repo_type)
                 .await
                 .map_err(|e| {
                     warn!("Failed to load repository type configuration: {}", e);
                     e
                 })?;
-            
+
             if config.is_some() {
                 info!("Repository type configuration loaded: {}", repo_type);
             } else {
                 debug!("No repository type configuration found for: {}", repo_type);
             }
-            
+
             config
         } else {
             debug!("No repository type specified");
@@ -247,20 +248,21 @@ impl OrganizationSettingsManager {
         // Step 4: Load team configuration (if specified)
         let team_config = if let Some(team) = context.team() {
             debug!("Loading team configuration: {}", team);
-            let config = self.metadata_provider
+            let config = self
+                .metadata_provider
                 .load_team_configuration(&metadata_repo, team)
                 .await
                 .map_err(|e| {
                     warn!("Failed to load team configuration: {}", e);
                     e
                 })?;
-            
+
             if config.is_some() {
                 info!("Team configuration loaded: {}", team);
             } else {
                 debug!("No team configuration found for: {}", team);
             }
-            
+
             config
         } else {
             debug!("No team specified");
@@ -291,15 +293,18 @@ impl OrganizationSettingsManager {
 
         // Step 6: Merge all configurations using ConfigurationMerger
         debug!("Merging configurations");
-        let merged = self.merger.merge_configurations(
-            &global_defaults,
-            repository_type_config.as_ref(),
-            team_config.as_ref(),
-            &template_config,
-        ).map_err(|e| {
-            warn!("Configuration merge failed: {}", e);
-            e
-        })?;
+        let merged = self
+            .merger
+            .merge_configurations(
+                &global_defaults,
+                repository_type_config.as_ref(),
+                team_config.as_ref(),
+                &template_config,
+            )
+            .map_err(|e| {
+                warn!("Configuration merge failed: {}", e);
+                e
+            })?;
 
         info!(
             "Configuration resolution completed successfully (fields configured: {})",
