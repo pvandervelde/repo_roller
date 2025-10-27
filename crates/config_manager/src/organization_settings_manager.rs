@@ -133,6 +133,70 @@ impl OrganizationSettingsManager {
             merger: Arc::new(ConfigurationMerger::new()),
         }
     }
+
+    /// Resolves configuration for a repository creation request.
+    ///
+    /// Implements the complete configuration resolution workflow:
+    /// 1. Discover metadata repository
+    /// 2. Load configuration from all applicable hierarchy levels
+    /// 3. Merge configurations according to precedence rules
+    /// 4. Return final merged configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - Configuration resolution context with organization, template, team, and repository type
+    ///
+    /// # Returns
+    ///
+    /// Returns the merged configuration combining all applicable configuration sources.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError` if:
+    /// - Metadata repository cannot be discovered
+    /// - Configuration files cannot be loaded or parsed
+    /// - Override policies are violated during merging
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use config_manager::{
+    ///     OrganizationSettingsManager, ConfigurationContext,
+    ///     GitHubMetadataProvider, MetadataProviderConfig
+    /// };
+    /// use std::sync::Arc;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let provider_config = MetadataProviderConfig {
+    /// #     organization: "my-org".to_string(),
+    /// #     metadata_repository_name: Some("repo-config".to_string()),
+    /// # };
+    /// # let metadata_provider = GitHubMetadataProvider::new(
+    /// #     Arc::new(github_client), // Your GitHub client
+    /// #     provider_config,
+    /// # )?;
+    /// let manager = OrganizationSettingsManager::new(Arc::new(metadata_provider));
+    ///
+    /// let context = ConfigurationContext::new("my-org", "rust-service")
+    ///     .with_team("backend-team");
+    ///
+    /// let merged_config = manager.resolve_configuration(&context).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn resolve_configuration(
+        &self,
+        _context: &crate::ConfigurationContext,
+    ) -> ConfigurationResult<crate::merged_config::MergedConfiguration> {
+        // TODO: Implement resolution workflow (Task 5.2)
+        // 1. Discover metadata repository
+        // 2. Load global defaults
+        // 3. Load repository type config (if specified)
+        // 4. Load team config (if specified)
+        // 5. Load template config
+        // 6. Merge all configurations using ConfigurationMerger
+        todo!("Implement configuration resolution workflow")
+    }
 }
 
 impl std::fmt::Debug for OrganizationSettingsManager {
