@@ -152,6 +152,7 @@ pub enum RepositoryError {
 pub type RepositoryResult<T> = Result<T, RepositoryError>;
 
 // Re-export ConfigurationError from config_manager (proper architectural layering)
+#[allow(unused_imports)] // Used in tests
 pub use config_manager::{ConfigurationError, ConfigurationResult};
 
 /// Template processing errors.
