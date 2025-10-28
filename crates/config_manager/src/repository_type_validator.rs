@@ -211,10 +211,6 @@ impl RepositoryTypeValidator {
     /// # Ok::<(), config_manager::ConfigurationError>(())
     /// ```
     pub fn create_type_custom_property(&self, type_name: &RepositoryTypeName) -> CustomProperty {
-        // TODO: Implement custom property creation
-        // - Create CustomProperty with property_name = "repository_type"
-        // - Use CustomPropertyValue::SingleSelect with type_name
-
         CustomProperty {
             property_name: "repository_type".to_string(),
             value: CustomPropertyValue::SingleSelect(type_name.as_str().to_string()),
