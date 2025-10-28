@@ -535,7 +535,7 @@ async fn test_set_repository_custom_properties_success() {
     // GitHub API endpoint for custom properties
     Mock::given(method("PATCH"))
         .and(path(format!("/repos/{owner}/{repo}/custom-properties")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({}))) // Try 200 with empty JSON
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({}))) // 200 OK with empty JSON body
         .mount(&mock_server)
         .await;
 

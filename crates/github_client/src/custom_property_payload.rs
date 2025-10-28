@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// Payload for updating repository custom properties via GitHub API.
 ///
 /// This struct represents the expected format for the
-/// `PATCH /repos/{owner}/{repo}/properties/values` endpoint.
+/// `PATCH /repos/{owner}/{repo}/custom-properties` endpoint.
 ///
 /// # Examples
 ///

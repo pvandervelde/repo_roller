@@ -86,6 +86,16 @@ impl RepositoryClient for ConfigurableMockRepoClient {
     ) -> Result<String, GitHubError> {
         Ok(self.config.default_branch.clone())
     }
+
+    async fn set_repository_custom_properties(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _payload: &github_client::CustomPropertiesPayload,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return success
+        Ok(())
+    }
 }
 
 /// Configuration for mock repository client behavior

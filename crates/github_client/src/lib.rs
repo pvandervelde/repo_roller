@@ -844,7 +844,7 @@ pub trait RepositoryClient: Send + Sync {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use github_client::{GitHubClient, CustomPropertiesPayload};
+    /// use github_client::{GitHubClient, CustomPropertiesPayload, RepositoryClient};
     /// use serde_json::json;
     ///
     /// # async fn example(client: GitHubClient) -> Result<(), github_client::Error> {
