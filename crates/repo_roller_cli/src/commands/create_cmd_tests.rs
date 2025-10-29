@@ -1,6 +1,5 @@
 use super::*;
 use crate::errors::Error;
-use repo_roller_core::OrgRules;
 use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -21,25 +20,14 @@ fn make_ask_user_for_value(input_text: &str) -> Result<String, Error> {
 /// Records arguments passed to mocked functions for verification.
 #[derive(Debug, Clone)]
 struct CallLog {
-    get_org_rules_args: Vec<String>,
     create_repository_args: Vec<repo_roller_core::CreateRepoRequest>,
 }
 
 impl CallLog {
     fn new() -> Self {
         Self {
-            get_org_rules_args: Vec::new(),
             create_repository_args: Vec::new(),
         }
-    }
-}
-
-/// Creates a mock get_org_rules function that logs calls.
-/// Returns a closure that can be used in tests to track org rule lookups.
-fn make_logged_get_org_rules(log: Arc<Mutex<CallLog>>) -> impl Fn(&str) -> OrgRules + Send + Sync {
-    move |org: &str| {
-        log.lock().unwrap().get_org_rules_args.push(org.to_string());
-        OrgRules::new_from_text(org)
     }
 }
 
@@ -76,23 +64,21 @@ async fn test_cli_config_invalid_toml() {
     writeln!(file, "not valid toml").unwrap();
     let path = file.path().to_str().map(|s| s.to_string());
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
     let options = CreateCommandOptions::new(&path, &None, &None, &None);
-    let result = handle_create_command(options, ask, get_org_rules, create_repository).await;
+    let result = handle_create_command(options, ask, create_repository).await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
 
 #[tokio::test]
 async fn test_cli_config_missing() {
     let ask = make_ask_user_for_value;
-    let get_org_rules = |_org: &str| OrgRules::new_from_text(_org);
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
     let config_file = Some("nonexistent.toml".to_string());
     let options = CreateCommandOptions::new(&config_file, &None, &None, &None);
-    let result = handle_create_command(options, ask, get_org_rules, create_repository).await;
+    let result = handle_create_command(options, ask, create_repository).await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
 }
 
@@ -104,16 +90,6 @@ async fn test_cli_config_missing_fields() {
     let path = file.path().to_str().map(|s| s.to_string());
     let ask = |_prompt: &str| Ok("prompted_template".to_string());
     let log = Arc::new(Mutex::new(CallLog::new()));
-
-    let log_clone = log.clone();
-    let get_org_rules = move |org: &str| {
-        log_clone
-            .lock()
-            .unwrap()
-            .get_org_rules_args
-            .push(org.to_string());
-        OrgRules::new_from_text(org)
-    };
 
     let create_repo = {
         let log = log.clone();
@@ -127,14 +103,13 @@ async fn test_cli_config_missing_fields() {
     };
 
     let options = CreateCommandOptions::new(&path, &None, &None, &None);
-    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
+    let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
     assert_eq!(res.message, "stubbed");
 
     let log = log.lock().unwrap();
-    assert_eq!(log.get_org_rules_args, vec!["calvinverse"]);
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name, "repo6");
@@ -148,14 +123,13 @@ async fn test_create_repository_failure() {
     let ask = make_ask_user_for_value;
     let log = Arc::new(Mutex::new(CallLog::new()));
 
-    let get_org_rules = make_logged_get_org_rules(log.clone());
     let create_repo = make_logged_create_repo_failure(log.clone(), "creation failed");
 
     let repo_name = Some("repo5".to_string());
     let org_name = Some("calvinverse".to_string());
     let repo_type = Some("library".to_string());
     let options = CreateCommandOptions::new(&None, &repo_name, &org_name, &repo_type);
-    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
+    let result = handle_create_command(options, ask, create_repo).await;
 
     assert!(result.is_ok());
     let res = result.unwrap();
@@ -164,7 +138,6 @@ async fn test_create_repository_failure() {
 
     // Verify the logged calls
     let log = log.lock().unwrap();
-    assert_eq!(log.get_org_rules_args, vec!["calvinverse"]);
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name, "repo5");
@@ -176,16 +149,6 @@ async fn test_create_repository_failure() {
 async fn test_happy_path_with_all_args() {
     let ask = make_ask_user_for_value;
     let log = Arc::new(Mutex::new(CallLog::new()));
-
-    let log_clone = log.clone();
-    let get_org_rules = move |org: &str| {
-        log_clone
-            .lock()
-            .unwrap()
-            .get_org_rules_args
-            .push(org.to_string());
-        OrgRules::new_from_text(org)
-    };
 
     let create_repo = {
         let log = log.clone();
@@ -202,14 +165,13 @@ async fn test_happy_path_with_all_args() {
     let org_name = Some("calvinverse".to_string());
     let repo_type = Some("library".to_string());
     let options = CreateCommandOptions::new(&None, &repo_name, &org_name, &repo_type);
-    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
+    let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
     assert_eq!(res.message, "stubbed");
 
     let log = log.lock().unwrap();
-    assert_eq!(log.get_org_rules_args, vec!["calvinverse"]);
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name, "repo1");
@@ -229,16 +191,6 @@ async fn test_happy_path_with_cli_config() {
     let ask = make_ask_user_for_value;
     let log = Arc::new(Mutex::new(CallLog::new()));
 
-    let log_clone = log.clone();
-    let get_org_rules = move |org: &str| {
-        log_clone
-            .lock()
-            .unwrap()
-            .get_org_rules_args
-            .push(org.to_string());
-        OrgRules::new_from_text(org)
-    };
-
     let create_repo = {
         let log = log.clone();
         move |req: CreateRepoRequest| {
@@ -251,14 +203,13 @@ async fn test_happy_path_with_cli_config() {
     };
 
     let options = CreateCommandOptions::new(&path, &None, &None, &None);
-    let result = handle_create_command(options, ask, get_org_rules, create_repo).await;
+    let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
     assert!(res.success);
     assert_eq!(res.message, "stubbed");
 
     let log = log.lock().unwrap();
-    assert_eq!(log.get_org_rules_args, vec!["calvinverse"]);
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name, "repo2");

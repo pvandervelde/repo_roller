@@ -195,29 +195,6 @@ impl CreateRepoResult {
     }
 }
 
-/// Org-specific rules for repository creation (stub)
-#[derive(Debug, Clone, Default)]
-pub struct OrgRules {
-    pub repo_name_regex: Option<String>,
-    // Add more rules as needed
-}
-
-impl OrgRules {
-    /// Get organization-specific rules (stub implementation)
-    pub fn new_from_text(org: &str) -> OrgRules {
-        // In a real implementation, this would look up org-specific rules from config, a file, or a service.
-        // For now, return a sample rule for demonstration.
-        match org {
-            "calvinverse" => OrgRules {
-                repo_name_regex: Some(r"^[a-z][a-z0-9\-]{2,30}$".to_string()),
-            },
-            _ => OrgRules {
-                repo_name_regex: Some(r"^[a-zA-Z0-9_\-]{1,50}$".to_string()),
-            },
-        }
-    }
-}
-
 /// Debug the current state of the repository including HEAD and commit history.
 fn debug_repository_state(repo: &Repository) -> Result<(), Error> {
     debug!("Repository state check:");

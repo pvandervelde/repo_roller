@@ -277,17 +277,15 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
 /// - The configuration file cannot be read or parsed
 /// - Required values cannot be obtained from user input
 /// - Organization rules validation fails
-pub async fn handle_create_command<F, Fut, AskFn, RulesFn>(
+pub async fn handle_create_command<F, Fut, AskFn>(
     options: CreateCommandOptions<'_>,
     ask_user_for_value: AskFn,
-    get_org_rules: RulesFn,
     create_repository_fn: F,
 ) -> Result<CreateRepoResult, Error>
 where
     F: Fn(CreateRepoRequest) -> Fut + Send + Sync,
     Fut: Future<Output = CreateRepoResult> + Send,
     AskFn: Fn(&str) -> Result<String, Error>,
-    RulesFn: for<'a> Fn(&'a str) -> repo_roller_core::OrgRules,
 {
     // Load CLI-specific config file if provided, otherwise start with empty values.
     let (mut final_name, mut final_owner, mut final_template) =
@@ -322,24 +320,9 @@ where
         }
     }
 
-    // Apply org-specific naming rules.
-    let org_rules = get_org_rules(&final_owner);
-    if let Some(ref regex) = org_rules.repo_name_regex {
-        let re = regex::Regex::new(regex).unwrap();
-        let msg = format!("Repository name (must match org rules {:?}): ", regex);
-        if !re.is_match(&final_name) {
-            loop {
-                final_name = ask_user_for_value(&msg).unwrap_or_default();
-                if re.is_match(&final_name) {
-                    break;
-                }
-                println!(
-                    "  Error: Name does not match org-specific naming rules: {:?}",
-                    regex
-                );
-            }
-        }
-    } else if final_name.trim().is_empty() {
+    // Prompt for repository name if missing.
+    // TODO (Task 7.2): Validate against organization-specific rules from OrganizationSettingsManager
+    if final_name.trim().is_empty() {
         loop {
             final_name = ask_user_for_value("Repository name (required): ").unwrap_or_default();
             if !final_name.is_empty() {

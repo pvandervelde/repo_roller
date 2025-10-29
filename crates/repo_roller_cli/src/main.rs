@@ -112,13 +112,12 @@ async fn main() {
             }
         }
         Commands::Create(args) => {
-            // Use handle_create_command to merge config, prompt, and apply org rules
+            // Use handle_create_command to merge config, prompt, and validate
             let options =
                 CreateCommandOptions::new(&args.config, &args.name, &args.owner, &args.template);
             let result = handle_create_command(
                 options,
                 &ask_user_for_value,
-                repo_roller_core::OrgRules::new_from_text,
                 create_repository,
             )
             .await;
