@@ -295,8 +295,14 @@ async fn test_create_repository_fails_with_empty_owner() {
         create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
 
     assert!(!result.success);
-    // The mock returns an AuthError for user repositories, which gets formatted differently
-    assert!(result.message.contains("Invalid response format") || result.message.contains("Auth"));
+    // After Task 7.2.1 changes, empty owner now causes validation error during type conversion
+    assert!(
+        result.message.contains("Invalid response format")
+            || result.message.contains("Auth")
+            || result.message.contains("Invalid request parameters"),
+        "Unexpected error message: {}",
+        result.message
+    );
 }
 
 #[tokio::test]
@@ -404,8 +410,8 @@ async fn test_push_to_origin_with_valid_token() {
 /// This test validates the wrapper's ability to convert between typed and legacy formats.
 #[tokio::test]
 async fn test_create_repository_type_conversion() {
-    // This test will be updated once implementation is complete
-    // For now, verify the function signature is correct
+    // Verify the new create_repository function attempts to execute (will fail due to mocking limitations)
+    // Full integration tests will be added in Task 7.2.3
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
@@ -432,10 +438,15 @@ async fn test_create_repository_type_conversion() {
 
     let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
 
-    // Currently returns Internal error (not yet implemented)
+    // Should fail during GitHub App client creation with fake credentials
     assert!(result.is_err());
-    if let Err(RepoRollerError::System(SystemError::Internal { reason })) = result {
-        assert!(reason.contains("not yet implemented"));
+    if let Err(e) = result {
+        // Error should be from authentication or GitHub API, not "not yet implemented"
+        assert!(
+            !e.to_string().contains("not yet implemented"),
+            "Function should be implemented, got: {}",
+            e
+        );
     }
 }
 
