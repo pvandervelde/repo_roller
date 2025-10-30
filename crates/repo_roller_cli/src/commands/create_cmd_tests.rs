@@ -1,6 +1,9 @@
 use super::*;
 use crate::errors::Error;
-use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
+use repo_roller_core::{
+    RepoRollerError, RepoRollerResult, RepositoryCreationRequest, RepositoryCreationResult,
+    SystemError, Timestamp,
+};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
@@ -20,7 +23,7 @@ fn make_ask_user_for_value(input_text: &str) -> Result<String, Error> {
 /// Records arguments passed to mocked functions for verification.
 #[derive(Debug, Clone)]
 struct CallLog {
-    create_repository_args: Vec<repo_roller_core::CreateRepoRequest>,
+    create_repository_args: Vec<RepositoryCreationRequest>,
 }
 
 impl CallLog {
@@ -31,21 +34,49 @@ impl CallLog {
     }
 }
 
+/// Creates a mock create_repository function that logs calls and returns success.
+/// Returns a closure that can be used in tests to track repository creation requests.
+fn make_logged_create_repo_success(
+    log: Arc<Mutex<CallLog>>,
+) -> impl Fn(
+    RepositoryCreationRequest,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = RepoRollerResult<RepositoryCreationResult>> + Send>,
+> + Send
+       + Sync {
+    move |req: RepositoryCreationRequest| {
+        let log = log.clone();
+        Box::pin(async move {
+            log.lock().unwrap().create_repository_args.push(req.clone());
+            Ok(RepositoryCreationResult {
+                repository_url: "https://github.com/test/test-repo".to_string(),
+                repository_id: "test-id-123".to_string(),
+                created_at: Timestamp::now(),
+                default_branch: "main".to_string(),
+            })
+        })
+    }
+}
+
 /// Creates a mock create_repository function that logs calls and returns failure.
 /// Returns a closure that can be used in tests to track repository creation requests.
 fn make_logged_create_repo_failure(
     log: Arc<Mutex<CallLog>>,
     failure_message: &'static str,
 ) -> impl Fn(
-    CreateRepoRequest,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = CreateRepoResult> + Send>>
-       + Send
+    RepositoryCreationRequest,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = RepoRollerResult<RepositoryCreationResult>> + Send>,
+> + Send
        + Sync {
-    move |req: CreateRepoRequest| {
+    move |req: RepositoryCreationRequest| {
         let log = log.clone();
+        let msg = failure_message.to_string();
         Box::pin(async move {
             log.lock().unwrap().create_repository_args.push(req.clone());
-            CreateRepoResult::failure(failure_message)
+            Err(RepoRollerError::System(SystemError::Internal {
+                reason: msg,
+            }))
         })
     }
 }
@@ -88,33 +119,24 @@ async fn test_cli_config_missing_fields() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(file, "name = \"repo6\"\nowner = \"calvinverse\"").unwrap();
     let path = file.path().to_str().map(|s| s.to_string());
-    let ask = |_prompt: &str| Ok("prompted_template".to_string());
+    // Return a valid template name (lowercase only)
+    let ask = |_prompt: &str| Ok("library".to_string());
     let log = Arc::new(Mutex::new(CallLog::new()));
 
-    let create_repo = {
-        let log = log.clone();
-        move |req: CreateRepoRequest| {
-            let log = log.clone();
-            async move {
-                log.lock().unwrap().create_repository_args.push(req.clone());
-                CreateRepoResult::success("stubbed")
-            }
-        }
-    };
+    let create_repo = make_logged_create_repo_success(log.clone());
 
     let options = CreateCommandOptions::new(&path, &None, &None, &None);
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
-    assert!(res.success);
-    assert_eq!(res.message, "stubbed");
+    assert_eq!(res.repository_url, "https://github.com/test/test-repo");
 
     let log = log.lock().unwrap();
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
-    assert_eq!(req.name, "repo6");
-    assert_eq!(req.owner, "calvinverse");
-    assert_eq!(req.template, "prompted_template");
+    assert_eq!(req.name.as_str(), "repo6");
+    assert_eq!(req.owner.as_str(), "calvinverse");
+    assert_eq!(req.template.as_str(), "library");
 }
 
 #[tokio::test]
@@ -131,18 +153,18 @@ async fn test_create_repository_failure() {
     let options = CreateCommandOptions::new(&None, &repo_name, &org_name, &repo_type);
     let result = handle_create_command(options, ask, create_repo).await;
 
-    assert!(result.is_ok());
-    let res = result.unwrap();
-    assert!(!res.success);
-    assert_eq!(res.message, "creation failed");
+    // Now returns Error instead of Ok(CreateRepoResult::failure)
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("creation failed"));
 
     // Verify the logged calls
     let log = log.lock().unwrap();
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
-    assert_eq!(req.name, "repo5");
-    assert_eq!(req.owner, "calvinverse");
-    assert_eq!(req.template, "library");
+    assert_eq!(req.name.as_str(), "repo5");
+    assert_eq!(req.owner.as_str(), "calvinverse");
+    assert_eq!(req.template.as_str(), "library");
 }
 
 #[tokio::test]
@@ -150,16 +172,7 @@ async fn test_happy_path_with_all_args() {
     let ask = make_ask_user_for_value;
     let log = Arc::new(Mutex::new(CallLog::new()));
 
-    let create_repo = {
-        let log = log.clone();
-        move |req: CreateRepoRequest| {
-            let log = log.clone();
-            async move {
-                log.lock().unwrap().create_repository_args.push(req.clone());
-                CreateRepoResult::success("stubbed")
-            }
-        }
-    };
+    let create_repo = make_logged_create_repo_success(log.clone());
 
     let repo_name = Some("repo1".to_string());
     let org_name = Some("calvinverse".to_string());
@@ -168,15 +181,14 @@ async fn test_happy_path_with_all_args() {
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
-    assert!(res.success);
-    assert_eq!(res.message, "stubbed");
+    assert_eq!(res.repository_url, "https://github.com/test/test-repo");
 
     let log = log.lock().unwrap();
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
-    assert_eq!(req.name, "repo1");
-    assert_eq!(req.owner, "calvinverse");
-    assert_eq!(req.template, "library");
+    assert_eq!(req.name.as_str(), "repo1");
+    assert_eq!(req.owner.as_str(), "calvinverse");
+    assert_eq!(req.template.as_str(), "library");
 }
 
 #[tokio::test]
@@ -191,30 +203,20 @@ async fn test_happy_path_with_cli_config() {
     let ask = make_ask_user_for_value;
     let log = Arc::new(Mutex::new(CallLog::new()));
 
-    let create_repo = {
-        let log = log.clone();
-        move |req: CreateRepoRequest| {
-            let log = log.clone();
-            async move {
-                log.lock().unwrap().create_repository_args.push(req.clone());
-                CreateRepoResult::success("stubbed")
-            }
-        }
-    };
+    let create_repo = make_logged_create_repo_success(log.clone());
 
     let options = CreateCommandOptions::new(&path, &None, &None, &None);
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
-    assert!(res.success);
-    assert_eq!(res.message, "stubbed");
+    assert_eq!(res.repository_url, "https://github.com/test/test-repo");
 
     let log = log.lock().unwrap();
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
-    assert_eq!(req.name, "repo2");
-    assert_eq!(req.owner, "calvinverse");
-    assert_eq!(req.template, "service");
+    assert_eq!(req.name.as_str(), "repo2");
+    assert_eq!(req.owner.as_str(), "calvinverse");
+    assert_eq!(req.template.as_str(), "service");
 }
 
 #[tokio::test]

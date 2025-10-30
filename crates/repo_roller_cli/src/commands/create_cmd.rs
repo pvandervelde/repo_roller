@@ -28,7 +28,10 @@ use crate::{
 };
 use clap::{arg, Args};
 use keyring::Entry;
-use repo_roller_core::{CreateRepoRequest, CreateRepoResult};
+use repo_roller_core::{
+    OrganizationName, RepoRollerResult, RepositoryCreationRequest,
+    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName, TemplateName,
+};
 use std::{fs, future::Future};
 use tracing::{debug, error, info};
 
@@ -135,34 +138,42 @@ pub struct CreateArgs {
 ///
 /// # Returns
 ///
-/// Returns a `CreateRepoResult` indicating success or failure with a descriptive message.
+/// Returns a `RepoRollerResult<RepositoryCreationResult>` indicating success or failure.
 ///
 /// # Errors
 ///
-/// This function returns a failure result if:
+/// This function returns an error if:
 /// - The application configuration cannot be loaded
 /// - Authentication credentials cannot be retrieved from the keyring
 /// - The core repository creation process fails
-pub async fn create_repository(request: CreateRepoRequest) -> CreateRepoResult {
+pub async fn create_repository(
+    request: RepositoryCreationRequest,
+) -> RepoRollerResult<RepositoryCreationResult> {
     let path = get_config_path(None);
     let config = match AppConfig::load(&path) {
         Ok(c) => c,
-        Err(_) => {
-            return CreateRepoResult::failure(
-                "Failed to load the app config from the default path.",
-            )
+        Err(e) => {
+            return Err(repo_roller_core::RepoRollerError::System(
+                repo_roller_core::SystemError::Internal {
+                    reason: format!("Failed to load the app config from the default path: {}", e),
+                },
+            ))
         }
     };
 
     let (app_id, app_key) = match get_authentication_tokens(&config).await {
         Ok(p) => p,
-        Err(_) => {
-            return CreateRepoResult::failure("Could not get the GitHub App ID and token.");
+        Err(e) => {
+            return Err(repo_roller_core::RepoRollerError::GitHub(
+                repo_roller_core::GitHubError::AuthenticationFailed {
+                    reason: format!("Could not get the GitHub App ID and token: {}", e),
+                },
+            ))
         }
     };
 
     // Use the new function that accepts config directly
-    repo_roller_core::create_repository_with_config(request, &config.core, app_id, app_key).await
+    repo_roller_core::create_repository(request, &config.core, app_id, app_key).await
 }
 
 /// Retrieves GitHub authentication tokens from the system keyring.
@@ -257,18 +268,14 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
 ///
 /// # Arguments
 ///
-/// * `config` - Optional path to a TOML configuration file
-/// * `name` - Repository name from CLI (overrides config file)
-/// * `owner` - Repository owner from CLI (overrides config file)
-/// * `template` - Template type from CLI (overrides config file)
+/// * `options` - Command options containing config file path and CLI arguments
 /// * `ask_user_for_value` - Function to prompt user for missing values
-/// * `get_org_rules` - Function to retrieve organization-specific rules
 /// * `create_repository_fn` - Function to perform actual repository creation
 ///
 /// # Returns
 ///
 /// Returns a `Result` containing:
-/// - `Ok(CreateRepoResult)` - The result of the repository creation attempt
+/// - `Ok(RepositoryCreationResult)` - The result of the repository creation attempt
 /// - `Err(Error)` - If configuration loading or validation fails
 ///
 /// # Errors
@@ -276,15 +283,16 @@ async fn get_authentication_tokens(config: &AppConfig) -> Result<(u64, String), 
 /// This function will return an error if:
 /// - The configuration file cannot be read or parsed
 /// - Required values cannot be obtained from user input
-/// - Organization rules validation fails
+/// - Repository name, owner, or template validation fails
+/// - Repository creation fails
 pub async fn handle_create_command<F, Fut, AskFn>(
     options: CreateCommandOptions<'_>,
     ask_user_for_value: AskFn,
     create_repository_fn: F,
-) -> Result<CreateRepoResult, Error>
+) -> Result<RepositoryCreationResult, Error>
 where
-    F: Fn(CreateRepoRequest) -> Fut + Send + Sync,
-    Fut: Future<Output = CreateRepoResult> + Send,
+    F: Fn(RepositoryCreationRequest) -> Fut + Send + Sync,
+    Fut: Future<Output = RepoRollerResult<RepositoryCreationResult>> + Send,
     AskFn: Fn(&str) -> Result<String, Error>,
 {
     // Load CLI-specific config file if provided, otherwise start with empty values.
@@ -345,13 +353,25 @@ where
         }
     }
 
-    // Build request and call provided function.
-    let req = CreateRepoRequest {
-        name: final_name,
-        owner: final_owner,
-        template: final_template,
-    };
-    Ok(create_repository_fn(req).await)
+    // Build request with validated branded types
+    let name = RepositoryName::new(&final_name).map_err(|e| {
+        Error::InvalidArguments(format!("Invalid repository name '{}': {}", final_name, e))
+    })?;
+
+    let owner = OrganizationName::new(&final_owner).map_err(|e| {
+        Error::InvalidArguments(format!("Invalid organization name '{}': {}", final_owner, e))
+    })?;
+
+    let template = TemplateName::new(&final_template).map_err(|e| {
+        Error::InvalidArguments(format!("Invalid template name '{}': {}", final_template, e))
+    })?;
+
+    let req = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+
+    // Call repository creation and convert RepoRollerError to CLI Error
+    create_repository_fn(req).await.map_err(|e| {
+        Error::InvalidArguments(format!("Repository creation failed: {}", e))
+    })
 }
 
 /// Options for the create command, grouping CLI arguments and configuration.

@@ -123,18 +123,17 @@ async fn main() {
             .await;
 
             match result {
-                Ok(res) => {
-                    if res.success {
-                        println!("Repository created");
-                        std::process::exit(0);
-                    } else {
-                        println!("Failed to create repository: {}", res.message);
-                        std::process::exit(1);
-                    }
+                Ok(creation_result) => {
+                    println!("Repository created successfully!");
+                    println!("  URL: {}", creation_result.repository_url);
+                    println!("  ID: {}", creation_result.repository_id);
+                    println!("  Default branch: {}", creation_result.default_branch);
+                    println!("  Created at: {}", creation_result.created_at);
+                    std::process::exit(0);
                 }
                 Err(e) => {
-                    println!("Error: {e}");
-                    std::process::exit(2);
+                    println!("Failed to create repository: {}", e);
+                    std::process::exit(1);
                 }
             }
         }
