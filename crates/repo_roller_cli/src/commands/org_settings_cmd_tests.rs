@@ -122,40 +122,40 @@ fn test_show_global_command_construction() {
 }
 
 // ============================================================================
-// Command Execution Tests (Stub Implementation)
+// Command Execution Tests (Implementation)
 // ============================================================================
 
-/// Verify list_types returns NotImplemented error in stub implementation.
+/// Verify list_types attempts authentication (fails without keyring).
 #[tokio::test]
-async fn test_list_types_returns_not_implemented() {
+async fn test_list_types_returns_auth_error_without_credentials() {
     let result = list_types("test-org", "pretty").await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("list_types"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented error, got: {:?}", e),
+        e => panic!("Expected Auth error, got: {:?}", e),
     }
 }
 
-/// Verify show_type returns NotImplemented error in stub implementation.
+/// Verify show_type attempts authentication (fails without keyring).
 #[tokio::test]
-async fn test_show_type_returns_not_implemented() {
+async fn test_show_type_returns_auth_error_without_credentials() {
     let result = show_type("test-org", "library", "json").await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_type"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented error, got: {:?}", e),
+        e => panic!("Expected Auth error, got: {:?}", e),
     }
 }
 
-/// Verify show_merged returns NotImplemented error in stub implementation.
+/// Verify show_merged attempts authentication (fails without keyring).
 #[tokio::test]
-async fn test_show_merged_returns_not_implemented() {
+async fn test_show_merged_returns_auth_error_without_credentials() {
     let result = show_merged(
         "test-org",
         "rust-lib",
@@ -167,38 +167,38 @@ async fn test_show_merged_returns_not_implemented() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_merged"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented error, got: {:?}", e),
+        e => panic!("Expected Auth error, got: {:?}", e),
     }
 }
 
-/// Verify show_merged works without optional parameters.
+/// Verify show_merged works without optional parameters (fails on auth).
 #[tokio::test]
-async fn test_show_merged_without_optional_params_returns_not_implemented() {
+async fn test_show_merged_without_optional_params_returns_auth_error() {
     let result = show_merged("test-org", "rust-lib", None, None, "json").await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_merged"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented error, got: {:?}", e),
+        e => panic!("Expected Auth error, got: {:?}", e),
     }
 }
 
-/// Verify show_global returns NotImplemented error in stub implementation.
+/// Verify show_global attempts authentication (fails without keyring).
 #[tokio::test]
-async fn test_show_global_returns_not_implemented() {
+async fn test_show_global_returns_auth_error_without_credentials() {
     let result = show_global("test-org", "pretty").await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_global"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented error, got: {:?}", e),
+        e => panic!("Expected Auth error, got: {:?}", e),
     }
 }
 
@@ -206,7 +206,7 @@ async fn test_show_global_returns_not_implemented() {
 // Execute Routing Tests
 // ============================================================================
 
-/// Verify execute routes ListTypes to list_types handler.
+/// Verify execute routes ListTypes to list_types handler (fails on auth).
 #[tokio::test]
 async fn test_execute_routes_list_types() {
     let cmd = OrgSettingsCommands::ListTypes {
@@ -218,14 +218,14 @@ async fn test_execute_routes_list_types() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("list_types"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented from list_types, got: {:?}", e),
+        e => panic!("Expected Auth error from list_types, got: {:?}", e),
     }
 }
 
-/// Verify execute routes ShowType to show_type handler.
+/// Verify execute routes ShowType to show_type handler (fails on auth).
 #[tokio::test]
 async fn test_execute_routes_show_type() {
     let cmd = OrgSettingsCommands::ShowType {
@@ -238,14 +238,14 @@ async fn test_execute_routes_show_type() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_type"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented from show_type, got: {:?}", e),
+        e => panic!("Expected Auth error from show_type, got: {:?}", e),
     }
 }
 
-/// Verify execute routes ShowMerged to show_merged handler.
+/// Verify execute routes ShowMerged to show_merged handler (fails on auth).
 #[tokio::test]
 async fn test_execute_routes_show_merged() {
     let cmd = OrgSettingsCommands::ShowMerged {
@@ -260,14 +260,14 @@ async fn test_execute_routes_show_merged() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_merged"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented from show_merged, got: {:?}", e),
+        e => panic!("Expected Auth error from show_merged, got: {:?}", e),
     }
 }
 
-/// Verify execute routes ShowGlobal to show_global handler.
+/// Verify execute routes ShowGlobal to show_global handler (fails on auth).
 #[tokio::test]
 async fn test_execute_routes_show_global() {
     let cmd = OrgSettingsCommands::ShowGlobal {
@@ -279,10 +279,10 @@ async fn test_execute_routes_show_global() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::NotImplemented(msg) => {
-            assert!(msg.contains("show_global"));
+        Error::Auth(msg) => {
+            assert!(msg.contains("keyring") || msg.contains("app ID"));
         }
-        e => panic!("Expected NotImplemented from show_global, got: {:?}", e),
+        e => panic!("Expected Auth error from show_global, got: {:?}", e),
     }
 }
 

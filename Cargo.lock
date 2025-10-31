@@ -1876,6 +1876,7 @@ dependencies = [
  "regex",
  "repo_roller_core",
  "serde",
+ "serde_json",
  "tempfile",
  "template_engine",
  "thiserror",

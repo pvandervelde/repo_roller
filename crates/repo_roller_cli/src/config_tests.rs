@@ -8,6 +8,10 @@ fn test_app_config_default() {
 
     assert!(config.core.templates.is_empty());
     assert_eq!(config.authentication.auth_method, "token");
+    assert_eq!(
+        config.organization.metadata_repository_name,
+        DEFAULT_METADATA_REPOSITORY_NAME
+    );
 }
 
 #[test]
@@ -52,6 +56,7 @@ fn test_app_config_save_and_load() {
         authentication: AuthenticationConfig {
             auth_method: "token".to_string(),
         },
+        organization: OrganizationConfig::new(),
     };
 
     // Save the configuration
@@ -120,4 +125,22 @@ fn test_get_config_path_with_provided_path() {
     let custom_path = "/custom/path/config.toml";
     let result = get_config_path(Some(custom_path));
     assert_eq!(result, PathBuf::from(custom_path));
+}
+
+#[test]
+fn test_organization_config_default() {
+    let org_config = OrganizationConfig::default();
+    assert_eq!(
+        org_config.metadata_repository_name,
+        DEFAULT_METADATA_REPOSITORY_NAME
+    );
+}
+
+#[test]
+fn test_organization_config_new() {
+    let org_config = OrganizationConfig::new();
+    assert_eq!(
+        org_config.metadata_repository_name,
+        DEFAULT_METADATA_REPOSITORY_NAME
+    );
 }

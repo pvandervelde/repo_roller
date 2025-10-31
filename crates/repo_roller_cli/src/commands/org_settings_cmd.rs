@@ -27,9 +27,22 @@
 //! ```
 
 use clap::Subcommand;
-use tracing::{debug, error, instrument};
+use config_manager::{
+    ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
+    MetadataRepositoryProvider, OrganizationSettingsManager, RepositoryTypeName,
+};
+use github_client::GitHubClient;
+use keyring::Entry;
+use std::sync::Arc;
+use tracing::{debug, instrument};
 
+use crate::config::{get_config_path, AppConfig, DEFAULT_METADATA_REPOSITORY_NAME};
 use crate::errors::Error;
+
+// Keyring constants (shared with create_cmd and auth_cmd)
+const KEY_RING_SERVICE_NAME: &str = "repo_roller";
+const KEY_RING_APP_ID: &str = "github_app_id";
+const KEY_RING_APP_PRIVATE_KEY_PATH: &str = "github_app_private_key_path";
 
 /// Organization settings inspection subcommands.
 ///
@@ -170,6 +183,104 @@ pub async fn execute(cmd: &OrgSettingsCommands) -> Result<(), Error> {
     }
 }
 
+/// Creates an authenticated metadata provider wrapped in Arc.
+///
+/// Loads GitHub App credentials from the system keyring and creates
+/// an authenticated GitHubMetadataProvider instance. The metadata repository
+/// name is loaded from the application configuration file.
+///
+/// # Returns
+///
+/// Returns the provider wrapped in Arc on success, or an Error if authentication fails.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - GitHub App credentials are not found in keyring
+/// - Private key file cannot be read
+/// - GitHub client creation fails
+/// - Application configuration cannot be loaded
+async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider>, Error> {
+    // Load application config to get metadata repository name
+    let config_path = get_config_path(None);
+    let app_config = AppConfig::load(&config_path).unwrap_or_else(|_| {
+        // If config doesn't exist, use default
+        AppConfig::default()
+    });
+
+    // Load GitHub App ID from keyring
+    let app_id_entry = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_ID)
+        .map_err(|e| Error::Auth(format!("Failed to access keyring for app ID: {}", e)))?;
+
+    let app_id_str = app_id_entry
+        .get_password()
+        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}", e)))?;
+
+    let app_id: u64 = app_id_str
+        .parse()
+        .map_err(|e| Error::Auth(format!("Invalid app ID format: {}", e)))?;
+
+    // Load private key path from keyring
+    let key_path_entry = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_PRIVATE_KEY_PATH)
+        .map_err(|e| Error::Auth(format!("Failed to access keyring for key path: {}", e)))?;
+
+    let key_path = key_path_entry
+        .get_password()
+        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}", e)))?;
+
+    // Read private key file
+    let private_key = std::fs::read_to_string(&key_path).map_err(|e| {
+        Error::Auth(format!(
+            "Failed to read private key from {}: {}",
+            key_path, e
+        ))
+    })?;
+
+    // Create authenticated GitHub client using github_client helper
+    let octocrab = github_client::create_app_client(app_id, &private_key)
+        .await
+        .map_err(|e| Error::Auth(format!("Failed to create GitHub App client: {}", e)))?;
+
+    let github_client = GitHubClient::new(octocrab);
+
+    // Create metadata provider config using the configured repository name
+    // Falls back to DEFAULT_METADATA_REPOSITORY_NAME if not configured
+    let metadata_repo_name = if app_config.organization.metadata_repository_name.is_empty() {
+        DEFAULT_METADATA_REPOSITORY_NAME
+    } else {
+        &app_config.organization.metadata_repository_name
+    };
+
+    let config = MetadataProviderConfig::explicit(metadata_repo_name);
+
+    let provider = GitHubMetadataProvider::new(github_client, config);
+
+    Ok(Arc::new(provider) as Arc<dyn MetadataRepositoryProvider>)
+}
+
+/// Formats output as JSON or pretty-printed text.
+///
+/// # Arguments
+///
+/// * `value` - The value to format (must be Serialize)
+/// * `format` - Output format ("json" or "pretty")
+fn format_output<T: serde::Serialize>(value: &T, format: &str) -> Result<String, Error> {
+    match format {
+        "json" => serde_json::to_string_pretty(value)
+            .map_err(|e| Error::Config(format!("Failed to serialize to JSON: {}", e))),
+        "pretty" => {
+            // For now, use JSON formatting for pretty print too
+            // Can be enhanced later with custom formatting
+            serde_json::to_string_pretty(value)
+                .map_err(|e| Error::Config(format!("Failed to serialize for display: {}", e)))
+        }
+        _ => Err(Error::InvalidArguments(format!(
+            "Invalid format '{}', must be 'json' or 'pretty'",
+            format
+        ))),
+    }
+}
+
 /// Lists available repository types for an organization.
 ///
 /// # Arguments
@@ -195,17 +306,33 @@ async fn list_types(org: &str, format: &str) -> Result<(), Error> {
         format = format
     );
 
-    // TODO: Implement repository type listing
-    // 1. Load GitHub credentials from keyring
-    // 2. Create GitHubMetadataProvider
-    // 3. Discover metadata repository
-    // 4. List available repository types
-    // 5. Format and display output
+    // Create authenticated metadata provider
+    let provider = create_metadata_provider().await?;
 
-    error!(message = "list_types not yet implemented");
-    Err(Error::NotImplemented(
-        "list_types command not yet implemented".to_string(),
-    ))
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(org)
+        .await
+        .map_err(|e| {
+            Error::Config(format!(
+                "Failed to discover metadata repository for '{}': {}",
+                org, e
+            ))
+        })?;
+
+    // List available repository types
+    let types = provider
+        .list_available_repository_types(&metadata_repo)
+        .await
+        .map_err(|e| {
+            Error::Config(format!("Failed to list repository types: {}", e))
+        })?;
+
+    // Format and display output
+    let output = format_output(&types, format)?;
+    println!("{}", output);
+
+    Ok(())
 }
 
 /// Shows configuration for a specific repository type.
@@ -224,17 +351,48 @@ async fn show_type(org: &str, type_name: &str, format: &str) -> Result<(), Error
         format = format
     );
 
-    // TODO: Implement repository type configuration display
-    // 1. Load GitHub credentials from keyring
-    // 2. Create GitHubMetadataProvider
-    // 3. Discover metadata repository
-    // 4. Load repository type configuration
-    // 5. Format and display output
+    // Create authenticated metadata provider
+    let provider = create_metadata_provider().await?;
 
-    error!(message = "show_type not yet implemented");
-    Err(Error::NotImplemented(
-        "show_type command not yet implemented".to_string(),
-    ))
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(org)
+        .await
+        .map_err(|e| {
+            Error::Config(format!(
+                "Failed to discover metadata repository for '{}': {}",
+                org, e
+            ))
+        })?;
+
+    // Validate repository type name
+    let repo_type = RepositoryTypeName::try_new(type_name).map_err(|e| {
+        Error::InvalidArguments(format!("Invalid repository type name '{}': {}", type_name, e))
+    })?;
+
+    // Load repository type configuration
+    let type_config = provider
+        .load_repository_type_configuration(&metadata_repo, repo_type.as_str())
+        .await
+        .map_err(|e| {
+            Error::Config(format!(
+                "Failed to load repository type configuration for '{}': {}",
+                type_name, e
+            ))
+        })?;
+
+    match type_config {
+        Some(config) => {
+            // Format and display output
+            let output = format_output(&config, format)?;
+            println!("{}", output);
+            Ok(())
+        }
+        None => Err(Error::Config(format!(
+            "Repository type '{}' not found in organization '{}'",
+            type_name, org
+        ))),
+    }
 }
 
 /// Shows merged configuration for a repository creation scenario.
@@ -263,17 +421,33 @@ async fn show_merged(
         format = format
     );
 
-    // TODO: Implement merged configuration preview
-    // 1. Load GitHub credentials from keyring
-    // 2. Create OrganizationSettingsManager
-    // 3. Create ConfigurationContext
-    // 4. Resolve merged configuration
-    // 5. Format and display output
+    // Create authenticated metadata provider
+    let provider = create_metadata_provider().await?;
 
-    error!(message = "show_merged not yet implemented");
-    Err(Error::NotImplemented(
-        "show_merged command not yet implemented".to_string(),
-    ))
+    // Create organization settings manager
+    let manager = OrganizationSettingsManager::new(provider);
+
+    // Create configuration context
+    let mut context = ConfigurationContext::new(org, template);
+
+    if let Some(t) = team {
+        context = context.with_team(t);
+    }
+
+    if let Some(rt) = repo_type {
+        context = context.with_repository_type(rt);
+    }
+
+    // Resolve merged configuration
+    let merged_config = manager.resolve_configuration(&context).await.map_err(|e| {
+        Error::Config(format!("Failed to resolve merged configuration: {}", e))
+    })?;
+
+    // Format and display output
+    let output = format_output(&merged_config, format)?;
+    println!("{}", output);
+
+    Ok(())
 }
 
 /// Shows global defaults for an organization.
@@ -290,17 +464,31 @@ async fn show_global(org: &str, format: &str) -> Result<(), Error> {
         format = format
     );
 
-    // TODO: Implement global defaults display
-    // 1. Load GitHub credentials from keyring
-    // 2. Create GitHubMetadataProvider
-    // 3. Discover metadata repository
-    // 4. Load global defaults
-    // 5. Format and display output
+    // Create authenticated metadata provider
+    let provider = create_metadata_provider().await?;
 
-    error!(message = "show_global not yet implemented");
-    Err(Error::NotImplemented(
-        "show_global command not yet implemented".to_string(),
-    ))
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(org)
+        .await
+        .map_err(|e| {
+            Error::Config(format!(
+                "Failed to discover metadata repository for '{}': {}",
+                org, e
+            ))
+        })?;
+
+    // Load global defaults
+    let global_defaults = provider
+        .load_global_defaults(&metadata_repo)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to load global defaults: {}", e)))?;
+
+    // Format and display output
+    let output = format_output(&global_defaults, format)?;
+    println!("{}", output);
+
+    Ok(())
 }
 
 #[cfg(test)]

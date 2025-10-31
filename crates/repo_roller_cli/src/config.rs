@@ -22,6 +22,9 @@ use crate::errors::Error;
 /// Default configuration file name
 pub const DEFAULT_CONFIG_FILENAME: &str = "config.toml";
 
+/// Default metadata repository name
+pub const DEFAULT_METADATA_REPOSITORY_NAME: &str = ".reporoller";
+
 #[cfg(test)]
 #[path = "config_tests.rs"]
 mod tests;
@@ -55,9 +58,13 @@ pub struct AppConfig {
     #[serde(flatten)]
     pub core: Config,
 
-    /// CLI-specific configuration
+/// - CLI-specific configuration
     #[serde(default)]
     pub authentication: AuthenticationConfig,
+
+    /// Organization settings configuration
+    #[serde(default)]
+    pub organization: OrganizationConfig,
 }
 
 impl AppConfig {
@@ -186,6 +193,7 @@ impl Default for AppConfig {
         Self {
             core: Config { templates: vec![] },
             authentication: AuthenticationConfig::new(),
+            organization: OrganizationConfig::new(),
         }
     }
 }
@@ -231,6 +239,54 @@ impl Default for AuthenticationConfig {
     fn default() -> Self {
         Self {
             auth_method: AuthenticationConfig::default_auth_method(),
+        }
+    }
+}
+
+/// Configuration for organization settings.
+///
+/// This structure holds organization-specific configuration for the CLI,
+/// including the metadata repository name used for organization settings discovery.
+///
+/// # Fields
+///
+/// * `metadata_repository_name` - Name of the repository containing organization configuration
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrganizationConfig {
+    /// Name of the metadata repository for organization configuration.
+    ///
+    /// This repository should contain the organization's configuration files
+    /// including global defaults, repository type configurations, and team settings.
+    #[serde(default = "OrganizationConfig::default_metadata_repository_name")]
+    pub metadata_repository_name: String,
+}
+
+impl OrganizationConfig {
+    /// Returns the default metadata repository name.
+    ///
+    /// This is used as the default value for the metadata_repository_name field
+    /// when deserializing from TOML if the field is not present.
+    fn default_metadata_repository_name() -> String {
+        DEFAULT_METADATA_REPOSITORY_NAME.to_string()
+    }
+
+    /// Creates a new OrganizationConfig with default values.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `OrganizationConfig` instance with the default
+    /// metadata repository name set to ".reporoller".
+    pub fn new() -> Self {
+        OrganizationConfig {
+            metadata_repository_name: Self::default_metadata_repository_name(),
+        }
+    }
+}
+
+impl Default for OrganizationConfig {
+    fn default() -> Self {
+        Self {
+            metadata_repository_name: OrganizationConfig::default_metadata_repository_name(),
         }
     }
 }

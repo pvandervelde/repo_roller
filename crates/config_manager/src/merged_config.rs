@@ -47,7 +47,7 @@ use std::collections::HashMap;
 /// This structure contains the result of merging configuration from all sources
 /// (global, repository type, team, and template) according to the precedence
 /// hierarchy and override policies.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MergedConfiguration {
     /// Repository feature settings.
     ///
@@ -150,7 +150,7 @@ impl Default for MergedConfiguration {
 /// Tracks which configuration source provided each setting.
 ///
 /// Used for auditing, debugging, and understanding configuration precedence.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 pub struct ConfigurationSourceTrace {
     /// Map of field path to configuration source.
     sources: HashMap<String, ConfigurationSource>,
@@ -197,7 +197,7 @@ impl ConfigurationSourceTrace {
 ///
 /// Represents which level of the configuration hierarchy provided a setting.
 /// The precedence order is: Template > Team > RepositoryType > Global.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum ConfigurationSource {
     /// Global organization defaults (lowest precedence).
     Global,

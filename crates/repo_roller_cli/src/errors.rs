@@ -59,6 +59,7 @@ pub enum Error {
     ///
     /// This error is returned when a command or feature exists in the CLI
     /// but has not been fully implemented yet.
+    #[allow(dead_code)]
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }
