@@ -54,4 +54,11 @@ pub enum Error {
     /// typically due to broken pipes or terminal issues.
     #[error("Failed to flush the std out buffer.")]
     StdOutFlushFailed,
+
+    /// Feature or command not yet implemented.
+    ///
+    /// This error is returned when a command or feature exists in the CLI
+    /// but has not been fully implemented yet.
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }

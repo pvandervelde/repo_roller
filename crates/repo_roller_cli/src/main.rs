@@ -30,7 +30,7 @@ mod config;
 mod errors;
 use errors::Error;
 
-use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs};
+use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs, org_settings_cmd::OrgSettingsCommands};
 
 #[cfg(test)]
 #[path = "main_tests.rs"]
@@ -68,6 +68,10 @@ enum Commands {
 
     /// List recognized template variables and their descriptions
     ListVariables,
+
+    /// Organization settings inspection commands
+    #[command(subcommand)]
+    OrgSettings(OrgSettingsCommands),
 
     /// Show the CLI version information
     Version,
@@ -144,6 +148,12 @@ async fn main() {
         Commands::ListVariables => {
             println!("Recognized template variables: (not yet implemented)");
             std::process::exit(0);
+        }
+        Commands::OrgSettings(cmd) => {
+            if let Err(e) = crate::commands::org_settings_cmd::execute(cmd).await {
+                error!("Error: {e}");
+                std::process::exit(1);
+            }
         }
         Commands::Version => {
             // Print version info from baked-in value
