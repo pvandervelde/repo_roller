@@ -7,7 +7,10 @@
 use anyhow::{Context, Result};
 use config_manager::{Config, TemplateConfig};
 use github_client::{create_app_client, GitHubClient};
-use repo_roller_core::{create_repository_with_config, CreateRepoRequest, CreateRepoResult};
+use repo_roller_core::{
+    create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
+    TemplateName,
+};
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 
@@ -382,26 +385,29 @@ impl IntegrationTestRunner {
         // Step 1: Create repository creation request
         info!(scenario = ?scenario, "Creating repository request");
 
-        let request = CreateRepoRequest {
-            name: test_repo.name.clone(),
-            owner: test_repo.owner.clone(),
-            template: scenario.template_name().to_string(),
-        };
+        let name = RepositoryName::new(&test_repo.name)
+            .map_err(|e| anyhow::anyhow!("Invalid repository name: {}", e))?;
+        let owner = OrganizationName::new(&test_repo.owner)
+            .map_err(|e| anyhow::anyhow!("Invalid organization name: {}", e))?;
+        let template = TemplateName::new(scenario.template_name())
+            .map_err(|e| anyhow::anyhow!("Invalid template name: {}", e))?;
+
+        let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
         details.request_created = true;
 
         // Step 2: Create mock configuration with test template
         info!(scenario = ?scenario, "Creating test configuration");
 
-        let template = scenario.create_mock_template(&self.config.test_org);
+        let template_config = scenario.create_mock_template(&self.config.test_org);
         let config = Config {
-            templates: vec![template],
+            templates: vec![template_config],
         };
         details.config_loaded = true;
 
         // Step 3: Call the repository creation function
         info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
 
-        let result: CreateRepoResult = create_repository_with_config(
+        let result = create_repository(
             request,
             &config,
             self.config.github_app_id,
@@ -410,21 +416,29 @@ impl IntegrationTestRunner {
         .await;
 
         // Step 4: Evaluate the result
-        if result.success {
-            info!(scenario = ?scenario, repo_name = test_repo.name, message = result.message, "Repository creation succeeded");
-            details.repository_created = true;
+        match result {
+            Ok(creation_result) => {
+                info!(
+                    scenario = ?scenario,
+                    repo_name = test_repo.name,
+                    repo_url = creation_result.repository_url,
+                    "Repository creation succeeded"
+                );
+                details.repository_created = true;
 
-            // Step 5: Validate the created repository
-            self.validate_github_repository(test_repo)
-                .await
-                .context("GitHub repository validation failed")?;
-            details.validation_passed = true;
+                // Step 5: Validate the created repository
+                self.validate_github_repository(test_repo)
+                    .await
+                    .context("GitHub repository validation failed")?;
+                details.validation_passed = true;
 
-            Ok(())
-        } else {
-            let error_msg = format!("Repository creation failed: {}", result.message);
-            error!(scenario = ?scenario, repo_name = test_repo.name, message = result.message, "Repository creation failed");
-            Err(anyhow::anyhow!(error_msg))
+                Ok(())
+            }
+            Err(e) => {
+                let error_msg = format!("Repository creation failed: {}", e);
+                error!(scenario = ?scenario, repo_name = test_repo.name, error = %e, "Repository creation failed");
+                Err(anyhow::anyhow!(error_msg))
+            }
         }
     }
 

@@ -15,49 +15,55 @@
 //!
 //! ## Main Functions
 //!
-//! The primary entry points are:
-//! - [`create_repository_with_config`] - Create a repository with provided configuration
-//! - [`CreateRepoRequest`] - Request structure for repository creation
-//! - [`CreateRepoResult`] - Result structure containing success/failure information
+//! The primary entry point is:
+//! - [`create_repository`] - Create a repository with type-safe branded types
 //!
-//! ## New Type System (Interface Design)
+//! ## Type System
 //!
-//! The crate is transitioning to a new type system with:
-//! - Branded types for type safety ([`types`] module)
-//! - Interface traits for clean architecture boundaries
-//! - Comprehensive error handling with domain-specific errors
+//! The crate uses a type-safe design with:
+//! - Branded types for domain values ([`RepositoryName`], [`OrganizationName`], [`TemplateName`])
+//! - [`RepositoryCreationRequest`] and [`RepositoryCreationRequestBuilder`] for type-safe requests
+//! - [`RepositoryCreationResult`] with structured repository metadata
+//! - [`RepoRollerResult<T>`] for comprehensive error handling with domain-specific errors
 //!
 //! See `specs/interfaces/` for complete interface specifications.
 //!
 //! ## Examples
 //!
 //! ```no_run
-//! use repo_roller_core::{CreateRepoRequest, create_repository_with_config};
+//! use repo_roller_core::{
+//!     create_repository, RepositoryCreationRequestBuilder,
+//!     RepositoryName, OrganizationName, TemplateName
+//! };
 //! use config_manager::Config;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a repository creation request
-//! let request = CreateRepoRequest {
-//!     name: "my-new-project".to_string(),
-//!     owner: "my-organization".to_string(),
-//!     template: "rust-library".to_string(),
-//! };
+//! // Create a type-safe repository creation request
+//! let request = RepositoryCreationRequestBuilder::new(
+//!     RepositoryName::new("my-new-project")?,
+//!     OrganizationName::new("my-organization")?,
+//!     TemplateName::new("rust-library")?,
+//! )
+//! .variable("author", "Jane Doe")
+//! .build();
 //!
 //! // Load configuration with available templates
 //! let config = Config { templates: vec![] }; // Would be loaded from config file
 //!
 //! // Create the repository
-//! let result = create_repository_with_config(
+//! match create_repository(
 //!     request,
 //!     &config,
 //!     12345, // GitHub App ID
 //!     "private-key-content".to_string() // GitHub App private key
-//! ).await;
-//!
-//! if result.success {
-//!     println!("Repository created successfully: {}", result.message);
-//! } else {
-//!     eprintln!("Repository creation failed: {}", result.message);
+//! ).await {
+//!     Ok(result) => {
+//!         println!("Repository created successfully:");
+//!         println!("  URL: {}", result.repository_url);
+//!         println!("  ID: {}", result.repository_id);
+//!         println!("  Default branch: {}", result.default_branch);
+//!     }
+//!     Err(e) => eprintln!("Repository creation failed: {}", e),
 //! }
 //! # Ok(())
 //! # }
@@ -72,8 +78,8 @@
 //!
 //! ## Error Handling
 //!
-//! All operations return [`CreateRepoResult`] which contains success status and
-//! descriptive error messages. Internal operations use the [`Error`] type for
+//! All operations return [`RepoRollerResult<T>`] which provides structured error
+//! information with domain-specific error types. Internal operations use the [`Error`] type for
 //! detailed error context.
 
 use git2::{Repository, Signature};
@@ -165,35 +171,6 @@ impl From<DateTime<Utc>> for Timestamp {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-
-/// Request for creating a new repository.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-pub struct CreateRepoRequest {
-    pub name: String,
-    pub owner: String,
-    pub template: String,
-}
-
-/// Result of a repository creation attempt.
-pub struct CreateRepoResult {
-    pub success: bool,
-    pub message: String,
-}
-
-impl CreateRepoResult {
-    pub fn success(message: impl Into<String>) -> Self {
-        Self {
-            success: true,
-            message: message.into(),
-        }
-    }
-    pub fn failure(message: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            message: message.into(),
-        }
-    }
-}
 
 /// Debug the current state of the repository including HEAD and commit history.
 fn debug_repository_state(repo: &Repository) -> Result<(), Error> {
@@ -748,18 +725,6 @@ fn copy_template_files(
 /// This function will return an error if:
 /// - File system operations fail
 /// - Directory creation fails
-///
-/// ## Example
-///
-/// ```rust,ignore
-/// let request = CreateRepoRequest {
-///     name: "my-project".to_string(),
-///     owner: "my-org".to_string(),
-///     template: "basic".to_string(),
-/// };
-/// let template_files = vec![("src/main.rs".to_string(), vec![])];
-/// create_additional_files(&temp_dir, &request, &template_files)?;
-/// ```
 fn create_additional_files(
     local_repo_path: &TempDir,
     req: &RepositoryCreationRequest,
@@ -817,438 +782,43 @@ fn create_additional_files(
     Ok(())
 }
 
-/// Create a new repository from a template with dependency injection for testability.
+/// Create a new repository from a template with type-safe API.
 ///
-/// TODO (Interface Design): Refactor to use new type system with branded types:
-/// - Replace `String` parameters with `RepositoryName`, `OrganizationName`, `TemplateName`
-/// - Use `RepoRollerResult` instead of `CreateRepoResult`
-/// - Separate orchestration logic from infrastructure concerns
-/// - See specs/interfaces/repository-domain.md for target interface
-///
-/// This is the core orchestration function that handles the complete repository creation
-/// workflow. It coordinates multiple services and performs all steps required to create
-/// a functional GitHub repository from a template.
+/// This function orchestrates the complete repository creation workflow with
+/// type-safe branded types and comprehensive error handling.
 ///
 /// ## Workflow Overview
 ///
-/// 1. **Template Resolution**: Finds the requested template in the configuration
-/// 2. **Template Fetching**: Downloads template files from the source repository
-/// 3. **Local Setup**: Creates temporary directory and copies template files
-/// 4. **Variable Processing**: Substitutes template variables with actual values
-/// 5. **File Generation**: Creates additional standard files (README, .gitignore)
-/// 6. **Git Operations**: Initializes local Git repository and creates initial commit
-/// 7. **GitHub Integration**: Creates repository on GitHub using API
-/// 8. **Content Push**: Uploads local content to the GitHub repository
-/// 9. **Post-Setup**: Configures repository settings, apps, and webhooks
+/// 1. **Authentication**: Set up GitHub App authentication and get installation token
+/// 2. **Configuration Resolution**: Use OrganizationSettingsManager to resolve hierarchical configuration
+/// 3. **Local Repository Preparation**: Create temp directory, fetch template, process variables
+/// 4. **Git Initialization**: Initialize local Git repository with correct default branch
+/// 5. **GitHub Repository Creation**: Create repository via GitHub API
+/// 6. **Configuration Application**: Apply resolved settings to GitHub repository
 ///
 /// ## Parameters
-///
-/// * `req` - Repository creation request containing name, owner, and template
-/// * `config` - Configuration containing available templates and settings
-/// * `template_fetcher` - Service for downloading template files (injectable for testing)
-/// * `repo_client` - Service for GitHub API operations (injectable for testing)
-///
-/// ## Returns
-///
-/// * `CreateRepoResult` - Success/failure result with descriptive message
-///
-/// ## Dependency Injection
-///
-/// This function accepts trait objects for external services, enabling:
-/// - **Unit Testing**: Mock implementations for isolated testing
-/// - **Integration Testing**: Test implementations that don't hit real APIs
-/// - **Flexibility**: Different implementations for different environments
-///
-/// ## Error Handling
-///
-/// Each step in the workflow is individually error-handled:
-/// - Template not found in configuration
-/// - Template file fetching failures
-/// - File system operations errors
-/// - Git operation failures
-/// - GitHub API errors
-/// - Authentication failures
-///
-/// ## GitHub App Authentication
-///
-/// Uses GitHub App credentials to:
-/// 1. Get installation token for the target organization
-/// 2. Create repository using organization permissions
-/// 3. Push content using authenticated Git operations
-///
-/// ## Example Usage
-///
-/// ```rust,ignore
-/// let request = CreateRepoRequest {
-///     name: "new-service".to_string(),
-///     owner: "my-org".to_string(),
-///     template: "microservice".to_string(),
-/// };
-///
-/// let result = create_repository_with_custom_settings(
-///     request,
-///     &config,
-///     &github_template_fetcher,
-///     &github_repo_client
-/// ).await;
-///
-/// match result.success {
-///     true => println!("Repository created: {}", result.message),
-///     false => eprintln!("Creation failed: {}", result.message),
-/// }
-/// ```
-async fn create_repository_with_custom_settings(
-    req: CreateRepoRequest,
-    config: &config_manager::Config,
-    template_fetcher: &dyn TemplateFetcher,
-    repo_client: &dyn RepositoryClient,
-) -> CreateRepoResult {
-    info!(
-        "Starting repository creation: name='{}', owner='{}', template='{}'",
-        req.name, req.owner, req.template
-    );
-
-    debug!(
-        "Found {} templates in configuration",
-        config.templates.len()
-    );
-
-    // 1. Find template config
-    debug!("Searching for template '{}' in configuration", req.template);
-    let template = match config.templates.iter().find(|t| t.name == req.template) {
-        Some(t) => {
-            info!("Template '{}' found in configuration", req.template);
-            debug!("Template source repository: {}", t.source_repo);
-            t
-        }
-        None => {
-            error!("Template '{}' not found in configuration", req.template);
-            debug!(
-                "Available templates: {:?}",
-                config.templates.iter().map(|t| &t.name).collect::<Vec<_>>()
-            );
-            return CreateRepoResult::failure("Template not found in config");
-        }
-    };
-
-    // 2. Create a local repository temporary directory
-    let local_repo_path = match TempDir::new() {
-        Ok(d) => d,
-        Err(e) => {
-            return CreateRepoResult::failure(format!(
-                "Failed to create a temporary directory: {e}"
-            ))
-        }
-    };
-
-    // 3. Fetch template files
-    let files = match template_fetcher
-        .fetch_template_files(&template.source_repo)
-        .await
-    {
-        Ok(f) => f,
-        Err(e) => return CreateRepoResult::failure(format!("Failed to fetch template files: {e}")),
-    };
-
-    // 4. Add the template files (copy, not git clone)
-    if let Err(e) = copy_template_files(&files, &local_repo_path) {
-        return CreateRepoResult::failure(format!("Failed to copy template files: {e}"));
-    }
-
-    // Convert CreateRepoRequest to RepositoryCreationRequest for helper functions
-    let new_request = match (
-        RepositoryName::new(&req.name),
-        OrganizationName::new(&req.owner),
-        TemplateName::new(&req.template),
-    ) {
-        (Ok(name), Ok(owner), Ok(template)) => {
-            RepositoryCreationRequestBuilder::new(name, owner, template).build()
-        }
-        _ => {
-            return CreateRepoResult::failure(
-                "Invalid request parameters: name, owner, or template invalid".to_string(),
-            )
-        }
-    };
-
-    // 5. Replace template variables in the copied files
-    if let Err(e) = replace_template_variables(&local_repo_path, &new_request, template) {
-        return CreateRepoResult::failure(format!("Failed to replace template variables: {e}"));
-    }
-
-    // 6. Create any additional required files (only if not provided by template)
-    if let Err(e) = create_additional_files(&local_repo_path, &new_request, &files) {
-        return CreateRepoResult::failure(format!("Failed to create additional files: {e}"));
-    }
-
-    // 7. Create repo on github (org or user)
-    let payload = RepositoryCreatePayload {
-        name: req.name.clone(),
-        ..Default::default()
-    };
-
-    info!(
-        "Creating GitHub repository: name='{}', owner='{}'",
-        req.name, req.owner
-    );
-    debug!("Repository creation payload: {:?}", payload);
-
-    // First, get installation token for the organization
-    info!("Getting installation token for organization: {}", req.owner);
-    let installation_token = match repo_client.get_installation_token_for_org(&req.owner).await {
-        Ok(token) => {
-            info!(
-                token_length = token.len(),
-                token_prefix = &token[..std::cmp::min(8, token.len())],
-                "Successfully retrieved installation token for organization: {}",
-                req.owner
-            );
-            token
-        }
-        Err(e) => {
-            error!(
-                "Failed to get installation token for organization '{}': {}",
-                req.owner, e
-            );
-            return CreateRepoResult::failure(format!(
-                "Failed to get installation token for organization '{}': {}",
-                req.owner, e
-            ));
-        }
-    };
-
-    // Create a new client using the installation token for repository operations
-    info!("Creating GitHub client with installation token");
-    let installation_client = match github_client::create_token_client(&installation_token) {
-        Ok(client) => {
-            info!("Successfully created installation token client");
-            GitHubClient::new(client)
-        }
-        Err(e) => {
-            error!("Failed to create installation token client: {}", e);
-            return CreateRepoResult::failure(format!(
-                "Failed to create installation token client: {}",
-                e
-            ));
-        }
-    };
-
-    // Get the organization's default branch setting (using installation token)
-    info!(
-        "Getting organization default branch setting for: {}",
-        req.owner
-    );
-    let default_branch = match installation_client
-        .get_organization_default_branch(&req.owner)
-        .await
-    {
-        Ok(branch) => {
-            info!(
-                org_name = req.owner,
-                default_branch = branch,
-                "Successfully retrieved organization default branch setting"
-            );
-            branch
-        }
-        Err(e) => {
-            error!(
-                "Failed to get default branch for organization '{}': {}",
-                req.owner, e
-            );
-            warn!("Falling back to 'main' as default branch");
-            "main".to_string()
-        }
-    };
-
-    // 8. Initialize the local git repository with the organization's default branch
-    if let Err(e) = init_local_git_repo(&local_repo_path, &default_branch) {
-        return CreateRepoResult::failure(format!("Failed to initialize local git repo: {e}"));
-    }
-
-    // 9. Commit all changes to the default branch (stub commit signing)
-    if let Err(e) = commit_all_changes(&local_repo_path, "Initial commit (stub, unsigned)") {
-        return CreateRepoResult::failure(format!("Failed to commit changes: {e}"));
-    }
-
-    // Now create the repository using the installation token client
-    let repo_result = if !req.owner.is_empty() {
-        info!("Creating organization repository for owner: {}", req.owner);
-        installation_client
-            .create_org_repository(&req.owner, &payload)
-            .await
-    } else {
-        info!("Creating user repository");
-        installation_client.create_user_repository(&payload).await
-    };
-
-    let repo = match repo_result {
-        Ok(r) => {
-            info!(
-                "GitHub repository created successfully: name='{}', url='{}'",
-                r.name(),
-                r.url()
-            );
-            debug!("Repository details: node_id='{}'", r.node_id());
-            r
-        }
-        Err(e) => {
-            error!("Failed to create GitHub repository: {}", e);
-            return CreateRepoResult::failure(format!("Failed to create repo: {e}"));
-        }
-    };
-
-    info!(
-        "Repository created successfully: name='{}', url='{}', id='{}'",
-        repo.name(),
-        repo.url(),
-        repo.node_id()
-    );
-
-    // 10. Push the local repository to the origin with authentication
-    info!(
-        "Attempting to push local repository to remote origin: {}",
-        repo.url()
-    );
-    if let Err(e) = push_to_origin(
-        &local_repo_path,
-        repo.url(),
-        &default_branch,
-        &installation_token,
-    ) {
-        error!("Git push operation failed: {}", e);
-        return CreateRepoResult::failure(format!("Failed to push to origin: {e}"));
-    }
-
-    // 11. Update remote repository settings (stub)
-    if let Err(e) = update_remote_settings(&repo) {
-        return CreateRepoResult::failure(format!("Failed to update remote settings: {e}"));
-    }
-
-    // 12. Install required GitHub apps (stub)
-    if let Err(e) = install_github_apps(&repo) {
-        return CreateRepoResult::failure(format!("Failed to install GitHub apps: {e}"));
-    }
-
-    // 13. Trigger post-creation webhooks (stub)
-    if let Err(e) = trigger_post_creation_webhooks(&repo) {
-        return CreateRepoResult::failure(format!("Failed to trigger post-creation webhooks: {e}"));
-    }
-
-    CreateRepoResult::success(format!("Repository {} created successfully", repo.name()))
-}
-
-/// Create a new repository from a template with provided configuration.
-///
-/// This function allows callers to provide their own configuration instead of
-/// loading it from the environment. This is useful for different interfaces
-/// (CLI, API, Azure Function) that may load configuration differently.
-///
-/// # Arguments
-///
-/// * `request` - Repository creation request containing name, owner, and template
-/// * `config` - Configuration containing template definitions and repository settings
-/// * `app_id` - GitHub App ID for authentication
-/// * `app_key` - GitHub App private key for authentication
-///
-/// # Returns
-///
-/// Returns `CreateRepoResult` indicating success or failure with details.
-///
-/// # Examples
-///
-/// ```no_run
-/// use repo_roller_core::{CreateRepoRequest, create_repository_with_config};
-/// use config_manager::Config;
-///
-/// # async fn example() {
-/// let request = CreateRepoRequest {
-///     name: "my-repo".to_string(),
-///     owner: "my-org".to_string(),
-///     template: "basic".to_string(),
-/// };
-/// let config = Config { templates: vec![] };
-/// let result = create_repository_with_config(request, &config, 12345, "private-key".to_string()).await;
-/// # }
-/// ```
-pub async fn create_repository_with_config(
-    request: CreateRepoRequest,
-    config: &config_manager::Config,
-    app_id: u64,
-    app_key: String,
-) -> CreateRepoResult {
-    let provider = match create_app_client(app_id, &app_key).await {
-        Ok(p) => p,
-        Err(e) => {
-            return CreateRepoResult::failure(format!(
-                "Failed to load the GitHub provider. Error was: {}",
-                e
-            ))
-        }
-    };
-
-    let repo_client = GitHubClient::new(provider.clone());
-    let template_fetcher = template_engine::GitHubTemplateFetcher::new(GitHubClient::new(provider));
-
-    create_repository_with_custom_settings(request, config, &template_fetcher, &repo_client).await
-}
-
-/// Create a new repository with type-safe API (TEMPORARY WRAPPER - See TODO).
-///
-/// **⚠️ IMPLEMENTATION NOTE**: This is a temporary wrapper function created during API migration
-/// (Task 1.8.6). It provides a type-safe interface while delegating to the legacy implementation.
-///
-/// ## TODO (Task 7.2 - Complete Refactoring)
-///
-/// When implementing Task 7.2 "Update repository creation workflow in repo_roller_core",
-/// this function must be **completely rewritten** to:
-///
-/// ### Required Changes
-/// 1. **Trait-Based Dependencies**: Accept `&dyn ConfigurationManager` and `&dyn UserAuthenticationService`
-///    instead of concrete types and raw credentials
-/// 2. **Remove Raw Credentials**: Eliminate `app_id`/`app_key` parameters - use auth service abstraction
-/// 3. **Direct Implementation**: Implement orchestration logic directly instead of delegating to legacy code
-/// 4. **Configuration Integration**: Use new configuration system from Tasks 2.0-5.0
-/// 5. **Structured Metadata**: Collect and return complete `RepositoryCreationResult` with actual data
-///    from GitHub API responses (url, id, created_at, default_branch)
-///
-/// ### Current Limitations
-/// - **String Parsing**: Extracts repository metadata from legacy success/failure messages (fragile)
-/// - **Incomplete Data**: Some `RepositoryCreationResult` fields use placeholder or default values
-/// - **Concrete Dependencies**: Still uses `config_manager::Config` directly instead of trait objects
-/// - **No Error Context**: Limited error information due to string-based legacy error handling
-/// - **Delegation Overhead**: Unnecessary type conversions back and forth
-///
-/// ### Migration Path
-/// 1. Implement new configuration system (Tasks 2.0-5.0)
-/// 2. Define `ConfigurationManager` and `UserAuthenticationService` traits
-/// 3. Rewrite this function to use traits and return structured data
-/// 4. Update all call sites to use new interface
-/// 5. Remove legacy `create_repository_with_config()` and associated types
-///
-/// See `specs/interfaces/repository-domain.md` for target interface specification.
-///
-/// ---
-///
-/// ## Current Behavior
-///
-/// This function provides type-safe repository creation by:
-/// 1. Converting typed request to legacy format
-/// 2. Calling existing `create_repository_with_config()`
-/// 3. Parsing result and converting back to typed format
-///
-/// # Parameters
 ///
 /// * `request` - Type-safe repository creation request with branded types
 /// * `config` - Configuration containing template definitions
 /// * `app_id` - GitHub App ID for authentication
 /// * `app_key` - GitHub App private key for authentication
 ///
-/// # Returns
+/// ## Returns
 ///
-/// * `Ok(RepositoryCreationResult)` - Repository created successfully with metadata
+/// * `Ok(RepositoryCreationResult)` - Repository created successfully with metadata (url, id, created_at, default_branch)
 /// * `Err(RepoRollerError)` - Creation failed with categorized error
 ///
-/// # Examples
+/// ## Error Types
+///
+/// - `ValidationError` - Invalid input parameters or missing required data
+/// - `AuthenticationError` - GitHub App authentication failures
+/// - `ConfigurationError` - Template or configuration resolution failures
+/// - `TemplateError` - Template fetching or processing errors
+/// - `GitHubError` - GitHub API operation failures
+/// - `RepositoryError` - Git operations or repository setup failures
+/// - `SystemError` - File system or internal errors
+///
+/// ## Examples
 ///
 /// ```no_run
 /// use repo_roller_core::{
@@ -1272,6 +842,7 @@ pub async fn create_repository_with_config(
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
+///         println!("Branch: {}", result.default_branch);
 ///     }
 ///     Err(e) => eprintln!("Failed: {}", e),
 /// }
@@ -1604,15 +1175,19 @@ fn apply_repository_configuration(
 /// # Example
 ///
 /// ```no_run
-/// use repo_roller_core::{RepositoryCreationRequest, create_repository};
+/// use repo_roller_core::{
+///     RepositoryCreationRequestBuilder, RepositoryName,
+///     OrganizationName, TemplateName, create_repository
+/// };
 /// use config_manager::Config;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let request = RepositoryCreationRequest::builder()
-///     .name("my-repo")?
-///     .owner("my-org")?
-///     .template("rust-service")?
-///     .build();
+/// let request = RepositoryCreationRequestBuilder::new(
+///     RepositoryName::new("my-repo")?,
+///     OrganizationName::new("my-org")?,
+///     TemplateName::new("rust-service")?,
+/// )
+/// .build();
 ///
 /// let config = Config { templates: vec![] };
 /// let result = create_repository(request, &config, 12345, "private-key".to_string()).await?;
@@ -1758,6 +1333,7 @@ fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result<(),
     Ok(())
 }
 
+#[allow(dead_code)]
 fn install_github_apps(_repo: &github_client::models::Repository) -> Result<(), Error> {
     Ok(())
 }
@@ -2066,19 +1642,6 @@ fn push_to_origin(
 /// - Template engine processing failures
 /// - Path manipulation errors
 ///
-/// ## Example
-///
-/// ```rust,ignore
-/// let request = CreateRepoRequest {
-///     name: "my-api".to_string(),
-///     owner: "acme-corp".to_string(),
-///     template: "go-service".to_string(),
-/// };
-/// let template_config = // ... load from configuration
-/// replace_template_variables(&temp_dir, &request, &template_config)?;
-/// // Files now contain substituted values like "my-api" instead of "{{repo_name}}"
-/// ```
-///
 /// ## Template Engine Integration
 ///
 /// Uses the `template_engine` crate for actual variable substitution:
@@ -2222,10 +1785,12 @@ fn replace_template_variables(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn trigger_post_creation_webhooks(_repo: &github_client::models::Repository) -> Result<(), Error> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn update_remote_settings(_repo: &github_client::models::Repository) -> Result<(), Error> {
     Ok(())
 }
