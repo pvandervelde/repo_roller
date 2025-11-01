@@ -1586,63 +1586,6 @@ fn push_to_origin(
     }
 }
 
-/// Process template variables and substitute them in all template files.
-///
-/// This function handles the variable substitution phase of repository creation,
-/// replacing template placeholders with actual values throughout all files in
-/// the local repository.
-///
-/// ## Process Overview
-///
-/// 1. **Variable Setup**: Generates built-in variables and merges with user variables
-/// 2. **Configuration Mapping**: Converts template variable configurations
-/// 3. **File Reading**: Scans all files in the local repository
-/// 4. **Template Processing**: Performs variable substitution using the template engine
-/// 5. **File Replacement**: Removes original files and writes processed versions
-///
-/// ## Parameters
-///
-/// * `local_repo_path` - Temporary directory containing template files to process
-/// * `req` - Repository creation request containing substitution values
-/// * `template` - Template configuration including variable definitions
-///
-/// ## Returns
-///
-/// * `Ok(())` - If template processing completes successfully
-/// * `Err(Error)` - If any step in the processing fails
-///
-/// ## Built-in Variables
-///
-/// The function automatically generates these variables:
-/// - `repo_name`: Repository name from the request
-/// - `org_name`: Organization/owner name from the request
-/// - `template_name`: Template name used for creation
-/// - `user_login`: GitHub App login (placeholder)
-/// - `user_name`: GitHub App display name (placeholder)
-/// - `default_branch`: Default branch name ("main")
-///
-/// ## Variable Configuration
-///
-/// Converts template variable configurations from `config_manager` format
-/// to `template_engine` format, including:
-/// - Validation rules (pattern, length, required)
-/// - Default values and examples
-/// - Option lists for enumerated values
-///
-/// ## File Processing
-///
-/// - Processes all files recursively in the repository
-/// - Excludes the `.git` directory from processing
-/// - Maintains file paths and directory structure
-/// - Handles both text and binary files appropriately
-///
-/// ## Error Handling
-///
-/// Returns errors for:
-/// - File system operations (reading, writing, directory operations)
-/// - Template engine processing failures
-/// - Path manipulation errors
-///
 /// Extract template variables from merged configuration.
 ///
 /// Converts relevant fields from the merged organization configuration into
@@ -1691,10 +1634,113 @@ fn push_to_origin(
 /// - Variables use `config_` prefix to avoid conflicts with user/built-in variables
 /// - Only simple scalar values are exposed (complex nested structures are omitted for MVP)
 fn extract_config_variables(merged_config: &config_manager::MergedConfiguration) -> HashMap<String, String> {
-    // TODO: Implement extraction logic
-    HashMap::new()
+    let mut variables = HashMap::new();
+    
+    // Extract repository feature settings
+    let repo_settings = &merged_config.repository;
+    
+    // Helper to extract boolean value from OverridableValue<bool>
+    let extract_bool = |opt_value: &Option<config_manager::OverridableValue<bool>>| -> String {
+        opt_value
+            .as_ref()
+            .map(|v| v.value.to_string())
+            .unwrap_or_else(|| "false".to_string())
+    };
+    
+    // Helper to extract u32 value from OverridableValue<u32>
+    let extract_i32 = |opt_value: &Option<config_manager::OverridableValue<i32>>| -> Option<String> {
+        opt_value.as_ref().map(|v| v.value.to_string())
+    };
+    
+    // Repository features
+    variables.insert("config_issues_enabled".to_string(), extract_bool(&repo_settings.issues));
+    variables.insert("config_projects_enabled".to_string(), extract_bool(&repo_settings.projects));
+    variables.insert("config_discussions_enabled".to_string(), extract_bool(&repo_settings.discussions));
+    variables.insert("config_wiki_enabled".to_string(), extract_bool(&repo_settings.wiki));
+    variables.insert("config_pages_enabled".to_string(), extract_bool(&repo_settings.pages));
+    variables.insert("config_security_advisories_enabled".to_string(), extract_bool(&repo_settings.security_advisories));
+    variables.insert("config_vulnerability_reporting_enabled".to_string(), extract_bool(&repo_settings.vulnerability_reporting));
+    variables.insert("config_auto_close_issues_enabled".to_string(), extract_bool(&repo_settings.auto_close_issues));
+    
+    // Pull request settings
+    let pr_settings = &merged_config.pull_requests;
+    
+    if let Some(count) = extract_i32(&pr_settings.required_approving_review_count) {
+        variables.insert("config_required_approving_review_count".to_string(), count);
+    }
+    variables.insert("config_allow_merge_commit".to_string(), extract_bool(&pr_settings.allow_merge_commit));
+    variables.insert("config_allow_squash_merge".to_string(), extract_bool(&pr_settings.allow_squash_merge));
+    variables.insert("config_allow_rebase_merge".to_string(), extract_bool(&pr_settings.allow_rebase_merge));
+    variables.insert("config_allow_auto_merge".to_string(), extract_bool(&pr_settings.allow_auto_merge));
+    variables.insert("config_delete_branch_on_merge".to_string(), extract_bool(&pr_settings.delete_branch_on_merge));
+    
+    variables
 }
 
+/// Process template variables and substitute them in all template files.
+///
+/// This function handles the variable substitution phase of repository creation,
+/// replacing template placeholders with actual values throughout all files in
+/// the local repository.
+///
+/// ## Process Overview
+///
+/// 1. **Variable Setup**: Generates built-in variables, extracts config variables, and merges with user variables
+/// 2. **Configuration Mapping**: Converts template variable configurations
+/// 3. **File Reading**: Scans all files in the local repository
+/// 4. **Template Processing**: Performs variable substitution using the template engine
+/// 5. **File Replacement**: Removes original files and writes processed versions
+///
+/// ## Parameters
+///
+/// * `local_repo_path` - Temporary directory containing template files to process
+/// * `req` - Repository creation request containing substitution values
+/// * `template` - Template configuration including variable definitions
+/// * `merged_config` - Merged organization configuration providing additional template variables
+///
+/// ## Returns
+///
+/// * `Ok(())` - If template processing completes successfully
+/// * `Err(Error)` - If any step in the processing fails
+///
+/// ## Built-in Variables
+///
+/// The function automatically generates these variables:
+/// - `repo_name`: Repository name from the request
+/// - `org_name`: Organization/owner name from the request
+/// - `template_name`: Template name used for creation
+/// - `user_login`: GitHub App login (placeholder)
+/// - `user_name`: GitHub App display name (placeholder)
+/// - `default_branch`: Default branch name ("main")
+///
+/// ## Configuration Variables
+///
+/// Extracts variables from merged configuration with `config_` prefix:
+/// - Repository features (issues, wiki, projects, etc.)
+/// - Pull request settings (required reviewers, merge options, etc.)
+///
+/// ## Variable Configuration
+///
+/// Converts template variable configurations from `config_manager` format
+/// to `template_engine` format, including:
+/// - Validation rules (pattern, length, required)
+/// - Default values and examples
+/// - Option lists for enumerated values
+///
+/// ## File Processing
+///
+/// - Processes all files recursively in the repository
+/// - Excludes the `.git` directory from processing
+/// - Maintains file paths and directory structure
+/// - Handles both text and binary files appropriately
+///
+/// ## Error Handling
+///
+/// Returns errors for:
+/// - File system operations (reading, writing, directory operations)
+/// - Template engine processing failures
+/// - Path manipulation errors
+///
 /// ## Template Engine Integration
 ///
 /// Uses the `template_engine` crate for actual variable substitution:
