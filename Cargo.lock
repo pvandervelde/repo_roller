@@ -1896,6 +1896,7 @@ dependencies = [
  "git2",
  "github_client",
  "serde",
+ "serde_json",
  "std_prelude",
  "temp-dir",
  "template_engine",

@@ -743,7 +743,9 @@ fn create_additional_files(
         let readme_path = local_repo_path.path().join("README.md");
         let readme_content = format!(
             "# {}\n\nRepository created using RepoRoller.\n\nTemplate: {}\nOwner: {}\n",
-            req.name.as_ref(), req.template.as_ref(), req.owner.as_ref()
+            req.name.as_ref(),
+            req.template.as_ref(),
+            req.owner.as_ref()
         );
 
         debug!(
@@ -871,7 +873,10 @@ async fn setup_github_authentication(
 
     let repo_client = GitHubClient::new(app_client);
 
-    info!("Getting installation token for organization: {}", organization);
+    info!(
+        "Getting installation token for organization: {}",
+        organization
+    );
     let installation_token = repo_client
         .get_installation_token_for_org(organization)
         .await
@@ -890,8 +895,8 @@ async fn setup_github_authentication(
 
     info!("Successfully retrieved installation token");
 
-    let installation_client = github_client::create_token_client(&installation_token)
-        .map_err(|e| {
+    let installation_client =
+        github_client::create_token_client(&installation_token).map_err(|e| {
             error!("Failed to create installation token client: {}", e);
             RepoRollerError::System(SystemError::Internal {
                 reason: format!("Failed to create installation token client: {}", e),
@@ -920,17 +925,16 @@ async fn resolve_organization_configuration(
     use std::sync::Arc;
 
     info!("Resolving organization configuration");
-    
+
     // Create a separate client for the metadata provider
-    let metadata_client =
-        github_client::create_token_client(installation_token).map_err(|e| {
-            error!("Failed to create metadata provider client: {}", e);
-            RepoRollerError::System(SystemError::Internal {
-                reason: format!("Failed to create metadata provider client: {}", e),
-            })
-        })?;
+    let metadata_client = github_client::create_token_client(installation_token).map_err(|e| {
+        error!("Failed to create metadata provider client: {}", e);
+        RepoRollerError::System(SystemError::Internal {
+            reason: format!("Failed to create metadata provider client: {}", e),
+        })
+    })?;
     let metadata_repo_client = GitHubClient::new(metadata_client);
-    
+
     let metadata_provider_config = MetadataProviderConfig::explicit("repo-config");
     let metadata_provider = Arc::new(GitHubMetadataProvider::new(
         metadata_repo_client,
@@ -1005,13 +1009,15 @@ async fn prepare_local_repository(
 
     // Process template variables
     debug!("Processing template variables");
-    replace_template_variables(&local_repo_path, request, template, merged_config).map_err(|e| {
-        error!("Failed to replace template variables: {}", e);
-        RepoRollerError::Template(TemplateError::SubstitutionFailed {
-            variable: "unknown".to_string(),
-            reason: format!("Failed to replace template variables: {}", e),
-        })
-    })?;
+    replace_template_variables(&local_repo_path, request, template, merged_config).map_err(
+        |e| {
+            error!("Failed to replace template variables: {}", e);
+            RepoRollerError::Template(TemplateError::SubstitutionFailed {
+                variable: "unknown".to_string(),
+                reason: format!("Failed to replace template variables: {}", e),
+            })
+        },
+    )?;
 
     // Create additional files
     debug!("Creating additional required files");
@@ -1035,7 +1041,10 @@ async fn initialize_git_repository(
     installation_repo_client: &GitHubClient,
     organization: &str,
 ) -> RepoRollerResult<String> {
-    info!("Getting organization default branch setting for: {}", organization);
+    info!(
+        "Getting organization default branch setting for: {}",
+        organization
+    );
     let default_branch = installation_repo_client
         .get_organization_default_branch(organization)
         .await
@@ -1049,7 +1058,10 @@ async fn initialize_git_repository(
 
     info!("Using default branch: {}", default_branch);
 
-    debug!("Initializing local git repository with branch: {}", default_branch);
+    debug!(
+        "Initializing local git repository with branch: {}",
+        default_branch
+    );
     init_local_git_repo(local_repo_path, &default_branch).map_err(|e| {
         error!("Failed to initialize local git repository: {}", e);
         RepoRollerError::System(SystemError::Internal {
@@ -1098,49 +1110,133 @@ async fn create_github_repository(
             })
         })?;
 
-    info!("GitHub repository created successfully: url='{}'", repo.url());
+    info!(
+        "GitHub repository created successfully: url='{}'",
+        repo.url()
+    );
     Ok(repo)
 }
 
 /// Apply merged configuration to the created repository.
 ///
-/// This includes labels, webhooks, and custom properties.
-fn apply_repository_configuration(
+/// This function applies organization-specific configuration to a newly created
+/// repository, including labels, webhooks, and custom properties.
+///
+/// ## Parameters
+///
+/// * `installation_repo_client` - GitHub API client with installation token
+/// * `owner` - Organization or user owning the repository
+/// * `repo_name` - Name of the repository
+/// * `merged_config` - Resolved configuration from organization settings
+///
+/// ## Returns
+///
+/// * `Ok(())` - If configuration is applied successfully
+/// * `Err(RepoRollerError)` - If any configuration application fails
+///
+/// ## Current Implementation Status
+///
+/// - **Custom Properties**: Implemented via `set_repository_custom_properties`
+/// - **Labels**: Pending - requires `create_label` method in GitHubClient
+/// - **Webhooks**: Pending - requires `create_webhook` method in GitHubClient
+///
+/// ## Errors
+///
+/// Returns errors for:
+/// - GitHub API failures when setting custom properties
+/// - Permission issues
+/// - Invalid property values
+async fn apply_repository_configuration(
+    installation_repo_client: &GitHubClient,
+    owner: &str,
+    repo_name: &str,
     merged_config: &config_manager::MergedConfiguration,
-) {
-    info!("Applying merged configuration to repository");
+) -> RepoRollerResult<()> {
+    info!(
+        "Applying merged configuration to repository {}/{}",
+        owner, repo_name
+    );
 
     // Apply labels
     if !merged_config.labels.is_empty() {
         debug!("Creating {} labels", merged_config.labels.len());
+        // TODO: Implement label creation via GitHub API
+        // This requires adding create_label() method to GitHubClient
+        // Tracked in separate task/issue
         for (label_name, label_config) in &merged_config.labels {
-            debug!("Creating label: {}", label_name);
-            // TODO: Implement label creation via GitHub API
-            // This requires adding label creation support to GitHubClient
-            info!("Label configuration: {} -> {:?}", label_name, label_config);
+            info!("Label to create: {} -> {:?}", label_name, label_config);
         }
+        warn!("Label creation not yet implemented - requires GitHubClient::create_label() method");
     }
 
     // Apply webhooks
     if !merged_config.webhooks.is_empty() {
         debug!("Creating {} webhooks", merged_config.webhooks.len());
+        // TODO: Implement webhook creation via GitHub API
+        // This requires adding create_webhook() method to GitHubClient
+        // Tracked in separate task/issue
         for webhook in &merged_config.webhooks {
-            debug!("Creating webhook: {}", webhook.url);
-            // TODO: Implement webhook creation via GitHub API
-            // This requires adding webhook creation support to GitHubClient
-            info!("Webhook configuration: {:?}", webhook);
+            info!("Webhook to create: {:?}", webhook);
         }
+        warn!(
+            "Webhook creation not yet implemented - requires GitHubClient::create_webhook() method"
+        );
     }
 
     // Apply custom properties (including repository type)
     if !merged_config.custom_properties.is_empty() {
-        debug!("Setting {} custom properties", merged_config.custom_properties.len());
-        // TODO: Implement custom property setting via GitHubClient
-        // This should use the set_repository_custom_properties method from Task 6.2
-        for prop in &merged_config.custom_properties {
-            info!("Custom property: {} = {:?}", prop.property_name, prop.value);
-        }
+        debug!(
+            "Setting {} custom properties",
+            merged_config.custom_properties.len()
+        );
+
+        // Convert custom properties to GitHub API format
+        let properties: Vec<serde_json::Value> = merged_config
+            .custom_properties
+            .iter()
+            .map(|prop| {
+                use config_manager::settings::custom_property::CustomPropertyValue;
+                let value = match &prop.value {
+                    CustomPropertyValue::String(s) => serde_json::Value::String(s.clone()),
+                    CustomPropertyValue::SingleSelect(s) => serde_json::Value::String(s.clone()),
+                    CustomPropertyValue::MultiSelect(vec) => serde_json::Value::Array(
+                        vec.iter()
+                            .map(|s| serde_json::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                    CustomPropertyValue::Boolean(b) => serde_json::Value::Bool(*b),
+                };
+
+                serde_json::json!({
+                    "property_name": prop.property_name,
+                    "value": value
+                })
+            })
+            .collect();
+
+        let payload = github_client::CustomPropertiesPayload::new(properties);
+
+        installation_repo_client
+            .set_repository_custom_properties(owner, repo_name, &payload)
+            .await
+            .map_err(|e| {
+                error!("Failed to set custom properties on repository: {}", e);
+                RepoRollerError::GitHub(GitHubError::ApiRequestFailed {
+                    status: 500, // We don't have the actual status code from the error
+                    message: format!(
+                        "Failed to set custom properties on {}/{}: {}",
+                        owner, repo_name, e
+                    ),
+                })
+            })?;
+
+        info!(
+            "Successfully set {} custom properties",
+            merged_config.custom_properties.len()
+        );
     }
+
+    Ok(())
 }
 
 /// Create a new repository with type-safe API and organization settings integration.
@@ -1208,27 +1304,35 @@ pub async fn create_repository(
     );
 
     // Step 1: Setup GitHub authentication
-    let (installation_token, installation_repo_client) = 
+    let (installation_token, installation_repo_client) =
         setup_github_authentication(app_id, &app_key, request.owner.as_ref()).await?;
 
     // Step 2: Create template fetcher for later use
     let app_client = create_app_client(app_id, &app_key).await.map_err(|e| {
-        error!("Failed to create GitHub App client for template fetcher: {}", e);
+        error!(
+            "Failed to create GitHub App client for template fetcher: {}",
+            e
+        );
         RepoRollerError::System(SystemError::Internal {
             reason: format!("Failed to create GitHub App client: {}", e),
         })
     })?;
-    let template_fetcher = template_engine::GitHubTemplateFetcher::new(GitHubClient::new(app_client));
+    let template_fetcher =
+        template_engine::GitHubTemplateFetcher::new(GitHubClient::new(app_client));
 
     // Step 3: Resolve organization configuration
     let merged_config = resolve_organization_configuration(
         &installation_token,
         request.owner.as_ref(),
         request.template.as_ref(),
-    ).await?;
+    )
+    .await?;
 
     // Step 4: Find template configuration
-    debug!("Searching for template '{}' in configuration", request.template);
+    debug!(
+        "Searching for template '{}' in configuration",
+        request.template
+    );
     let template = config
         .templates
         .iter()
@@ -1243,17 +1347,20 @@ pub async fn create_repository(
     info!("Template '{}' found in configuration", request.template);
 
     // Step 5: Prepare local repository with template files
-    let local_repo_path = prepare_local_repository(&request, template, &template_fetcher, &merged_config).await?;
+    let local_repo_path =
+        prepare_local_repository(&request, template, &template_fetcher, &merged_config).await?;
 
     // Step 6: Initialize Git repository and commit
     let default_branch = initialize_git_repository(
         &local_repo_path,
         &installation_repo_client,
         request.owner.as_ref(),
-    ).await?;
+    )
+    .await?;
 
     // Step 7: Create repository on GitHub
-    let repo = create_github_repository(&request, &merged_config, &installation_repo_client).await?;
+    let repo =
+        create_github_repository(&request, &merged_config, &installation_repo_client).await?;
 
     // Step 8: Push local repository to GitHub
     info!("Pushing local repository to remote: {}", repo.url());
@@ -1273,7 +1380,13 @@ pub async fn create_repository(
     info!("Repository successfully pushed to GitHub");
 
     // Step 9: Apply merged configuration to repository
-    apply_repository_configuration(&merged_config);
+    apply_repository_configuration(
+        &installation_repo_client,
+        request.owner.as_ref(),
+        request.name.as_ref(),
+        &merged_config,
+    )
+    .await?;
 
     info!("Repository creation completed successfully");
 
@@ -1633,12 +1746,14 @@ fn push_to_origin(
 /// - Numeric values are serialized as decimal strings
 /// - Variables use `config_` prefix to avoid conflicts with user/built-in variables
 /// - Only simple scalar values are exposed (complex nested structures are omitted for MVP)
-fn extract_config_variables(merged_config: &config_manager::MergedConfiguration) -> HashMap<String, String> {
+fn extract_config_variables(
+    merged_config: &config_manager::MergedConfiguration,
+) -> HashMap<String, String> {
     let mut variables = HashMap::new();
-    
+
     // Extract repository feature settings
     let repo_settings = &merged_config.repository;
-    
+
     // Helper to extract boolean value from OverridableValue<bool>
     let extract_bool = |opt_value: &Option<config_manager::OverridableValue<bool>>| -> String {
         opt_value
@@ -1646,34 +1761,74 @@ fn extract_config_variables(merged_config: &config_manager::MergedConfiguration)
             .map(|v| v.value.to_string())
             .unwrap_or_else(|| "false".to_string())
     };
-    
+
     // Helper to extract u32 value from OverridableValue<u32>
-    let extract_i32 = |opt_value: &Option<config_manager::OverridableValue<i32>>| -> Option<String> {
-        opt_value.as_ref().map(|v| v.value.to_string())
-    };
-    
+    let extract_i32 =
+        |opt_value: &Option<config_manager::OverridableValue<i32>>| -> Option<String> {
+            opt_value.as_ref().map(|v| v.value.to_string())
+        };
+
     // Repository features
-    variables.insert("config_issues_enabled".to_string(), extract_bool(&repo_settings.issues));
-    variables.insert("config_projects_enabled".to_string(), extract_bool(&repo_settings.projects));
-    variables.insert("config_discussions_enabled".to_string(), extract_bool(&repo_settings.discussions));
-    variables.insert("config_wiki_enabled".to_string(), extract_bool(&repo_settings.wiki));
-    variables.insert("config_pages_enabled".to_string(), extract_bool(&repo_settings.pages));
-    variables.insert("config_security_advisories_enabled".to_string(), extract_bool(&repo_settings.security_advisories));
-    variables.insert("config_vulnerability_reporting_enabled".to_string(), extract_bool(&repo_settings.vulnerability_reporting));
-    variables.insert("config_auto_close_issues_enabled".to_string(), extract_bool(&repo_settings.auto_close_issues));
-    
+    variables.insert(
+        "config_issues_enabled".to_string(),
+        extract_bool(&repo_settings.issues),
+    );
+    variables.insert(
+        "config_projects_enabled".to_string(),
+        extract_bool(&repo_settings.projects),
+    );
+    variables.insert(
+        "config_discussions_enabled".to_string(),
+        extract_bool(&repo_settings.discussions),
+    );
+    variables.insert(
+        "config_wiki_enabled".to_string(),
+        extract_bool(&repo_settings.wiki),
+    );
+    variables.insert(
+        "config_pages_enabled".to_string(),
+        extract_bool(&repo_settings.pages),
+    );
+    variables.insert(
+        "config_security_advisories_enabled".to_string(),
+        extract_bool(&repo_settings.security_advisories),
+    );
+    variables.insert(
+        "config_vulnerability_reporting_enabled".to_string(),
+        extract_bool(&repo_settings.vulnerability_reporting),
+    );
+    variables.insert(
+        "config_auto_close_issues_enabled".to_string(),
+        extract_bool(&repo_settings.auto_close_issues),
+    );
+
     // Pull request settings
     let pr_settings = &merged_config.pull_requests;
-    
+
     if let Some(count) = extract_i32(&pr_settings.required_approving_review_count) {
         variables.insert("config_required_approving_review_count".to_string(), count);
     }
-    variables.insert("config_allow_merge_commit".to_string(), extract_bool(&pr_settings.allow_merge_commit));
-    variables.insert("config_allow_squash_merge".to_string(), extract_bool(&pr_settings.allow_squash_merge));
-    variables.insert("config_allow_rebase_merge".to_string(), extract_bool(&pr_settings.allow_rebase_merge));
-    variables.insert("config_allow_auto_merge".to_string(), extract_bool(&pr_settings.allow_auto_merge));
-    variables.insert("config_delete_branch_on_merge".to_string(), extract_bool(&pr_settings.delete_branch_on_merge));
-    
+    variables.insert(
+        "config_allow_merge_commit".to_string(),
+        extract_bool(&pr_settings.allow_merge_commit),
+    );
+    variables.insert(
+        "config_allow_squash_merge".to_string(),
+        extract_bool(&pr_settings.allow_squash_merge),
+    );
+    variables.insert(
+        "config_allow_rebase_merge".to_string(),
+        extract_bool(&pr_settings.allow_rebase_merge),
+    );
+    variables.insert(
+        "config_allow_auto_merge".to_string(),
+        extract_bool(&pr_settings.allow_auto_merge),
+    );
+    variables.insert(
+        "config_delete_branch_on_merge".to_string(),
+        extract_bool(&pr_settings.delete_branch_on_merge),
+    );
+
     variables
 }
 
@@ -1772,10 +1927,10 @@ fn replace_template_variables(
         default_branch: "main",
     };
     let built_in_variables = processor.generate_built_in_variables(&built_in_params);
-    
+
     // Extract configuration-driven variables from merged config
     let config_variables = extract_config_variables(merged_config);
-    
+
     // For MVP, we'll use empty user variables and get variable configs from template
     // In a full implementation, these would come from user input
     let user_variables = HashMap::new();
