@@ -448,3 +448,176 @@ async fn test_create_repository_result_type() {
         }
     }
 }
+
+// --- CONFIGURATION VARIABLE EXTRACTION TESTS ---
+
+/// Verify that extract_config_variables returns empty map for default configuration.
+#[test]
+fn test_extract_config_variables_empty_config() {
+    let merged_config = config_manager::MergedConfiguration::new();
+    let variables = extract_config_variables(&merged_config);
+
+    // Default config should have no explicitly set values, so we get default boolean values
+    assert_eq!(
+        variables.get("config_issues_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_wiki_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_projects_enabled"),
+        Some(&"false".to_string())
+    );
+}
+
+/// Verify that repository feature settings are correctly extracted as config variables.
+#[test]
+fn test_extract_config_variables_repository_features() {
+    use config_manager::{settings::RepositorySettings, MergedConfiguration, OverridableValue};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.repository = RepositorySettings {
+        issues: Some(OverridableValue::allowed(true)),
+        wiki: Some(OverridableValue::fixed(false)),
+        projects: Some(OverridableValue::allowed(true)),
+        discussions: Some(OverridableValue::allowed(false)),
+        pages: Some(OverridableValue::allowed(true)),
+        security_advisories: Some(OverridableValue::allowed(true)),
+        vulnerability_reporting: Some(OverridableValue::allowed(false)),
+        auto_close_issues: Some(OverridableValue::allowed(false)),
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    assert_eq!(
+        variables.get("config_issues_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_wiki_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_projects_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_discussions_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_pages_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_security_advisories_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_vulnerability_reporting_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_auto_close_issues_enabled"),
+        Some(&"false".to_string())
+    );
+}
+
+/// Verify that pull request settings are correctly extracted as config variables.
+#[test]
+fn test_extract_config_variables_pull_request_settings() {
+    use config_manager::{settings::PullRequestSettings, MergedConfiguration, OverridableValue};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.pull_requests = PullRequestSettings {
+        required_approving_review_count: Some(OverridableValue::allowed(2)),
+        allow_merge_commit: Some(OverridableValue::allowed(true)),
+        allow_squash_merge: Some(OverridableValue::allowed(false)),
+        allow_rebase_merge: Some(OverridableValue::allowed(true)),
+        allow_auto_merge: Some(OverridableValue::allowed(false)),
+        delete_branch_on_merge: Some(OverridableValue::allowed(true)),
+        ..Default::default()
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    assert_eq!(
+        variables.get("config_required_approving_review_count"),
+        Some(&"2".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_merge_commit"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_squash_merge"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_rebase_merge"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_auto_merge"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_delete_branch_on_merge"),
+        Some(&"true".to_string())
+    );
+}
+
+/// Verify that all config variables use the "config_" prefix to avoid naming conflicts.
+#[test]
+fn test_extract_config_variables_uses_prefix() {
+    use config_manager::{settings::RepositorySettings, MergedConfiguration, OverridableValue};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.repository = RepositorySettings {
+        issues: Some(OverridableValue::allowed(true)),
+        ..Default::default()
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    // Verify all keys start with "config_"
+    for key in variables.keys() {
+        assert!(
+            key.starts_with("config_"),
+            "Variable '{}' should start with 'config_'",
+            key
+        );
+    }
+}
+
+/// Verify that None values in configuration are handled correctly.
+#[test]
+fn test_extract_config_variables_none_values() {
+    use config_manager::{settings::RepositorySettings, MergedConfiguration};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.repository = RepositorySettings {
+        issues: None, // Explicitly set to None
+        wiki: None,
+        projects: None,
+        discussions: None,
+        pages: None,
+        security_advisories: None,
+        vulnerability_reporting: None,
+        auto_close_issues: None,
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    // None values should result in "false" as the default
+    assert_eq!(
+        variables.get("config_issues_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_wiki_enabled"),
+        Some(&"false".to_string())
+    );
+}

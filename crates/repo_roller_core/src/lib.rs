@@ -972,6 +972,7 @@ async fn prepare_local_repository(
     request: &RepositoryCreationRequest,
     template: &config_manager::TemplateConfig,
     template_fetcher: &dyn TemplateFetcher,
+    merged_config: &config_manager::MergedConfiguration,
 ) -> RepoRollerResult<TempDir> {
     // Create temporary directory
     let local_repo_path = TempDir::new().map_err(|e| {
@@ -1004,7 +1005,7 @@ async fn prepare_local_repository(
 
     // Process template variables
     debug!("Processing template variables");
-    replace_template_variables(&local_repo_path, request, template).map_err(|e| {
+    replace_template_variables(&local_repo_path, request, template, merged_config).map_err(|e| {
         error!("Failed to replace template variables: {}", e);
         RepoRollerError::Template(TemplateError::SubstitutionFailed {
             variable: "unknown".to_string(),
@@ -1242,7 +1243,7 @@ pub async fn create_repository(
     info!("Template '{}' found in configuration", request.template);
 
     // Step 5: Prepare local repository with template files
-    let local_repo_path = prepare_local_repository(&request, template, &template_fetcher).await?;
+    let local_repo_path = prepare_local_repository(&request, template, &template_fetcher, &merged_config).await?;
 
     // Step 6: Initialize Git repository and commit
     let default_branch = initialize_git_repository(
@@ -1642,6 +1643,58 @@ fn push_to_origin(
 /// - Template engine processing failures
 /// - Path manipulation errors
 ///
+/// Extract template variables from merged configuration.
+///
+/// Converts relevant fields from the merged organization configuration into
+/// template variables that can be used during template processing. This enables
+/// templates to adapt based on organization-wide policies and settings.
+///
+/// ## Exported Variables
+///
+/// The following variables are extracted with the `config_` prefix:
+///
+/// ### Repository Features
+/// - `config_issues_enabled`: "true" or "false"
+/// - `config_projects_enabled`: "true" or "false"
+/// - `config_discussions_enabled`: "true" or "false"
+/// - `config_wiki_enabled`: "true" or "false"
+/// - `config_pages_enabled`: "true" or "false"
+/// - `config_security_advisories_enabled`: "true" or "false"
+/// - `config_vulnerability_reporting_enabled`: "true" or "false"
+/// - `config_auto_close_issues_enabled`: "true" or "false"
+///
+/// ### Pull Request Settings
+/// - `config_required_approving_review_count`: Number as string (e.g., "2")
+/// - `config_allow_merge_commit`: "true" or "false"
+/// - `config_allow_squash_merge`: "true" or "false"
+/// - `config_allow_rebase_merge`: "true" or "false"
+/// - `config_allow_auto_merge`: "true" or "false"
+/// - `config_delete_branch_on_merge`: "true" or "false"
+///
+/// ## Examples
+///
+/// ```ignore
+/// use config_manager::MergedConfiguration;
+///
+/// let merged_config = MergedConfiguration::new();
+/// let variables = extract_config_variables(&merged_config);
+///
+/// // Variables can now be used in templates like:
+/// // "Issues enabled: {{config_issues_enabled}}"
+/// // "Required reviewers: {{config_required_approving_review_count}}"
+/// ```
+///
+/// ## Notes
+///
+/// - All boolean values are serialized as "true" or "false" strings
+/// - Numeric values are serialized as decimal strings
+/// - Variables use `config_` prefix to avoid conflicts with user/built-in variables
+/// - Only simple scalar values are exposed (complex nested structures are omitted for MVP)
+fn extract_config_variables(merged_config: &config_manager::MergedConfiguration) -> HashMap<String, String> {
+    // TODO: Implement extraction logic
+    HashMap::new()
+}
+
 /// ## Template Engine Integration
 ///
 /// Uses the `template_engine` crate for actual variable substitution:
@@ -1653,6 +1706,7 @@ fn replace_template_variables(
     local_repo_path: &TempDir,
     req: &RepositoryCreationRequest,
     template: &config_manager::TemplateConfig,
+    merged_config: &config_manager::MergedConfiguration,
 ) -> Result<(), Error> {
     debug!("Processing template variables using TemplateProcessor");
 
@@ -1671,8 +1725,13 @@ fn replace_template_variables(
         user_name: "RepoRoller App", // Placeholder for GitHub App
         default_branch: "main",
     };
-    let built_in_variables = processor.generate_built_in_variables(&built_in_params); // For MVP, we'll use empty user variables and get variable configs from template
-                                                                                      // In a full implementation, these would come from user input and merged configs
+    let built_in_variables = processor.generate_built_in_variables(&built_in_params);
+    
+    // Extract configuration-driven variables from merged config
+    let config_variables = extract_config_variables(merged_config);
+    
+    // For MVP, we'll use empty user variables and get variable configs from template
+    // In a full implementation, these would come from user input
     let user_variables = HashMap::new();
 
     // Convert config_manager::VariableConfig to template_engine::VariableConfig
@@ -1693,10 +1752,14 @@ fn replace_template_variables(
         }
     }
 
+    // Merge all variable sources: built-in variables + config variables
+    let mut all_built_in_variables = built_in_variables;
+    all_built_in_variables.extend(config_variables);
+
     // Create processing request
     let processing_request = TemplateProcessingRequest {
         variables: user_variables,
-        built_in_variables,
+        built_in_variables: all_built_in_variables,
         variable_configs,
         templating_config: None, // Use default processing (all files)
     };
