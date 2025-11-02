@@ -55,7 +55,8 @@
 //!     request,
 //!     &config,
 //!     12345, // GitHub App ID
-//!     "private-key-content".to_string() // GitHub App private key
+//!     "private-key-content".to_string(), // GitHub App private key
+//!     ".reporoller" // Metadata repository name
 //! ).await {
 //!     Ok(result) => {
 //!         println!("Repository created successfully:");
@@ -840,7 +841,7 @@ fn create_additional_files(
 ///
 /// let config = Config { templates: vec![] };
 ///
-/// match create_repository(request, &config, 12345, "private-key".to_string()).await {
+/// match create_repository(request, &config, 12345, "private-key".to_string(), ".reporoller").await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
