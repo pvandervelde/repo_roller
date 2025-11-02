@@ -27,6 +27,14 @@ pub enum TestScenario {
     FileFiltering,
     /// Error handling for invalid inputs
     ErrorHandling,
+    /// Organization settings integration with metadata repository
+    OrganizationSettings,
+    /// Team-specific configuration overrides
+    TeamConfiguration,
+    /// Repository type configuration and custom properties
+    RepositoryType,
+    /// Configuration hierarchy merging (Template > Team > Type > Global)
+    ConfigurationHierarchy,
 }
 
 impl TestScenario {
@@ -37,6 +45,10 @@ impl TestScenario {
             TestScenario::VariableSubstitution => "variables",
             TestScenario::FileFiltering => "filtering",
             TestScenario::ErrorHandling => "error-handling",
+            TestScenario::OrganizationSettings => "org-settings",
+            TestScenario::TeamConfiguration => "team-config",
+            TestScenario::RepositoryType => "repo-type",
+            TestScenario::ConfigurationHierarchy => "config-hierarchy",
         }
     }
 
@@ -47,6 +59,11 @@ impl TestScenario {
             TestScenario::VariableSubstitution => "test-variables",
             TestScenario::FileFiltering => "test-filtering",
             TestScenario::ErrorHandling => "test-nonexistent",
+            // Organization settings scenarios use basic template
+            TestScenario::OrganizationSettings => "test-basic",
+            TestScenario::TeamConfiguration => "test-basic",
+            TestScenario::RepositoryType => "test-basic",
+            TestScenario::ConfigurationHierarchy => "test-basic",
         }
     }
 

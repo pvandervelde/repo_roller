@@ -1,15 +1,23 @@
 # Test Repository Creation Scripts
 
-This directory contains scripts to create GitHub test template repositories for RepoRoller integration tests.
+This directory contains scripts to create GitHub test repositories for RepoRoller integration tests.
 
 ## Overview
 
-The integration tests require four test template repositories to be available on GitHub:
+The integration tests require several test repositories on GitHub:
+
+### Test Template Repositories
 
 1. **test-basic** - Basic repository creation testing
 2. **test-variables** - Variable substitution testing
 3. **test-filtering** - File filtering testing
 4. **test-invalid** - Error handling testing
+
+### Test Metadata Repository
+
+- **.reporoller-test** - Organization settings configuration for integration tests
+
+See [README_METADATA.md](README_METADATA.md) for detailed metadata repository documentation.
 
 ## Prerequisites
 
@@ -22,7 +30,9 @@ Before running these scripts, ensure you have:
 
 ## Scripts
 
-### PowerShell Script (Windows)
+### Test Template Repositories
+
+#### PowerShell Script (Windows)
 
 ```powershell
 # Basic usage (creates repos in 'pvandervelde' organization)
@@ -38,7 +48,7 @@ Before running these scripts, ensure you have:
 ./scripts/create-test-repositories.ps1 -Organization "myorg" -Force
 ```
 
-### Bash Script (Linux/macOS)
+#### Bash Script (Linux/macOS)
 
 ```bash
 # Make script executable (Linux/macOS only)
@@ -55,6 +65,24 @@ chmod +x scripts/create-test-repositories.sh
 
 # Different organization with force
 ./scripts/create-test-repositories.sh myorg true
+```
+
+### Test Metadata Repository
+
+#### PowerShell Script (Windows)
+
+```powershell
+# Basic usage (creates .reporoller-test in 'glitchgrove' organization)
+./tests/create-test-metadata-repository.ps1
+
+# Force recreation of existing repository
+./tests/create-test-metadata-repository.ps1 -Force
+
+# Custom repository name
+./tests/create-test-metadata-repository.ps1 -RepositoryName ".reporoller-test" -Verbose
+
+# Different organization
+./tests/create-test-metadata-repository.ps1 -Organization "myorg" -Force
 ```
 
 ## What the Scripts Do
