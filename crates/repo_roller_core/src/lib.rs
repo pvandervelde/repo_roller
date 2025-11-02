@@ -949,14 +949,15 @@ async fn resolve_organization_configuration(
     let merged_config = settings_manager
         .resolve_configuration(&config_context)
         .await
-        .map_err(|e| {
+        .or_else(|e: config_manager::ConfigurationError| -> config_manager::ConfigurationResult<config_manager::MergedConfiguration> {
             warn!(
-                "Failed to resolve organization configuration: {}. Continuing with defaults.",
+                "Failed to resolve organization configuration: {}. Using global defaults.",
                 e
             );
-            e
-        })
-        .map_err(RepoRollerError::Configuration)?;
+            // If configuration resolution fails (e.g., metadata repository not found),
+            // fall back to using global defaults with empty overrides
+            Ok(config_manager::MergedConfiguration::default())
+        })?;
 
     info!("Organization configuration resolved successfully");
     Ok(merged_config)
