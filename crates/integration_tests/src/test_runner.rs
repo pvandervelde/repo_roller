@@ -72,6 +72,40 @@ impl TestScenario {
         !matches!(self, TestScenario::ErrorHandling)
     }
 
+    /// Get the metadata repository name for this test scenario
+    pub fn metadata_repository(&self) -> Option<&'static str> {
+        match self {
+            // Original scenarios don't use metadata repository
+            TestScenario::BasicCreation
+            | TestScenario::VariableSubstitution
+            | TestScenario::FileFiltering
+            | TestScenario::ErrorHandling => None,
+            // Organization settings scenarios use test metadata repository
+            TestScenario::OrganizationSettings
+            | TestScenario::TeamConfiguration
+            | TestScenario::RepositoryType
+            | TestScenario::ConfigurationHierarchy => Some(".reporoller-test"),
+        }
+    }
+
+    /// Get the team name for team-specific scenarios
+    pub fn team_name(&self) -> Option<&'static str> {
+        match self {
+            TestScenario::TeamConfiguration => Some("platform"),
+            TestScenario::ConfigurationHierarchy => Some("backend"),
+            _ => None,
+        }
+    }
+
+    /// Get the repository type for type-specific scenarios
+    pub fn repository_type(&self) -> Option<&'static str> {
+        match self {
+            TestScenario::RepositoryType => Some("library"),
+            TestScenario::ConfigurationHierarchy => Some("service"),
+            _ => None,
+        }
+    }
+
     /// Create a mock template configuration for testing
     pub fn create_mock_template(&self, org: &str) -> TemplateConfig {
         let description = match self {
