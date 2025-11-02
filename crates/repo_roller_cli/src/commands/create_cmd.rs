@@ -359,7 +359,10 @@ where
     })?;
 
     let owner = OrganizationName::new(&final_owner).map_err(|e| {
-        Error::InvalidArguments(format!("Invalid organization name '{}': {}", final_owner, e))
+        Error::InvalidArguments(format!(
+            "Invalid organization name '{}': {}",
+            final_owner, e
+        ))
     })?;
 
     let template = TemplateName::new(&final_template).map_err(|e| {
@@ -369,9 +372,9 @@ where
     let req = RepositoryCreationRequestBuilder::new(name, owner, template).build();
 
     // Call repository creation and convert RepoRollerError to CLI Error
-    create_repository_fn(req).await.map_err(|e| {
-        Error::InvalidArguments(format!("Repository creation failed: {}", e))
-    })
+    create_repository_fn(req)
+        .await
+        .map_err(|e| Error::InvalidArguments(format!("Repository creation failed: {}", e)))
 }
 
 /// Options for the create command, grouping CLI arguments and configuration.

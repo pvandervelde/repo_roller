@@ -58,7 +58,7 @@ pub struct AppConfig {
     #[serde(flatten)]
     pub core: Config,
 
-/// - CLI-specific configuration
+    /// - CLI-specific configuration
     #[serde(default)]
     pub authentication: AuthenticationConfig,
 

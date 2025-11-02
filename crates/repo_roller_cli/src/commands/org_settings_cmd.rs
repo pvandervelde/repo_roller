@@ -324,9 +324,7 @@ async fn list_types(org: &str, format: &str) -> Result<(), Error> {
     let types = provider
         .list_available_repository_types(&metadata_repo)
         .await
-        .map_err(|e| {
-            Error::Config(format!("Failed to list repository types: {}", e))
-        })?;
+        .map_err(|e| Error::Config(format!("Failed to list repository types: {}", e)))?;
 
     // Format and display output
     let output = format_output(&types, format)?;
@@ -367,7 +365,10 @@ async fn show_type(org: &str, type_name: &str, format: &str) -> Result<(), Error
 
     // Validate repository type name
     let repo_type = RepositoryTypeName::try_new(type_name).map_err(|e| {
-        Error::InvalidArguments(format!("Invalid repository type name '{}': {}", type_name, e))
+        Error::InvalidArguments(format!(
+            "Invalid repository type name '{}': {}",
+            type_name, e
+        ))
     })?;
 
     // Load repository type configuration
@@ -439,9 +440,10 @@ async fn show_merged(
     }
 
     // Resolve merged configuration
-    let merged_config = manager.resolve_configuration(&context).await.map_err(|e| {
-        Error::Config(format!("Failed to resolve merged configuration: {}", e))
-    })?;
+    let merged_config = manager
+        .resolve_configuration(&context)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to resolve merged configuration: {}", e)))?;
 
     // Format and display output
     let output = format_output(&merged_config, format)?;

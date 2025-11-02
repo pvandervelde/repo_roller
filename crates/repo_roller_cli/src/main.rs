@@ -30,7 +30,10 @@ mod config;
 mod errors;
 use errors::Error;
 
-use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs, org_settings_cmd::OrgSettingsCommands};
+use crate::commands::{
+    auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs,
+    org_settings_cmd::OrgSettingsCommands,
+};
 
 #[cfg(test)]
 #[path = "main_tests.rs"]
@@ -119,12 +122,8 @@ async fn main() {
             // Use handle_create_command to merge config, prompt, and validate
             let options =
                 CreateCommandOptions::new(&args.config, &args.name, &args.owner, &args.template);
-            let result = handle_create_command(
-                options,
-                &ask_user_for_value,
-                create_repository,
-            )
-            .await;
+            let result =
+                handle_create_command(options, &ask_user_for_value, create_repository).await;
 
             match result {
                 Ok(creation_result) => {
