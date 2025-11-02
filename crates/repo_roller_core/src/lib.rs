@@ -917,6 +917,7 @@ async fn resolve_organization_configuration(
     installation_token: &str,
     organization: &str,
     template_name: &str,
+    metadata_repository_name: &str,
 ) -> RepoRollerResult<config_manager::MergedConfiguration> {
     use config_manager::{
         ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
@@ -935,7 +936,7 @@ async fn resolve_organization_configuration(
     })?;
     let metadata_repo_client = GitHubClient::new(metadata_client);
 
-    let metadata_provider_config = MetadataProviderConfig::explicit("repo-config");
+    let metadata_provider_config = MetadataProviderConfig::explicit(metadata_repository_name);
     let metadata_provider = Arc::new(GitHubMetadataProvider::new(
         metadata_repo_client,
         metadata_provider_config,
@@ -1253,6 +1254,7 @@ async fn apply_repository_configuration(
 /// * `config` - Application configuration containing template definitions
 /// * `app_id` - GitHub App ID for authentication
 /// * `app_key` - GitHub App private key for authentication
+/// * `metadata_repository_name` - Name of the repository containing organization configuration (e.g., ".reporoller")
 ///
 /// # Returns
 ///
@@ -1285,7 +1287,13 @@ async fn apply_repository_configuration(
 /// .build();
 ///
 /// let config = Config { templates: vec![] };
-/// let result = create_repository(request, &config, 12345, "private-key".to_string()).await?;
+/// let result = create_repository(
+///     request,
+///     &config,
+///     12345,
+///     "private-key".to_string(),
+///     ".reporoller"
+/// ).await?;
 /// println!("Created repository: {}", result.repository_url);
 /// # Ok(())
 /// # }
@@ -1295,6 +1303,7 @@ pub async fn create_repository(
     config: &config_manager::Config,
     app_id: u64,
     app_key: String,
+    metadata_repository_name: &str,
 ) -> RepoRollerResult<RepositoryCreationResult> {
     info!(
         "Starting repository creation: name='{}', owner='{}', template='{}'",
@@ -1323,6 +1332,7 @@ pub async fn create_repository(
         &installation_token,
         request.owner.as_ref(),
         request.template.as_ref(),
+        metadata_repository_name,
     )
     .await?;
 

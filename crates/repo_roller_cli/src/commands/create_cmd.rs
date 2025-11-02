@@ -173,7 +173,14 @@ pub async fn create_repository(
     };
 
     // Use the new function that accepts config directly
-    repo_roller_core::create_repository(request, &config.core, app_id, app_key).await
+    repo_roller_core::create_repository(
+        request,
+        &config.core,
+        app_id,
+        app_key,
+        &config.organization.metadata_repository_name,
+    )
+    .await
 }
 
 /// Retrieves GitHub authentication tokens from the system keyring.

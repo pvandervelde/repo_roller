@@ -458,11 +458,15 @@ impl IntegrationTestRunner {
         // Step 3: Call the repository creation function
         info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
 
+        // Get metadata repository name from scenario
+        let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
+
         let result = create_repository(
             request,
             &config,
             self.config.github_app_id,
             self.config.github_app_private_key.clone(),
+            metadata_repo_name,
         )
         .await;
 

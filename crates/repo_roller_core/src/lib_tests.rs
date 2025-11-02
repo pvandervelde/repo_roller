@@ -347,7 +347,14 @@ async fn test_create_repository_type_conversion() {
         }],
     };
 
-    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 
     // Should fail during GitHub App client creation with fake credentials
     assert!(result.is_err());
@@ -375,7 +382,14 @@ async fn test_create_repository_error_handling() {
         templates: vec![], // Empty templates - will cause error
     };
 
-    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 
     // Should return an error
     assert!(result.is_err());
@@ -401,7 +415,14 @@ async fn test_create_repository_preserves_variables() {
 
     // Function signature accepts the request - type checking works
     let config = Config { templates: vec![] };
-    let _result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let _result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 }
 
 /// Verify that branded types prevent type confusion.
@@ -434,7 +455,14 @@ async fn test_create_repository_result_type() {
 
     let config = Config { templates: vec![] };
 
-    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 
     // Verify the result type is RepoRollerResult<RepositoryCreationResult>
     match result {
