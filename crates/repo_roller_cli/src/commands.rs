@@ -6,7 +6,9 @@
 //! - `auth_cmd`: Authentication-related commands for GitHub credentials
 //! - `config_cmd`: Configuration management commands for settings and templates
 //! - `create_cmd`: Repository creation commands from templates
+//! - `org_settings_cmd`: Organization settings inspection commands
 
 pub mod auth_cmd;
 pub mod config_cmd;
 pub mod create_cmd;
+pub mod org_settings_cmd;

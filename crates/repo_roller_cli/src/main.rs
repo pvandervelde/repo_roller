@@ -30,7 +30,10 @@ mod config;
 mod errors;
 use errors::Error;
 
-use crate::commands::{auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs};
+use crate::commands::{
+    auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs,
+    org_settings_cmd::OrgSettingsCommands,
+};
 
 #[cfg(test)]
 #[path = "main_tests.rs"]
@@ -68,6 +71,10 @@ enum Commands {
 
     /// List recognized template variables and their descriptions
     ListVariables,
+
+    /// Organization settings inspection commands
+    #[command(subcommand)]
+    OrgSettings(OrgSettingsCommands),
 
     /// Show the CLI version information
     Version,
@@ -112,30 +119,24 @@ async fn main() {
             }
         }
         Commands::Create(args) => {
-            // Use handle_create_command to merge config, prompt, and apply org rules
+            // Use handle_create_command to merge config, prompt, and validate
             let options =
                 CreateCommandOptions::new(&args.config, &args.name, &args.owner, &args.template);
-            let result = handle_create_command(
-                options,
-                &ask_user_for_value,
-                repo_roller_core::OrgRules::new_from_text,
-                create_repository,
-            )
-            .await;
+            let result =
+                handle_create_command(options, &ask_user_for_value, create_repository).await;
 
             match result {
-                Ok(res) => {
-                    if res.success {
-                        println!("Repository created");
-                        std::process::exit(0);
-                    } else {
-                        println!("Failed to create repository: {}", res.message);
-                        std::process::exit(1);
-                    }
+                Ok(creation_result) => {
+                    println!("Repository created successfully!");
+                    println!("  URL: {}", creation_result.repository_url);
+                    println!("  ID: {}", creation_result.repository_id);
+                    println!("  Default branch: {}", creation_result.default_branch);
+                    println!("  Created at: {}", creation_result.created_at);
+                    std::process::exit(0);
                 }
                 Err(e) => {
-                    println!("Error: {e}");
-                    std::process::exit(2);
+                    println!("Failed to create repository: {}", e);
+                    std::process::exit(1);
                 }
             }
         }
@@ -146,6 +147,12 @@ async fn main() {
         Commands::ListVariables => {
             println!("Recognized template variables: (not yet implemented)");
             std::process::exit(0);
+        }
+        Commands::OrgSettings(cmd) => {
+            if let Err(e) = crate::commands::org_settings_cmd::execute(cmd).await {
+                error!("Error: {e}");
+                std::process::exit(1);
+            }
         }
         Commands::Version => {
             // Print version info from baked-in value

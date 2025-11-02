@@ -259,89 +259,6 @@ fn test_git_credentials_callback() {
 }
 
 #[tokio::test]
-async fn test_create_repository_fails_on_installation_token_error() {
-    let config = create_config_with_basic_template();
-    let template_fetcher =
-        create_mock_template_fetcher(vec![("README.md".to_string(), b"test content".to_vec())]);
-    let repo_client = create_failing_token_mock_repo_client();
-
-    let req = CreateRepoRequest {
-        name: "test-repo".to_string(),
-        owner: "test-org".to_string(),
-        template: "basic".to_string(),
-    };
-
-    let result =
-        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
-
-    assert!(!result.success);
-    assert!(result.message.contains("Failed to get installation token"));
-}
-
-#[tokio::test]
-async fn test_create_repository_fails_with_empty_owner() {
-    let config = create_config_with_basic_template();
-    let template_fetcher =
-        create_mock_template_fetcher(vec![("README.md".to_string(), b"test content".to_vec())]);
-    let repo_client = create_mock_repo_client();
-
-    let req = CreateRepoRequest {
-        name: "test-repo".to_string(),
-        owner: "".to_string(), // Empty owner should trigger user repo creation
-        template: "basic".to_string(),
-    };
-
-    let result =
-        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
-
-    assert!(!result.success);
-    // The mock returns an AuthError for user repositories, which gets formatted differently
-    assert!(result.message.contains("Invalid response format") || result.message.contains("Auth"));
-}
-
-#[tokio::test]
-async fn test_create_repository_fails_with_template_not_found() {
-    let config = create_empty_config(); // No templates
-    let template_fetcher = create_mock_template_fetcher(vec![]);
-    let repo_client = create_mock_repo_client();
-
-    let req = CreateRepoRequest {
-        name: "mockrepo".to_string(),
-        owner: "mockorg".to_string(),
-        template: "missing".to_string(),
-    };
-
-    let result =
-        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
-
-    assert!(!result.success);
-    assert!(result.message.contains("Template not found"));
-}
-
-#[tokio::test]
-async fn test_create_repository_gets_installation_token() {
-    let config = create_config_with_basic_template();
-    let template_fetcher =
-        create_mock_template_fetcher(vec![("README.md".to_string(), b"test content".to_vec())]);
-    let (repo_client, token_called) = create_token_tracking_mock_repo_client();
-
-    let req = CreateRepoRequest {
-        name: "test-repo".to_string(),
-        owner: "test-org".to_string(),
-        template: "basic".to_string(),
-    };
-
-    let _result =
-        create_repository_with_custom_settings(req, &config, &template_fetcher, &repo_client).await;
-
-    // The repository creation should call get_installation_token_for_org
-    assert!(
-        *token_called.lock().unwrap(),
-        "get_installation_token_for_org should have been called"
-    );
-}
-
-#[tokio::test]
 async fn test_push_to_origin_with_valid_token() {
     use temp_dir::TempDir;
     use url::Url;
@@ -404,8 +321,8 @@ async fn test_push_to_origin_with_valid_token() {
 /// This test validates the wrapper's ability to convert between typed and legacy formats.
 #[tokio::test]
 async fn test_create_repository_type_conversion() {
-    // This test will be updated once implementation is complete
-    // For now, verify the function signature is correct
+    // Verify the new create_repository function attempts to execute (will fail due to mocking limitations)
+    // Full integration tests will be added in Task 7.2.3
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
@@ -430,12 +347,24 @@ async fn test_create_repository_type_conversion() {
         }],
     };
 
-    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 
-    // Currently returns Internal error (not yet implemented)
+    // Should fail during GitHub App client creation with fake credentials
     assert!(result.is_err());
-    if let Err(RepoRollerError::System(SystemError::Internal { reason })) = result {
-        assert!(reason.contains("not yet implemented"));
+    if let Err(e) = result {
+        // Error should be from authentication or GitHub API, not "not yet implemented"
+        assert!(
+            !e.to_string().contains("not yet implemented"),
+            "Function should be implemented, got: {}",
+            e
+        );
     }
 }
 
@@ -453,7 +382,14 @@ async fn test_create_repository_error_handling() {
         templates: vec![], // Empty templates - will cause error
     };
 
-    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 
     // Should return an error
     assert!(result.is_err());
@@ -479,7 +415,14 @@ async fn test_create_repository_preserves_variables() {
 
     // Function signature accepts the request - type checking works
     let config = Config { templates: vec![] };
-    let _result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let _result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 }
 
 /// Verify that branded types prevent type confusion.
@@ -512,7 +455,14 @@ async fn test_create_repository_result_type() {
 
     let config = Config { templates: vec![] };
 
-    let result = create_repository(request, &config, 12345, "fake-key".to_string()).await;
+    let result = create_repository(
+        request,
+        &config,
+        12345,
+        "fake-key".to_string(),
+        ".reporoller",
+    )
+    .await;
 
     // Verify the result type is RepoRollerResult<RepositoryCreationResult>
     match result {
@@ -525,4 +475,177 @@ async fn test_create_repository_result_type() {
             assert!(matches!(error, RepoRollerError::System(_)));
         }
     }
+}
+
+// --- CONFIGURATION VARIABLE EXTRACTION TESTS ---
+
+/// Verify that extract_config_variables returns empty map for default configuration.
+#[test]
+fn test_extract_config_variables_empty_config() {
+    let merged_config = config_manager::MergedConfiguration::new();
+    let variables = extract_config_variables(&merged_config);
+
+    // Default config should have no explicitly set values, so we get default boolean values
+    assert_eq!(
+        variables.get("config_issues_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_wiki_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_projects_enabled"),
+        Some(&"false".to_string())
+    );
+}
+
+/// Verify that repository feature settings are correctly extracted as config variables.
+#[test]
+fn test_extract_config_variables_repository_features() {
+    use config_manager::{settings::RepositorySettings, MergedConfiguration, OverridableValue};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.repository = RepositorySettings {
+        issues: Some(OverridableValue::allowed(true)),
+        wiki: Some(OverridableValue::fixed(false)),
+        projects: Some(OverridableValue::allowed(true)),
+        discussions: Some(OverridableValue::allowed(false)),
+        pages: Some(OverridableValue::allowed(true)),
+        security_advisories: Some(OverridableValue::allowed(true)),
+        vulnerability_reporting: Some(OverridableValue::allowed(false)),
+        auto_close_issues: Some(OverridableValue::allowed(false)),
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    assert_eq!(
+        variables.get("config_issues_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_wiki_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_projects_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_discussions_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_pages_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_security_advisories_enabled"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_vulnerability_reporting_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_auto_close_issues_enabled"),
+        Some(&"false".to_string())
+    );
+}
+
+/// Verify that pull request settings are correctly extracted as config variables.
+#[test]
+fn test_extract_config_variables_pull_request_settings() {
+    use config_manager::{settings::PullRequestSettings, MergedConfiguration, OverridableValue};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.pull_requests = PullRequestSettings {
+        required_approving_review_count: Some(OverridableValue::allowed(2)),
+        allow_merge_commit: Some(OverridableValue::allowed(true)),
+        allow_squash_merge: Some(OverridableValue::allowed(false)),
+        allow_rebase_merge: Some(OverridableValue::allowed(true)),
+        allow_auto_merge: Some(OverridableValue::allowed(false)),
+        delete_branch_on_merge: Some(OverridableValue::allowed(true)),
+        ..Default::default()
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    assert_eq!(
+        variables.get("config_required_approving_review_count"),
+        Some(&"2".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_merge_commit"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_squash_merge"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_rebase_merge"),
+        Some(&"true".to_string())
+    );
+    assert_eq!(
+        variables.get("config_allow_auto_merge"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_delete_branch_on_merge"),
+        Some(&"true".to_string())
+    );
+}
+
+/// Verify that all config variables use the "config_" prefix to avoid naming conflicts.
+#[test]
+fn test_extract_config_variables_uses_prefix() {
+    use config_manager::{settings::RepositorySettings, MergedConfiguration, OverridableValue};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.repository = RepositorySettings {
+        issues: Some(OverridableValue::allowed(true)),
+        ..Default::default()
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    // Verify all keys start with "config_"
+    for key in variables.keys() {
+        assert!(
+            key.starts_with("config_"),
+            "Variable '{}' should start with 'config_'",
+            key
+        );
+    }
+}
+
+/// Verify that None values in configuration are handled correctly.
+#[test]
+fn test_extract_config_variables_none_values() {
+    use config_manager::{settings::RepositorySettings, MergedConfiguration};
+
+    let mut merged_config = MergedConfiguration::new();
+    merged_config.repository = RepositorySettings {
+        issues: None, // Explicitly set to None
+        wiki: None,
+        projects: None,
+        discussions: None,
+        pages: None,
+        security_advisories: None,
+        vulnerability_reporting: None,
+        auto_close_issues: None,
+    };
+
+    let variables = extract_config_variables(&merged_config);
+
+    // None values should result in "false" as the default
+    assert_eq!(
+        variables.get("config_issues_enabled"),
+        Some(&"false".to_string())
+    );
+    assert_eq!(
+        variables.get("config_wiki_enabled"),
+        Some(&"false".to_string())
+    );
 }

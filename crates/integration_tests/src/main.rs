@@ -274,6 +274,10 @@ fn generate_test_report(results: &[test_runner::TestResult]) -> Result<()> {
             TestScenario::VariableSubstitution => "Variable Substitution",
             TestScenario::FileFiltering => "File Filtering",
             TestScenario::ErrorHandling => "Error Handling",
+            TestScenario::OrganizationSettings => "Organization Settings Integration",
+            TestScenario::TeamConfiguration => "Team Configuration Overrides",
+            TestScenario::RepositoryType => "Repository Type Configuration",
+            TestScenario::ConfigurationHierarchy => "Configuration Hierarchy Merging",
         };
 
         writeln!(report, "### {} {}", status_emoji, scenario_name)?;
