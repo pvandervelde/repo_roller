@@ -1013,8 +1013,8 @@ async fn prepare_local_repository(
         |e| {
             error!("Failed to replace template variables: {}", e);
             RepoRollerError::Template(TemplateError::SubstitutionFailed {
-                variable: "unknown".to_string(),
-                reason: format!("Failed to replace template variables: {}", e),
+                variable: "(multiple variables)".to_string(),
+                reason: format!("Batch variable replacement failed: {}", e),
             })
         },
     )?;
@@ -1104,9 +1104,8 @@ async fn create_github_repository(
         .await
         .map_err(|e| {
             error!("Failed to create GitHub repository: {}", e);
-            RepoRollerError::GitHub(GitHubError::ApiRequestFailed {
-                status: 500,
-                message: format!("Failed to create repository: {}", e),
+            RepoRollerError::GitHub(GitHubError::NetworkError {
+                reason: format!("Failed to create repository: {}", e),
             })
         })?;
 
@@ -1221,9 +1220,8 @@ async fn apply_repository_configuration(
             .await
             .map_err(|e| {
                 error!("Failed to set custom properties on repository: {}", e);
-                RepoRollerError::GitHub(GitHubError::ApiRequestFailed {
-                    status: 500, // We don't have the actual status code from the error
-                    message: format!(
+                RepoRollerError::GitHub(GitHubError::NetworkError {
+                    reason: format!(
                         "Failed to set custom properties on {}/{}: {}",
                         owner, repo_name, e
                     ),

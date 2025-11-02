@@ -245,6 +245,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 
     // Create metadata provider config using the configured repository name
     // Falls back to DEFAULT_METADATA_REPOSITORY_NAME if not configured
+    // Note: Empty string check handles case where config file explicitly sets empty value
     let metadata_repo_name = if app_config.organization.metadata_repository_name.is_empty() {
         DEFAULT_METADATA_REPOSITORY_NAME
     } else {

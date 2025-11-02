@@ -434,7 +434,7 @@ function Initialize-LocalRepository
             {
                 Write-Log "Could not remove existing directory, using alternate path" -Level "Warning"
                 # Generate a new unique path
-                $timestamp = Get-Date -Format "yyyyMMddHHmmssffff"
+                $timestamp = Get-Date -Format "yyyyMMddHHmmss"
                 $Path = Join-Path $env:TEMP "reporoller-test-metadata-$timestamp"
             }
         }
