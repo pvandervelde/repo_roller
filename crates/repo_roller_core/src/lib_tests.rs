@@ -300,7 +300,7 @@ async fn test_push_to_origin_with_valid_token() {
 
     // This will fail because it's not a real repository, but it should fail with a network error
     // rather than an authentication error, proving our auth setup is correct
-    let result = push_to_origin(&temp_dir, fake_url, "main", token);
+    let result = crate::git::push_to_origin(&temp_dir, fake_url, "main", token);
 
     // We expect this to fail with a network/repository error, not an auth error
     assert!(result.is_err());
