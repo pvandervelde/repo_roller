@@ -98,6 +98,9 @@ use errors::Error;
 // Git operations module
 mod git;
 
+// Configuration resolution and application module
+mod configuration;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
@@ -474,61 +477,6 @@ async fn setup_github_authentication(
     Ok((installation_token, installation_repo_client))
 }
 
-/// Resolve organization configuration using OrganizationSettingsManager.
-///
-/// # Returns
-///
-/// Returns the merged configuration for the repository.
-async fn resolve_organization_configuration(
-    installation_token: &str,
-    organization: &str,
-    template_name: &str,
-    metadata_repository_name: &str,
-) -> RepoRollerResult<config_manager::MergedConfiguration> {
-    use config_manager::{
-        ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
-        OrganizationSettingsManager,
-    };
-    use std::sync::Arc;
-
-    info!("Resolving organization configuration");
-
-    // Create a separate client for the metadata provider
-    let metadata_client = github_client::create_token_client(installation_token).map_err(|e| {
-        error!("Failed to create metadata provider client: {}", e);
-        RepoRollerError::System(SystemError::Internal {
-            reason: format!("Failed to create metadata provider client: {}", e),
-        })
-    })?;
-    let metadata_repo_client = GitHubClient::new(metadata_client);
-
-    let metadata_provider_config = MetadataProviderConfig::explicit(metadata_repository_name);
-    let metadata_provider = Arc::new(GitHubMetadataProvider::new(
-        metadata_repo_client,
-        metadata_provider_config,
-    ));
-
-    let settings_manager = OrganizationSettingsManager::new(metadata_provider);
-
-    let config_context = ConfigurationContext::new(organization, template_name);
-
-    let merged_config = settings_manager
-        .resolve_configuration(&config_context)
-        .await
-        .or_else(|e: config_manager::ConfigurationError| -> config_manager::ConfigurationResult<config_manager::MergedConfiguration> {
-            warn!(
-                "Failed to resolve organization configuration: {}. Using global defaults.",
-                e
-            );
-            // If configuration resolution fails (e.g., metadata repository not found),
-            // fall back to using global defaults with empty overrides
-            Ok(config_manager::MergedConfiguration::default())
-        })?;
-
-    info!("Organization configuration resolved successfully");
-    Ok(merged_config)
-}
-
 /// Prepare local repository with template files and processing.
 ///
 /// This function:
@@ -684,127 +632,6 @@ async fn create_github_repository(
     Ok(repo)
 }
 
-/// Apply merged configuration to the created repository.
-///
-/// This function applies organization-specific configuration to a newly created
-/// repository, including labels, webhooks, and custom properties.
-///
-/// ## Parameters
-///
-/// * `installation_repo_client` - GitHub API client with installation token
-/// * `owner` - Organization or user owning the repository
-/// * `repo_name` - Name of the repository
-/// * `merged_config` - Resolved configuration from organization settings
-///
-/// ## Returns
-///
-/// * `Ok(())` - If configuration is applied successfully
-/// * `Err(RepoRollerError)` - If any configuration application fails
-///
-/// ## Current Implementation Status
-///
-/// - **Custom Properties**: Implemented via `set_repository_custom_properties`
-/// - **Labels**: Pending - requires `create_label` method in GitHubClient
-/// - **Webhooks**: Pending - requires `create_webhook` method in GitHubClient
-///
-/// ## Errors
-///
-/// Returns errors for:
-/// - GitHub API failures when setting custom properties
-/// - Permission issues
-/// - Invalid property values
-async fn apply_repository_configuration(
-    installation_repo_client: &GitHubClient,
-    owner: &str,
-    repo_name: &str,
-    merged_config: &config_manager::MergedConfiguration,
-) -> RepoRollerResult<()> {
-    info!(
-        "Applying merged configuration to repository {}/{}",
-        owner, repo_name
-    );
-
-    // Apply labels
-    if !merged_config.labels.is_empty() {
-        debug!("Creating {} labels", merged_config.labels.len());
-        // TODO: Implement label creation via GitHub API
-        // This requires adding create_label() method to GitHubClient
-        // Tracked in separate task/issue
-        for (label_name, label_config) in &merged_config.labels {
-            info!("Label to create: {} -> {:?}", label_name, label_config);
-        }
-        warn!("Label creation not yet implemented - requires GitHubClient::create_label() method");
-    }
-
-    // Apply webhooks
-    if !merged_config.webhooks.is_empty() {
-        debug!("Creating {} webhooks", merged_config.webhooks.len());
-        // TODO: Implement webhook creation via GitHub API
-        // This requires adding create_webhook() method to GitHubClient
-        // Tracked in separate task/issue
-        for webhook in &merged_config.webhooks {
-            info!("Webhook to create: {:?}", webhook);
-        }
-        warn!(
-            "Webhook creation not yet implemented - requires GitHubClient::create_webhook() method"
-        );
-    }
-
-    // Apply custom properties (including repository type)
-    if !merged_config.custom_properties.is_empty() {
-        debug!(
-            "Setting {} custom properties",
-            merged_config.custom_properties.len()
-        );
-
-        // Convert custom properties to GitHub API format
-        let properties: Vec<serde_json::Value> = merged_config
-            .custom_properties
-            .iter()
-            .map(|prop| {
-                use config_manager::settings::custom_property::CustomPropertyValue;
-                let value = match &prop.value {
-                    CustomPropertyValue::String(s) => serde_json::Value::String(s.clone()),
-                    CustomPropertyValue::SingleSelect(s) => serde_json::Value::String(s.clone()),
-                    CustomPropertyValue::MultiSelect(vec) => serde_json::Value::Array(
-                        vec.iter()
-                            .map(|s| serde_json::Value::String(s.clone()))
-                            .collect(),
-                    ),
-                    CustomPropertyValue::Boolean(b) => serde_json::Value::Bool(*b),
-                };
-
-                serde_json::json!({
-                    "property_name": prop.property_name,
-                    "value": value
-                })
-            })
-            .collect();
-
-        let payload = github_client::CustomPropertiesPayload::new(properties);
-
-        installation_repo_client
-            .set_repository_custom_properties(owner, repo_name, &payload)
-            .await
-            .map_err(|e| {
-                error!("Failed to set custom properties on repository: {}", e);
-                RepoRollerError::GitHub(GitHubError::NetworkError {
-                    reason: format!(
-                        "Failed to set custom properties on {}/{}: {}",
-                        owner, repo_name, e
-                    ),
-                })
-            })?;
-
-        info!(
-            "Successfully set {} custom properties",
-            merged_config.custom_properties.len()
-        );
-    }
-
-    Ok(())
-}
-
 /// Create a new repository with type-safe API and organization settings integration.
 ///
 /// This is the main repository creation orchestration function that coordinates:
@@ -895,7 +722,7 @@ pub async fn create_repository(
         template_engine::GitHubTemplateFetcher::new(GitHubClient::new(app_client));
 
     // Step 3: Resolve organization configuration
-    let merged_config = resolve_organization_configuration(
+    let merged_config = configuration::resolve_organization_configuration(
         &installation_token,
         request.owner.as_ref(),
         request.template.as_ref(),
@@ -955,7 +782,7 @@ pub async fn create_repository(
     info!("Repository successfully pushed to GitHub");
 
     // Step 9: Apply merged configuration to repository
-    apply_repository_configuration(
+    configuration::apply_repository_configuration(
         &installation_repo_client,
         request.owner.as_ref(),
         request.name.as_ref(),
