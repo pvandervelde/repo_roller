@@ -101,6 +101,9 @@ mod git;
 // Configuration resolution and application module
 mod configuration;
 
+// GitHub App authentication module
+mod github_auth;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
@@ -420,63 +423,6 @@ fn create_additional_files(
 /// # Ok(())
 /// # }
 /// ```
-/// Setup GitHub clients and authentication.
-///
-/// Creates the GitHub App client and retrieves installation token for the organization.
-///
-/// # Returns
-///
-/// Returns tuple of (installation_token, installation_repo_client).
-async fn setup_github_authentication(
-    app_id: u64,
-    app_key: &str,
-    organization: &str,
-) -> RepoRollerResult<(String, GitHubClient)> {
-    info!("Creating GitHub App client for authentication");
-    let app_client = create_app_client(app_id, app_key).await.map_err(|e| {
-        error!("Failed to create GitHub App client: {}", e);
-        RepoRollerError::System(SystemError::Internal {
-            reason: format!("Failed to create GitHub App client: {}", e),
-        })
-    })?;
-
-    let repo_client = GitHubClient::new(app_client);
-
-    info!(
-        "Getting installation token for organization: {}",
-        organization
-    );
-    let installation_token = repo_client
-        .get_installation_token_for_org(organization)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to get installation token for organization '{}': {}",
-                organization, e
-            );
-            RepoRollerError::GitHub(GitHubError::AuthenticationFailed {
-                reason: format!(
-                    "Failed to get installation token for organization '{}': {}",
-                    organization, e
-                ),
-            })
-        })?;
-
-    info!("Successfully retrieved installation token");
-
-    let installation_client =
-        github_client::create_token_client(&installation_token).map_err(|e| {
-            error!("Failed to create installation token client: {}", e);
-            RepoRollerError::System(SystemError::Internal {
-                reason: format!("Failed to create installation token client: {}", e),
-            })
-        })?;
-
-    let installation_repo_client = GitHubClient::new(installation_client);
-
-    Ok((installation_token, installation_repo_client))
-}
-
 /// Prepare local repository with template files and processing.
 ///
 /// This function:
@@ -706,7 +652,7 @@ pub async fn create_repository(
 
     // Step 1: Setup GitHub authentication
     let (installation_token, installation_repo_client) =
-        setup_github_authentication(app_id, &app_key, request.owner.as_ref()).await?;
+        github_auth::setup_github_authentication(app_id, &app_key, request.owner.as_ref()).await?;
 
     // Step 2: Create template fetcher for later use
     let app_client = create_app_client(app_id, &app_key).await.map_err(|e| {
