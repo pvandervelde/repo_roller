@@ -8,7 +8,6 @@ use github_client::{
     errors::Error as GitHubError, models, RepositoryClient, RepositorySettingsUpdate,
 };
 use std::sync::{Arc, Mutex};
-use template_engine::TemplateFetcher;
 
 // --- MOCK STRUCTS (ALPHABETICALLY ORDERED) ---
 
@@ -120,26 +119,6 @@ impl Default for MockRepoClientConfig {
 }
 
 impl MockRepoClientConfig {
-    /// Create config that tracks installation token calls
-    fn with_token_tracking() -> (Self, Arc<Mutex<bool>>) {
-        let tracker = Arc::new(Mutex::new(false));
-        let config = Self {
-            token_behavior: MockTokenBehavior::Success("ghs_test_token_for_org".to_string()),
-            token_call_tracker: Some(tracker.clone()),
-            default_branch: "main".to_string(),
-        };
-        (config, tracker)
-    }
-
-    /// Create config that fails installation token retrieval
-    fn with_token_failure() -> Self {
-        Self {
-            token_behavior: MockTokenBehavior::InvalidResponse,
-            token_call_tracker: None,
-            default_branch: "main".to_string(),
-        }
-    }
-
     /// Create config with custom token for organization
     #[allow(dead_code)]
     fn with_org_token(org_name: &str) -> Self {
@@ -148,20 +127,6 @@ impl MockRepoClientConfig {
             token_call_tracker: None,
             default_branch: "main".to_string(),
         }
-    }
-}
-
-struct MockTemplateFetcher {
-    files: Vec<(String, Vec<u8>)>,
-}
-
-#[async_trait]
-impl TemplateFetcher for MockTemplateFetcher {
-    async fn fetch_template_files(
-        &self,
-        _source_repo: &str,
-    ) -> Result<Vec<(String, Vec<u8>)>, String> {
-        Ok(self.files.clone())
     }
 }
 
@@ -174,6 +139,7 @@ enum MockTokenBehavior {
     #[allow(dead_code)]
     AuthError(String),
     /// Return an InvalidResponse error
+    #[allow(dead_code)] // Used in match arm but compiler doesn't detect it
     InvalidResponse,
     /// Return a successful token with the given string
     Success(String),
@@ -181,61 +147,10 @@ enum MockTokenBehavior {
 
 // --- MOCK FUNCTIONS (ALPHABETICALLY ORDERED) ---
 
-/// Creates a default template config for testing
-fn create_basic_template_config() -> TemplateConfig {
-    TemplateConfig {
-        name: "basic".to_string(),
-        source_repo: "stub".to_string(),
-        description: None,
-        topics: None,
-        features: None,
-        pr_settings: None,
-        labels: None,
-        branch_protection_rules: None,
-        action_permissions: None,
-        required_variables: None,
-        variable_configs: None,
-    }
-}
-
-/// Creates a config with the basic template
-fn create_config_with_basic_template() -> Config {
-    Config {
-        templates: vec![create_basic_template_config()],
-    }
-}
-
-/// Creates a config with no templates
-fn create_empty_config() -> Config {
-    Config { templates: vec![] }
-}
-
-/// Creates a mock repository client that fails installation token retrieval
-fn create_failing_token_mock_repo_client() -> impl RepositoryClient {
-    ConfigurableMockRepoClient::new(MockRepoClientConfig::with_token_failure())
-}
-
-/// Creates a mock repository client with successful responses
-fn create_mock_repo_client() -> impl RepositoryClient {
-    ConfigurableMockRepoClient::new(MockRepoClientConfig::default())
-}
-
 /// Creates a mock repository client with organization-specific token
 #[allow(dead_code)]
 fn create_mock_repo_client_for_org(org_name: &str) -> impl RepositoryClient {
     ConfigurableMockRepoClient::new(MockRepoClientConfig::with_org_token(org_name))
-}
-
-/// Creates a mock template fetcher that returns the provided files
-fn create_mock_template_fetcher(files: Vec<(String, Vec<u8>)>) -> impl TemplateFetcher {
-    MockTemplateFetcher { files }
-}
-
-/// Creates a mock repository client that tracks installation token calls
-fn create_token_tracking_mock_repo_client() -> (impl RepositoryClient, Arc<Mutex<bool>>) {
-    let (config, tracker) = MockRepoClientConfig::with_token_tracking();
-    let client = ConfigurableMockRepoClient::new(config);
-    (client, tracker)
 }
 
 // --- TEST FUNCTIONS (ALPHABETICALLY ORDERED) ---

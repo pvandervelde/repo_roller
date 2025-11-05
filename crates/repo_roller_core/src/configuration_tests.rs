@@ -1,7 +1,5 @@
 //! Tests for configuration module.
 
-use super::*;
-
 // Note: These functions are integration-style and require:
 // 1. GitHub client creation
 // 2. Async GitHub API calls
