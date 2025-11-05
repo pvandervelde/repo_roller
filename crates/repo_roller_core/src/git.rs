@@ -356,7 +356,9 @@ pub(crate) fn set_head_reference_and_verify(
                         "main".to_string()
                     }
                 } else {
-                    debug!("HEAD reference exists but has no symbolic target, defaulting to 'main'");
+                    debug!(
+                        "HEAD reference exists but has no symbolic target, defaulting to 'main'"
+                    );
                     "main".to_string()
                 }
             }
@@ -386,7 +388,10 @@ pub(crate) fn set_head_reference_and_verify(
     // Now set HEAD to point to the branch (symbolic reference)
     repo.set_head(&branch_ref_name).map_err(|e| {
         error!("Failed to set HEAD to {} branch: {}", branch_name, e);
-        Error::GitOperation(format!("Failed to set HEAD to {} branch: {}", branch_name, e))
+        Error::GitOperation(format!(
+            "Failed to set HEAD to {} branch: {}",
+            branch_name, e
+        ))
     })?;
 
     info!(
@@ -626,9 +631,8 @@ pub fn push_to_origin(
         repo_url, branch_name
     );
     debug!(
-        "Token length: {} characters, starts with: {}",
-        access_token.len(),
-        &access_token.chars().take(8).collect::<String>()
+        "Using authentication token ({} characters)",
+        access_token.len()
     );
 
     let repo = Repository::open(local_repo_path.path()).map_err(|e| {
@@ -706,10 +710,7 @@ pub fn push_to_origin(
 
         if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
             info!("Using USER_PASS_PLAINTEXT credentials with 'x-access-token' username");
-            debug!(
-                "Token for authentication: {}...",
-                &token.chars().take(8).collect::<String>()
-            );
+            debug!("Using authentication token ({} characters)", token.len());
 
             match git2::Cred::userpass_plaintext("x-access-token", &token) {
                 Ok(cred) => {
