@@ -16,10 +16,70 @@ use crate::{RepoRollerError, RepoRollerResult, SystemError, TemplateError};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
+use std::path::Path;
 use temp_dir::TempDir;
 use template_engine::{TemplateFetcher, TemplateProcessingRequest, TemplateProcessor};
 use tracing::{debug, error, info};
 use walkdir::WalkDir;
+
+/// Validate that a file path is safe for use in template processing.
+///
+/// This function ensures that template files cannot perform path traversal attacks
+/// by writing files outside the repository boundaries. It performs multiple security
+/// checks on the provided file path.
+///
+/// ## Security Checks
+///
+/// 1. **Path Traversal Prevention**: Rejects paths containing `..` components that could
+///    escape the repository directory
+/// 2. **Absolute Path Rejection**: Rejects absolute paths (starting with `/` on Unix or
+///    drive letters like `C:\` on Windows)
+/// 3. **Boundary Verification**: Ensures the resolved path stays within repository bounds
+///    using canonicalization and prefix checking
+///
+/// ## Parameters
+///
+/// * `file_path` - The relative file path from the template (e.g., "src/main.rs")
+/// * `repo_path` - The root path of the repository where files will be written
+///
+/// ## Returns
+///
+/// * `Ok(())` - If the path is safe and can be used
+/// * `Err(Error)` - If the path is unsafe or invalid
+///
+/// ## Error Conditions
+///
+/// Returns an error with a descriptive message when:
+/// - Path contains `..` components (e.g., `../../etc/passwd`)
+/// - Path is absolute (e.g., `/etc/passwd` or `C:\Windows\System32\config`)
+/// - Resolved path would be outside the repository directory
+/// - Path canonicalization fails
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// // Safe paths (should succeed)
+/// validate_safe_path("README.md", repo_path)?;
+/// validate_safe_path("src/main.rs", repo_path)?;
+/// validate_safe_path("docs/guide.md", repo_path)?;
+///
+/// // Unsafe paths (should fail)
+/// validate_safe_path("../../etc/passwd", repo_path)?;  // Path traversal
+/// validate_safe_path("/etc/passwd", repo_path)?;        // Absolute path
+/// validate_safe_path("../outside.txt", repo_path)?;     // Escapes repository
+/// ```
+///
+/// ## Implementation Notes
+///
+/// - Uses `Path::canonicalize()` for symbolic link resolution
+/// - Uses `Path::starts_with()` for boundary checking
+/// - Provides clear error messages indicating why a path was rejected
+/// - Prevents both obvious attacks and subtle canonicalization-based bypasses
+fn validate_safe_path(_file_path: &str, _repo_path: &Path) -> Result<(), Error> {
+    // TODO: Implement path validation
+    // For now, this is a placeholder that will be implemented in the implementation phase
+    unimplemented!("Path validation to be implemented")
+}
 
 /// Copy template files to the local repository directory.
 ///
@@ -70,6 +130,9 @@ pub(crate) fn copy_template_files(
     debug!("Copying {} template files to local repository", files.len());
 
     for (file_path, content) in files {
+        // Validate the path for security (prevent path traversal attacks)
+        validate_safe_path(file_path, local_repo_path.path())?;
+
         let target_path = local_repo_path.path().join(file_path);
 
         // Create parent directories if they don't exist
