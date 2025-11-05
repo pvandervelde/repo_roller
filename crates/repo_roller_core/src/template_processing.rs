@@ -75,10 +75,91 @@ use walkdir::WalkDir;
 /// - Uses `Path::starts_with()` for boundary checking
 /// - Provides clear error messages indicating why a path was rejected
 /// - Prevents both obvious attacks and subtle canonicalization-based bypasses
-fn validate_safe_path(_file_path: &str, _repo_path: &Path) -> Result<(), Error> {
-    // TODO: Implement path validation
-    // For now, this is a placeholder that will be implemented in the implementation phase
-    unimplemented!("Path validation to be implemented")
+fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), Error> {
+    // Check for empty path
+    if file_path.is_empty() {
+        return Err(Error::FileSystem(
+            "Empty file path is not allowed".to_string(),
+        ));
+    }
+
+    // Create a Path from the file_path string
+    let path = Path::new(file_path);
+
+    // Check if the path is absolute (Unix: starts with /, Windows: C:\, etc.)
+    if path.is_absolute() {
+        return Err(Error::FileSystem(format!(
+            "Unsafe path: Absolute paths are not allowed: {}",
+            file_path
+        )));
+    }
+
+    // Check for paths that are only dots (., .., ..., etc.)
+    // These are either current dir references or invalid file names
+    let trimmed = file_path.trim_start_matches("./").trim_start_matches(".\\");
+    if trimmed.chars().all(|c| c == '.') && !trimmed.is_empty() {
+        return Err(Error::FileSystem(format!(
+            "Unsafe path: Path consisting only of dots is not allowed: {}",
+            file_path
+        )));
+    }
+
+    // Check for parent directory references (..)
+    // This prevents path traversal attacks like "../../etc/passwd"
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                return Err(Error::FileSystem(format!(
+                    "Unsafe path: Path traversal with parent directory (..) is not allowed: {}",
+                    file_path
+                )));
+            }
+            std::path::Component::CurDir => {
+                // Current directory (.) is suspicious when it appears alone
+                // but we'll allow it in paths like "./file.txt" by checking if it's the only component
+                if path.components().count() == 1 {
+                    return Err(Error::FileSystem(format!(
+                        "Unsafe path: Path consisting only of '.' is not allowed: {}",
+                        file_path
+                    )));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Additional check: resolve the path and verify it stays within repo bounds
+    // This catches subtle cases where path manipulation could escape the repo
+    let target_path = repo_path.join(path);
+
+    // For validation purposes, we need to check if the path would escape the repository
+    // We can't always canonicalize non-existent paths, so we'll check the components
+    // We already validated no ".." components, and the path is relative, so joining
+    // should keep us within bounds. However, let's add one more check:
+
+    // Normalize the path by checking if it would escape when joined
+    // Since we've already rejected ".." and absolute paths, a relative path
+    // joined to repo_path should always stay within repo_path
+    // But let's verify the target_path starts with repo_path when normalized
+
+    // We can't canonicalize a path that doesn't exist yet, so we'll use a
+    // heuristic: check if any normalization of the path would escape
+    // Since we blocked ".." already, this should be safe
+
+    // Convert to string for final validation
+    let target_str = target_path.to_string_lossy();
+    let repo_str = repo_path.to_string_lossy();
+
+    // Basic prefix check (this is somewhat redundant after blocking .. and absolute paths,
+    // but provides defense in depth)
+    if !target_str.starts_with(repo_str.as_ref()) {
+        return Err(Error::FileSystem(format!(
+            "Unsafe path: Path resolves outside repository bounds: {}",
+            file_path
+        )));
+    }
+
+    Ok(())
 }
 
 /// Copy template files to the local repository directory.

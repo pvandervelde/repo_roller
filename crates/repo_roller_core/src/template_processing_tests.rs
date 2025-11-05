@@ -1,7 +1,6 @@
 //! Tests for template processing module.
 
 use super::*;
-use std::path::PathBuf;
 use temp_dir::TempDir;
 
 /// Module for path validation security tests
