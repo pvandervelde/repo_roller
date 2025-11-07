@@ -78,7 +78,7 @@ fn test_commit_all_changes_empty_directory_fails() {
 
     assert!(result.is_err(), "Commit should fail for empty directory");
     assert!(
-        matches!(result.unwrap_err(), Error::GitOperation(_)),
+        matches!(result.unwrap_err(), SystemError::GitOperation { .. }),
         "Should return GitOperation error"
     );
 }

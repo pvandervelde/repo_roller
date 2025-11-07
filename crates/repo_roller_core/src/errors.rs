@@ -4,28 +4,6 @@ use thiserror::Error;
 #[path = "errors_tests.rs"]
 mod tests;
 
-/// DEPRECATED: Internal-only error type for lib.rs orchestration code.
-///
-/// This type exists temporarily to support the legacy orchestration code in lib.rs.
-/// It will be removed when lib.rs is refactored (Tasks 1.8.10 and 2.0+).
-///
-/// DO NOT USE in new code. Use the domain-specific error types instead:
-/// - ValidationError for input validation
-/// - RepositoryError for repository operations
-/// - SystemError for infrastructure failures
-/// - etc.
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("Git operation failed: {0}")]
-    GitOperation(String),
-
-    #[error("File system operation failed: {0}")]
-    FileSystem(String),
-
-    #[error("Template processing failed: {0}")]
-    TemplateProcessing(String),
-}
-
 /// Validation errors for user input and business rules.
 ///
 /// These errors indicate that user-provided data doesn't meet

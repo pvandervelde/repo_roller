@@ -10,7 +10,7 @@
 //! For GitHub API operations (creating repositories, managing settings), see the
 //! `github_client` crate.
 
-use crate::errors::Error;
+use crate::errors::SystemError;
 use git2::{Repository, Signature};
 use temp_dir::TempDir;
 use tracing::{debug, error, info, warn};
@@ -18,7 +18,7 @@ use tracing::{debug, error, info, warn};
 /// Debug the current state of the repository including HEAD and commit history.
 ///
 /// Logs information about the repository's current state for diagnostic purposes.
-pub(crate) fn debug_repository_state(repo: &Repository) -> Result<(), Error> {
+pub(crate) fn debug_repository_state(repo: &Repository) -> Result<(), SystemError> {
     debug!("Repository state check:");
     match repo.head() {
         Ok(head) => {
@@ -59,7 +59,7 @@ pub(crate) fn debug_repository_state(repo: &Repository) -> Result<(), Error> {
 /// Debug files in the working directory by listing them and showing previews.
 ///
 /// Returns the number of files found in the working directory.
-pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize, Error> {
+pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize, SystemError> {
     let mut file_count = 0;
     if let Ok(entries) = std::fs::read_dir(local_repo_path.path()) {
         for entry in entries.flatten() {
@@ -135,12 +135,15 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
 /// let tree_oid = prepare_index_and_tree(&repo)?;
 /// println!("Created tree with OID: {}", tree_oid);
 /// ```
-pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Error> {
+pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, SystemError> {
     // Get the repository index (staging area) - this is where Git tracks changes
     // before they become part of a commit
     let mut index = repo.index().map_err(|e| {
         error!("Failed to get repository index: {}", e);
-        Error::GitOperation(format!("Failed to get repository index: {}", e))
+        SystemError::GitOperation {
+            operation: "get repository index".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     debug!("Repository index retrieved");
@@ -152,7 +155,10 @@ pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Err
         .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
         .map_err(|e| {
             error!("Failed to add files to index: {}", e);
-            Error::GitOperation(format!("Failed to add files to index: {}", e))
+            SystemError::GitOperation {
+                operation: "add files to index".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
     // Check how many entries are in the index
@@ -161,9 +167,10 @@ pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Err
 
     if index_entry_count == 0 {
         error!("No files were added to the git index - cannot create commit");
-        return Err(Error::GitOperation(
-            "No files to commit - index is empty".to_string(),
-        ));
+        return Err(SystemError::GitOperation {
+            operation: "create commit".to_string(),
+            reason: "No files to commit - index is empty".to_string(),
+        });
     }
 
     // Write the index to create a tree object
@@ -171,7 +178,10 @@ pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Err
     // This tree will be referenced by the commit we create later
     let tree_oid = index.write_tree().map_err(|e| {
         error!("Failed to write tree: {}", e);
-        Error::GitOperation(format!("Failed to write tree: {}", e))
+        SystemError::GitOperation {
+            operation: "write tree".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     debug!("Git tree written with OID: {}", tree_oid);
@@ -225,18 +235,24 @@ pub(crate) fn create_initial_commit(
     repo: &Repository,
     tree_oid: git2::Oid,
     commit_message: &str,
-) -> Result<git2::Oid, Error> {
+) -> Result<git2::Oid, SystemError> {
     // Find the tree object using the OID returned from prepare_index_and_tree
     let tree = repo.find_tree(tree_oid).map_err(|e| {
         error!("Failed to find tree: {}", e);
-        Error::GitOperation(format!("Failed to find tree: {}", e))
+        SystemError::GitOperation {
+            operation: "find tree".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     // Create signature for both author and committer
     // In a real implementation, this would use actual user information
     let signature = Signature::now("RepoRoller", "repo-roller@example.com").map_err(|e| {
         error!("Failed to create signature: {}", e);
-        Error::GitOperation(format!("Failed to create signature: {}", e))
+        SystemError::GitOperation {
+            operation: "create signature".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     debug!("Git signature created for RepoRoller");
@@ -260,7 +276,10 @@ pub(crate) fn create_initial_commit(
         )
         .map_err(|e| {
             error!("Failed to create commit: {}", e);
-            Error::GitOperation(format!("Failed to create commit: {}", e))
+            SystemError::GitOperation {
+                operation: "create commit".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
     debug!("Initial commit created with OID: {}", commit_oid);
@@ -317,7 +336,7 @@ pub(crate) fn set_head_reference_and_verify(
     repo: &Repository,
     commit_oid: git2::Oid,
     commit_message: &str,
-) -> Result<(), Error> {
+) -> Result<(), SystemError> {
     // Determine the branch name from the HEAD symbolic reference
     // This respects the default branch configured during init_local_git_repo
     let branch_name = if repo.head_detached().unwrap_or(false) {
@@ -377,10 +396,10 @@ pub(crate) fn set_head_reference_and_verify(
     repo.reference(&branch_ref_name, commit_oid, false, "Initial commit")
         .map_err(|e| {
             error!("Failed to create {} branch reference: {}", branch_name, e);
-            Error::GitOperation(format!(
-                "Failed to create {} branch reference: {}",
-                branch_name, e
-            ))
+            SystemError::GitOperation {
+                operation: format!("create {} branch reference", branch_name),
+                reason: e.to_string(),
+            }
         })?;
 
     info!("Branch reference created: {}", branch_ref_name);
@@ -388,10 +407,10 @@ pub(crate) fn set_head_reference_and_verify(
     // Now set HEAD to point to the branch (symbolic reference)
     repo.set_head(&branch_ref_name).map_err(|e| {
         error!("Failed to set HEAD to {} branch: {}", branch_name, e);
-        Error::GitOperation(format!(
-            "Failed to set HEAD to {} branch: {}",
-            branch_name, e
-        ))
+        SystemError::GitOperation {
+            operation: format!("set HEAD to {} branch", branch_name),
+            reason: e.to_string(),
+        }
     })?;
 
     info!(
@@ -477,7 +496,10 @@ pub(crate) fn set_head_reference_and_verify(
 /// commit_all_changes(&temp_dir, "Initial repository setup")?;
 /// println!("All changes committed successfully");
 /// ```
-pub fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Result<(), Error> {
+pub fn commit_all_changes(
+    local_repo_path: &TempDir,
+    commit_message: &str,
+) -> Result<(), SystemError> {
     info!(
         "Committing all changes in repository at {:?} with message: '{}'",
         local_repo_path.path(),
@@ -487,7 +509,10 @@ pub fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Re
     // Open the repository
     let repo = Repository::open(local_repo_path.path()).map_err(|e| {
         error!("Failed to open repository: {}", e);
-        Error::GitOperation(format!("Failed to open repository: {}", e))
+        SystemError::GitOperation {
+            operation: "open repository".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     debug!("Repository opened successfully");
@@ -499,9 +524,10 @@ pub fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Re
     let file_count = debug_working_directory(local_repo_path)?;
 
     if file_count == 0 {
-        return Err(Error::GitOperation(
-            "No files found in working directory - repository will be empty".to_string(),
-        ));
+        return Err(SystemError::GitOperation {
+            operation: "commit files".to_string(),
+            reason: "No files found in working directory - repository will be empty".to_string(),
+        });
     }
 
     // Prepare index and create tree
@@ -530,7 +556,7 @@ pub fn commit_all_changes(local_repo_path: &TempDir, commit_message: &str) -> Re
 ///
 /// * `Ok(())` - If repository initialization succeeds
 /// * `Err(Error)` - If Git initialization fails
-pub fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result<(), Error> {
+pub fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result<(), SystemError> {
     debug!("Initializing git repository at {:?}", local_path.path());
 
     // Initialize git repository with custom options to set the default branch
@@ -540,7 +566,10 @@ pub fn init_local_git_repo(local_path: &TempDir, default_branch: &str) -> Result
 
     let repo = Repository::init_opts(local_path.path(), &opts).map_err(|e| {
         error!("Failed to initialize git repository: {}", e);
-        Error::GitOperation(format!("Failed to initialize git repository: {}", e))
+        SystemError::GitOperation {
+            operation: "initialize git repository".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     info!(
@@ -625,7 +654,7 @@ pub fn push_to_origin(
     repo_url: url::Url,
     branch_name: &str,
     access_token: &str,
-) -> Result<(), Error> {
+) -> Result<(), SystemError> {
     info!(
         "Starting git push operation to origin: {} (branch: {})",
         repo_url, branch_name
@@ -641,7 +670,10 @@ pub fn push_to_origin(
             local_repo_path.path(),
             e
         );
-        Error::GitOperation(format!("Failed to open git repository: {}", e))
+        SystemError::GitOperation {
+            operation: "open git repository".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     debug!("Git repository opened successfully");
@@ -652,7 +684,10 @@ pub fn push_to_origin(
             debug!("Origin remote already exists, removing it");
             repo.remote_delete("origin").map_err(|e| {
                 error!("Failed to delete existing origin remote: {}", e);
-                Error::GitOperation(format!("Failed to delete existing origin remote: {}", e))
+                SystemError::GitOperation {
+                    operation: "delete existing origin remote".to_string(),
+                    reason: e.to_string(),
+                }
             })?;
             info!("Existing origin remote removed");
         }
@@ -662,7 +697,10 @@ pub fn push_to_origin(
     // Add remote 'origin'
     let mut remote = repo.remote("origin", repo_url.as_str()).map_err(|e| {
         error!("Failed to add remote origin '{}': {}", repo_url, e);
-        Error::GitOperation(format!("Failed to add remote origin: {}", e))
+        SystemError::GitOperation {
+            operation: "add remote origin".to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     info!("Remote 'origin' added successfully");
@@ -802,7 +840,10 @@ pub fn push_to_origin(
                 }
             };
 
-            Err(Error::GitOperation(detailed_error))
+            Err(SystemError::GitOperation {
+                operation: "push to origin".to_string(),
+                reason: detailed_error,
+            })
         }
     }
 }

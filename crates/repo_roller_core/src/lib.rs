@@ -88,7 +88,6 @@ use temp_dir::TempDir;
 use tracing::{debug, error, info, warn};
 
 mod errors;
-use errors::Error;
 
 // Git operations module
 mod git;
@@ -505,19 +504,4 @@ pub async fn create_repository(
         created_at: Timestamp::now(),
         default_branch: default_branch.clone(),
     })
-}
-
-#[allow(dead_code)]
-fn install_github_apps(_repo: &github_client::models::Repository) -> Result<(), Error> {
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn trigger_post_creation_webhooks(_repo: &github_client::models::Repository) -> Result<(), Error> {
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn update_remote_settings(_repo: &github_client::models::Repository) -> Result<(), Error> {
-    Ok(())
 }

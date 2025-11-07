@@ -10,9 +10,9 @@
 //! These operations are used during the repository creation workflow to prepare
 //! the local repository content before pushing to GitHub.
 
-use crate::errors::Error;
+use crate::errors::{SystemError, TemplateError};
 use crate::request::RepositoryCreationRequest;
-use crate::{RepoRollerError, RepoRollerResult, SystemError, TemplateError};
+use crate::{RepoRollerError, RepoRollerResult};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
@@ -75,12 +75,13 @@ use walkdir::WalkDir;
 /// - Uses `Path::starts_with()` for boundary checking
 /// - Provides clear error messages indicating why a path was rejected
 /// - Prevents both obvious attacks and subtle canonicalization-based bypasses
-fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), Error> {
+fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), SystemError> {
     // Check for empty path
     if file_path.is_empty() {
-        return Err(Error::FileSystem(
-            "Empty file path is not allowed".to_string(),
-        ));
+        return Err(SystemError::FileSystem {
+            operation: "validate path".to_string(),
+            reason: "Empty file path is not allowed".to_string(),
+        });
     }
 
     // Create a Path from the file_path string
@@ -88,20 +89,20 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), Error> {
 
     // Check if the path is absolute (Unix: starts with /, Windows: C:\, etc.)
     if path.is_absolute() {
-        return Err(Error::FileSystem(format!(
-            "Unsafe path: Absolute paths are not allowed: {}",
-            file_path
-        )));
+        return Err(SystemError::FileSystem {
+            operation: "validate path".to_string(),
+            reason: format!("Unsafe path: Absolute paths are not allowed: {}", file_path),
+        });
     }
 
     // Check for paths that are only dots (., .., ..., etc.)
     // These are either current dir references or invalid file names
     let trimmed = file_path.trim_start_matches("./").trim_start_matches(".\\");
     if trimmed.chars().all(|c| c == '.') && !trimmed.is_empty() {
-        return Err(Error::FileSystem(format!(
-            "Unsafe path: Path consisting only of dots is not allowed: {}",
-            file_path
-        )));
+        return Err(SystemError::FileSystem {
+            operation: "validate path".to_string(),
+            reason: format!("Unsafe path: Path consisting only of dots is not allowed: {}", file_path),
+        });
     }
 
     // Check for parent directory references (..)
@@ -109,19 +110,19 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), Error> {
     for component in path.components() {
         match component {
             std::path::Component::ParentDir => {
-                return Err(Error::FileSystem(format!(
-                    "Unsafe path: Path traversal with parent directory (..) is not allowed: {}",
-                    file_path
-                )));
+                return Err(SystemError::FileSystem {
+                    operation: "validate path".to_string(),
+                    reason: format!("Unsafe path: Path traversal with parent directory (..) is not allowed: {}", file_path),
+                });
             }
             std::path::Component::CurDir => {
                 // Current directory (.) is suspicious when it appears alone
                 // but we'll allow it in paths like "./file.txt" by checking if it's the only component
                 if path.components().count() == 1 {
-                    return Err(Error::FileSystem(format!(
-                        "Unsafe path: Path consisting only of '.' is not allowed: {}",
-                        file_path
-                    )));
+                    return Err(SystemError::FileSystem {
+                        operation: "validate path".to_string(),
+                        reason: format!("Unsafe path: Path consisting only of '.' is not allowed: {}", file_path),
+                    });
                 }
             }
             _ => {}
@@ -153,10 +154,10 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), Error> {
     // Basic prefix check (this is somewhat redundant after blocking .. and absolute paths,
     // but provides defense in depth)
     if !target_str.starts_with(repo_str.as_ref()) {
-        return Err(Error::FileSystem(format!(
-            "Unsafe path: Path resolves outside repository bounds: {}",
-            file_path
-        )));
+        return Err(SystemError::FileSystem {
+            operation: "validate path".to_string(),
+            reason: format!("Unsafe path: Path resolves outside repository bounds: {}", file_path),
+        });
     }
 
     Ok(())
@@ -207,7 +208,7 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), Error> {
 pub(crate) fn copy_template_files(
     files: &Vec<(String, Vec<u8>)>,
     local_repo_path: &TempDir,
-) -> Result<(), Error> {
+) -> Result<(), SystemError> {
     debug!("Copying {} template files to local repository", files.len());
 
     for (file_path, content) in files {
@@ -220,19 +221,28 @@ pub(crate) fn copy_template_files(
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 error!("Failed to create directory {:?}: {}", parent, e);
-                Error::FileSystem(format!("Failed to create directory {:?}: {}", parent, e))
+                SystemError::FileSystem {
+                    operation: "create directory".to_string(),
+                    reason: format!("{:?}: {}", parent, e),
+                }
             })?;
         }
 
         // Write the file content
         let mut file = File::create(&target_path).map_err(|e| {
             error!("Failed to create file {:?}: {}", target_path, e);
-            Error::FileSystem(format!("Failed to create file {:?}: {}", target_path, e))
+            SystemError::FileSystem {
+                operation: "create file".to_string(),
+                reason: format!("{:?}: {}", target_path, e),
+            }
         })?;
 
         file.write_all(content).map_err(|e| {
             error!("Failed to write to file {:?}: {}", target_path, e);
-            Error::FileSystem(format!("Failed to write to file {:?}: {}", target_path, e))
+            SystemError::FileSystem {
+                operation: "write file".to_string(),
+                reason: format!("{:?}: {}", target_path, e),
+            }
         })?;
 
         debug!("Copied file: {}", file_path);
@@ -285,7 +295,7 @@ pub(crate) fn create_additional_files(
     local_repo_path: &TempDir,
     req: &RepositoryCreationRequest,
     template_files: &[(String, Vec<u8>)],
-) -> Result<(), Error> {
+) -> Result<(), SystemError> {
     info!("Creating additional files for repository initialization");
 
     // Check what files the template already provides
@@ -311,7 +321,7 @@ pub(crate) fn create_additional_files(
 
         std::fs::write(&readme_path, readme_content).map_err(|e| {
             error!("Failed to create README.md: {}", e);
-            Error::FileSystem(format!("Failed to create README.md: {}", e))
+            SystemError::FileSystem { operation: "create README.md".to_string(), reason: e.to_string() }
         })?;
 
         info!("README.md created successfully at: {:?}", readme_path);
@@ -329,7 +339,7 @@ pub(crate) fn create_additional_files(
 
         std::fs::write(&gitignore_path, gitignore_content).map_err(|e| {
             error!("Failed to create .gitignore: {}", e);
-            Error::FileSystem(format!("Failed to create .gitignore: {}", e))
+            SystemError::FileSystem { operation: "create .gitignore".to_string(), reason: e.to_string() }
         })?;
 
         info!(".gitignore created successfully at: {:?}", gitignore_path);
@@ -549,12 +559,14 @@ pub(crate) fn replace_template_variables(
     req: &RepositoryCreationRequest,
     template: &config_manager::TemplateConfig,
     merged_config: &config_manager::MergedConfiguration,
-) -> Result<(), Error> {
+) -> Result<(), SystemError> {
     debug!("Processing template variables using TemplateProcessor");
 
     // Create template processor
     let processor = TemplateProcessor::new().map_err(|e| {
-        Error::TemplateProcessing(format!("Failed to create template processor: {}", e))
+        SystemError::Internal { 
+            reason: format!("Failed to create template processor: {}", e) 
+        }
     })?;
 
     // Generate built-in variables
@@ -611,7 +623,7 @@ pub(crate) fn replace_template_variables(
     for entry in WalkDir::new(local_repo_path.path()) {
         let entry = entry.map_err(|e| {
             error!("Failed to read directory entry: {}", e);
-            Error::FileSystem(format!("Failed to read directory entry: {}", e))
+            SystemError::FileSystem { operation: "read directory entry".to_string(), reason: e.to_string() }
         })?;
 
         if entry.file_type().is_file() {
@@ -620,12 +632,15 @@ pub(crate) fn replace_template_variables(
                 .strip_prefix(local_repo_path.path())
                 .map_err(|e| {
                     error!("Failed to get relative path: {}", e);
-                    Error::FileSystem(format!("Failed to get relative path: {}", e))
+                    SystemError::FileSystem { operation: "get relative path".to_string(), reason: e.to_string() }
                 })?;
 
             let content = fs::read(file_path).map_err(|e| {
                 error!("Failed to read file {:?}: {}", file_path, e);
-                Error::FileSystem(format!("Failed to read file {:?}: {}", file_path, e))
+                SystemError::FileSystem {
+                    operation: "read file".to_string(),
+                    reason: format!("{:?}: {}", file_path, e),
+                }
             })?;
 
             files_to_process.push((relative_path.to_string_lossy().to_string(), content));
@@ -641,7 +656,9 @@ pub(crate) fn replace_template_variables(
         )
         .map_err(|e| {
             error!("Template processing failed: {}", e);
-            Error::TemplateProcessing(format!("Template processing failed: {}", e))
+            SystemError::Internal { 
+                reason: format!("Template processing failed: {}", e) 
+            }
         })?;
 
     // Write the processed files back to the local repo
@@ -653,13 +670,16 @@ pub(crate) fn replace_template_variables(
     {
         let entry = entry.map_err(|e| {
             error!("Failed to read directory entry: {}", e);
-            Error::FileSystem(format!("Failed to read directory entry: {}", e))
+            SystemError::FileSystem { operation: "read directory entry".to_string(), reason: e.to_string() }
         })?;
 
         if entry.file_type().is_file() {
             fs::remove_file(entry.path()).map_err(|e| {
                 error!("Failed to remove file {:?}: {}", entry.path(), e);
-                Error::FileSystem(format!("Failed to remove file {:?}: {}", entry.path(), e))
+                SystemError::FileSystem {
+                    operation: "remove file".to_string(),
+                    reason: format!("{:?}: {}", entry.path(), e),
+                }
             })?;
         }
     }
@@ -672,17 +692,20 @@ pub(crate) fn replace_template_variables(
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 error!("Failed to create directory {:?}: {}", parent, e);
-                Error::FileSystem(format!("Failed to create directory {:?}: {}", parent, e))
+                SystemError::FileSystem {
+                    operation: "create directory".to_string(),
+                    reason: format!("{:?}: {}", parent, e),
+                }
             })?;
         }
 
         // Write the file content
         fs::write(&target_path, content).map_err(|e| {
             error!("Failed to write processed file {:?}: {}", target_path, e);
-            Error::FileSystem(format!(
-                "Failed to write processed file {:?}: {}",
-                target_path, e
-            ))
+            SystemError::FileSystem {
+                operation: "write file".to_string(),
+                reason: format!("{:?}: {}", target_path, e),
+            }
         })?;
 
         debug!("Wrote processed file: {}", file_path);
