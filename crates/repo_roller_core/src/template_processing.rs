@@ -570,6 +570,8 @@ pub(crate) fn replace_template_variables(
     })?;
 
     // Generate built-in variables
+    // Note: Use .as_ref() to convert branded types to &str for template_engine
+    // (avoids circular dependency between crates)
     let built_in_params = template_engine::BuiltInVariablesParams {
         repo_name: req.name.as_ref(),
         org_name: req.owner.as_ref(),

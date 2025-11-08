@@ -193,6 +193,30 @@ pub trait TemplateFetcher: Send + Sync {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Type Safety Note
+///
+/// This struct uses `&str` types to avoid circular dependencies between crates.
+/// While branded types (like `RepositoryName`, `OrganizationName`) exist in
+/// `repo_roller_core`, using them here would create a circular dependency since
+/// `repo_roller_core` depends on `template_engine`.
+///
+/// Call sites should use the `.as_ref()` method on branded types to get `&str`:
+///
+/// ```rust,ignore
+/// use repo_roller_core::{RepositoryName, OrganizationName, TemplateName};
+///
+/// let repo_name = RepositoryName::new("my-repo")?;
+/// let org_name = OrganizationName::new("my-org")?;
+/// let template_name = TemplateName::new("my-template")?;
+///
+/// let params = BuiltInVariablesParams {
+///     repo_name: repo_name.as_ref(),
+///     org_name: org_name.as_ref(),
+///     template_name: template_name.as_ref(),
+///     // ... other fields
+/// };
+/// ```
 pub struct BuiltInVariablesParams<'a> {
     /// The name of the repository being created
     pub repo_name: &'a str,
