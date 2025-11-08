@@ -412,24 +412,20 @@ pub async fn create_repository(
         })?;
 
     // Create GitHub client with installation token
-    let installation_client = github_client::create_token_client(&installation_token).map_err(
-        |e| {
+    let installation_client =
+        github_client::create_token_client(&installation_token).map_err(|e| {
             error!("Failed to create installation token client: {}", e);
             RepoRollerError::System(SystemError::Internal {
                 reason: format!("Failed to create installation token client: {}", e),
             })
-        },
-    )?;
+        })?;
     let installation_repo_client = GitHubClient::new(installation_client);
 
     // Step 2: Create template fetcher
     // For now, reuse installation token - in the future this could be separate
-    let template_fetcher_client = github_client::create_token_client(&installation_token)
-        .map_err(|e| {
-            error!(
-                "Failed to create GitHub client for template fetcher: {}",
-                e
-            );
+    let template_fetcher_client =
+        github_client::create_token_client(&installation_token).map_err(|e| {
+            error!("Failed to create GitHub client for template fetcher: {}", e);
             RepoRollerError::System(SystemError::Internal {
                 reason: format!("Failed to create GitHub client: {}", e),
             })
@@ -455,7 +451,10 @@ pub async fn create_repository(
         .get_template(request.template.as_ref())
         .await
         .map_err(|e| {
-            error!("Template '{}' not found in configuration: {}", request.template, e);
+            error!(
+                "Template '{}' not found in configuration: {}",
+                request.template, e
+            );
             RepoRollerError::Template(TemplateError::TemplateNotFound {
                 name: request.template.as_ref().to_string(),
             })

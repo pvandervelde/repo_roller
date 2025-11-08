@@ -37,7 +37,11 @@ mod path_validation_tests {
             );
 
             // Verify error message mentions path traversal or parent directory
-            if let Err(SystemError::FileSystem { operation: _, reason }) = result {
+            if let Err(SystemError::FileSystem {
+                operation: _,
+                reason,
+            }) = result
+            {
                 let msg_lower = reason.to_lowercase();
                 assert!(
                     msg_lower.contains("traversal")
@@ -79,7 +83,11 @@ mod path_validation_tests {
             );
 
             // Verify error message indicates absolute path issue
-            if let Err(SystemError::FileSystem { operation: _, reason }) = result {
+            if let Err(SystemError::FileSystem {
+                operation: _,
+                reason,
+            }) = result
+            {
                 let msg_lower = reason.to_lowercase();
                 assert!(
                     msg_lower.contains("absolute") || msg_lower.contains("unsafe"),

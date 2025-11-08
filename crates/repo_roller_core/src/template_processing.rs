@@ -101,7 +101,10 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), SystemErr
     if trimmed.chars().all(|c| c == '.') && !trimmed.is_empty() {
         return Err(SystemError::FileSystem {
             operation: "validate path".to_string(),
-            reason: format!("Unsafe path: Path consisting only of dots is not allowed: {}", file_path),
+            reason: format!(
+                "Unsafe path: Path consisting only of dots is not allowed: {}",
+                file_path
+            ),
         });
     }
 
@@ -112,7 +115,10 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), SystemErr
             std::path::Component::ParentDir => {
                 return Err(SystemError::FileSystem {
                     operation: "validate path".to_string(),
-                    reason: format!("Unsafe path: Path traversal with parent directory (..) is not allowed: {}", file_path),
+                    reason: format!(
+                        "Unsafe path: Path traversal with parent directory (..) is not allowed: {}",
+                        file_path
+                    ),
                 });
             }
             std::path::Component::CurDir => {
@@ -121,7 +127,10 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), SystemErr
                 if path.components().count() == 1 {
                     return Err(SystemError::FileSystem {
                         operation: "validate path".to_string(),
-                        reason: format!("Unsafe path: Path consisting only of '.' is not allowed: {}", file_path),
+                        reason: format!(
+                            "Unsafe path: Path consisting only of '.' is not allowed: {}",
+                            file_path
+                        ),
                     });
                 }
             }
@@ -156,7 +165,10 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), SystemErr
     if !target_str.starts_with(repo_str.as_ref()) {
         return Err(SystemError::FileSystem {
             operation: "validate path".to_string(),
-            reason: format!("Unsafe path: Path resolves outside repository bounds: {}", file_path),
+            reason: format!(
+                "Unsafe path: Path resolves outside repository bounds: {}",
+                file_path
+            ),
         });
     }
 
@@ -321,7 +333,10 @@ pub(crate) fn create_additional_files(
 
         std::fs::write(&readme_path, readme_content).map_err(|e| {
             error!("Failed to create README.md: {}", e);
-            SystemError::FileSystem { operation: "create README.md".to_string(), reason: e.to_string() }
+            SystemError::FileSystem {
+                operation: "create README.md".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
         info!("README.md created successfully at: {:?}", readme_path);
@@ -339,7 +354,10 @@ pub(crate) fn create_additional_files(
 
         std::fs::write(&gitignore_path, gitignore_content).map_err(|e| {
             error!("Failed to create .gitignore: {}", e);
-            SystemError::FileSystem { operation: "create .gitignore".to_string(), reason: e.to_string() }
+            SystemError::FileSystem {
+                operation: "create .gitignore".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
         info!(".gitignore created successfully at: {:?}", gitignore_path);
@@ -563,10 +581,8 @@ pub(crate) fn replace_template_variables(
     debug!("Processing template variables using TemplateProcessor");
 
     // Create template processor
-    let processor = TemplateProcessor::new().map_err(|e| {
-        SystemError::Internal { 
-            reason: format!("Failed to create template processor: {}", e) 
-        }
+    let processor = TemplateProcessor::new().map_err(|e| SystemError::Internal {
+        reason: format!("Failed to create template processor: {}", e),
     })?;
 
     // Generate built-in variables
@@ -625,7 +641,10 @@ pub(crate) fn replace_template_variables(
     for entry in WalkDir::new(local_repo_path.path()) {
         let entry = entry.map_err(|e| {
             error!("Failed to read directory entry: {}", e);
-            SystemError::FileSystem { operation: "read directory entry".to_string(), reason: e.to_string() }
+            SystemError::FileSystem {
+                operation: "read directory entry".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
         if entry.file_type().is_file() {
@@ -634,7 +653,10 @@ pub(crate) fn replace_template_variables(
                 .strip_prefix(local_repo_path.path())
                 .map_err(|e| {
                     error!("Failed to get relative path: {}", e);
-                    SystemError::FileSystem { operation: "get relative path".to_string(), reason: e.to_string() }
+                    SystemError::FileSystem {
+                        operation: "get relative path".to_string(),
+                        reason: e.to_string(),
+                    }
                 })?;
 
             let content = fs::read(file_path).map_err(|e| {
@@ -658,8 +680,8 @@ pub(crate) fn replace_template_variables(
         )
         .map_err(|e| {
             error!("Template processing failed: {}", e);
-            SystemError::Internal { 
-                reason: format!("Template processing failed: {}", e) 
+            SystemError::Internal {
+                reason: format!("Template processing failed: {}", e),
             }
         })?;
 
@@ -672,7 +694,10 @@ pub(crate) fn replace_template_variables(
     {
         let entry = entry.map_err(|e| {
             error!("Failed to read directory entry: {}", e);
-            SystemError::FileSystem { operation: "read directory entry".to_string(), reason: e.to_string() }
+            SystemError::FileSystem {
+                operation: "read directory entry".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
         if entry.file_type().is_file() {
