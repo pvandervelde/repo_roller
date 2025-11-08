@@ -8,6 +8,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Configuration manager trait
+pub mod config_manager_trait;
+
 // New configuration system types (Task 2.0)
 pub mod errors;
 pub mod global_defaults;
@@ -38,6 +41,7 @@ pub mod repository_type_validator;
 mod integration_tests;
 
 // Re-export for convenient access
+pub use config_manager_trait::ConfigurationManager;
 pub use configuration_context::ConfigurationContext;
 pub use errors::{ConfigurationError, ConfigurationResult};
 pub use github_metadata_provider::{GitHubMetadataProvider, MetadataProviderConfig};
@@ -72,6 +76,25 @@ pub use template_config::TemplateConfig as NewTemplateConfig;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub templates: Vec<TemplateConfig>,
+}
+
+// Implement ConfigurationManager trait for the legacy Config struct
+#[async_trait::async_trait]
+impl ConfigurationManager for Config {
+    async fn get_template(&self, name: &str) -> ConfigurationResult<TemplateConfig> {
+        self.templates
+            .iter()
+            .find(|t| t.name == name)
+            .cloned()
+            .ok_or_else(|| ConfigurationError::InvalidConfiguration {
+                field: "template".to_string(),
+                reason: format!("Template '{}' not found", name),
+            })
+    }
+
+    async fn list_templates(&self) -> ConfigurationResult<Vec<String>> {
+        Ok(self.templates.iter().map(|t| t.name.clone()).collect())
+    }
 }
 
 /// Temporary TemplateConfig structure for existing code compatibility

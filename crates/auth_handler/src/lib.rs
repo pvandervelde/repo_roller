@@ -14,6 +14,10 @@
 
 use async_trait::async_trait;
 
+mod github_auth_service;
+
+pub use github_auth_service::GitHubAuthService;
+
 /// Result type for authentication operations
 pub type AuthResult<T> = std::result::Result<T, AuthError>;
 

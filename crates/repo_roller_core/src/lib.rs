@@ -83,7 +83,7 @@
 //! information with domain-specific error types. Internal operations use the [`Error`] type for
 //! detailed error context.
 
-use github_client::{create_app_client, GitHubClient, RepositoryClient, RepositoryCreatePayload};
+use github_client::{GitHubClient, RepositoryClient, RepositoryCreatePayload};
 use temp_dir::TempDir;
 use tracing::{debug, error, info, warn};
 
@@ -94,9 +94,6 @@ mod git;
 
 // Configuration resolution and application module
 mod configuration;
-
-// GitHub App authentication module
-mod github_auth;
 
 // Template processing operations module
 mod template_processing;
@@ -381,11 +378,11 @@ async fn create_github_repository(
 /// .build();
 ///
 /// let config = Config { templates: vec![] };
+/// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
 /// let result = create_repository(
 ///     request,
 ///     &config,
-///     12345,
-///     "private-key".to_string(),
+///     &auth_service,
 ///     ".reporoller"
 /// ).await?;
 /// println!("Created repository: {}", result.repository_url);
@@ -394,9 +391,8 @@ async fn create_github_repository(
 /// ```
 pub async fn create_repository(
     request: RepositoryCreationRequest,
-    config: &config_manager::Config,
-    app_id: u64,
-    app_key: String,
+    config: &dyn config_manager::ConfigurationManager,
+    auth_service: &dyn auth_handler::UserAuthenticationService,
     metadata_repository_name: &str,
 ) -> RepoRollerResult<RepositoryCreationResult> {
     info!(
@@ -404,22 +400,42 @@ pub async fn create_repository(
         request.name, request.owner, request.template
     );
 
-    // Step 1: Setup GitHub authentication
-    let (installation_token, installation_repo_client) =
-        github_auth::setup_github_authentication(app_id, &app_key, request.owner.as_ref()).await?;
+    // Step 1: Setup GitHub authentication and get installation token
+    let installation_token = auth_service
+        .get_installation_token_for_org(request.owner.as_ref())
+        .await
+        .map_err(|e| {
+            error!("Failed to authenticate: {}", e);
+            RepoRollerError::GitHub(GitHubError::AuthenticationFailed {
+                reason: format!("Failed to get installation token: {}", e),
+            })
+        })?;
 
-    // Step 2: Create template fetcher for later use
-    let app_client = create_app_client(app_id, &app_key).await.map_err(|e| {
-        error!(
-            "Failed to create GitHub App client for template fetcher: {}",
-            e
-        );
-        RepoRollerError::System(SystemError::Internal {
-            reason: format!("Failed to create GitHub App client: {}", e),
-        })
-    })?;
+    // Create GitHub client with installation token
+    let installation_client = github_client::create_token_client(&installation_token).map_err(
+        |e| {
+            error!("Failed to create installation token client: {}", e);
+            RepoRollerError::System(SystemError::Internal {
+                reason: format!("Failed to create installation token client: {}", e),
+            })
+        },
+    )?;
+    let installation_repo_client = GitHubClient::new(installation_client);
+
+    // Step 2: Create template fetcher
+    // For now, reuse installation token - in the future this could be separate
+    let template_fetcher_client = github_client::create_token_client(&installation_token)
+        .map_err(|e| {
+            error!(
+                "Failed to create GitHub client for template fetcher: {}",
+                e
+            );
+            RepoRollerError::System(SystemError::Internal {
+                reason: format!("Failed to create GitHub client: {}", e),
+            })
+        })?;
     let template_fetcher =
-        template_engine::GitHubTemplateFetcher::new(GitHubClient::new(app_client));
+        template_engine::GitHubTemplateFetcher::new(GitHubClient::new(template_fetcher_client));
 
     // Step 3: Resolve organization configuration
     let merged_config = configuration::resolve_organization_configuration(
@@ -436,11 +452,10 @@ pub async fn create_repository(
         request.template
     );
     let template = config
-        .templates
-        .iter()
-        .find(|t| t.name == request.template.as_ref())
-        .ok_or_else(|| {
-            error!("Template '{}' not found in configuration", request.template);
+        .get_template(request.template.as_ref())
+        .await
+        .map_err(|e| {
+            error!("Template '{}' not found in configuration: {}", request.template, e);
             RepoRollerError::Template(TemplateError::TemplateNotFound {
                 name: request.template.as_ref().to_string(),
             })
@@ -451,7 +466,7 @@ pub async fn create_repository(
     // Step 5: Prepare local repository with template files
     let local_repo_path = template_processing::prepare_local_repository(
         &request,
-        template,
+        &template,
         &template_fetcher,
         &merged_config,
     )

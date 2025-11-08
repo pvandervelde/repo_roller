@@ -11,6 +11,30 @@ use std::sync::{Arc, Mutex};
 
 // --- MOCK STRUCTS (ALPHABETICALLY ORDERED) ---
 
+/// Mock authentication service that fails immediately
+///
+/// Used for testing error paths without hitting real GitHub API
+struct MockAuthService;
+
+#[async_trait]
+impl auth_handler::UserAuthenticationService for MockAuthService {
+    async fn authenticate_installation(
+        &self,
+        _app_id: u64,
+        _private_key: &str,
+        _installation_id: u64,
+    ) -> auth_handler::AuthResult<String> {
+        Err(auth_handler::AuthError::InvalidCredentials)
+    }
+
+    async fn get_installation_token_for_org(
+        &self,
+        _org_name: &str,
+    ) -> auth_handler::AuthResult<String> {
+        Err(auth_handler::AuthError::InvalidCredentials)
+    }
+}
+
 /// Configurable mock repository client that eliminates code duplication
 struct ConfigurableMockRepoClient {
     config: MockRepoClientConfig,
@@ -262,22 +286,19 @@ async fn test_create_repository_type_conversion() {
         }],
     };
 
-    let result = create_repository(
-        request,
-        &config,
-        12345,
-        "fake-key".to_string(),
-        ".reporoller",
-    )
-    .await;
+    let auth_service = MockAuthService;
 
-    // Should fail during GitHub App client creation with fake credentials
+    let result = create_repository(request, &config, &auth_service, ".reporoller").await;
+
+    // Should fail during authentication with mock service
     assert!(result.is_err());
     if let Err(e) = result {
-        // Error should be from authentication or GitHub API, not "not yet implemented"
+        // Error should be from authentication
         assert!(
-            !e.to_string().contains("not yet implemented"),
-            "Function should be implemented, got: {}",
+            e.to_string().contains("authentication")
+                || e.to_string().contains("token")
+                || e.to_string().contains("credentials"),
+            "Expected authentication error, got: {}",
             e
         );
     }
@@ -297,14 +318,9 @@ async fn test_create_repository_error_handling() {
         templates: vec![], // Empty templates - will cause error
     };
 
-    let result = create_repository(
-        request,
-        &config,
-        12345,
-        "fake-key".to_string(),
-        ".reporoller",
-    )
-    .await;
+    let auth_service = MockAuthService;
+
+    let result = create_repository(request, &config, &auth_service, ".reporoller").await;
 
     // Should return an error
     assert!(result.is_err());
@@ -330,14 +346,8 @@ async fn test_create_repository_preserves_variables() {
 
     // Function signature accepts the request - type checking works
     let config = Config { templates: vec![] };
-    let _result = create_repository(
-        request,
-        &config,
-        12345,
-        "fake-key".to_string(),
-        ".reporoller",
-    )
-    .await;
+    let auth_service = MockAuthService;
+    let _result = create_repository(request, &config, &auth_service, ".reporoller").await;
 }
 
 /// Verify that branded types prevent type confusion.
@@ -369,25 +379,22 @@ async fn test_create_repository_result_type() {
     .build();
 
     let config = Config { templates: vec![] };
+    let auth_service = MockAuthService;
 
-    let result = create_repository(
-        request,
-        &config,
-        12345,
-        "fake-key".to_string(),
-        ".reporoller",
-    )
-    .await;
+    let result = create_repository(request, &config, &auth_service, ".reporoller").await;
 
     // Verify the result type is RepoRollerResult<RepositoryCreationResult>
     match result {
         Ok(_creation_result) => {
             // Would contain repository_url, repository_id, created_at, default_branch
-            // Currently not reached due to NotImplemented
+            // Not reached in this test due to authentication failure
         }
         Err(error) => {
             // Should be RepoRollerError
-            assert!(matches!(error, RepoRollerError::System(_)));
+            assert!(
+                matches!(error, RepoRollerError::GitHub(_))
+                    || matches!(error, RepoRollerError::System(_))
+            );
         }
     }
 }

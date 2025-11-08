@@ -150,6 +150,7 @@ name = "auth_handler"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "github_client",
  "thiserror",
 ]
 
@@ -1096,6 +1097,7 @@ name = "integration_tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "auth_handler",
  "chrono",
  "clap",
  "config_manager",
@@ -1868,6 +1870,7 @@ name = "repo_roller_cli"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "auth_handler",
  "clap",
  "config_manager",
  "github_client",
@@ -1891,6 +1894,7 @@ name = "repo_roller_core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "auth_handler",
  "chrono",
  "config_manager",
  "git2",

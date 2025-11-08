@@ -13,6 +13,7 @@ name = "integration_tests"
 path = "src/main.rs"
 
 [dependencies]
+auth_handler = { path = "../auth_handler" }
 repo_roller_core = { path = "../repo_roller_core" }
 github_client = { path = "../github_client" }
 template_engine = { path = "../template_engine" }
