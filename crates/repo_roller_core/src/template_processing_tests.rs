@@ -19,10 +19,11 @@ mod path_validation_tests {
         let repo_path = temp_dir.path();
 
         // Test various path traversal patterns
+        // Note: Use forward slashes which work on both Windows and Linux
         let malicious_paths = vec![
-            "../../etc/passwd",          // Deep traversal (Unix)
-            "../../../etc/shadow",       // Very deep traversal (Unix)
-            "..\\..\\Windows\\System32", // Deep traversal (Windows)
+            "../../etc/passwd",          // Deep traversal
+            "../../../etc/shadow",       // Very deep traversal
+            "../../Windows/System32",    // Deep traversal (use / for cross-platform)
             "../outside.txt",            // Single level escape
             "subdir/../../outside.txt",  // Traversal within path
             "valid/../../../etc/passwd", // Mixed valid and traversal
@@ -58,21 +59,31 @@ mod path_validation_tests {
     /// Test that absolute paths are rejected.
     ///
     /// Verifies that templates cannot specify absolute file paths that would
-    /// write to arbitrary locations on the file system. Both Unix-style (/)
-    /// and Windows-style (C:\) absolute paths should be rejected.
+    /// write to arbitrary locations on the file system. Unix-style absolute paths (/)
+    /// are tested on all platforms. Windows-style paths (C:\) are tested only on Windows.
     #[test]
     fn test_absolute_paths_blocked() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let repo_path = temp_dir.path();
 
-        let absolute_paths = vec![
-            "/etc/passwd",                 // Unix absolute
-            "/tmp/malicious.txt",          // Unix temp directory
-            "/home/user/.bashrc",          // Unix home directory
-            "C:\\Windows\\System32\\file", // Windows absolute
-            "D:\\data\\secrets.txt",       // Windows different drive
-            "/usr/local/bin/script",       // Unix system directory
+        // Unix-style absolute paths (work on all platforms)
+        let mut absolute_paths = vec![
+            "/etc/passwd",           // Unix absolute
+            "/tmp/malicious.txt",    // Unix temp directory
+            "/home/user/.bashrc",    // Unix home directory
+            "/usr/local/bin/script", // Unix system directory
         ];
+
+        // Windows-style absolute paths (only meaningful on Windows)
+        // On Unix, "C:" is just a regular filename component, not a drive letter
+        #[cfg(windows)]
+        {
+            absolute_paths.extend(vec![
+                "C:\\Windows\\System32\\file", // Windows absolute with backslash
+                "D:\\data\\secrets.txt",       // Windows different drive
+                "C:/Windows/System32/file",    // Windows absolute with forward slash
+            ]);
+        }
 
         for path in absolute_paths {
             let result = validate_safe_path(path, repo_path);
