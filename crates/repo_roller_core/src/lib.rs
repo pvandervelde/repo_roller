@@ -36,6 +36,7 @@
 //!     RepositoryName, OrganizationName, TemplateName
 //! };
 //! use config_manager::Config;
+//! use auth_handler::GitHubAuthService;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a type-safe repository creation request
@@ -50,12 +51,14 @@
 //! // Load configuration with available templates
 //! let config = Config { templates: vec![] }; // Would be loaded from config file
 //!
+//! // Create authentication service
+//! let auth_service = GitHubAuthService::new(12345, "private-key-content".to_string());
+//!
 //! // Create the repository
 //! match create_repository(
 //!     request,
 //!     &config,
-//!     12345, // GitHub App ID
-//!     "private-key-content".to_string(), // GitHub App private key
+//!     &auth_service,
 //!     ".reporoller" // Metadata repository name
 //! ).await {
 //!     Ok(result) => {
@@ -221,6 +224,7 @@ mod tests;
 ///     OrganizationName, TemplateName, create_repository
 /// };
 /// use config_manager::Config;
+/// use auth_handler::GitHubAuthService;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
@@ -232,8 +236,9 @@ mod tests;
 /// .build();
 ///
 /// let config = Config { templates: vec![] };
+/// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
 ///
-/// match create_repository(request, &config, 12345, "private-key".to_string(), ".reporoller").await {
+/// match create_repository(request, &config, &auth_service, ".reporoller").await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
@@ -368,6 +373,7 @@ async fn create_github_repository(
 ///     OrganizationName, TemplateName, create_repository
 /// };
 /// use config_manager::Config;
+/// use auth_handler::GitHubAuthService;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
