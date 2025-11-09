@@ -172,12 +172,14 @@ pub async fn create_repository(
         }
     };
 
-    // Use the new function that accepts config directly
+    // Create authentication service
+    let auth_service = auth_handler::GitHubAuthService::new(app_id, app_key);
+
+    // Use the new function with dependency injection
     repo_roller_core::create_repository(
         request,
         &config.core,
-        app_id,
-        app_key,
+        &auth_service,
         &config.organization.metadata_repository_name,
     )
     .await

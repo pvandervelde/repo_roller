@@ -11,4 +11,5 @@ version.workspace = true
 
 [dependencies]
 async-trait = "0.1"
+github_client = { path = "../github_client" }
 thiserror = "2.0"

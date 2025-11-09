@@ -461,14 +461,13 @@ impl IntegrationTestRunner {
         // Get metadata repository name from scenario
         let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
 
-        let result = create_repository(
-            request,
-            &config,
+        // Create authentication service
+        let auth_service = auth_handler::GitHubAuthService::new(
             self.config.github_app_id,
             self.config.github_app_private_key.clone(),
-            metadata_repo_name,
-        )
-        .await;
+        );
+
+        let result = create_repository(request, &config, &auth_service, metadata_repo_name).await;
 
         // Step 4: Evaluate the result
         match result {
