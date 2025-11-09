@@ -37,6 +37,7 @@ pub mod repository_type_name;
 pub mod repository_type_validator;
 
 // Configuration validation (Task 8.0)
+pub mod basic_validator;
 pub mod validator;
 
 // Integration tests (Task 2.7)
@@ -66,6 +67,9 @@ pub use validator::{
     ConfigurationValidator, ValidationError, ValidationErrorType, ValidationResult,
     ValidationWarning,
 };
+
+// Re-export BasicConfigurationValidator for convenience
+pub use basic_validator::BasicConfigurationValidator;
 
 // Re-export new TemplateConfig with different name to avoid conflict with legacy type
 pub use template_config::TemplateConfig as NewTemplateConfig;
