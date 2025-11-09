@@ -57,6 +57,7 @@ use async_trait::async_trait;
 /// let validator = BasicConfigurationValidator::new();
 /// // Use validator to validate configurations...
 /// ```
+#[derive(Debug)]
 pub struct BasicConfigurationValidator;
 
 impl BasicConfigurationValidator {

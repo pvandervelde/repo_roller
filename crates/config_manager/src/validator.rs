@@ -146,6 +146,18 @@ pub enum ValidationErrorType {
     OverrideNotAllowed,
 }
 
+impl std::fmt::Display for ValidationErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SchemaViolation => write!(f, "SchemaViolation"),
+            Self::RequiredFieldMissing => write!(f, "RequiredFieldMissing"),
+            Self::InvalidValue => write!(f, "InvalidValue"),
+            Self::BusinessRuleViolation => write!(f, "BusinessRuleViolation"),
+            Self::OverrideNotAllowed => write!(f, "OverrideNotAllowed"),
+        }
+    }
+}
+
 /// Non-blocking validation warning.
 ///
 /// Warnings indicate potential issues or best practice violations that
