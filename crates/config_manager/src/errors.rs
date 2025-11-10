@@ -8,7 +8,6 @@
 use thiserror::Error;
 
 // Import ValidationError for the ValidationFailed variant
-// This creates a forward reference that will be resolved when validator module is loaded
 use crate::validator::ValidationError;
 
 /// Configuration system errors.

@@ -8,7 +8,7 @@
 //! # Examples
 //!
 //! ```rust
-//! use config_manager::{BasicConfigurationValidator, MergedConfiguration};
+//! use config_manager::{BasicConfigurationValidator, ConfigurationValidator, MergedConfiguration};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -71,13 +71,12 @@ impl BasicConfigurationValidator {
     // ========================================================================
 
     /// Validate repository settings.
-    fn validate_repository_settings(&self, settings: &RepositorySettings) -> Vec<ValidationError> {
-        let mut errors = Vec::new();
-
-        // All repository settings are boolean options - no specific validation needed
-        // for MVP beyond type checking (which serde handles)
-
-        errors
+    ///
+    /// Currently returns no errors as all repository settings are boolean options
+    /// with no specific validation requirements beyond type checking (handled by serde).
+    /// This method is included for API completeness and future extensibility.
+    fn validate_repository_settings(&self, _settings: &RepositorySettings) -> Vec<ValidationError> {
+        Vec::new()
     }
 
     /// Validate pull request settings.
