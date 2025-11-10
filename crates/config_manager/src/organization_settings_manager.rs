@@ -46,8 +46,9 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::{
-    errors::ConfigurationResult, merger::ConfigurationMerger,
-    metadata_provider::MetadataRepositoryProvider,
+    basic_validator::BasicConfigurationValidator, errors::ConfigurationResult,
+    merger::ConfigurationMerger, metadata_provider::MetadataRepositoryProvider,
+    validator::ConfigurationValidator,
 };
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
@@ -93,6 +94,11 @@ pub struct OrganizationSettingsManager {
     ///
     /// Created internally as ConfigurationMerger is stateless.
     merger: Arc<ConfigurationMerger>,
+
+    /// Configuration validator for validating merged configurations.
+    ///
+    /// Created internally as BasicConfigurationValidator is stateless.
+    validator: Arc<BasicConfigurationValidator>,
 }
 
 impl OrganizationSettingsManager {
@@ -126,6 +132,7 @@ impl OrganizationSettingsManager {
         Self {
             metadata_provider,
             merger: Arc::new(ConfigurationMerger::new()),
+            validator: Arc::new(BasicConfigurationValidator::new()),
         }
     }
 
@@ -306,6 +313,44 @@ impl OrganizationSettingsManager {
                 e
             })?;
 
+        // Step 7: Validate merged configuration
+        debug!("Validating merged configuration");
+        let validation_result = self
+            .validator
+            .validate_merged_config(&merged)
+            .await
+            .map_err(|e| {
+                warn!("Configuration validation check failed: {}", e);
+                e
+            })?;
+
+        if !validation_result.is_valid() {
+            warn!(
+                "Configuration validation failed with {} errors",
+                validation_result.errors.len()
+            );
+            for error in &validation_result.errors {
+                warn!(
+                    "  - [{}] {}: {}",
+                    error.error_type, error.field_path, error.message
+                );
+            }
+            return Err(crate::errors::ConfigurationError::ValidationFailed {
+                error_count: validation_result.errors.len(),
+                errors: validation_result.errors,
+            });
+        }
+
+        if !validation_result.warnings.is_empty() {
+            info!(
+                "Configuration has {} warnings",
+                validation_result.warnings.len()
+            );
+            for warning in &validation_result.warnings {
+                info!("  - {}: {}", warning.field_path, warning.message);
+            }
+        }
+
         info!(
             "Configuration resolution completed successfully (fields configured: {})",
             merged.source_trace.field_count()
@@ -320,6 +365,7 @@ impl std::fmt::Debug for OrganizationSettingsManager {
         f.debug_struct("OrganizationSettingsManager")
             .field("metadata_provider", &"Arc<dyn MetadataRepositoryProvider>")
             .field("merger", &self.merger)
+            .field("validator", &self.validator)
             .finish()
     }
 }

@@ -7,6 +7,9 @@
 
 use thiserror::Error;
 
+// Import ValidationError for the ValidationFailed variant
+use crate::validator::ValidationError;
+
 /// Configuration system errors.
 ///
 /// These errors occur when loading, parsing, or validating
@@ -39,6 +42,12 @@ pub enum ConfigurationError {
 
     #[error("Metadata repository not found for organization: {org}")]
     MetadataRepositoryNotFound { org: String },
+
+    #[error("Configuration validation failed with {error_count} error(s)")]
+    ValidationFailed {
+        error_count: usize,
+        errors: Vec<ValidationError>,
+    },
 }
 
 /// Result type alias for configuration operations.
