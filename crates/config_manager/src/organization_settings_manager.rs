@@ -330,7 +330,10 @@ impl OrganizationSettingsManager {
                 validation_result.errors.len()
             );
             for error in &validation_result.errors {
-                warn!("  - [{}] {}: {}", error.error_type, error.field_path, error.message);
+                warn!(
+                    "  - [{}] {}: {}",
+                    error.error_type, error.field_path, error.message
+                );
             }
             return Err(crate::errors::ConfigurationError::ValidationFailed {
                 error_count: validation_result.errors.len(),

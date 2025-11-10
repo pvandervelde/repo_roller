@@ -219,11 +219,11 @@ impl BasicConfigurationValidator {
                     if wait_timer < 0 {
                         errors.push(ValidationError {
                             error_type: ValidationErrorType::InvalidValue,
-                            field_path: format!("environments[{}].protection_rules.wait_timer", index),
-                            message: format!(
-                                "Wait timer cannot be negative, got: {}",
-                                wait_timer
+                            field_path: format!(
+                                "environments[{}].protection_rules.wait_timer",
+                                index
                             ),
+                            message: format!("Wait timer cannot be negative, got: {}", wait_timer),
                             suggestion: Some(
                                 "Use 0 for no wait or a positive number of minutes".to_string(),
                             ),
