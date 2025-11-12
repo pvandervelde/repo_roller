@@ -19,6 +19,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     errors::ApiError,
@@ -185,8 +186,36 @@ pub async fn validate_organization(
 /// GET /api/v1/health
 ///
 /// Health check endpoint.
-pub async fn health_check() -> &'static str {
-    "OK"
+///
+/// Returns service health status with version and timestamp.
+pub async fn health_check() -> Json<HealthCheckResponse> {
+    Json(HealthCheckResponse {
+        status: "healthy".to_string(),
+        version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        error: None,
+    })
+}
+
+/// Health check response
+///
+/// See: specs/interfaces/api-response-types.md#healthcheckresponse
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthCheckResponse {
+    /// Service status: "healthy" or "unhealthy"
+    pub status: String,
+
+    /// Service version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+
+    /// Current timestamp (ISO 8601)
+    pub timestamp: String,
+
+    /// Error message (if unhealthy)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[cfg(test)]
