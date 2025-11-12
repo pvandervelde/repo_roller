@@ -32,7 +32,7 @@ use errors::Error;
 
 use crate::commands::{
     auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs,
-    org_settings_cmd::OrgSettingsCommands,
+    org_settings_cmd::OrgSettingsCommands, template_cmd::TemplateCommands,
 };
 
 #[cfg(test)]
@@ -75,6 +75,10 @@ enum Commands {
     /// Organization settings inspection commands
     #[command(subcommand)]
     OrgSettings(OrgSettingsCommands),
+
+    /// Template inspection and validation commands
+    #[command(subcommand)]
+    Template(TemplateCommands),
 
     /// Show the CLI version information
     Version,
@@ -150,6 +154,12 @@ async fn main() {
         }
         Commands::OrgSettings(cmd) => {
             if let Err(e) = crate::commands::org_settings_cmd::execute(cmd).await {
+                error!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Template(cmd) => {
+            if let Err(e) = crate::commands::template_cmd::execute(cmd).await {
                 error!("Error: {e}");
                 std::process::exit(1);
             }

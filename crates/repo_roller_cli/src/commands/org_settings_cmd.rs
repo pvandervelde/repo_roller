@@ -28,8 +28,9 @@
 
 use clap::Subcommand;
 use config_manager::{
-    ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
-    MetadataRepositoryProvider, OrganizationSettingsManager, RepositoryTypeName,
+    BasicConfigurationValidator, ConfigurationContext, ConfigurationValidator,
+    GitHubMetadataProvider, MetadataProviderConfig, MetadataRepositoryProvider,
+    OrganizationSettingsManager, RepositoryTypeName,
 };
 use github_client::GitHubClient;
 use keyring::Entry;
@@ -139,6 +140,48 @@ pub enum OrgSettingsCommands {
         #[arg(long, default_value = "pretty")]
         format: String,
     },
+
+    /// Validate organization metadata repository configuration.
+    ///
+    /// Performs comprehensive validation of the organization's metadata repository,
+    /// including global defaults, repository types, and team configurations. This
+    /// helps identify configuration errors before they affect repository creation.
+    Validate {
+        /// Organization name.
+        #[arg(long)]
+        org: String,
+
+        /// Output format (json or pretty).
+        #[arg(long, default_value = "pretty")]
+        format: String,
+    },
+
+    /// Test and validate configuration merge for a scenario.
+    ///
+    /// Similar to show-merged but includes validation of the merged configuration.
+    /// This helps test that configuration merges will work correctly and identify
+    /// any override violations or other issues before attempting repository creation.
+    TestMerge {
+        /// Organization name.
+        #[arg(long)]
+        org: String,
+
+        /// Template name to use for the merge test.
+        #[arg(long)]
+        template: String,
+
+        /// Team name (optional).
+        #[arg(long)]
+        team: Option<String>,
+
+        /// Repository type (optional).
+        #[arg(long)]
+        repo_type: Option<String>,
+
+        /// Output format (json or pretty).
+        #[arg(long, default_value = "pretty")]
+        format: String,
+    },
 }
 
 /// Executes the specified organization settings command.
@@ -180,6 +223,14 @@ pub async fn execute(cmd: &OrgSettingsCommands) -> Result<(), Error> {
             format,
         } => show_merged(org, template, team.as_deref(), repo_type.as_deref(), format).await,
         OrgSettingsCommands::ShowGlobal { org, format } => show_global(org, format).await,
+        OrgSettingsCommands::Validate { org, format } => validate_org(org, format).await,
+        OrgSettingsCommands::TestMerge {
+            org,
+            template,
+            team,
+            repo_type,
+            format,
+        } => test_merge(org, template, team.as_deref(), repo_type.as_deref(), format).await,
     }
 }
 
@@ -490,6 +541,265 @@ async fn show_global(org: &str, format: &str) -> Result<(), Error> {
     // Format and display output
     let output = format_output(&global_defaults, format)?;
     println!("{}", output);
+
+    Ok(())
+}
+
+/// Validates organization metadata repository configuration.
+///
+/// Performs comprehensive validation of the organization's metadata repository,
+/// including global defaults, all repository types, and team configurations.
+///
+/// # Arguments
+///
+/// * `org` - Organization name
+/// * `format` - Output format ("json" or "pretty")
+#[instrument]
+async fn validate_org(org: &str, format: &str) -> Result<(), Error> {
+    debug!(
+        message = "Validating organization configuration",
+        org = org,
+        format = format
+    );
+
+    // Create authenticated metadata provider
+    let provider = create_metadata_provider().await?;
+
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(org)
+        .await
+        .map_err(|e| {
+            Error::Config(format!(
+                "Failed to discover metadata repository for '{}': {}",
+                org, e
+            ))
+        })?;
+
+    // Create validator
+    let validator = BasicConfigurationValidator::new();
+
+    // Validate global defaults
+    let global_defaults = provider
+        .load_global_defaults(&metadata_repo)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to load global defaults: {}", e)))?;
+
+    let global_result = validator
+        .validate_global_defaults(&global_defaults)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to validate global defaults: {}", e)))?;
+
+    // List all repository types
+    let repo_types = provider
+        .list_available_repository_types(&metadata_repo)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to list repository types: {}", e)))?;
+
+    // Validate each repository type
+    let mut type_results = Vec::new();
+    for type_name in &repo_types {
+        if let Some(type_config) = provider
+            .load_repository_type_configuration(&metadata_repo, type_name)
+            .await
+            .map_err(|e| {
+                Error::Config(format!(
+                    "Failed to load repository type '{}': {}",
+                    type_name, e
+                ))
+            })?
+        {
+            let result = validator
+                .validate_repository_type_config(&type_config, &global_defaults)
+                .await
+                .map_err(|e| {
+                    Error::Config(format!(
+                        "Failed to validate repository type '{}': {}",
+                        type_name, e
+                    ))
+                })?;
+            type_results.push((type_name.clone(), result));
+        }
+    }
+
+    // Build validation summary
+    #[derive(serde::Serialize)]
+    struct ValidationSummary {
+        organization: String,
+        valid: bool,
+        global_defaults: ValidationComponentResult,
+        repository_types: Vec<TypeValidationResult>,
+    }
+
+    #[derive(serde::Serialize)]
+    struct ValidationComponentResult {
+        valid: bool,
+        errors: Vec<String>,
+        warnings: Vec<String>,
+    }
+
+    #[derive(serde::Serialize)]
+    struct TypeValidationResult {
+        type_name: String,
+        valid: bool,
+        errors: Vec<String>,
+        warnings: Vec<String>,
+    }
+
+    let global_component = ValidationComponentResult {
+        valid: global_result.is_valid(),
+        errors: global_result
+            .errors
+            .iter()
+            .map(|e| format!("{}: {}", e.field_path, e.message))
+            .collect(),
+        warnings: global_result
+            .warnings
+            .iter()
+            .map(|w| format!("{}: {}", w.field_path, w.message))
+            .collect(),
+    };
+
+    let type_components: Vec<TypeValidationResult> = type_results
+        .into_iter()
+        .map(|(name, result)| TypeValidationResult {
+            type_name: name,
+            valid: result.is_valid(),
+            errors: result
+                .errors
+                .iter()
+                .map(|e| format!("{}: {}", e.field_path, e.message))
+                .collect(),
+            warnings: result
+                .warnings
+                .iter()
+                .map(|w| format!("{}: {}", w.field_path, w.message))
+                .collect(),
+        })
+        .collect();
+
+    let all_valid = global_component.valid && type_components.iter().all(|t| t.valid);
+
+    let summary = ValidationSummary {
+        organization: org.to_string(),
+        valid: all_valid,
+        global_defaults: global_component,
+        repository_types: type_components,
+    };
+
+    // Format and display output
+    let output = format_output(&summary, format)?;
+    println!("{}", output);
+
+    if !all_valid {
+        return Err(Error::Config(
+            "Configuration validation failed - see errors above".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Tests and validates configuration merge for a scenario.
+///
+/// Similar to show-merged but includes validation of the merged configuration.
+///
+/// # Arguments
+///
+/// * `org` - Organization name
+/// * `template` - Template name
+/// * `team` - Optional team name
+/// * `repo_type` - Optional repository type
+/// * `format` - Output format ("json" or "pretty")
+#[instrument]
+async fn test_merge(
+    org: &str,
+    template: &str,
+    team: Option<&str>,
+    repo_type: Option<&str>,
+    format: &str,
+) -> Result<(), Error> {
+    debug!(
+        message = "Testing configuration merge with validation",
+        org = org,
+        template = template,
+        team = ?team,
+        repo_type = ?repo_type,
+        format = format
+    );
+
+    // Create authenticated metadata provider
+    let provider = create_metadata_provider().await?;
+
+    // Create organization settings manager
+    let manager = OrganizationSettingsManager::new(provider);
+
+    // Create configuration context
+    let mut context = ConfigurationContext::new(org, template);
+
+    if let Some(t) = team {
+        context = context.with_team(t);
+    }
+
+    if let Some(rt) = repo_type {
+        context = context.with_repository_type(rt);
+    }
+
+    // Resolve merged configuration
+    let merged_config = manager
+        .resolve_configuration(&context)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to resolve merged configuration: {}", e)))?;
+
+    // Validate the merged configuration
+    let validator = BasicConfigurationValidator::new();
+    let validation_result = validator
+        .validate_merged_config(&merged_config)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to validate merged configuration: {}", e)))?;
+
+    // Build result structure
+    #[derive(serde::Serialize)]
+    struct MergeTestResult {
+        merged_config: config_manager::MergedConfiguration,
+        validation: ValidationComponentResult,
+    }
+
+    #[derive(serde::Serialize, Clone)]
+    struct ValidationComponentResult {
+        valid: bool,
+        errors: Vec<String>,
+        warnings: Vec<String>,
+    }
+
+    let validation_component = ValidationComponentResult {
+        valid: validation_result.is_valid(),
+        errors: validation_result
+            .errors
+            .iter()
+            .map(|e| format!("{}: {}", e.field_path, e.message))
+            .collect(),
+        warnings: validation_result
+            .warnings
+            .iter()
+            .map(|w| format!("{}: {}", w.field_path, w.message))
+            .collect(),
+    };
+
+    let result = MergeTestResult {
+        merged_config,
+        validation: validation_component.clone(),
+    };
+
+    // Format and display output
+    let output = format_output(&result, format)?;
+    println!("{}", output);
+
+    if !validation_component.valid {
+        return Err(Error::Config(
+            "Configuration merge validation failed - see errors above".to_string(),
+        ));
+    }
 
     Ok(())
 }

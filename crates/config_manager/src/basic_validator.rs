@@ -340,12 +340,9 @@ impl BasicConfigurationValidator {
         &self,
         _merged: &MergedConfiguration,
     ) -> Vec<ValidationError> {
-        let errors = Vec::new();
-
         // Placeholder for future cross-field validations
         // Examples: If feature X enabled, field Y must be set
-
-        errors
+        Vec::new()
     }
 }
 
