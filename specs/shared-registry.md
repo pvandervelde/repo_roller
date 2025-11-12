@@ -98,16 +98,41 @@ All domain primitives use newtype pattern for type safety.
 | `RepositoryClient` (existing) | `github_client/src/lib.rs` | GitHub API client | Currently implemented |
 | `GitHubClient` | `github_client/src/lib.rs` | Concrete GitHub implementation | Currently implemented |
 
+## HTTP API Types
+
+**Note**: HTTP API types are distinct from domain types and exist only in the `repo_roller_api` crate.
+
+### Request Types (HTTP Layer)
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `CreateRepositoryHttpRequest` | `repo_roller_api/src/models/request.rs` | HTTP request for repository creation | [api-request-types.md](interfaces/api-request-types.md) |
+| `ValidateRepositoryNameRequest` | `repo_roller_api/src/models/request.rs` | Name validation request | [api-request-types.md](interfaces/api-request-types.md) |
+| `PreviewConfigurationRequest` | `repo_roller_api/src/models/request.rs` | Configuration preview request | [api-request-types.md](interfaces/api-request-types.md) |
+
+### Response Types (HTTP Layer)
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `CreateRepositoryResponse` | `repo_roller_api/src/models/response.rs` | Repository creation result | [api-response-types.md](interfaces/api-response-types.md) |
+| `ListTemplatesResponse` | `repo_roller_api/src/models/response.rs` | Template listing | [api-response-types.md](interfaces/api-response-types.md) |
+| `GetTemplateDetailsResponse` | `repo_roller_api/src/models/response.rs` | Template details | [api-response-types.md](interfaces/api-response-types.md) |
+| `ValidateRepositoryNameResponse` | `repo_roller_api/src/models/response.rs` | Name validation result | [api-response-types.md](interfaces/api-response-types.md) |
+| `PreviewConfigurationResponse` | `repo_roller_api/src/models/response.rs` | Configuration preview | [api-response-types.md](interfaces/api-response-types.md) |
+| `ErrorResponse` | `repo_roller_api/src/errors.rs` | Standard error response | [api-error-handling.md](interfaces/api-error-handling.md) |
+
+**Translation Pattern**: HTTP types converted to domain types at API boundary.
+
 ## Value Objects and DTOs
 
-### Request Objects
+### Domain Request Objects
 
 | Type | Location | Purpose | Contains |
 |------|----------|---------|----------|
-| `CreateRepositoryRequest` | `repo_roller_core/src/repository.rs` | Repo creation input | Name, owner, template, variables |
+| `RepositoryCreationRequest` | `repo_roller_core/src/repository.rs` | Domain repo creation input | Name, owner, template, variables (branded types) |
 | `TemplateProcessingRequest` | `template_engine/src/lib.rs` | Template processing input | Variables, configs |
 
-### Response Objects
+### Domain Response Objects
 
 | Type | Location | Purpose | Contains |
 |------|----------|---------|----------|
