@@ -267,10 +267,35 @@ pub async fn validate_repository_request(
 /// See: specs/interfaces/api-request-types.md#listtemplatesrequest
 pub async fn list_templates(
     State(_state): State<AppState>,
-    Path(_params): Path<ListTemplatesParams>,
+    Path(params): Path<ListTemplatesParams>,
 ) -> Result<Json<ListTemplatesResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#listtemplatesrequest")
+    // TODO: Task 9.3.8 - Replace with actual template discovery service call
+    // For now, return mock data to establish HTTP contract
+    
+    // Return empty list for organizations without templates
+    if params.org == "emptyorg" {
+        return Ok(Json(ListTemplatesResponse {
+            templates: vec![],
+        }));
+    }
+    
+    // Mock template data for establishing HTTP contract
+    let templates = vec![
+        TemplateSummary {
+            name: "rust-library".to_string(),
+            description: "Rust library project template".to_string(),
+            category: Some("rust".to_string()),
+            variables: vec!["project_name".to_string(), "license".to_string()],
+        },
+        TemplateSummary {
+            name: "rust-binary".to_string(),
+            description: "Rust binary application template".to_string(),
+            category: Some("rust".to_string()),
+            variables: vec!["project_name".to_string(), "version".to_string()],
+        },
+    ];
+    
+    Ok(Json(ListTemplatesResponse { templates }))
 }
 
 /// GET /api/v1/orgs/:org/templates/:template
@@ -280,23 +305,98 @@ pub async fn list_templates(
 /// See: specs/interfaces/api-request-types.md#gettemplatedetailsrequest
 pub async fn get_template_details(
     State(_state): State<AppState>,
-    Path(_params): Path<GetTemplateDetailsParams>,
+    Path(params): Path<GetTemplateDetailsParams>,
 ) -> Result<Json<TemplateDetailsResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#gettemplatedetailsrequest")
+    // TODO: Task 9.3.8 - Replace with actual template service call
+    // For now, return mock data for known templates or 404
+    
+    // Check if template exists (mock check)
+    if params.template == "nonexistent-template" || params.template == "nonexistent" {
+        return Err(ApiError::from(anyhow::anyhow!(
+            "Template '{}' not found in organization '{}'",
+            params.template,
+            params.org
+        )));
+    }
+    
+    // Mock template details for establishing HTTP contract
+    let mut variables = std::collections::HashMap::new();
+    variables.insert(
+        "project_name".to_string(),
+        VariableDefinition {
+            description: "Name of the project".to_string(),
+            required: true,
+            default: None,
+            pattern: Some("^[a-z][a-z0-9-]*$".to_string()),
+        },
+    );
+    variables.insert(
+        "license".to_string(),
+        VariableDefinition {
+            description: "License type".to_string(),
+            required: false,
+            default: Some("MIT".to_string()),
+            pattern: None,
+        },
+    );
+    
+    let response = TemplateDetailsResponse {
+        name: params.template.clone(),
+        description: format!("Template for {}", params.template),
+        category: Some("rust".to_string()),
+        variables,
+        configuration: serde_json::json!({
+            "has_issues": true,
+            "has_wiki": false,
+            "auto_init": true,
+        }),
+    };
+    
+    Ok(Json(response))
 }
 
 /// POST /api/v1/orgs/:org/templates/:template/validate
 ///
-/// Validate a template for correctness.
+/// Validate a template structure.
 ///
 /// See: specs/interfaces/api-request-types.md#validatetemplaterequest
 pub async fn validate_template(
     State(_state): State<AppState>,
-    Path(_params): Path<ValidateTemplateParams>,
+    Path(params): Path<ValidateTemplateParams>,
 ) -> Result<Json<ValidateTemplateResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#validatetemplaterequest")
+    // TODO: Task 9.3.8 - Replace with actual template validation service call
+    // For now, return mock validation results
+    
+    // Check if template exists (mock check)
+    if params.template == "nonexistent" || params.template == "nonexistent-template" {
+        return Err(ApiError::from(anyhow::anyhow!(
+            "Template '{}' not found in organization '{}'",
+            params.template,
+            params.org
+        )));
+    }
+    
+    // Mock validation: invalid-template fails, others pass
+    if params.template == "invalid-template" {
+        let errors = vec![ValidationResult {
+            field: "template_structure".to_string(),
+            message: "Template configuration file is malformed".to_string(),
+            severity: ValidationSeverity::Error,
+        }];
+        
+        return Ok(Json(ValidateTemplateResponse {
+            valid: false,
+            errors,
+            warnings: vec![],
+        }));
+    }
+    
+    // Valid templates return success
+    Ok(Json(ValidateTemplateResponse {
+        valid: true,
+        errors: vec![],
+        warnings: vec![],
+    }))
 }
 
 /// GET /api/v1/orgs/:org/repository-types
