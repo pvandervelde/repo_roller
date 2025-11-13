@@ -78,6 +78,11 @@ impl ApiError {
     pub fn validation(message: impl Into<String>) -> Self {
         ApiError(anyhow::anyhow!(message.into()))
     }
+    
+    /// Create a validation error with field information
+    pub fn validation_error(field: impl Into<String>, message: impl Into<String>) -> Self {
+        ApiError(anyhow::anyhow!("validation error in field {}: {}", field.into(), message.into()))
+    }
 
     /// Create a not found error
     pub fn not_found(message: impl Into<String>) -> Self {

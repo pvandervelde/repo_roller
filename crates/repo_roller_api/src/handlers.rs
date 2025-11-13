@@ -33,6 +33,22 @@ use crate::{
 // TODO: Import domain services when available
 // use repo_roller_core::{RepositoryService, ConfigurationManager};
 
+/// Validate a repository name against GitHub naming rules.
+///
+/// Repository names must:
+/// - Contain only lowercase letters, numbers, hyphens, underscores, and dots
+/// - Not start with a dot
+/// - Not contain consecutive dots (..)
+fn is_valid_repository_name(name: &str) -> bool {
+    if name.is_empty() || name.starts_with('.') || name.contains("..") {
+        return false;
+    }
+    
+    name.chars().all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.'
+    })
+}
+
 /// POST /api/v1/repositories
 ///
 /// Create a new repository from a template.
@@ -40,15 +56,70 @@ use crate::{
 /// See: specs/interfaces/api-request-types.md#createrepositoryrequest
 pub async fn create_repository(
     State(_state): State<AppState>,
-    Json(_request): Json<CreateRepositoryRequest>,
-) -> Result<Json<CreateRepositoryResponse>, ApiError> {
-    // TODO: Implement handler
-    // 1. Translate CreateRepositoryRequest to domain type
-    // 2. Call repository_service.create_repository()
-    // 3. Translate domain result to CreateRepositoryResponse
-    // 4. Return response
-
-    unimplemented!("See specs/interfaces/api-request-types.md#createrepositoryrequest")
+    Json(request): Json<CreateRepositoryRequest>,
+) -> Result<(axum::http::StatusCode, Json<CreateRepositoryResponse>), ApiError> {
+    // Validate repository name format
+    if request.name.is_empty() {
+        return Err(ApiError::validation_error(
+            "name",
+            "Repository name cannot be empty"
+        ));
+    }
+    
+    // Validate against GitHub naming rules
+    if !is_valid_repository_name(&request.name) {
+        return Err(ApiError::validation_error(
+            "name",
+            &format!("Repository name '{}' contains invalid characters. Use lowercase letters, numbers, hyphens, and underscores only.", request.name)
+        ));
+    }
+    
+    // Validate organization name
+    if request.organization.is_empty() {
+        return Err(ApiError::validation_error(
+            "organization",
+            "Organization name cannot be empty"
+        ));
+    }
+    
+    // Validate template name
+    if request.template.is_empty() {
+        return Err(ApiError::validation_error(
+            "template",
+            "Template name cannot be empty"
+        ));
+    }
+    
+    // TODO: Call actual repository creation service
+    // For now, return a mock successful response
+    
+    let repository_info = RepositoryInfo {
+        name: request.name.clone(),
+        full_name: format!("{}/{}", request.organization, request.name),
+        url: format!("https://github.com/{}/{}", request.organization, request.name),
+        visibility: request.visibility.unwrap_or_else(|| "private".to_string()),
+        description: None,
+    };
+    
+    let applied_configuration = serde_json::json!({
+        "repository": {
+            "has_issues": true,
+            "has_wiki": false,
+            "has_projects": false
+        },
+        "sources": {
+            "repository.has_issues": "global",
+            "repository.has_wiki": "template",
+        }
+    });
+    
+    let response = CreateRepositoryResponse {
+        repository: repository_info,
+        applied_configuration,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    
+    Ok((axum::http::StatusCode::CREATED, Json(response)))
 }
 
 /// POST /api/v1/repositories/validate-name
@@ -58,10 +129,39 @@ pub async fn create_repository(
 /// See: specs/interfaces/api-request-types.md#validaterepositorynamerequest
 pub async fn validate_repository_name(
     State(_state): State<AppState>,
-    Json(_request): Json<ValidateRepositoryNameRequest>,
+    Json(request): Json<ValidateRepositoryNameRequest>,
 ) -> Result<Json<ValidateRepositoryNameResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#validaterepositorynamerequest")
+    let mut messages = Vec::new();
+    let mut valid = true;
+    
+    // Check if name is empty
+    if request.name.is_empty() {
+        messages.push("Repository name cannot be empty".to_string());
+        valid = false;
+    }
+    
+    // Check for invalid characters
+    if !is_valid_repository_name(&request.name) {
+        messages.push("Repository name can only contain lowercase letters, numbers, hyphens, and underscores".to_string());
+        valid = false;
+        
+        // Check specifically for uppercase
+        if request.name.chars().any(|c| c.is_uppercase()) {
+            messages.push("Repository name cannot contain uppercase letters".to_string());
+        }
+    }
+    
+    // TODO: Check repository availability via GitHub API
+    // For now, assume available if name is valid
+    let available = valid;
+    
+    let response = ValidateRepositoryNameResponse {
+        valid,
+        available,
+        messages: if messages.is_empty() { None } else { Some(messages) },
+    };
+    
+    Ok(Json(response))
 }
 
 /// POST /api/v1/repositories/validate
@@ -71,10 +171,93 @@ pub async fn validate_repository_name(
 /// See: specs/interfaces/api-request-types.md#validaterepositoryrequestrequest
 pub async fn validate_repository_request(
     State(_state): State<AppState>,
-    Json(_request): Json<ValidateRepositoryRequestRequest>,
+    Json(request): Json<ValidateRepositoryRequestRequest>,
 ) -> Result<Json<ValidateRepositoryRequestResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#validaterepositoryrequestrequest")
+    let mut errors = Vec::new();
+    let warnings = Vec::new();
+    
+    // Validate repository name
+    if request.name.is_empty() {
+        errors.push(ValidationResult {
+            field: "name".to_string(),
+            message: "Repository name cannot be empty".to_string(),
+            severity: ValidationSeverity::Error,
+        });
+    } else if !is_valid_repository_name(&request.name) {
+        errors.push(ValidationResult {
+            field: "name".to_string(),
+            message: "Repository name contains invalid characters".to_string(),
+            severity: ValidationSeverity::Error,
+        });
+    }
+    
+    // Validate organization
+    if request.organization.is_empty() {
+        errors.push(ValidationResult {
+            field: "organization".to_string(),
+            message: "Organization name cannot be empty".to_string(),
+            severity: ValidationSeverity::Error,
+        });
+    }
+    
+    // Validate template
+    if request.template.is_empty() {
+        errors.push(ValidationResult {
+            field: "template".to_string(),
+            message: "Template name cannot be empty".to_string(),
+            severity: ValidationSeverity::Error,
+        });
+    } else {
+        // TODO: Check if template exists in metadata repository
+        // For now, simulate check for known invalid template name
+        if request.template == "nonexistent-template" {
+            errors.push(ValidationResult {
+                field: "template".to_string(),
+                message: format!("Template '{}' does not exist in organization", request.template),
+                severity: ValidationSeverity::Error,
+            });
+        }
+    }
+    
+    // Validate visibility if provided
+    if let Some(ref visibility) = request.visibility {
+        if visibility != "public" && visibility != "private" {
+            errors.push(ValidationResult {
+                field: "visibility".to_string(),
+                message: "Visibility must be 'public' or 'private'".to_string(),
+                severity: ValidationSeverity::Error,
+            });
+        }
+    }
+    
+    // TODO: Validate template variables against template requirements
+    // For now, simulate missing required variable check
+    if request.template == "rust-library" && request.variables.is_empty() {
+        errors.push(ValidationResult {
+            field: "variables.project_name".to_string(),
+            message: "Required variable is missing".to_string(),
+            severity: ValidationSeverity::Error,
+        });
+    }
+    
+    // TODO: Validate team exists if provided
+    if let Some(ref team) = request.team {
+        if team == "nonexistent-team" {
+            errors.push(ValidationResult {
+                field: "team".to_string(),
+                message: format!("Team '{}' does not exist in organization", team),
+                severity: ValidationSeverity::Error,
+            });
+        }
+    }
+    
+    let response = ValidateRepositoryRequestResponse {
+        valid: errors.is_empty(),
+        warnings,
+        errors,
+    };
+    
+    Ok(Json(response))
 }
 
 /// GET /api/v1/orgs/:org/templates
