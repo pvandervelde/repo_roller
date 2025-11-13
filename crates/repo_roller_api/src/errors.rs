@@ -133,14 +133,14 @@ fn convert_error(error: &anyhow::Error) -> (StatusCode, ErrorResponse) {
             "AuthenticationError",
             error.to_string(),
         )
+    } else if error_msg.contains("not found") {
+        (StatusCode::NOT_FOUND, "NotFound", error.to_string())
     } else if error_msg.contains("validation") || error_msg.contains("invalid") {
         (
             StatusCode::BAD_REQUEST,
             "ValidationError",
             error.to_string(),
         )
-    } else if error_msg.contains("not found") {
-        (StatusCode::NOT_FOUND, "NotFound", error.to_string())
     } else {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

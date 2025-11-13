@@ -142,6 +142,7 @@ pub struct GetRepositoryTypeConfigParams {
     pub org: String,
 
     /// Repository type name
+    #[serde(rename = "type")]
     pub type_name: String,
 }
 

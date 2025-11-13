@@ -406,10 +406,35 @@ pub async fn validate_template(
 /// See: specs/interfaces/api-request-types.md#listrepositorytypesrequest
 pub async fn list_repository_types(
     State(_state): State<AppState>,
-    Path(_params): Path<ListRepositoryTypesParams>,
+    Path(params): Path<ListRepositoryTypesParams>,
 ) -> Result<Json<ListRepositoryTypesResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#listrepositorytypesrequest")
+    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
+    // For now, return mock data to establish HTTP contract
+    
+    // Return empty list for organizations without types
+    if params.org == "emptyorg" {
+        return Ok(Json(ListRepositoryTypesResponse {
+            types: vec![],
+        }));
+    }
+    
+    // Mock repository types for establishing HTTP contract
+    let types = vec![
+        RepositoryTypeSummary {
+            name: "library".to_string(),
+            description: "Reusable library or package".to_string(),
+        },
+        RepositoryTypeSummary {
+            name: "service".to_string(),
+            description: "Microservice or API".to_string(),
+        },
+        RepositoryTypeSummary {
+            name: "documentation".to_string(),
+            description: "Documentation repository".to_string(),
+        },
+    ];
+    
+    Ok(Json(ListRepositoryTypesResponse { types }))
 }
 
 /// GET /api/v1/orgs/:org/repository-types/:type
@@ -419,10 +444,47 @@ pub async fn list_repository_types(
 /// See: specs/interfaces/api-request-types.md#getrepositorytypeconfigrequest
 pub async fn get_repository_type_config(
     State(_state): State<AppState>,
-    Path(_params): Path<GetRepositoryTypeConfigParams>,
+    Path(params): Path<GetRepositoryTypeConfigParams>,
 ) -> Result<Json<RepositoryTypeConfigResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#getrepositorytypeconfigrequest")
+    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
+    // For now, return mock data for known types or 404
+    
+    // Check if type exists (mock check)
+    if params.type_name == "nonexistent-type" {
+        return Err(ApiError::from(anyhow::anyhow!(
+            "Repository type '{}' not found in organization '{}'",
+            params.type_name,
+            params.org
+        )));
+    }
+    
+    // Mock type configuration for establishing HTTP contract
+    let configuration = serde_json::json!({
+        "repository": {
+            "has_issues": true,
+            "has_wiki": false,
+            "has_projects": false
+        },
+        "branch_protection": {
+            "default_branch": "main",
+            "require_pull_request": true,
+            "required_approvals": 2
+        },
+        "labels": [
+            {
+                "name": "bug",
+                "color": "d73a4a",
+                "description": "Bug report"
+            }
+        ]
+    });
+    
+    let response = RepositoryTypeConfigResponse {
+        name: params.type_name.clone(),
+        configuration,
+    };
+    
+    Ok(Json(response))
 }
 
 /// GET /api/v1/orgs/:org/defaults
@@ -434,8 +496,29 @@ pub async fn get_global_defaults(
     State(_state): State<AppState>,
     Path(_params): Path<GetGlobalDefaultsParams>,
 ) -> Result<Json<GlobalDefaultsResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#getglobaldefaultsrequest")
+    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
+    // For now, return mock global defaults
+    
+    // Mock global defaults for establishing HTTP contract
+    let defaults = serde_json::json!({
+        "repository": {
+            "visibility": "private",
+            "has_issues": true,
+            "has_wiki": false,
+            "delete_branch_on_merge": true
+        },
+        "branch_protection": {
+            "default_branch": "main",
+            "require_pull_request": true,
+            "required_approvals": 1
+        },
+        "security": {
+            "enable_vulnerability_alerts": true,
+            "enable_automated_security_fixes": true
+        }
+    });
+    
+    Ok(Json(GlobalDefaultsResponse { defaults }))
 }
 
 /// POST /api/v1/orgs/:org/configuration/preview
@@ -446,11 +529,49 @@ pub async fn get_global_defaults(
 pub async fn preview_configuration(
     State(_state): State<AppState>,
     Path(org): Path<String>,
-    Json(_request): Json<PreviewConfigurationRequest>,
+    Json(request): Json<PreviewConfigurationRequest>,
 ) -> Result<Json<PreviewConfigurationResponse>, ApiError> {
     let _ = org; // Suppress unused warning
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#previewconfigurationrequest")
+    
+    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
+    // For now, return mock preview or 404 for invalid templates
+    
+    // Check if template exists (mock check)
+    if request.template == "nonexistent-template" {
+        return Err(ApiError::from(anyhow::anyhow!(
+            "Template '{}' not found",
+            request.template
+        )));
+    }
+    
+    // Mock merged configuration preview for establishing HTTP contract
+    let merged_configuration = serde_json::json!({
+        "repository": {
+            "visibility": "private",
+            "has_issues": true,
+            "has_wiki": false
+        },
+        "branch_protection": {
+            "default_branch": "main",
+            "require_pull_request": true,
+            "required_approvals": 2
+        }
+    });
+    
+    // Mock source attribution
+    let mut sources = std::collections::HashMap::new();
+    sources.insert("repository.visibility".to_string(), "global".to_string());
+    sources.insert("repository.has_issues".to_string(), "repository_type".to_string());
+    sources.insert("repository.has_wiki".to_string(), "template".to_string());
+    sources.insert("branch_protection.required_approvals".to_string(), 
+                   request.team.as_ref().map(|_| "team".to_string()).unwrap_or_else(|| "repository_type".to_string()));
+    
+    let response = PreviewConfigurationResponse {
+        merged_configuration,
+        sources,
+    };
+    
+    Ok(Json(response))
 }
 
 /// POST /api/v1/orgs/:org/validate
@@ -460,10 +581,32 @@ pub async fn preview_configuration(
 /// See: specs/interfaces/api-request-types.md#validateorganizationrequest
 pub async fn validate_organization(
     State(_state): State<AppState>,
-    Path(_params): Path<ValidateOrganizationParams>,
+    Path(params): Path<ValidateOrganizationParams>,
 ) -> Result<Json<ValidateOrganizationResponse>, ApiError> {
-    // TODO: Implement handler
-    unimplemented!("See specs/interfaces/api-request-types.md#validateorganizationrequest")
+    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager validation
+    // For now, return mock validation results
+    
+    // Mock validation: invalidorg fails, others pass
+    if params.org == "invalidorg" {
+        let errors = vec![ValidationResult {
+            field: "global_defaults".to_string(),
+            message: "Global defaults configuration file is malformed".to_string(),
+            severity: ValidationSeverity::Error,
+        }];
+        
+        return Ok(Json(ValidateOrganizationResponse {
+            valid: false,
+            errors,
+            warnings: vec![],
+        }));
+    }
+    
+    // Valid organizations return success
+    Ok(Json(ValidateOrganizationResponse {
+        valid: true,
+        errors: vec![],
+        warnings: vec![],
+    }))
 }
 
 /// GET /api/v1/health

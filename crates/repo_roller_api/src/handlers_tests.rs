@@ -664,3 +664,438 @@ async fn test_validate_template_no_auth() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
+// ============================================================================
+// Organization Settings Handler Tests
+// ============================================================================
+
+/// Test list_repository_types endpoint returns available types
+///
+/// Verifies that listing repository types for an organization returns 200 OK
+/// with an array of type summaries.
+#[tokio::test]
+async fn test_list_repository_types_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/repository-types")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check response structure
+    assert!(response_json["types"].is_array());
+
+    let types = response_json["types"].as_array().unwrap();
+    assert!(
+        !types.is_empty(),
+        "Should return at least one repository type"
+    );
+
+    // Check type structure
+    let first_type = &types[0];
+    assert!(first_type["name"].is_string());
+    assert!(first_type["description"].is_string());
+}
+
+/// Test list_repository_types endpoint with empty types
+///
+/// Verifies that when no types are configured, returns 200 OK with empty array.
+#[tokio::test]
+async fn test_list_repository_types_empty() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/emptyorg/repository-types")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(response_json["types"].is_array());
+    // Empty array is valid - organization may not have types configured
+}
+
+/// Test list_repository_types endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_list_repository_types_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/repository-types")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Test get_repository_type_config endpoint with valid type
+///
+/// Verifies that requesting configuration for an existing type returns
+/// 200 OK with complete configuration.
+#[tokio::test]
+async fn test_get_repository_type_config_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/repository-types/library")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check required fields
+    assert!(response_json["name"].is_string());
+    assert_eq!(response_json["name"], "library");
+    assert!(response_json["configuration"].is_object());
+}
+
+/// Test get_repository_type_config endpoint with non-existent type
+///
+/// Verifies that requesting a type that doesn't exist returns
+/// 404 Not Found with appropriate error message.
+#[tokio::test]
+async fn test_get_repository_type_config_not_found() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/repository-types/nonexistent-type")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let error_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(error_json["error"].is_object());
+    assert!(error_json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("type"));
+}
+
+/// Test get_repository_type_config endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_get_repository_type_config_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/repository-types/library")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Test get_global_defaults endpoint returns organization defaults
+///
+/// Verifies that requesting global defaults returns 200 OK with
+/// configuration object.
+#[tokio::test]
+async fn test_get_global_defaults_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/defaults")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check required fields
+    assert!(response_json["defaults"].is_object());
+
+    // Verify typical global defaults structure
+    let defaults = &response_json["defaults"];
+    assert!(
+        defaults.is_object() && !defaults.as_object().unwrap().is_empty(),
+        "Global defaults should contain configuration"
+    );
+}
+
+/// Test get_global_defaults endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_get_global_defaults_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/defaults")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Test preview_configuration endpoint with complete request
+///
+/// Verifies that previewing configuration returns 200 OK with
+/// merged configuration and source attribution.
+#[tokio::test]
+async fn test_preview_configuration_success() {
+    let app = create_router(test_app_state());
+
+    let request_body = serde_json::json!({
+        "template": "rust-library",
+        "repositoryType": "library",
+        "team": "platform"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("authorization", "Bearer test-token-123")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check required fields
+    assert!(response_json["mergedConfiguration"].is_object());
+    assert!(response_json["sources"].is_object());
+
+    // Verify source attribution exists
+    let sources = response_json["sources"].as_object().unwrap();
+    assert!(
+        !sources.is_empty(),
+        "Sources should show where configuration values came from"
+    );
+}
+
+/// Test preview_configuration endpoint with minimal request
+///
+/// Verifies that preview works with only template specified.
+#[tokio::test]
+async fn test_preview_configuration_minimal() {
+    let app = create_router(test_app_state());
+
+    let request_body = serde_json::json!({
+        "template": "rust-library"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("authorization", "Bearer test-token-123")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(response_json["mergedConfiguration"].is_object());
+    assert!(response_json["sources"].is_object());
+}
+
+/// Test preview_configuration endpoint with non-existent template
+///
+/// Verifies that preview fails gracefully with 404 for invalid template.
+#[tokio::test]
+async fn test_preview_configuration_template_not_found() {
+    let app = create_router(test_app_state());
+
+    let request_body = serde_json::json!({
+        "template": "nonexistent-template"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("authorization", "Bearer test-token-123")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// Test preview_configuration endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_preview_configuration_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request_body = serde_json::json!({
+        "template": "rust-library"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("content-type", "application/json")
+        // No authorization header
+        .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Test validate_organization endpoint returns validation results
+///
+/// Verifies that validating organization settings returns 200 OK with
+/// validation results for all components.
+#[tokio::test]
+async fn test_validate_organization_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/validate")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check required fields (using ValidateRepositoryRequestResponse structure)
+    assert!(response_json["valid"].is_boolean());
+    assert_eq!(response_json["valid"], true);
+
+    // errors and warnings fields may be absent (skip_serializing_if empty)
+    // or present as empty arrays - both are valid for successful validation
+    if response_json.get("errors").is_some() {
+        assert!(response_json["errors"].is_array());
+    }
+    if response_json.get("warnings").is_some() {
+        assert!(response_json["warnings"].is_array());
+    }
+}
+
+/// Test validate_organization endpoint with invalid configuration
+///
+/// Verifies that validation returns 200 OK with valid=false and error details
+/// when organization configuration has issues.
+#[tokio::test]
+async fn test_validate_organization_invalid() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/invalidorg/validate")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(response_json["valid"], false);
+
+    // Should have validation errors
+    let errors = response_json["errors"].as_array().unwrap();
+    assert!(!errors.is_empty());
+    assert!(errors[0]["field"].is_string());
+    assert!(errors[0]["message"].is_string());
+}
+
+/// Test validate_organization endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_validate_organization_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/validate")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
