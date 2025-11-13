@@ -407,3 +407,260 @@ async fn test_validate_repository_request_nonexistent_template() {
         e["field"].as_str().unwrap().contains("template")
     ));
 }
+
+// ============================================================================
+// Template Discovery Handler Tests
+// ============================================================================
+
+/// Test list_templates endpoint returns available templates
+///
+/// Verifies that listing templates for an organization returns 200 OK
+/// with an array of template summaries.
+#[tokio::test]
+async fn test_list_templates_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/templates")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check response structure
+    assert!(response_json["templates"].is_array());
+
+    let templates = response_json["templates"].as_array().unwrap();
+    assert!(!templates.is_empty(), "Should return at least one template");
+
+    // Check template structure
+    let first_template = &templates[0];
+    assert!(first_template["name"].is_string());
+    assert!(first_template["description"].is_string());
+    assert!(first_template["variables"].is_array());
+}
+
+/// Test list_templates endpoint with no templates available
+///
+/// Verifies that when no templates exist, returns 200 OK with empty array.
+#[tokio::test]
+async fn test_list_templates_empty() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/emptyorg/templates")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(response_json["templates"].is_array());
+    // Empty array is valid - organization may not have templates yet
+}
+
+/// Test list_templates endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_list_templates_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/templates")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Test get_template_details endpoint with valid template
+///
+/// Verifies that requesting details for an existing template returns
+/// 200 OK with complete template information including variables.
+#[tokio::test]
+async fn test_get_template_details_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/templates/rust-library")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check required fields
+    assert!(response_json["name"].is_string());
+    assert_eq!(response_json["name"], "rust-library");
+    assert!(response_json["description"].is_string());
+    assert!(response_json["variables"].is_object());
+    assert!(response_json["configuration"].is_object());
+}
+
+/// Test get_template_details endpoint with non-existent template
+///
+/// Verifies that requesting a template that doesn't exist returns
+/// 404 Not Found with appropriate error message.
+#[tokio::test]
+async fn test_get_template_details_not_found() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/templates/nonexistent-template")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let error_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(error_json["error"].is_object());
+    assert!(error_json["error"]["message"].as_str().unwrap().contains("template"));
+}
+
+/// Test get_template_details endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_get_template_details_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/templates/rust-library")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Test validate_template endpoint with valid template
+///
+/// Verifies that validating a well-formed template returns 200 OK
+/// with valid=true.
+#[tokio::test]
+async fn test_validate_template_success() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/templates/rust-library/validate")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(response_json["valid"], true);
+    // errors field should be empty or not present for valid templates
+}
+
+/// Test validate_template endpoint with invalid template structure
+///
+/// Verifies that validating a malformed template returns 200 OK
+/// with valid=false and includes validation error details.
+#[tokio::test]
+async fn test_validate_template_invalid() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/templates/invalid-template/validate")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(response_json["valid"], false);
+
+    // Should have errors array with validation issues
+    if response_json.get("errors").is_some() {
+        let errors = response_json["errors"].as_array().unwrap();
+        assert!(!errors.is_empty());
+        assert!(errors[0]["field"].is_string());
+        assert!(errors[0]["message"].is_string());
+    }
+}
+
+/// Test validate_template endpoint with non-existent template
+///
+/// Verifies that validating a template that doesn't exist returns
+/// 404 Not Found.
+#[tokio::test]
+async fn test_validate_template_not_found() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/templates/nonexistent/validate")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// Test validate_template endpoint without authentication
+///
+/// Verifies that unauthenticated requests return 401 Unauthorized.
+#[tokio::test]
+async fn test_validate_template_no_auth() {
+    let app = create_router(test_app_state());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/templates/rust-library/validate")
+        // No authorization header
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
