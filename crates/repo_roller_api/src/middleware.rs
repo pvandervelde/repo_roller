@@ -28,10 +28,10 @@ use crate::errors::{ErrorResponse, ErrorDetails};
 pub struct AuthContext {
     /// Bearer token from Authorization header
     pub token: String,
-    
+
     /// Installation ID (extracted from token or validated separately)
     pub installation_id: Option<u64>,
-    
+
     /// Organization name (if validated)
     pub organization: Option<String>,
 }
@@ -45,13 +45,13 @@ impl AuthContext {
             organization: None,
         }
     }
-    
+
     /// Create context with installation ID
     pub fn with_installation_id(mut self, id: u64) -> Self {
         self.installation_id = Some(id);
         self
     }
-    
+
     /// Create context with organization
     pub fn with_organization(mut self, org: String) -> Self {
         self.organization = Some(org);
@@ -109,15 +109,15 @@ pub async fn auth_middleware(
 /// Expected format: "Bearer <token>"
 fn extract_bearer_token(auth_header: &str) -> Result<String, AuthError> {
     let parts: Vec<&str> = auth_header.split_whitespace().collect();
-    
+
     if parts.len() != 2 {
         return Err(AuthError::InvalidFormat);
     }
-    
+
     if parts[0].to_lowercase() != "bearer" {
         return Err(AuthError::InvalidScheme);
     }
-    
+
     Ok(parts[1].to_string())
 }
 
@@ -131,16 +131,16 @@ fn validate_token_format(token: &str) -> Result<(), AuthError> {
     if token.is_empty() {
         return Err(AuthError::EmptyToken);
     }
-    
+
     if token.len() < 10 || token.len() > 500 {
         return Err(AuthError::InvalidLength);
     }
-    
+
     // GitHub tokens are typically base64-like with some special chars
     if !token.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.') {
         return Err(AuthError::InvalidCharacters);
     }
-    
+
     Ok(())
 }
 
@@ -173,7 +173,7 @@ pub async fn tracing_middleware(
 ) -> Response {
     // Generate request ID
     let request_id = uuid::Uuid::new_v4().to_string();
-    
+
     // Log request start
     tracing::info!(
         request_id = %request_id,
@@ -181,16 +181,16 @@ pub async fn tracing_middleware(
         uri = %request.uri(),
         "Request started"
     );
-    
+
     // Add request ID to response headers will be done by response interceptor
     let response = next.run(request).await;
-    
+
     tracing::info!(
         request_id = %request_id,
         status = %response.status(),
         "Request completed"
     );
-    
+
     response
 }
 
@@ -199,22 +199,22 @@ pub async fn tracing_middleware(
 pub enum AuthError {
     /// Authorization header is missing
     MissingToken,
-    
+
     /// Authorization header format is invalid
     InvalidFormat,
-    
+
     /// Authorization scheme is not "Bearer"
     InvalidScheme,
-    
+
     /// Token is empty
     EmptyToken,
-    
+
     /// Token length is invalid
     InvalidLength,
-    
+
     /// Token contains invalid characters
     InvalidCharacters,
-    
+
     /// Token validation failed
     ValidationFailed(String),
 }
