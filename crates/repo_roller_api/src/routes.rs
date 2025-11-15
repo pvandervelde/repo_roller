@@ -22,10 +22,17 @@
 //! See: .llm/rest-api-review-response.md
 
 use axum::{
+    http::{header, Method},
     middleware,
     routing::{get, post},
     Router,
 };
+use tower_http::{
+    cors::CorsLayer,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    timeout::TimeoutLayer,
+};
+use std::time::Duration;
 
 use crate::{
     handlers,
@@ -42,6 +49,37 @@ use crate::{
 /// - Request tracing
 /// - Timeout handling
 pub fn create_router(state: AppState) -> Router {
+    // Configure CORS for web UI support
+    let cors = CorsLayer::new()
+        // Allow requests from any origin (configure more restrictively in production)
+        .allow_origin(tower_http::cors::Any)
+        // Allow common HTTP methods
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        // Allow common headers
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+        ])
+        // Allow credentials (cookies, authorization headers)
+        .allow_credentials(false)
+        // Cache preflight responses for 1 hour
+        .max_age(Duration::from_secs(3600));
+
+    // Configure request tracing
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(DefaultMakeSpan::new().include_headers(true))
+        .on_response(DefaultOnResponse::new().include_headers(true));
+
+    // Configure request timeout (30 seconds)
+    let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
+
     // API v1 routes
     let api_v1 = Router::new()
         // Repository operations
@@ -52,9 +90,12 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/orgs/:org", organization_routes())
         // Health check (no auth required)
         .route("/health", get(handlers::health_check))
-        // Add authentication middleware to all routes except health
+        // Add middleware layers (order matters: last added runs first)
         .layer(middleware::from_fn(api_middleware::auth_middleware))
         .layer(middleware::from_fn(api_middleware::tracing_middleware))
+        .layer(timeout_layer)
+        .layer(trace_layer)
+        .layer(cors)
         .with_state(state);
 
     // Root router with API version prefix
