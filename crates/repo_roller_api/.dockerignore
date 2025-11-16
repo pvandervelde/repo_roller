@@ -1,0 +1,34 @@
+# Ignore build artifacts
+target/
+*.profraw
+
+# Ignore test files
+tests/
+**/*_tests.rs
+
+# Ignore CI/CD
+.github/
+.llm/
+
+# Ignore documentation
+docs/
+reviews/
+specs/
+*.md
+!README.md
+
+# Ignore Git
+.git/
+.gitignore
+
+# Ignore IDE
+.vscode/
+.idea/
+
+# Ignore examples
+examples/
+
+# Ignore temporary files
+*.tmp
+*.log
+*.bak
