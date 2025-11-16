@@ -42,24 +42,30 @@ pub const API_VERSION: &str = "v1";
 pub const DEFAULT_PORT: u16 = 8080;
 
 /// Application state shared across handlers
+///
+/// Contains shared configuration for API handlers.
+/// Actual service instances are created per-request using authentication context.
 #[derive(Clone)]
 pub struct AppState {
-    // TODO: Add service dependencies
-    // pub repository_service: Arc<dyn RepositoryService>,
-    // pub config_manager: Arc<dyn ConfigurationManager>,
-    // pub auth_service: Arc<dyn AuthenticationService>,
+    /// Metadata repository name for organization settings
+    pub metadata_repository_name: String,
 }
 
 impl AppState {
-    /// Create new application state with service dependencies
-    pub fn new() -> Self {
-        // TODO: Initialize with actual service implementations
-        Self {}
+    /// Create new application state with configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_repository_name` - Name of the metadata repository
+    pub fn new(metadata_repository_name: impl Into<String>) -> Self {
+        Self {
+            metadata_repository_name: metadata_repository_name.into(),
+        }
     }
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        Self::new(".reporoller")
     }
 }

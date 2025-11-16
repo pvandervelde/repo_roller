@@ -17,12 +17,15 @@
 
 use axum::{
     extract::{Path, State},
+    Extension,
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::{
     errors::ApiError,
+    middleware::AuthContext,
     models::{
         request::*,
         response::*,
@@ -30,8 +33,50 @@ use crate::{
     AppState,
 };
 
-// TODO: Import domain services when available
-// use repo_roller_core::{RepositoryService, ConfigurationManager};
+// Domain service imports
+use config_manager::{
+    ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
+    OrganizationSettingsManager, MetadataRepositoryProvider,
+};
+use github_client::GitHubClient;
+
+/// Create an OrganizationSettingsManager and MetadataRepositoryProvider for a request.
+///
+/// Creates a GitHub client using the authentication token from the request context,
+/// then creates a metadata provider and settings manager.
+///
+/// # Arguments
+///
+/// * `auth` - Authentication context with bearer token
+/// * `state` - Application state with configuration
+///
+/// # Returns
+///
+/// Returns tuple of (manager, provider) for use in handlers.
+///
+/// # Errors
+///
+/// Returns ApiError if GitHub client creation fails.
+async fn create_settings_manager(
+    auth: &AuthContext,
+    state: &AppState,
+) -> Result<(OrganizationSettingsManager, Arc<dyn MetadataRepositoryProvider>), ApiError> {
+    // Create GitHub client with installation token
+    let octocrab = github_client::create_token_client(&auth.token)
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
+
+    let github_client = GitHubClient::new(octocrab);
+
+    // Create metadata provider
+    let provider_config = MetadataProviderConfig::explicit(&state.metadata_repository_name);
+    let metadata_provider = GitHubMetadataProvider::new(github_client, provider_config);
+    let provider_arc = Arc::new(metadata_provider) as Arc<dyn MetadataRepositoryProvider>;
+
+    // Create settings manager
+    let manager = OrganizationSettingsManager::new(provider_arc.clone());
+
+    Ok((manager, provider_arc))
+}
 
 /// Validate a repository name against GitHub naming rules.
 ///
@@ -43,7 +88,7 @@ fn is_valid_repository_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('.') || name.contains("..") {
         return false;
     }
-    
+
     name.chars().all(|c| {
         c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.'
     })
@@ -65,7 +110,7 @@ pub async fn create_repository(
             "Repository name cannot be empty"
         ));
     }
-    
+
     // Validate against GitHub naming rules
     if !is_valid_repository_name(&request.name) {
         return Err(ApiError::validation_error(
@@ -73,7 +118,7 @@ pub async fn create_repository(
             &format!("Repository name '{}' contains invalid characters. Use lowercase letters, numbers, hyphens, and underscores only.", request.name)
         ));
     }
-    
+
     // Validate organization name
     if request.organization.is_empty() {
         return Err(ApiError::validation_error(
@@ -81,7 +126,7 @@ pub async fn create_repository(
             "Organization name cannot be empty"
         ));
     }
-    
+
     // Validate template name
     if request.template.is_empty() {
         return Err(ApiError::validation_error(
@@ -89,10 +134,10 @@ pub async fn create_repository(
             "Template name cannot be empty"
         ));
     }
-    
+
     // TODO: Call actual repository creation service
     // For now, return a mock successful response
-    
+
     let repository_info = RepositoryInfo {
         name: request.name.clone(),
         full_name: format!("{}/{}", request.organization, request.name),
@@ -100,7 +145,7 @@ pub async fn create_repository(
         visibility: request.visibility.unwrap_or_else(|| "private".to_string()),
         description: None,
     };
-    
+
     let applied_configuration = serde_json::json!({
         "repository": {
             "has_issues": true,
@@ -112,13 +157,13 @@ pub async fn create_repository(
             "repository.has_wiki": "template",
         }
     });
-    
+
     let response = CreateRepositoryResponse {
         repository: repository_info,
         applied_configuration,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     Ok((axum::http::StatusCode::CREATED, Json(response)))
 }
 
@@ -133,34 +178,34 @@ pub async fn validate_repository_name(
 ) -> Result<Json<ValidateRepositoryNameResponse>, ApiError> {
     let mut messages = Vec::new();
     let mut valid = true;
-    
+
     // Check if name is empty
     if request.name.is_empty() {
         messages.push("Repository name cannot be empty".to_string());
         valid = false;
     }
-    
+
     // Check for invalid characters
     if !is_valid_repository_name(&request.name) {
         messages.push("Repository name can only contain lowercase letters, numbers, hyphens, and underscores".to_string());
         valid = false;
-        
+
         // Check specifically for uppercase
         if request.name.chars().any(|c| c.is_uppercase()) {
             messages.push("Repository name cannot contain uppercase letters".to_string());
         }
     }
-    
+
     // TODO: Check repository availability via GitHub API
     // For now, assume available if name is valid
     let available = valid;
-    
+
     let response = ValidateRepositoryNameResponse {
         valid,
         available,
         messages: if messages.is_empty() { None } else { Some(messages) },
     };
-    
+
     Ok(Json(response))
 }
 
@@ -175,7 +220,7 @@ pub async fn validate_repository_request(
 ) -> Result<Json<ValidateRepositoryRequestResponse>, ApiError> {
     let mut errors = Vec::new();
     let warnings = Vec::new();
-    
+
     // Validate repository name
     if request.name.is_empty() {
         errors.push(ValidationResult {
@@ -190,7 +235,7 @@ pub async fn validate_repository_request(
             severity: ValidationSeverity::Error,
         });
     }
-    
+
     // Validate organization
     if request.organization.is_empty() {
         errors.push(ValidationResult {
@@ -199,7 +244,7 @@ pub async fn validate_repository_request(
             severity: ValidationSeverity::Error,
         });
     }
-    
+
     // Validate template
     if request.template.is_empty() {
         errors.push(ValidationResult {
@@ -218,7 +263,7 @@ pub async fn validate_repository_request(
             });
         }
     }
-    
+
     // Validate visibility if provided
     if let Some(ref visibility) = request.visibility {
         if visibility != "public" && visibility != "private" {
@@ -229,7 +274,7 @@ pub async fn validate_repository_request(
             });
         }
     }
-    
+
     // TODO: Validate template variables against template requirements
     // For now, simulate missing required variable check
     if request.template == "rust-library" && request.variables.is_empty() {
@@ -239,7 +284,7 @@ pub async fn validate_repository_request(
             severity: ValidationSeverity::Error,
         });
     }
-    
+
     // TODO: Validate team exists if provided
     if let Some(ref team) = request.team {
         if team == "nonexistent-team" {
@@ -250,13 +295,13 @@ pub async fn validate_repository_request(
             });
         }
     }
-    
+
     let response = ValidateRepositoryRequestResponse {
         valid: errors.is_empty(),
         warnings,
         errors,
     };
-    
+
     Ok(Json(response))
 }
 
@@ -271,14 +316,14 @@ pub async fn list_templates(
 ) -> Result<Json<ListTemplatesResponse>, ApiError> {
     // TODO: Task 9.3.8 - Replace with actual template discovery service call
     // For now, return mock data to establish HTTP contract
-    
+
     // Return empty list for organizations without templates
     if params.org == "emptyorg" {
         return Ok(Json(ListTemplatesResponse {
             templates: vec![],
         }));
     }
-    
+
     // Mock template data for establishing HTTP contract
     let templates = vec![
         TemplateSummary {
@@ -294,7 +339,7 @@ pub async fn list_templates(
             variables: vec!["project_name".to_string(), "version".to_string()],
         },
     ];
-    
+
     Ok(Json(ListTemplatesResponse { templates }))
 }
 
@@ -309,7 +354,7 @@ pub async fn get_template_details(
 ) -> Result<Json<TemplateDetailsResponse>, ApiError> {
     // TODO: Task 9.3.8 - Replace with actual template service call
     // For now, return mock data for known templates or 404
-    
+
     // Check if template exists (mock check)
     if params.template == "nonexistent-template" || params.template == "nonexistent" {
         return Err(ApiError::from(anyhow::anyhow!(
@@ -318,7 +363,7 @@ pub async fn get_template_details(
             params.org
         )));
     }
-    
+
     // Mock template details for establishing HTTP contract
     let mut variables = std::collections::HashMap::new();
     variables.insert(
@@ -339,7 +384,7 @@ pub async fn get_template_details(
             pattern: None,
         },
     );
-    
+
     let response = TemplateDetailsResponse {
         name: params.template.clone(),
         description: format!("Template for {}", params.template),
@@ -351,7 +396,7 @@ pub async fn get_template_details(
             "auto_init": true,
         }),
     };
-    
+
     Ok(Json(response))
 }
 
@@ -366,7 +411,7 @@ pub async fn validate_template(
 ) -> Result<Json<ValidateTemplateResponse>, ApiError> {
     // TODO: Task 9.3.8 - Replace with actual template validation service call
     // For now, return mock validation results
-    
+
     // Check if template exists (mock check)
     if params.template == "nonexistent" || params.template == "nonexistent-template" {
         return Err(ApiError::from(anyhow::anyhow!(
@@ -375,7 +420,7 @@ pub async fn validate_template(
             params.org
         )));
     }
-    
+
     // Mock validation: invalid-template fails, others pass
     if params.template == "invalid-template" {
         let errors = vec![ValidationResult {
@@ -383,14 +428,14 @@ pub async fn validate_template(
             message: "Template configuration file is malformed".to_string(),
             severity: ValidationSeverity::Error,
         }];
-        
+
         return Ok(Json(ValidateTemplateResponse {
             valid: false,
             errors,
             warnings: vec![],
         }));
     }
-    
+
     // Valid templates return success
     Ok(Json(ValidateTemplateResponse {
         valid: true,
@@ -405,35 +450,43 @@ pub async fn validate_template(
 ///
 /// See: specs/interfaces/api-request-types.md#listrepositorytypesrequest
 pub async fn list_repository_types(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(params): Path<ListRepositoryTypesParams>,
 ) -> Result<Json<ListRepositoryTypesResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
-    // For now, return mock data to establish HTTP contract
-    
-    // Return empty list for organizations without types
-    if params.org == "emptyorg" {
-        return Ok(Json(ListRepositoryTypesResponse {
-            types: vec![],
-        }));
-    }
-    
-    // Mock repository types for establishing HTTP contract
-    let types = vec![
-        RepositoryTypeSummary {
-            name: "library".to_string(),
-            description: "Reusable library or package".to_string(),
-        },
-        RepositoryTypeSummary {
-            name: "service".to_string(),
-            description: "Microservice or API".to_string(),
-        },
-        RepositoryTypeSummary {
-            name: "documentation".to_string(),
-            description: "Documentation repository".to_string(),
-        },
-    ];
-    
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(&params.org)
+        .await
+        .map_err(|e| {
+            // If metadata repository not found, return empty list
+            if matches!(e, config_manager::ConfigurationError::MetadataRepositoryNotFound { .. }) {
+                return ApiError::from(anyhow::anyhow!("Metadata repository not found for organization '{}'", params.org));
+            }
+            ApiError::from(anyhow::anyhow!("Failed to discover metadata repository: {}", e))
+        })?;
+
+    // List available repository types
+    // TODO: Once GitHub tree API is implemented in github_client, this will return actual types
+    // For now, this returns an empty vector (see Technical Debt in tasks.md)
+    let type_names = provider
+        .list_available_repository_types(&metadata_repo)
+        .await
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to list repository types: {}", e)))?;
+
+    // Convert to response format
+    // TODO: Load descriptions from repository type configurations when available
+    let types = type_names
+        .into_iter()
+        .map(|name| RepositoryTypeSummary {
+            name: name.clone(),
+            description: format!("Repository type: {}", name),
+        })
+        .collect();
+
     Ok(Json(ListRepositoryTypesResponse { types }))
 }
 
@@ -443,47 +496,53 @@ pub async fn list_repository_types(
 ///
 /// See: specs/interfaces/api-request-types.md#getrepositorytypeconfigrequest
 pub async fn get_repository_type_config(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(params): Path<GetRepositoryTypeConfigParams>,
 ) -> Result<Json<RepositoryTypeConfigResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
-    // For now, return mock data for known types or 404
-    
-    // Check if type exists (mock check)
-    if params.type_name == "nonexistent-type" {
-        return Err(ApiError::from(anyhow::anyhow!(
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(&params.org)
+        .await
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to discover metadata repository: {}", e)))?;
+
+    // Load repository type configuration
+    let type_config = provider
+        .load_repository_type_configuration(&metadata_repo, &params.type_name)
+        .await
+        .map_err(|e| {
+            // Check if it's a not found error
+            if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
+                return ApiError::from(anyhow::anyhow!(
+                    "Repository type '{}' not found in organization '{}'",
+                    params.type_name,
+                    params.org
+                ));
+            }
+            ApiError::from(anyhow::anyhow!("Failed to load repository type configuration: {}", e))
+        })?;
+
+    // If configuration is None, type doesn't exist
+    let config = type_config.ok_or_else(|| {
+        ApiError::from(anyhow::anyhow!(
             "Repository type '{}' not found in organization '{}'",
             params.type_name,
             params.org
-        )));
-    }
-    
-    // Mock type configuration for establishing HTTP contract
-    let configuration = serde_json::json!({
-        "repository": {
-            "has_issues": true,
-            "has_wiki": false,
-            "has_projects": false
-        },
-        "branch_protection": {
-            "default_branch": "main",
-            "require_pull_request": true,
-            "required_approvals": 2
-        },
-        "labels": [
-            {
-                "name": "bug",
-                "color": "d73a4a",
-                "description": "Bug report"
-            }
-        ]
-    });
-    
+        ))
+    })?;
+
+    // Convert to JSON for response
+    let configuration = serde_json::to_value(&config)
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to serialize configuration: {}", e)))?;
+
     let response = RepositoryTypeConfigResponse {
         name: params.type_name.clone(),
         configuration,
     };
-    
+
     Ok(Json(response))
 }
 
@@ -493,31 +552,29 @@ pub async fn get_repository_type_config(
 ///
 /// See: specs/interfaces/api-request-types.md#getglobaldefaultsrequest
 pub async fn get_global_defaults(
-    State(_state): State<AppState>,
-    Path(_params): Path<GetGlobalDefaultsParams>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(params): Path<GetGlobalDefaultsParams>,
 ) -> Result<Json<GlobalDefaultsResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
-    // For now, return mock global defaults
-    
-    // Mock global defaults for establishing HTTP contract
-    let defaults = serde_json::json!({
-        "repository": {
-            "visibility": "private",
-            "has_issues": true,
-            "has_wiki": false,
-            "delete_branch_on_merge": true
-        },
-        "branch_protection": {
-            "default_branch": "main",
-            "require_pull_request": true,
-            "required_approvals": 1
-        },
-        "security": {
-            "enable_vulnerability_alerts": true,
-            "enable_automated_security_fixes": true
-        }
-    });
-    
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+
+    // Discover metadata repository
+    let metadata_repo = provider
+        .discover_metadata_repository(&params.org)
+        .await
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to discover metadata repository: {}", e)))?;
+
+    // Load global defaults
+    let global_defaults = provider
+        .load_global_defaults(&metadata_repo)
+        .await
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to load global defaults: {}", e)))?;
+
+    // Convert to JSON for response
+    let defaults = serde_json::to_value(&global_defaults)
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to serialize defaults: {}", e)))?;
+
     Ok(Json(GlobalDefaultsResponse { defaults }))
 }
 
@@ -527,50 +584,51 @@ pub async fn get_global_defaults(
 ///
 /// See: specs/interfaces/api-request-types.md#previewconfigurationrequest
 pub async fn preview_configuration(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(org): Path<String>,
     Json(request): Json<PreviewConfigurationRequest>,
 ) -> Result<Json<PreviewConfigurationResponse>, ApiError> {
-    let _ = org; // Suppress unused warning
-    
-    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager call
-    // For now, return mock preview or 404 for invalid templates
-    
-    // Check if template exists (mock check)
-    if request.template == "nonexistent-template" {
-        return Err(ApiError::from(anyhow::anyhow!(
-            "Template '{}' not found",
-            request.template
-        )));
+    // Create settings manager
+    let (manager, _provider) = create_settings_manager(&auth, &state).await?;
+
+    // Create configuration context
+    let mut context = ConfigurationContext::new(&org, &request.template);
+
+    if let Some(ref team) = request.team {
+        context = context.with_team(team);
     }
-    
-    // Mock merged configuration preview for establishing HTTP contract
-    let merged_configuration = serde_json::json!({
-        "repository": {
-            "visibility": "private",
-            "has_issues": true,
-            "has_wiki": false
-        },
-        "branch_protection": {
-            "default_branch": "main",
-            "require_pull_request": true,
-            "required_approvals": 2
-        }
-    });
-    
-    // Mock source attribution
-    let mut sources = std::collections::HashMap::new();
-    sources.insert("repository.visibility".to_string(), "global".to_string());
-    sources.insert("repository.has_issues".to_string(), "repository_type".to_string());
-    sources.insert("repository.has_wiki".to_string(), "template".to_string());
-    sources.insert("branch_protection.required_approvals".to_string(), 
-                   request.team.as_ref().map(|_| "team".to_string()).unwrap_or_else(|| "repository_type".to_string()));
-    
+
+    if let Some(ref repo_type) = request.repository_type {
+        context = context.with_repository_type(repo_type);
+    }
+
+    // Resolve merged configuration
+    let merged = manager
+        .resolve_configuration(&context)
+        .await
+        .map_err(|e| {
+            // Check if it's a template not found error
+            if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
+                return ApiError::from(anyhow::anyhow!("Template '{}' not found", request.template));
+            }
+            ApiError::from(anyhow::anyhow!("Failed to resolve configuration: {}", e))
+        })?;
+
+    // Convert merged configuration to JSON
+    let merged_configuration = serde_json::to_value(&merged)
+        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to serialize merged configuration: {}", e)))?;
+
+    // Extract source attribution from the merged configuration's source trace
+    // TODO: Implement proper source trace extraction when API supports detailed attribution
+    // For now, return empty map as the source_trace is complex and needs proper mapping
+    let sources = std::collections::HashMap::new();
+
     let response = PreviewConfigurationResponse {
         merged_configuration,
         sources,
     };
-    
+
     Ok(Json(response))
 }
 
@@ -580,32 +638,84 @@ pub async fn preview_configuration(
 ///
 /// See: specs/interfaces/api-request-types.md#validateorganizationrequest
 pub async fn validate_organization(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(params): Path<ValidateOrganizationParams>,
 ) -> Result<Json<ValidateOrganizationResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual OrganizationSettingsManager validation
-    // For now, return mock validation results
-    
-    // Mock validation: invalidorg fails, others pass
-    if params.org == "invalidorg" {
-        let errors = vec![ValidationResult {
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+
+    // Try to discover metadata repository
+    let metadata_repo = match provider
+        .discover_metadata_repository(&params.org)
+        .await
+    {
+        Ok(repo) => repo,
+        Err(e) => {
+            errors.push(ValidationResult {
+                field: "metadata_repository".to_string(),
+                message: format!("Failed to discover metadata repository: {}", e),
+                severity: ValidationSeverity::Error,
+            });
+
+            return Ok(Json(ValidateOrganizationResponse {
+                valid: false,
+                errors,
+                warnings,
+            }));
+        }
+    };
+
+    // Try to load global defaults
+    if let Err(e) = provider
+        .load_global_defaults(&metadata_repo)
+        .await
+    {
+        errors.push(ValidationResult {
             field: "global_defaults".to_string(),
-            message: "Global defaults configuration file is malformed".to_string(),
+            message: format!("Failed to load global defaults: {}", e),
             severity: ValidationSeverity::Error,
-        }];
-        
-        return Ok(Json(ValidateOrganizationResponse {
-            valid: false,
-            errors,
-            warnings: vec![],
-        }));
+        });
     }
-    
-    // Valid organizations return success
+
+    // Try to list repository types
+    match provider
+        .list_available_repository_types(&metadata_repo)
+        .await
+    {
+        Ok(types) => {
+            // Try to load each repository type configuration
+            for type_name in types {
+                if let Err(e) = provider
+                    .load_repository_type_configuration(&metadata_repo, &type_name)
+                    .await
+                {
+                    errors.push(ValidationResult {
+                        field: format!("repository_type.{}", type_name),
+                        message: format!("Failed to load repository type '{}': {}", type_name, e),
+                        severity: ValidationSeverity::Error,
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            warnings.push(ValidationResult {
+                field: "repository_types".to_string(),
+                message: format!("Could not list repository types: {}", e),
+                severity: ValidationSeverity::Warning,
+            });
+        }
+    }
+
+    let valid = errors.is_empty();
+
     Ok(Json(ValidateOrganizationResponse {
-        valid: true,
-        errors: vec![],
-        warnings: vec![],
+        valid,
+        errors,
+        warnings,
     }))
 }
 

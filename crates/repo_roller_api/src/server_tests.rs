@@ -12,7 +12,7 @@ fn test_default_config() {
 
 #[test]
 fn test_server_creation() {
-    let state = AppState::new();
+    let state = AppState::default();
     let server = ApiServer::with_defaults(state);
     let _router = server.router();
     // Server and router creation should succeed

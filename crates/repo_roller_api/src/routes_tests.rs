@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn test_router_creation() {
-    let state = AppState::new();
+    let state = AppState::default();
     let _router = create_router(state);
     // Router creation should succeed
 }
