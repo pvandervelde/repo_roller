@@ -79,7 +79,7 @@ impl ApiError {
     pub fn validation(message: impl Into<String>) -> Self {
         ApiError(anyhow::anyhow!(message.into()))
     }
-    
+
     /// Create a validation error with field information
     pub fn validation_error(field: impl Into<String>, message: impl Into<String>) -> Self {
         ApiError(anyhow::anyhow!("validation error in field {}: {}", field.into(), message.into()))
@@ -197,7 +197,7 @@ fn log_error(error: &anyhow::Error, status: StatusCode) {
 /// the specification in `specs/interfaces/api-error-handling.md`.
 ///
 /// See: specs/interfaces/api-error-handling.md#authentication-error-patterns
-fn convert_authentication_error(error: AuthenticationError) -> (StatusCode, ErrorResponse) {
+pub fn convert_authentication_error(error: AuthenticationError) -> (StatusCode, ErrorResponse) {
     let (status, code, message, details) = match error {
         AuthenticationError::InvalidToken => (
             StatusCode::UNAUTHORIZED,
