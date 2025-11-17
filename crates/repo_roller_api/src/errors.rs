@@ -16,9 +16,10 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
-// TODO: Import domain errors when error-types.md is implemented
-// use repo_roller_core::errors::*;
+// Import domain errors from repo_roller_core
+use repo_roller_core::{AuthenticationError, RepoRollerError};
 
 /// Standard error response for all API errors.
 ///
@@ -61,7 +62,7 @@ pub struct ErrorDetails {
 ///     Ok(Json(result.into()))
 /// }
 /// ```
-pub struct ApiError(anyhow::Error); // TODO: Change to RepoRollerError when available
+pub struct ApiError(anyhow::Error);
 
 impl ApiError {
     /// Create a new API error from any error type
@@ -95,20 +96,34 @@ impl ApiError {
     }
 }
 
-impl<E> From<E> for ApiError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        ApiError(err.into())
+impl From<RepoRollerError> for ApiError {
+    fn from(err: RepoRollerError) -> Self {
+        // Store the error directly in anyhow for later downcasting
+        ApiError(anyhow::Error::new(err))
+    }
+}
+
+impl From<AuthenticationError> for ApiError {
+    fn from(err: AuthenticationError) -> Self {
+        ApiError::from(RepoRollerError::Authentication(err))
+    }
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> Self {
+        ApiError(err)
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        // TODO: Implement proper domain error to HTTP conversion
-        // when RepoRollerError is available from repo_roller_core
-        let (status, error_response) = convert_error(&self.0);
+        // Try to downcast to RepoRollerError for proper conversion
+        let (status, error_response) = if let Some(repo_error) = self.0.downcast_ref::<RepoRollerError>() {
+            convert_reporoller_error(repo_error)
+        } else {
+            // Fallback for non-RepoRollerError types (temporary during migration)
+            convert_error(&self.0)
+        };
 
         // Log error server-side
         log_error(&self.0, status);
@@ -176,17 +191,106 @@ fn log_error(error: &anyhow::Error, status: StatusCode) {
     }
 }
 
-// TODO: Implement IntoHttpError trait for each domain error type
-// when repo_roller_core/errors.rs is implemented:
-//
-// pub trait IntoHttpError {
-//     fn into_http_error(self) -> (StatusCode, ErrorResponse);
-// }
-//
-// impl IntoHttpError for ValidationError { ... }
-// impl IntoHttpError for RepositoryError { ... }
-// impl IntoHttpError for ConfigurationError { ... }
-// impl IntoHttpError for TemplateError { ... }
-// impl IntoHttpError for AuthenticationError { ... }
-// impl IntoHttpError for GitHubError { ... }
-// impl IntoHttpError for SystemError { ... }
+/// Convert AuthenticationError to HTTP status code and error response.
+///
+/// Maps authentication errors to appropriate HTTP status codes following
+/// the specification in `specs/interfaces/api-error-handling.md`.
+///
+/// See: specs/interfaces/api-error-handling.md#authentication-error-patterns
+fn convert_authentication_error(error: AuthenticationError) -> (StatusCode, ErrorResponse) {
+    let (status, code, message, details) = match error {
+        AuthenticationError::InvalidToken => (
+            StatusCode::UNAUTHORIZED,
+            "AuthenticationError",
+            "Invalid or expired authentication token".to_string(),
+            Some(json!({
+                "header": "Authorization",
+                "scheme": "Bearer"
+            })),
+        ),
+        AuthenticationError::AuthenticationFailed { reason } => (
+            StatusCode::UNAUTHORIZED,
+            "AuthenticationError",
+            format!("Authentication failed: {}", reason),
+            None,
+        ),
+        AuthenticationError::InsufficientPermissions {
+            operation,
+            required,
+        } => (
+            StatusCode::FORBIDDEN,
+            "AuthenticationError",
+            format!("Insufficient permissions: {} permission required", required),
+            Some(json!({
+                "operation": operation,
+                "required_permission": required
+            })),
+        ),
+        AuthenticationError::UserNotFound { user_id } => (
+            StatusCode::NOT_FOUND,
+            "AuthenticationError",
+            format!("User not found: {}", user_id),
+            Some(json!({
+                "user_id": user_id
+            })),
+        ),
+        AuthenticationError::OrganizationAccessDenied { org } => (
+            StatusCode::FORBIDDEN,
+            "AuthenticationError",
+            format!("Access denied to organization '{}'", org),
+            Some(json!({
+                "organization": org
+            })),
+        ),
+        AuthenticationError::SessionExpired => (
+            StatusCode::UNAUTHORIZED,
+            "AuthenticationError",
+            "Session expired, please log in again".to_string(),
+            None,
+        ),
+        AuthenticationError::TokenRefreshFailed { reason } => (
+            StatusCode::UNAUTHORIZED,
+            "AuthenticationError",
+            format!("Failed to refresh authentication token: {}", reason),
+            None,
+        ),
+    };
+
+    (
+        status,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details,
+            },
+        },
+    )
+}
+
+/// Convert RepoRollerError to HTTP status code and error response.
+///
+/// Delegates to specific error type converters based on the error variant.
+fn convert_reporoller_error(error: &RepoRollerError) -> (StatusCode, ErrorResponse) {
+    match error {
+        RepoRollerError::Authentication(e) => convert_authentication_error(e.clone()),
+        // TODO: Add other error type conversions as they're needed
+        _ => {
+            // Fallback for unimplemented error types
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorResponse {
+                    error: ErrorDetails {
+                        code: "InternalError".to_string(),
+                        message: "An internal error occurred".to_string(),
+                        details: None,
+                    },
+                },
+            )
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "errors_tests.rs"]
+mod tests;
