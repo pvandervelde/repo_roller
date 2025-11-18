@@ -29,11 +29,16 @@ pub mod models;
 pub mod handlers;
 pub mod routes;
 pub mod server;
+pub mod translation;
 
 // Re-export key types for convenience
 pub use errors::{ApiError, ErrorResponse};
 pub use models::{request, response};
 pub use server::{ApiConfig, ApiServer};
+pub use translation::{
+    http_create_repository_request_to_domain,
+    domain_repository_creation_result_to_http,
+};
 
 /// API version
 pub const API_VERSION: &str = "v1";

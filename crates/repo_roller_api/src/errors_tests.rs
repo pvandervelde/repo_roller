@@ -172,3 +172,12 @@ fn test_error_response_without_details() {
     // Details should be omitted when None
     assert!(!serialized.contains("details"));
 }
+
+// TODO: Add tests for other RepoRollerError variants:
+// - ValidationError → 400 Bad Request
+// - RepositoryError → various status codes depending on variant
+// - ConfigurationError → 500 Internal Server Error or 400 Bad Request
+// - TemplateError → 400 Bad Request or 404 Not Found
+// - GitHubError → 502 Bad Gateway or 500 Internal Server Error  
+// - SystemError → 500 Internal Server Error
+// These tests will be added as error conversion functions are implemented.

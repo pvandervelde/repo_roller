@@ -62,6 +62,7 @@ pub struct ErrorDetails {
 ///     Ok(Json(result.into()))
 /// }
 /// ```
+#[derive(Debug)]
 pub struct ApiError(anyhow::Error);
 
 impl ApiError {
