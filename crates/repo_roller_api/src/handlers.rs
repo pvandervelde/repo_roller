@@ -20,6 +20,7 @@ use axum::{
     Extension,
     Json,
 };
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -100,71 +101,74 @@ fn is_valid_repository_name(name: &str) -> bool {
 ///
 /// See: specs/interfaces/api-request-types.md#createrepositoryrequest
 pub async fn create_repository(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(request): Json<CreateRepositoryRequest>,
 ) -> Result<(axum::http::StatusCode, Json<CreateRepositoryResponse>), ApiError> {
-    // Validate repository name format
-    if request.name.is_empty() {
-        return Err(ApiError::validation_error(
-            "name",
-            "Repository name cannot be empty"
-        ));
-    }
-
-    // Validate against GitHub naming rules
-    if !is_valid_repository_name(&request.name) {
-        return Err(ApiError::validation_error(
-            "name",
-            &format!("Repository name '{}' contains invalid characters. Use lowercase letters, numbers, hyphens, and underscores only.", request.name)
-        ));
-    }
-
-    // Validate organization name
-    if request.organization.is_empty() {
-        return Err(ApiError::validation_error(
-            "organization",
-            "Organization name cannot be empty"
-        ));
-    }
-
-    // Validate template name
-    if request.template.is_empty() {
-        return Err(ApiError::validation_error(
-            "template",
-            "Template name cannot be empty"
-        ));
-    }
-
-    // TODO: Call actual repository creation service
-    // For now, return a mock successful response
-
-    let repository_info = RepositoryInfo {
-        name: request.name.clone(),
-        full_name: format!("{}/{}", request.organization, request.name),
-        url: format!("https://github.com/{}/{}", request.organization, request.name),
-        visibility: request.visibility.unwrap_or_else(|| "private".to_string()),
-        description: None,
+    use crate::translation::{
+        http_create_repository_request_to_domain, domain_repository_creation_result_to_http,
     };
 
-    let applied_configuration = serde_json::json!({
-        "repository": {
-            "has_issues": true,
-            "has_wiki": false,
-            "has_projects": false
-        },
-        "sources": {
-            "repository.has_issues": "global",
-            "repository.has_wiki": "template",
-        }
-    });
+    // Translate HTTP request to domain request (includes validation)
+    let domain_request = http_create_repository_request_to_domain(request.clone())?;
 
-    let response = CreateRepositoryResponse {
-        repository: repository_info,
-        applied_configuration,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
+    // Load configuration manager (needed by create_repository)
+    // TODO: Load from actual config file
+    let config_manager = config_manager::Config { templates: vec![] };
 
-    Ok((axum::http::StatusCode::CREATED, Json(response)))
+    // Create authentication service that returns the installation token we already have
+    // The auth middleware has already validated this token with GitHub
+    let token = auth.token.clone();
+    let auth_service = TokenAuthService::new(token);
+
+    // Call domain service to create repository
+    let result = repo_roller_core::create_repository(
+        domain_request,
+        &config_manager,
+        &auth_service,
+        &state.metadata_repository_name,
+    )
+    .await?; // ApiError::from(RepoRollerError) converts automatically
+
+    // Translate domain result to HTTP response
+    let http_response = domain_repository_creation_result_to_http(result, &request);
+
+    Ok((axum::http::StatusCode::CREATED, Json(http_response)))
+}
+
+/// Simple auth service implementation that returns a pre-validated token.
+///
+/// This is used when the API layer has already validated the GitHub installation token
+/// via the auth middleware. We just need to provide it to the domain layer.
+struct TokenAuthService {
+    token: String,
+}
+
+impl TokenAuthService {
+    fn new(token: String) -> Self {
+        Self { token }
+    }
+}
+
+#[async_trait]
+impl auth_handler::UserAuthenticationService for TokenAuthService {
+    async fn authenticate_installation(
+        &self,
+        _app_id: u64,
+        _private_key: &str,
+        _installation_id: u64,
+    ) -> Result<String, auth_handler::AuthError> {
+        // Token is already validated by middleware, just return it
+        Ok(self.token.clone())
+    }
+
+    async fn get_installation_token_for_org(
+        &self,
+        _org: &str,
+    ) -> Result<String, auth_handler::AuthError> {
+        // Token is already validated by middleware, just return it
+        Ok(self.token.clone())
+    }
 }
 
 /// POST /api/v1/repositories/validate-name

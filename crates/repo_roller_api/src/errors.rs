@@ -275,21 +275,366 @@ pub fn convert_authentication_error(error: AuthenticationError) -> (StatusCode, 
 fn convert_reporoller_error(error: &RepoRollerError) -> (StatusCode, ErrorResponse) {
     match error {
         RepoRollerError::Authentication(e) => convert_authentication_error(e.clone()),
-        // TODO: Add other error type conversions as they're needed
-        _ => {
-            // Fallback for unimplemented error types
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ErrorResponse {
-                    error: ErrorDetails {
-                        code: "InternalError".to_string(),
-                        message: "An internal error occurred".to_string(),
-                        details: None,
-                    },
-                },
-            )
-        }
+        RepoRollerError::Validation(e) => convert_validation_error(e),
+        RepoRollerError::Repository(e) => convert_repository_error(e),
+        RepoRollerError::Configuration(e) => convert_configuration_error(e),
+        RepoRollerError::Template(e) => convert_template_error(e),
+        RepoRollerError::GitHub(e) => convert_github_error(e),
+        RepoRollerError::System(e) => convert_system_error(e),
     }
+}
+
+/// Convert ValidationError to HTTP error response.
+///
+/// Validation errors result in 400 Bad Request with details about what failed validation.
+fn convert_validation_error(error: &repo_roller_core::ValidationError) -> (StatusCode, ErrorResponse) {
+    use repo_roller_core::ValidationError;
+
+    let (code, message, details) = match error {
+        ValidationError::EmptyField { field } => (
+            "ValidationError",
+            format!("Field '{}' cannot be empty", field),
+            Some(json!({ "field": field })),
+        ),
+        ValidationError::TooLong { field, actual, max } => (
+            "ValidationError",
+            format!("Field '{}' is too long: {} characters (max: {})", field, actual, max),
+            Some(json!({ "field": field, "actual": actual, "max": max })),
+        ),
+        ValidationError::TooShort { field, actual, min } => (
+            "ValidationError",
+            format!("Field '{}' is too short: {} characters (min: {})", field, actual, min),
+            Some(json!({ "field": field, "actual": actual, "min": min })),
+        ),
+        ValidationError::InvalidFormat { field, reason } => (
+            "ValidationError",
+            format!("Field '{}' has invalid format: {}", field, reason),
+            Some(json!({ "field": field, "reason": reason })),
+        ),
+        ValidationError::InvalidRepositoryName { reason } => (
+            "ValidationError",
+            format!("Invalid repository name: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        ValidationError::InvalidOrganizationName { reason } => (
+            "ValidationError",
+            format!("Invalid organization name: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        ValidationError::InvalidTemplateName { reason } => (
+            "ValidationError",
+            format!("Invalid template name: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        ValidationError::RequiredFieldMissing { field } => (
+            "ValidationError",
+            format!("Required field '{}' is missing", field),
+            Some(json!({ "field": field })),
+        ),
+        ValidationError::PatternMismatch { field, pattern, value } => (
+            "ValidationError",
+            format!("Field '{}' must match pattern '{}', got: '{}'", field, pattern, value),
+            Some(json!({ "field": field, "pattern": pattern, "value": value })),
+        ),
+        ValidationError::LengthConstraint { field, min, max, actual } => (
+            "ValidationError",
+            format!("Field '{}' length must be between {} and {}, got {}", field, min, max, actual),
+            Some(json!({ "field": field, "min": min, "max": max, "actual": actual })),
+        ),
+        ValidationError::InvalidOption { field, options, value } => (
+            "ValidationError",
+            format!("Field '{}' must be one of {:?}, got: '{}'", field, options, value),
+            Some(json!({ "field": field, "options": options, "value": value })),
+        ),
+    };
+
+    (
+        StatusCode::BAD_REQUEST,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details,
+            },
+        },
+    )
+}
+
+/// Convert RepositoryError to HTTP error response.
+fn convert_repository_error(error: &repo_roller_core::RepositoryError) -> (StatusCode, ErrorResponse) {
+    use repo_roller_core::RepositoryError;
+
+    let (status, code, message, details) = match error {
+        RepositoryError::AlreadyExists { org, name } => (
+            StatusCode::CONFLICT,
+            "RepositoryAlreadyExists",
+            format!("Repository '{}/{}' already exists", org, name),
+            Some(json!({ "organization": org, "name": name })),
+        ),
+        RepositoryError::NotFound { org, name } => (
+            StatusCode::NOT_FOUND,
+            "RepositoryNotFound",
+            format!("Repository '{}/{}' not found", org, name),
+            Some(json!({ "organization": org, "name": name })),
+        ),
+        RepositoryError::CreationFailed { reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "RepositoryCreationFailed",
+            format!("Failed to create repository: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        RepositoryError::PushFailed { reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "RepositoryPushFailed",
+            format!("Failed to push repository content: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        RepositoryError::SettingsApplicationFailed { setting, reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "SettingsApplicationFailed",
+            format!("Failed to apply setting '{}': {}", setting, reason),
+            Some(json!({ "setting": setting, "reason": reason })),
+        ),
+        RepositoryError::OperationTimeout { timeout_secs } => (
+            StatusCode::REQUEST_TIMEOUT,
+            "RepositoryOperationTimeout",
+            format!("Repository operation timed out after {} seconds", timeout_secs),
+            Some(json!({ "timeout_secs": timeout_secs })),
+        ),
+    };
+
+    (
+        status,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details,
+            },
+        },
+    )
+}
+
+/// Convert ConfigurationError to HTTP error response.
+fn convert_configuration_error(error: &config_manager::ConfigurationError) -> (StatusCode, ErrorResponse) {
+    use config_manager::ConfigurationError;
+
+    let (status, code, message) = match error {
+        ConfigurationError::MetadataRepositoryNotFound { org } => (
+            StatusCode::NOT_FOUND,
+            "MetadataRepositoryNotFound",
+            format!("Metadata repository not found for organization '{}'", org),
+        ),
+        ConfigurationError::FileNotFound { path } => (
+            StatusCode::NOT_FOUND,
+            "ConfigurationFileNotFound",
+            format!("Configuration file not found: {}", path),
+        ),
+        ConfigurationError::InvalidConfiguration { field, reason } => (
+            StatusCode::BAD_REQUEST,
+            "InvalidConfiguration",
+            format!("Invalid configuration in field '{}': {}", field, reason),
+        ),
+        ConfigurationError::ParseError { reason } => (
+            StatusCode::BAD_REQUEST,
+            "ConfigurationParseError",
+            format!("Failed to parse configuration: {}", reason),
+        ),
+        ConfigurationError::OverrideNotPermitted { setting, reason } => (
+            StatusCode::FORBIDDEN,
+            "OverrideNotAllowed",
+            format!("Override not permitted for '{}': {}", setting, reason),
+        ),
+        ConfigurationError::ValidationFailed { error_count, .. } => (
+            StatusCode::BAD_REQUEST,
+            "ConfigurationValidationFailed",
+            format!("Configuration validation failed with {} error(s)", error_count),
+        ),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "ConfigurationError",
+            "Configuration system error".to_string(),
+        ),
+    };
+
+    (
+        status,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details: None,
+            },
+        },
+    )
+}
+
+/// Convert TemplateError to HTTP error response.
+fn convert_template_error(error: &repo_roller_core::TemplateError) -> (StatusCode, ErrorResponse) {
+    use repo_roller_core::TemplateError;
+
+    let (status, code, message, details) = match error {
+        TemplateError::TemplateNotFound { name } => (
+            StatusCode::NOT_FOUND,
+            "TemplateNotFound",
+            format!("Template '{}' not found", name),
+            Some(json!({ "name": name })),
+        ),
+        TemplateError::FetchFailed { reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "TemplateFetchFailed",
+            format!("Failed to fetch template: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        TemplateError::SyntaxError { file, reason } => (
+            StatusCode::BAD_REQUEST,
+            "TemplateSyntaxError",
+            format!("Syntax error in template file '{}': {}", file, reason),
+            Some(json!({ "file": file, "reason": reason })),
+        ),
+        TemplateError::SubstitutionFailed { variable, reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "TemplateSubstitutionFailed",
+            format!("Variable substitution failed for '{}': {}", variable, reason),
+            Some(json!({ "variable": variable, "reason": reason })),
+        ),
+        TemplateError::RequiredVariableMissing { variable } => (
+            StatusCode::BAD_REQUEST,
+            "RequiredVariableMissing",
+            format!("Required template variable '{}' is missing", variable),
+            Some(json!({ "variable": variable })),
+        ),
+        TemplateError::ProcessingTimeout { timeout_secs } => (
+            StatusCode::REQUEST_TIMEOUT,
+            "TemplateProcessingTimeout",
+            format!("Template processing timed out after {} seconds", timeout_secs),
+            Some(json!({ "timeout_secs": timeout_secs })),
+        ),
+        TemplateError::SecurityViolation { reason } => (
+            StatusCode::FORBIDDEN,
+            "TemplateSecurityViolation",
+            format!("Template security violation: {}", reason),
+            Some(json!({ "reason": reason })),
+        ),
+        TemplateError::PathTraversalAttempt { path } => (
+            StatusCode::FORBIDDEN,
+            "PathTraversalAttempt",
+            format!("Path traversal attempt detected: {}", path),
+            Some(json!({ "path": path })),
+        ),
+    };
+
+    (
+        status,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details,
+            },
+        },
+    )
+}
+
+/// Convert GitHubError to HTTP error response.
+fn convert_github_error(error: &repo_roller_core::GitHubError) -> (StatusCode, ErrorResponse) {
+    use repo_roller_core::GitHubError;
+
+    let (status, code, message) = match error {
+        GitHubError::ApiRequestFailed { status: api_status, message: api_message } => (
+            StatusCode::BAD_GATEWAY,
+            "GitHubApiRequestFailed",
+            format!("GitHub API request failed ({}): {}", api_status, api_message),
+        ),
+        GitHubError::AuthenticationFailed { reason } => (
+            StatusCode::UNAUTHORIZED,
+            "GitHubAuthenticationFailed",
+            format!("GitHub authentication failed: {}", reason),
+        ),
+        GitHubError::RateLimitExceeded { reset_at } => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "GitHubRateLimitExceeded",
+            format!("GitHub API rate limit exceeded, resets at {}", reset_at),
+        ),
+        GitHubError::ResourceNotFound { resource } => (
+            StatusCode::NOT_FOUND,
+            "GitHubResourceNotFound",
+            format!("GitHub resource not found: {}", resource),
+        ),
+        GitHubError::NetworkError { reason } => (
+            StatusCode::BAD_GATEWAY,
+            "GitHubNetworkError",
+            format!("Network error communicating with GitHub: {}", reason),
+        ),
+        GitHubError::InvalidResponse { reason } => (
+            StatusCode::BAD_GATEWAY,
+            "GitHubInvalidResponse",
+            format!("Invalid response from GitHub API: {}", reason),
+        ),
+        GitHubError::AppNotInstalled { org } => (
+            StatusCode::FORBIDDEN,
+            "GitHubAppNotInstalled",
+            format!("GitHub App not installed on organization '{}'", org),
+        ),
+    };
+
+    (
+        status,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details: None,
+            },
+        },
+    )
+}
+
+/// Convert SystemError to HTTP error response.
+fn convert_system_error(error: &repo_roller_core::SystemError) -> (StatusCode, ErrorResponse) {
+    use repo_roller_core::SystemError;
+
+    let (code, message) = match error {
+        SystemError::Internal { reason } => (
+            "InternalError",
+            format!("Internal system error: {}", reason),
+        ),
+        SystemError::FileSystem { operation, reason } => (
+            "FileSystemError",
+            format!("File system error during '{}': {}", operation, reason),
+        ),
+        SystemError::GitOperation { operation, reason } => (
+            "GitOperationError",
+            format!("Git operation '{}' failed: {}", operation, reason),
+        ),
+        SystemError::Network { reason } => (
+            "NetworkError",
+            format!("Network error: {}", reason),
+        ),
+        SystemError::Serialization { reason } => (
+            "SerializationError",
+            format!("Serialization error: {}", reason),
+        ),
+        SystemError::Deserialization { reason } => (
+            "DeserializationError",
+            format!("Deserialization error: {}", reason),
+        ),
+        SystemError::ResourceUnavailable { resource } => (
+            "ResourceUnavailable",
+            format!("Resource unavailable: {}", resource),
+        ),
+    };
+
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorResponse {
+            error: ErrorDetails {
+                code: code.to_string(),
+                message,
+                details: None,
+            },
+        },
+    )
 }
 
 #[cfg(test)]
