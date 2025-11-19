@@ -463,3 +463,624 @@ async fn test_complete_rest_api_workflow() {
 
     println!("Complete REST API workflow test passed!");
 }
+
+// ============================================================================
+// Template Discovery Endpoint Tests
+// ============================================================================
+
+/// Test list_templates endpoint with real GitHub infrastructure.
+///
+/// Verifies that listing templates discovers repositories with the
+/// reporoller-template topic and returns their configurations.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with template repositories"]
+async fn test_list_templates_success() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/templates", org))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should return 200 OK for valid organization"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Check response structure
+    assert!(
+        response_json["templates"].is_array(),
+        "Response should contain 'templates' array"
+    );
+
+    // Note: May be empty if organization has no template repositories
+    let templates = response_json["templates"].as_array().unwrap();
+    println!("Found {} template(s)", templates.len());
+
+    for template in templates {
+        assert!(template["name"].is_string(), "Each template should have a name");
+        assert!(template["description"].is_string(), "Each template should have a description");
+    }
+}
+
+/// Test get_template_details endpoint with real template repository.
+///
+/// Verifies that requesting template details loads the template.toml
+/// configuration and returns complete template information.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with configured template repository"]
+async fn test_get_template_details_success() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    // Use template name from environment or skip if not set
+    let template_name = match std::env::var("TEST_TEMPLATE") {
+        Ok(name) => name,
+        Err(_) => {
+            println!("Skipping test: TEST_TEMPLATE not set");
+            return;
+        }
+    };
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/templates/{}", org, template_name))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should return 200 OK for existing template"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Verify template details structure
+    assert_eq!(
+        response_json["name"].as_str(),
+        Some(template_name.as_str()),
+        "Template name should match"
+    );
+    assert!(
+        response_json["description"].is_string(),
+        "Should have description"
+    );
+    assert!(
+        response_json["variables"].is_object(),
+        "Should have variables object"
+    );
+    assert!(
+        response_json["configuration"].is_object(),
+        "Should have configuration object"
+    );
+}
+
+/// Test get_template_details with non-existent template.
+///
+/// Verifies that requesting details for a non-existent template returns 404.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_get_template_details_not_found() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/templates/nonexistent-template", org))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Should return 404 for non-existent template"
+    );
+}
+
+/// Test validate_template endpoint with real template repository.
+///
+/// Verifies that template validation correctly checks template.toml
+/// structure and returns validation results.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with template repository"]
+async fn test_validate_template_success() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let template_name = match std::env::var("TEST_TEMPLATE") {
+        Ok(name) => name,
+        Err(_) => {
+            println!("Skipping test: TEST_TEMPLATE not set");
+            return;
+        }
+    };
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/templates/{}/validate", org, template_name))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should return 200 OK for validation request"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Verify validation result structure
+    assert!(
+        response_json["valid"].is_boolean(),
+        "Response should contain 'valid' boolean"
+    );
+    assert!(
+        response_json["errors"].is_array(),
+        "Response should contain 'errors' array"
+    );
+    assert!(
+        response_json["warnings"].is_array(),
+        "Response should contain 'warnings' array"
+    );
+
+    // Template should be valid if it loaded successfully
+    if let Some(valid) = response_json["valid"].as_bool() {
+        if !valid {
+            println!("Template validation failed:");
+            println!("Errors: {:?}", response_json["errors"]);
+        }
+    }
+}
+
+/// Test validate_template with non-existent template.
+///
+/// Verifies that validation fails appropriately for non-existent templates.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_validate_template_not_found() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/templates/nonexistent/validate", org))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Should return 404 for non-existent template"
+    );
+}
+
+// ============================================================================
+// Repository Management Endpoint Tests
+// ============================================================================
+
+/// Test validate_repository_name endpoint.
+///
+/// Verifies that repository name validation works correctly with
+/// GitHub naming rules.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_validate_repository_name_valid() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let request_body = json!({
+        "organization": org,
+        "name": "my-test-repo"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate-name")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should return 200 OK for validation request"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        response_json["valid"].as_bool(),
+        Some(true),
+        "Valid repository name should pass validation"
+    );
+}
+
+/// Test validate_repository_name with invalid characters.
+///
+/// Verifies that validation rejects invalid repository names.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_validate_repository_name_invalid() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let request_body = json!({
+        "organization": org,
+        "name": "My Invalid@Repo!"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate-name")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should return 200 OK even for invalid names"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        response_json["valid"].as_bool(),
+        Some(false),
+        "Invalid repository name should fail validation"
+    );
+
+    assert!(
+        response_json["messages"].is_array(),
+        "Should have validation messages"
+    );
+}
+
+/// Test validate_repository_request endpoint.
+///
+/// Verifies that complete request validation checks template existence,
+/// required variables, and other constraints.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with template repository"]
+async fn test_validate_repository_request_valid() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let template = match std::env::var("TEST_TEMPLATE") {
+        Ok(name) => name,
+        Err(_) => {
+            println!("Skipping test: TEST_TEMPLATE not set");
+            return;
+        }
+    };
+
+    let request_body = json!({
+        "name": "test-validation-repo",
+        "organization": org,
+        "template": template,
+        "variables": {}
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate-request")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should return 200 OK for validation request"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        response_json["valid"].is_boolean(),
+        "Should have valid field"
+    );
+
+    // May be invalid if template requires variables
+    // That's okay - we're testing the validation flow
+    if !response_json["valid"].as_bool().unwrap_or(false) {
+        println!("Validation failed (expected if template requires variables):");
+        println!("Errors: {:?}", response_json["errors"]);
+    }
+}
+
+// ============================================================================
+// Authentication and Authorization Tests
+// ============================================================================
+
+/// Test that missing authentication token returns 401 Unauthorized.
+///
+/// Verifies that all protected endpoints require authentication.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_missing_authentication_token() {
+    let app = create_router(test_app_state());
+    let org = test_org();
+
+    // Try to access protected endpoint without token
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/repository-types", org))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "Should return 401 Unauthorized without authentication token"
+    );
+}
+
+/// Test that invalid authentication token returns 401 Unauthorized.
+///
+/// Verifies that invalid tokens are rejected.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_invalid_authentication_token() {
+    let app = create_router(test_app_state());
+    let org = test_org();
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/repository-types", org))
+        .header("authorization", "Bearer invalid-token-12345")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "Should return 401 Unauthorized for invalid token"
+    );
+}
+
+/// Test that malformed authentication header returns 401 Unauthorized.
+///
+/// Verifies that malformed Authorization headers are rejected.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure"]
+async fn test_malformed_authentication_header() {
+    let app = create_router(test_app_state());
+    let org = test_org();
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/repository-types", org))
+        .header("authorization", "NotBearer token123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "Should return 401 Unauthorized for malformed header"
+    );
+}
+
+// ============================================================================
+// Complete End-to-End Workflow Tests
+// ============================================================================
+
+/// Test complete repository creation workflow (dry-run).
+///
+/// This test runs through the complete workflow for creating a repository
+/// WITHOUT actually creating it:
+/// 1. Validate organization configuration
+/// 2. List available templates
+/// 3. Get template details
+/// 4. Validate template
+/// 5. Preview merged configuration
+/// 6. Validate complete repository request
+///
+/// This ensures the entire API surface works together correctly.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with complete setup"]
+async fn test_complete_repository_creation_workflow_dry_run() {
+    let token = test_token();
+    let org = test_org();
+
+    println!("\n=== Step 1: Validate Organization ===");
+    let app = create_router(test_app_state());
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/validate", org))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    if !validation["valid"].as_bool().unwrap_or(false) {
+        println!("Organization validation failed:");
+        println!("{:#?}", validation);
+        panic!("Cannot proceed without valid organization setup");
+    }
+    println!("✓ Organization is valid");
+
+    println!("\n=== Step 2: List Available Templates ===");
+    let app = create_router(test_app_state());
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/templates", org))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let templates: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let template_list = templates["templates"].as_array().unwrap();
+
+    if template_list.is_empty() {
+        println!("No templates available, skipping rest of workflow");
+        return;
+    }
+
+    let template_name = template_list[0]["name"].as_str().unwrap();
+    println!("✓ Found {} template(s), using: {}", template_list.len(), template_name);
+
+    println!("\n=== Step 3: Get Template Details ===");
+    let app = create_router(test_app_state());
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{}/templates/{}", org, template_name))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let template_details: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    println!("✓ Template details loaded");
+    println!("  Description: {}", template_details["description"].as_str().unwrap_or(""));
+    println!("  Variables: {}", template_details["variables"].as_object().unwrap().len());
+
+    println!("\n=== Step 4: Validate Template ===");
+    let app = create_router(test_app_state());
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/templates/{}/validate", org, template_name))
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let template_validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    if !template_validation["valid"].as_bool().unwrap_or(false) {
+        println!("Template validation failed:");
+        println!("{:#?}", template_validation);
+    } else {
+        println!("✓ Template is valid");
+    }
+
+    println!("\n=== Step 5: Preview Configuration ===");
+    let app = create_router(test_app_state());
+    let preview_body = json!({"template": template_name});
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/preview", org))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&preview_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let preview: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    println!("✓ Configuration preview generated");
+    println!("  Merged configuration available: {}", preview["mergedConfiguration"].is_object());
+
+    println!("\n=== Step 6: Validate Repository Request ===");
+    let app = create_router(test_app_state());
+    let validation_body = json!({
+        "name": "test-workflow-repo",
+        "organization": org,
+        "template": template_name,
+        "variables": {}
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate-request")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&validation_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let request_validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    if request_validation["valid"].as_bool().unwrap_or(false) {
+        println!("✓ Repository request is valid (ready to create)");
+    } else {
+        println!("⚠ Repository request validation issues:");
+        println!("{:#?}", request_validation["errors"]);
+    }
+
+    println!("\n=== Complete Workflow Test Passed ===");
+    println!("All API endpoints worked together successfully!");
+}
+
