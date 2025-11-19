@@ -591,6 +591,37 @@ impl RepositoryClient for GitHubClient {
             }
         }
     }
+
+    async fn search_repositories(&self, query: &str) -> Result<Vec<models::Repository>, Error> {
+        info!(query = query, "Searching for repositories");
+
+        let search_result = self
+            .client
+            .search()
+            .repositories(query)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to search repositories: {}", e);
+                log_octocrab_error("Failed to search repositories", e);
+                Error::ApiError()
+            })?;
+
+        // Convert octocrab repositories to our models::Repository using From trait
+        let repositories: Vec<models::Repository> = search_result
+            .items
+            .into_iter()
+            .map(|octocrab_repo| models::Repository::from(octocrab_repo))
+            .collect();
+
+        info!(
+            query = query,
+            count = repositories.len(),
+            "Found repositories"
+        );
+
+        Ok(repositories)
+    }
 }
 
 /// JWT claims structure for GitHub App authentication.
@@ -865,6 +896,43 @@ pub trait RepositoryClient: Send + Sync {
         repo: &str,
         payload: &CustomPropertiesPayload,
     ) -> Result<(), Error>;
+
+    /// Search for repositories matching a query.
+    ///
+    /// This method uses GitHub's repository search API to find repositories
+    /// matching the provided search query. The query supports GitHub's search
+    /// syntax including qualifiers like `org:`, `user:`, `topic:`, etc.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The search query (e.g., "org:myorg topic:template")
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of matching repositories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error` if:
+    /// - The search query is invalid
+    /// - The GitHub API request fails
+    /// - Rate limits are exceeded
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, RepositoryClient};
+    /// # async fn example(client: &GitHubClient) -> Result<(), Box<dyn std::error::Error>> {
+    /// // Search for template repositories in an organization
+    /// let repos = client.search_repositories("org:myorg topic:reporoller-template").await?;
+    ///
+    /// for repo in repos {
+    ///     println!("Found template: {}", repo.name);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn search_repositories(&self, query: &str) -> Result<Vec<models::Repository>, Error>;
 }
 
 /// Settings that can be updated for an existing repository.

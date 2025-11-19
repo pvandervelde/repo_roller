@@ -9,7 +9,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use github_client::GitHubClient;
+use github_client::{GitHubClient, RepositoryClient};
 use std::collections::HashMap;
 
 // Reference the tests module in the separate file
@@ -381,4 +381,80 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         // Repository exists and names are valid
         Ok(())
     }
+
+    async fn list_templates(&self, org: &str) -> ConfigurationResult<Vec<String>> {
+        tracing::info!("Listing templates for organization: {}", org);
+
+        // Search for repositories with the reporoller-template topic
+        let search_query = format!("org:{} topic:reporoller-template", org);
+
+        let repos = self
+            .client
+            .search_repositories(&search_query)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to search for template repositories: {:?}", e);
+                ConfigurationError::FileAccessError {
+                    path: format!("template repositories in organization '{}'", org),
+                    reason: "Failed to search for template repositories".to_string(),
+                }
+            })?;
+
+        // Extract repository names
+        let template_names: Vec<String> = repos.iter().map(|repo| repo.name().to_string()).collect();
+
+        tracing::info!(
+            "Found {} template(s) in organization '{}': {:?}",
+            template_names.len(),
+            org,
+            template_names
+        );
+
+        Ok(template_names)
+    }
+
+    async fn load_template_configuration(
+        &self,
+        org: &str,
+        template_name: &str,
+    ) -> ConfigurationResult<crate::template_config::TemplateConfig> {
+        tracing::info!(
+            "Loading template configuration for '{}/{}' from .reporoller/template.toml",
+            org,
+            template_name
+        );
+
+        // Fetch the template.toml file from the template repository
+        let file_path = ".reporoller/template.toml";
+
+        let content = self
+            .client
+            .get_file_content(org, template_name, file_path)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to fetch template configuration from '{}/{}': {:?}",
+                    org,
+                    template_name,
+                    e
+                );
+                ConfigurationError::FileNotFound {
+                    path: format!("{}/{}/{}", org, template_name, file_path),
+                }
+            })?;
+
+        // Parse the TOML content
+        let config: crate::template_config::TemplateConfig =
+            toml::from_str(&content).map_err(|e| {
+                tracing::error!("Failed to parse template configuration: {:?}", e);
+                ConfigurationError::ParseError {
+                    reason: format!("Invalid TOML format in {}: {}", file_path, e),
+                }
+            })?;
+
+        tracing::debug!("Successfully loaded template configuration: {:?}", config);
+
+        Ok(config)
+    }
 }
+

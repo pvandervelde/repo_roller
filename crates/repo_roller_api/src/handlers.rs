@@ -315,34 +315,51 @@ pub async fn validate_repository_request(
 ///
 /// See: specs/interfaces/api-request-types.md#listtemplatesrequest
 pub async fn list_templates(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(params): Path<ListTemplatesParams>,
 ) -> Result<Json<ListTemplatesResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual template discovery service call
-    // For now, return mock data to establish HTTP contract
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
 
-    // Return empty list for organizations without templates
-    if params.org == "emptyorg" {
-        return Ok(Json(ListTemplatesResponse {
-            templates: vec![],
-        }));
+    // List templates using the metadata provider
+    let template_names = provider
+        .list_templates(&params.org)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list templates for organization '{}': {:?}", params.org, e);
+            ApiError::from(anyhow::anyhow!(
+                "Failed to list templates: {}",
+                e
+            ))
+        })?;
+
+    // Load template configurations to get details
+    let mut templates = Vec::new();
+    for template_name in template_names {
+        match provider.load_template_configuration(&params.org, &template_name).await {
+            Ok(config) => {
+                // Extract variable names from the template config
+                let variable_names: Vec<String> = config.variables
+                    .unwrap_or_default()
+                    .keys()
+                    .cloned()
+                    .collect();
+
+                templates.push(TemplateSummary {
+                    name: template_name.clone(),
+                    description: config.template.description.clone(),
+                    category: config.template.tags.first().cloned(),
+                    variables: variable_names,
+                });
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load template configuration for '{}': {:?}", template_name, e);
+                // Skip templates that can't be loaded
+                continue;
+            }
+        }
     }
-
-    // Mock template data for establishing HTTP contract
-    let templates = vec![
-        TemplateSummary {
-            name: "rust-library".to_string(),
-            description: "Rust library project template".to_string(),
-            category: Some("rust".to_string()),
-            variables: vec!["project_name".to_string(), "license".to_string()],
-        },
-        TemplateSummary {
-            name: "rust-binary".to_string(),
-            description: "Rust binary application template".to_string(),
-            category: Some("rust".to_string()),
-            variables: vec!["project_name".to_string(), "version".to_string()],
-        },
-    ];
 
     Ok(Json(ListTemplatesResponse { templates }))
 }
@@ -353,52 +370,69 @@ pub async fn list_templates(
 ///
 /// See: specs/interfaces/api-request-types.md#gettemplatedetailsrequest
 pub async fn get_template_details(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(params): Path<GetTemplateDetailsParams>,
 ) -> Result<Json<TemplateDetailsResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual template service call
-    // For now, return mock data for known templates or 404
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
 
-    // Check if template exists (mock check)
-    if params.template == "nonexistent-template" || params.template == "nonexistent" {
-        return Err(ApiError::from(anyhow::anyhow!(
-            "Template '{}' not found in organization '{}'",
-            params.template,
-            params.org
-        )));
+    // Load template configuration
+    let config = provider
+        .load_template_configuration(&params.org, &params.template)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                "Failed to load template configuration for '{}/{}': {:?}",
+                params.org,
+                params.template,
+                e
+            );
+            // Map ConfigurationError to appropriate HTTP error
+            match e {
+                config_manager::ConfigurationError::FileNotFound { .. } => {
+                    ApiError::from(anyhow::anyhow!(
+                        "Template '{}' not found in organization '{}'",
+                        params.template,
+                        params.org
+                    ))
+                }
+                _ => ApiError::from(anyhow::anyhow!(
+                    "Failed to load template configuration: {}",
+                    e
+                )),
+            }
+        })?;
+
+    // Convert template variables to API response format
+    let mut variables = std::collections::HashMap::new();
+    if let Some(template_vars) = config.variables {
+        for (name, var_config) in template_vars {
+            variables.insert(
+                name,
+                VariableDefinition {
+                    description: var_config.description,
+                    required: var_config.required.unwrap_or(false),
+                    default: var_config.default,
+                    pattern: None, // TemplateVariable doesn't have pattern field
+                },
+            );
+        }
     }
 
-    // Mock template details for establishing HTTP contract
-    let mut variables = std::collections::HashMap::new();
-    variables.insert(
-        "project_name".to_string(),
-        VariableDefinition {
-            description: "Name of the project".to_string(),
-            required: true,
-            default: None,
-            pattern: Some("^[a-z][a-z0-9-]*$".to_string()),
-        },
-    );
-    variables.insert(
-        "license".to_string(),
-        VariableDefinition {
-            description: "License type".to_string(),
-            required: false,
-            default: Some("MIT".to_string()),
-            pattern: None,
-        },
-    );
+    // Build configuration from repository settings
+    let configuration = serde_json::json!({
+        "repository": config.repository,
+        "pull_requests": config.pull_requests,
+        "branch_protection": config.branch_protection,
+    });
 
     let response = TemplateDetailsResponse {
         name: params.template.clone(),
-        description: format!("Template for {}", params.template),
-        category: Some("rust".to_string()),
+        description: config.template.description.clone(),
+        category: config.template.tags.first().cloned(),
         variables,
-        configuration: serde_json::json!({
-            "has_issues": true,
-            "has_wiki": false,
-            "auto_init": true,
-        }),
+        configuration,
     };
 
     Ok(Json(response))
@@ -410,42 +444,68 @@ pub async fn get_template_details(
 ///
 /// See: specs/interfaces/api-request-types.md#validatetemplaterequest
 pub async fn validate_template(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(params): Path<ValidateTemplateParams>,
 ) -> Result<Json<ValidateTemplateResponse>, ApiError> {
-    // TODO: Task 9.3.8 - Replace with actual template validation service call
-    // For now, return mock validation results
+    // Create settings manager and provider
+    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
 
-    // Check if template exists (mock check)
-    if params.template == "nonexistent" || params.template == "nonexistent-template" {
-        return Err(ApiError::from(anyhow::anyhow!(
-            "Template '{}' not found in organization '{}'",
-            params.template,
-            params.org
-        )));
+    // Try to load template configuration - if it fails, template is invalid
+    match provider
+        .load_template_configuration(&params.org, &params.template)
+        .await
+    {
+        Ok(_config) => {
+            // Template loaded successfully - it's valid
+            Ok(Json(ValidateTemplateResponse {
+                valid: true,
+                errors: vec![],
+                warnings: vec![],
+            }))
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Template validation failed for '{}/{}': {:?}",
+                params.org,
+                params.template,
+                e
+            );
+
+            // Map errors to validation results
+            match e {
+                config_manager::ConfigurationError::FileNotFound { .. } => {
+                    Err(ApiError::from(anyhow::anyhow!(
+                        "Template '{}' not found in organization '{}'",
+                        params.template,
+                        params.org
+                    )))
+                }
+                config_manager::ConfigurationError::ParseError { reason } => {
+                    Ok(Json(ValidateTemplateResponse {
+                        valid: false,
+                        errors: vec![ValidationResult {
+                            field: "template_structure".to_string(),
+                            message: format!("Template configuration is malformed: {}", reason),
+                            severity: ValidationSeverity::Error,
+                        }],
+                        warnings: vec![],
+                    }))
+                }
+                _ => {
+                    Ok(Json(ValidateTemplateResponse {
+                        valid: false,
+                        errors: vec![ValidationResult {
+                            field: "template".to_string(),
+                            message: format!("Template validation failed: {}", e),
+                            severity: ValidationSeverity::Error,
+                        }],
+                        warnings: vec![],
+                    }))
+                }
+            }
+        }
     }
-
-    // Mock validation: invalid-template fails, others pass
-    if params.template == "invalid-template" {
-        let errors = vec![ValidationResult {
-            field: "template_structure".to_string(),
-            message: "Template configuration file is malformed".to_string(),
-            severity: ValidationSeverity::Error,
-        }];
-
-        return Ok(Json(ValidateTemplateResponse {
-            valid: false,
-            errors,
-            warnings: vec![],
-        }));
-    }
-
-    // Valid templates return success
-    Ok(Json(ValidateTemplateResponse {
-        valid: true,
-        errors: vec![],
-        warnings: vec![],
-    }))
 }
 
 /// GET /api/v1/orgs/:org/repository-types
