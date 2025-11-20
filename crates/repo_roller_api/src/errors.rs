@@ -135,10 +135,10 @@ impl IntoResponse for ApiError {
 
 /// Convert domain error to HTTP status code and error response
 ///
-/// TODO: Replace with proper IntoHttpError trait implementation
-/// when domain errors are available.
+/// Provides error conversion for anyhow errors.
+/// Domain-specific errors use the From<RepoRollerError> implementation.
 fn convert_error(error: &anyhow::Error) -> (StatusCode, ErrorResponse) {
-    // Temporary implementation - will be replaced with proper error matching
+    // Fallback error conversion for anyhow errors
     let error_msg = error.to_string();
 
     let (status, code, message) = if error_msg.contains("authentication")

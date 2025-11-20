@@ -15,8 +15,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// TODO: Import domain types for conversion when available
-// use repo_roller_core::{Repository, Template, RepositoryType};
+// Domain type conversion is handled by the translation module
 
 /// HTTP response for successful repository creation.
 ///
@@ -77,7 +76,7 @@ pub struct RepositoryInfo {
     pub description: Option<String>,
 }
 
-// TODO: Implement From<Repository> for RepositoryInfo when domain type is available
+// Domain type conversion is handled by the translation module
 
 /// HTTP response for repository name validation.
 ///
@@ -223,7 +222,7 @@ pub struct TemplateSummary {
     pub variables: Vec<String>,
 }
 
-// TODO: Implement From<Template> for TemplateSummary when domain type is available
+// Domain type conversion is handled by the translation module
 
 /// HTTP response for template details.
 ///

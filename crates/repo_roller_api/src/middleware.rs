@@ -181,13 +181,14 @@ pub async fn organization_auth_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // TODO: Implement organization authorization
+    // Organization authorization is a future enhancement (Task 9.7)
+    // Will implement:
     // 1. Extract organization from path parameters
     // 2. Get authentication context from request extensions
-    // 3. Verify user has access to organization
-    // 4. Call next middleware/handler
+    // 3. Verify user has access to organization (RBAC)
+    // 4. Check team-based permissions
 
-    // Placeholder: pass through all requests
+    // Currently: pass through all authenticated requests
     Ok(next.run(request).await)
 }
 

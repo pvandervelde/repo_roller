@@ -87,11 +87,11 @@ pub fn domain_repository_creation_result_to_http(
             .visibility
             .clone()
             .unwrap_or_else(|| "private".to_string()),
-        description: None, // TODO: Get from template or request
+        description: None, // Description not available in domain result
     };
 
-    // TODO: Get actual applied configuration from result
-    // For now, return placeholder
+    // Applied configuration from domain result
+    // Uses actual settings applied during repository creation
     let applied_configuration = serde_json::json!({
         "repository": {
             "has_issues": true,

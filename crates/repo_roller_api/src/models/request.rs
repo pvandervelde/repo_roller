@@ -18,8 +18,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// TODO: Import domain types for translation when available
-// use repo_roller_core::{RepositoryName, OrganizationName, TemplateName};
+// Domain type translation is handled by the translation module
 
 /// HTTP request to create a repository.
 ///
@@ -72,8 +71,7 @@ pub struct CreateRepositoryRequest {
     pub variables: HashMap<String, String>,
 }
 
-// TODO: Implement TryFrom<CreateRepositoryRequest> for domain RepositoryCreationRequest
-// when domain types are available
+// Translation to domain types is implemented in the translation module
 
 /// HTTP request to validate a repository name.
 ///
