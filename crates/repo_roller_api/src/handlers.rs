@@ -112,8 +112,10 @@ pub async fn create_repository(
     // Translate HTTP request to domain request (includes validation)
     let domain_request = http_create_repository_request_to_domain(request.clone())?;
 
-    // Load configuration manager (empty templates - templates come from GitHub repos)
-    // This satisfies the ConfigurationManager trait requirement
+    // Create ConfigurationManager - templates come from GitHub repos, not config file
+    // The OrganizationSettingsManager loads actual template configurations from
+    // the metadata repository during create_repository() execution.
+    // This empty Config satisfies the legacy trait requirement.
     let config_manager = config_manager::Config { templates: vec![] };
 
     // Create authentication service that returns the installation token we already have
@@ -257,8 +259,12 @@ pub async fn validate_repository_request(
             severity: ValidationSeverity::Error,
         });
     } else {
-        // Template existence validation is a future enhancement (Task 9.7)
-        // Real validation happens in create_repository via OrganizationSettingsManager
+        // Note: This endpoint provides basic format validation only.
+        // Comprehensive template existence validation requires GitHub API calls
+        // and happens during actual repository creation via OrganizationSettingsManager.
+        // The hardcoded check below demonstrates the validation pattern for testing
+        // without requiring GitHub API access. Real validation is in create_repository().
+        // Enhancement tracked in Task 9.7: Add GitHub API-based template validation.
         if request.template == "nonexistent-template" {
             errors.push(ValidationResult {
                 field: "template".to_string(),
@@ -279,8 +285,12 @@ pub async fn validate_repository_request(
         }
     }
 
-    // Template variable validation is a future enhancement (Task 9.7)
-    // Real validation happens in create_repository via template engine
+    // Note: This endpoint provides basic format validation only.
+    // Comprehensive variable validation requires loading template configuration
+    // and happens during actual repository creation via the template engine.
+    // The hardcoded check below demonstrates the validation pattern for testing.
+    // Real validation is in create_repository().
+    // Enhancement tracked in Task 9.7: Add template-aware variable validation.
     if request.template == "rust-library" && request.variables.is_empty() {
         errors.push(ValidationResult {
             field: "variables.project_name".to_string(),
@@ -289,7 +299,12 @@ pub async fn validate_repository_request(
         });
     }
 
-    // Team existence validation is a future enhancement (Task 9.7)
+    // Note: This endpoint provides basic format validation only.
+    // Comprehensive team existence validation requires GitHub API calls
+    // and happens during actual repository creation.
+    // The hardcoded check below demonstrates the validation pattern for testing.
+    // Real validation is in create_repository().
+    // Enhancement tracked in Task 9.7: Add GitHub API-based team validation.
     if let Some(ref team) = request.team {
         if team == "nonexistent-team" {
             errors.push(ValidationResult {
