@@ -42,7 +42,7 @@ chrono.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-http-body-util = "0.1"
+http-body-util = "=0.1.3"
 tower = { workspace = true, features = ["util"] }
 hyper = { workspace = true, features = ["full"] }
 
