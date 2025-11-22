@@ -927,7 +927,7 @@ pub trait RepositoryClient: Send + Sync {
     /// let repos = client.search_repositories("org:myorg topic:reporoller-template").await?;
     ///
     /// for repo in repos {
-    ///     println!("Found template: {}", repo.name);
+    ///     println!("Found template: {}", repo.name());
     /// }
     /// # Ok(())
     /// # }
