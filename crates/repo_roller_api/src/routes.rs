@@ -130,6 +130,107 @@ fn organization_routes() -> Router<AppState> {
         ))
 }
 
+/// Create a router for testing without authentication middleware.
+///
+/// This function creates the same route structure as `create_router` but
+/// without the authentication middleware layer. This allows tests to bypass
+/// authentication while still testing handler logic, request validation,
+/// and response formatting.
+///
+/// # Security Note
+///
+/// This function is only available in test builds and should never be used
+/// in production code.
+#[cfg(test)]
+pub fn create_router_without_auth(state: AppState) -> Router {
+    use axum::{
+        http::{header, Method},
+        routing::{get, post},
+        Router,
+    };
+    use std::time::Duration;
+    use tower_http::{
+        cors::CorsLayer,
+        timeout::TimeoutLayer,
+        trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    };
+
+    // Configure CORS for web UI support
+    let cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
+        .allow_credentials(false)
+        .max_age(Duration::from_secs(3600));
+
+    // Configure request tracing
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(DefaultMakeSpan::new().include_headers(true))
+        .on_response(DefaultOnResponse::new().include_headers(true));
+
+    // Configure request timeout (30 seconds)
+    let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
+
+    // API v1 routes without auth middleware
+    let api_v1 = Router::new()
+        // Repository operations
+        .route("/repositories", post(handlers::create_repository))
+        .route(
+            "/repositories/validate-name",
+            post(handlers::validate_repository_name),
+        )
+        .route(
+            "/repositories/validate",
+            post(handlers::validate_repository_request),
+        )
+        // Organization-specific routes (without org-specific auth)
+        .nest("/orgs/:org", organization_routes_without_auth())
+        // Health check
+        .route("/health", get(handlers::health_check))
+        // Add middleware layers (without auth_middleware)
+        .layer(middleware::from_fn(api_middleware::tracing_middleware))
+        .layer(timeout_layer)
+        .layer(trace_layer)
+        .layer(cors)
+        .with_state(state);
+
+    // Root router with API version prefix
+    Router::new().nest("/api/v1", api_v1)
+}
+
+/// Organization-specific routes for testing (without authentication)
+#[cfg(test)]
+fn organization_routes_without_auth() -> Router<AppState> {
+    Router::new()
+        // Template routes
+        .route("/templates", get(handlers::list_templates))
+        .route("/templates/:template", get(handlers::get_template_details))
+        .route(
+            "/templates/:template/validate",
+            post(handlers::validate_template),
+        )
+        // Repository type routes
+        .route("/repository-types", get(handlers::list_repository_types))
+        .route(
+            "/repository-types/:type",
+            get(handlers::get_repository_type_config),
+        )
+        // Configuration routes
+        .route("/defaults", get(handlers::get_global_defaults))
+        .route(
+            "/configuration/preview",
+            post(handlers::preview_configuration),
+        )
+        // Organization validation
+        .route("/validate", post(handlers::validate_organization))
+}
+
 #[cfg(test)]
 #[path = "routes_tests.rs"]
 mod tests;

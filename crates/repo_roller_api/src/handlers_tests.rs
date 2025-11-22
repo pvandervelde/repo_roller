@@ -8,7 +8,7 @@ use axum::{
 use serde_json::json;
 use tower::ServiceExt;
 
-use crate::routes::create_router;
+use crate::routes::create_router_without_auth;
 
 /// Helper function to create a test app state
 fn test_app_state() -> AppState {
@@ -62,7 +62,7 @@ async fn test_health_check_timestamp_format() {
 /// with complete repository information and applied configuration.
 #[tokio::test]
 async fn test_create_repository_success() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -111,7 +111,7 @@ async fn test_create_repository_success() {
 /// (Axum's default for JSON deserialization errors).
 #[tokio::test]
 async fn test_create_repository_missing_required_fields() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -139,7 +139,7 @@ async fn test_create_repository_missing_required_fields() {
 /// return 400 Bad Request with validation error.
 #[tokio::test]
 async fn test_create_repository_invalid_name() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -177,7 +177,7 @@ async fn test_create_repository_invalid_name() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_create_repository_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -204,7 +204,7 @@ async fn test_create_repository_no_auth() {
 /// Verifies that a valid repository name returns 200 OK with valid=true.
 #[tokio::test]
 async fn test_validate_repository_name_valid() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -238,7 +238,7 @@ async fn test_validate_repository_name_valid() {
 /// and includes validation error details.
 #[tokio::test]
 async fn test_validate_repository_name_invalid() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -276,7 +276,7 @@ async fn test_validate_repository_name_invalid() {
 /// and appropriate error message.
 #[tokio::test]
 async fn test_validate_repository_name_empty() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -311,7 +311,7 @@ async fn test_validate_repository_name_empty() {
 /// 200 OK with valid=true and no errors.
 #[tokio::test]
 async fn test_validate_repository_request_valid() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -356,7 +356,7 @@ async fn test_validate_repository_request_valid() {
 /// with specific error about the missing variables.
 #[tokio::test]
 async fn test_validate_repository_request_missing_variables() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -394,7 +394,7 @@ async fn test_validate_repository_request_missing_variables() {
 /// with appropriate error message.
 #[tokio::test]
 async fn test_validate_repository_request_nonexistent_template() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = json!({
         "organization": "testorg",
@@ -440,7 +440,7 @@ async fn test_validate_repository_request_nonexistent_template() {
 /// with an array of template summaries.
 #[tokio::test]
 async fn test_list_templates_success() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -476,7 +476,7 @@ async fn test_list_templates_success() {
 /// Verifies that when no templates exist, returns 200 OK with empty array.
 #[tokio::test]
 async fn test_list_templates_empty() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -503,7 +503,7 @@ async fn test_list_templates_empty() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_list_templates_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -523,7 +523,7 @@ async fn test_list_templates_no_auth() {
 /// 200 OK with complete template information including variables.
 #[tokio::test]
 async fn test_get_template_details_success() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -555,7 +555,7 @@ async fn test_get_template_details_success() {
 /// 404 Not Found with appropriate error message.
 #[tokio::test]
 async fn test_get_template_details_not_found() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -585,7 +585,7 @@ async fn test_get_template_details_not_found() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_get_template_details_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -605,7 +605,7 @@ async fn test_get_template_details_no_auth() {
 /// with valid=true.
 #[tokio::test]
 async fn test_validate_template_success() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("POST")
@@ -633,7 +633,7 @@ async fn test_validate_template_success() {
 /// with valid=false and includes validation error details.
 #[tokio::test]
 async fn test_validate_template_invalid() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("POST")
@@ -668,7 +668,7 @@ async fn test_validate_template_invalid() {
 /// 404 Not Found.
 #[tokio::test]
 async fn test_validate_template_not_found() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("POST")
@@ -687,7 +687,7 @@ async fn test_validate_template_not_found() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_validate_template_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("POST")
@@ -715,7 +715,7 @@ async fn test_validate_template_no_auth() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_list_repository_types_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -734,7 +734,7 @@ async fn test_list_repository_types_no_auth() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_get_repository_type_config_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -753,7 +753,7 @@ async fn test_get_repository_type_config_no_auth() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_get_global_defaults_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("GET")
@@ -772,7 +772,7 @@ async fn test_get_global_defaults_no_auth() {
 /// Verifies that preview fails gracefully with 404 for invalid template.
 #[tokio::test]
 async fn test_preview_configuration_template_not_found() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = serde_json::json!({
         "template": "nonexistent-template"
@@ -796,7 +796,7 @@ async fn test_preview_configuration_template_not_found() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_preview_configuration_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request_body = serde_json::json!({
         "template": "rust-library"
@@ -821,7 +821,7 @@ async fn test_preview_configuration_no_auth() {
 /// when organization configuration has issues.
 #[tokio::test]
 async fn test_validate_organization_invalid() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("POST")
@@ -853,7 +853,7 @@ async fn test_validate_organization_invalid() {
 /// Verifies that unauthenticated requests return 401 Unauthorized.
 #[tokio::test]
 async fn test_validate_organization_no_auth() {
-    let app = create_router(test_app_state());
+    let app = create_router_without_auth(test_app_state());
 
     let request = Request::builder()
         .method("POST")
