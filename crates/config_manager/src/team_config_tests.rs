@@ -39,11 +39,11 @@ fn test_deserialize_repository_settings() {
 
     let repo = config.repository.unwrap();
     assert!(repo.discussions.is_some());
-    assert_eq!(repo.discussions.as_ref().unwrap().value, false);
+    assert!(!repo.discussions.as_ref().unwrap().value);
     assert!(repo.discussions.as_ref().unwrap().override_allowed);
 
     assert!(repo.projects.is_some());
-    assert_eq!(repo.projects.as_ref().unwrap().value, true);
+    assert!(repo.projects.as_ref().unwrap().value);
 }
 
 #[test]
@@ -324,7 +324,7 @@ fn test_values_auto_wrapped_with_override_allowed() {
     let repo = config.repository.unwrap();
     let discussions = repo.discussions.unwrap();
 
-    assert_eq!(discussions.value, false);
+    assert!(!discussions.value);
     assert!(
         discussions.override_allowed,
         "Team config values should auto-wrap with override_allowed = true"

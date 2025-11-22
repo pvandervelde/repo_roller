@@ -211,6 +211,20 @@ mod mock_provider {
             Ok(repo)
         }
 
+        async fn list_templates(&self, _org: &str) -> ConfigurationResult<Vec<String>> {
+            Ok(vec![])
+        }
+
+        async fn load_template_configuration(
+            &self,
+            _org: &str,
+            _template_name: &str,
+        ) -> ConfigurationResult<crate::template_config::TemplateConfig> {
+            Err(crate::ConfigurationError::FileNotFound {
+                path: "template.toml".to_string(),
+            })
+        }
+
         async fn load_global_defaults(
             &self,
             _repo: &MetadataRepository,

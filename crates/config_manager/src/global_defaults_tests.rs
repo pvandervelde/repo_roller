@@ -27,13 +27,13 @@ fn test_deserialize_from_toml() {
 
     assert!(defaults.repository.is_some());
     let repo = defaults.repository.unwrap();
-    assert_eq!(repo.issues.as_ref().unwrap().value, true);
-    assert_eq!(repo.wiki.as_ref().unwrap().value, false);
-    assert_eq!(repo.wiki.as_ref().unwrap().override_allowed, false);
+    assert!(repo.issues.as_ref().unwrap().value);
+    assert!(!repo.wiki.as_ref().unwrap().value);
+    assert!(!repo.wiki.as_ref().unwrap().override_allowed);
 
     assert!(defaults.pull_requests.is_some());
     let pr = defaults.pull_requests.unwrap();
-    assert_eq!(pr.allow_merge_commit.as_ref().unwrap().value, false);
+    assert!(!pr.allow_merge_commit.as_ref().unwrap().value);
     assert_eq!(
         pr.required_approving_review_count.as_ref().unwrap().value,
         1
@@ -63,7 +63,7 @@ fn test_deserialize_with_webhooks() {
     assert_eq!(webhooks.len(), 2);
     assert_eq!(webhooks[0].url, "https://example.com/webhook");
     assert_eq!(webhooks[0].events.len(), 2);
-    assert_eq!(webhooks[1].active, false);
+    assert!(!webhooks[1].active);
 }
 
 #[test]

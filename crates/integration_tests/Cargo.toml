@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 auth_handler = { path = "../auth_handler" }
 repo_roller_core = { path = "../repo_roller_core" }
+repo_roller_api = { path = "../repo_roller_api" }
 github_client = { path = "../github_client" }
 template_engine = { path = "../template_engine" }
 config_manager = { path = "../config_manager" }
@@ -34,6 +35,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4"] }
 regex = "1"
+axum.workspace = true
+tower = "0.5"
+http-body-util = "0.1"
 
 [dev-dependencies]
 tokio-test = "=0.4.4"

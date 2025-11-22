@@ -182,7 +182,7 @@ fn test_validation_error_equality() {
 /// Verify all ValidationErrorType variants can be created.
 #[test]
 fn test_validation_error_type_variants() {
-    let types = vec![
+    let types = [
         ValidationErrorType::SchemaViolation,
         ValidationErrorType::RequiredFieldMissing,
         ValidationErrorType::InvalidValue,

@@ -408,4 +408,79 @@ pub trait MetadataRepositoryProvider: Send + Sync {
         &self,
         repo: &MetadataRepository,
     ) -> ConfigurationResult<()>;
+
+    /// List all available template repositories for an organization.
+    ///
+    /// Discovers template repositories by searching for repositories with the
+    /// `reporoller-template` topic. Each template repository should contain a
+    /// `.reporoller/template.toml` configuration file.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The GitHub organization name
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of template names (repository names).
+    /// Returns an empty vector if no template repositories are found.
+    ///
+    /// # Errors
+    ///
+    /// May return errors if the GitHub API cannot be accessed.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use config_manager::MetadataRepositoryProvider;
+    /// # async fn example(provider: &dyn MetadataRepositoryProvider) {
+    /// let templates = provider
+    ///     .list_templates("my-org")
+    ///     .await
+    ///     .expect("Failed to list templates");
+    ///
+    /// for template_name in templates {
+    ///     println!("Available template: {}", template_name);
+    /// }
+    /// # }
+    /// ```
+    async fn list_templates(&self, org: &str) -> ConfigurationResult<Vec<String>>;
+
+    /// Load template configuration from a template repository.
+    ///
+    /// Fetches and parses `.reporoller/template.toml` from the specified
+    /// template repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The GitHub organization name
+    /// * `template_name` - The template repository name
+    ///
+    /// # Returns
+    ///
+    /// Returns the parsed template configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::FileNotFound` if template repository or template.toml doesn't exist.
+    /// Returns `ConfigurationError::ParseError` if the TOML is invalid.
+    /// Returns `ConfigurationError::InvalidConfiguration` if required fields are missing.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use config_manager::MetadataRepositoryProvider;
+    /// # async fn example(provider: &dyn MetadataRepositoryProvider) {
+    /// let config = provider
+    ///     .load_template_configuration("my-org", "rust-library")
+    ///     .await
+    ///     .expect("Failed to load template config");
+    ///
+    /// println!("Template: {}", config.template.name);
+    /// # }
+    /// ```
+    async fn load_template_configuration(
+        &self,
+        org: &str,
+        template_name: &str,
+    ) -> ConfigurationResult<crate::template_config::TemplateConfig>;
 }

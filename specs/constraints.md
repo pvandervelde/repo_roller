@@ -52,6 +52,42 @@ This document defines the architectural rules, constraints, and policies that mu
 
 **Constraint**: Dependency flow must follow clean separation principles.
 
+### HTTP API Boundary Rules
+
+**Constraint**: HTTP API types must never leak into business logic.
+
+**HTTP API Layer** (`repo_roller_api` crate):
+
+- Defines HTTP request and response types
+- Handles HTTP-specific concerns (headers, status codes, serialization)
+- Translates between HTTP types and domain types
+- Never used by business logic
+
+**Translation Requirements**:
+
+- HTTP request types converted to domain types at API boundary
+- Domain result types converted to HTTP responses at API boundary
+- Validation during translation produces domain errors
+- Domain layer never imports `repo_roller_api` types
+
+**Example Pattern**:
+
+```rust
+// HTTP Layer
+pub struct CreateRepositoryHttpRequest { /* HTTP-specific fields */ }
+
+// Domain Layer (repo_roller_core)
+pub struct RepositoryCreationRequest { /* domain types */ }
+
+// Translation (in HTTP layer only)
+impl TryFrom<CreateRepositoryHttpRequest> for RepositoryCreationRequest {
+    type Error = ValidationError;
+    fn try_from(req: CreateRepositoryHttpRequest) -> Result<Self, Self::Error> {
+        // Validate and convert
+    }
+}
+```
+
 **Business Logic Dependencies**:
 
 - Business logic depends only on standard library and essential crates (`serde`, `chrono`, `uuid`)

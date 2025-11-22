@@ -30,7 +30,13 @@ Interface specifications serve as:
 - [**Authentication Services**](authentication-interfaces.md) - Auth and authorization interfaces
 - [**External Systems Overview**](external-systems.md) - High-level system boundaries
 
-**Status**: ✅ 8 interface specifications complete
+### HTTP API Specifications
+
+- [**API Request Types**](api-request-types.md) - HTTP request models and validation
+- [**API Response Types**](api-response-types.md) - HTTP response models and serialization
+- [**API Error Handling**](api-error-handling.md) - Error mapping and HTTP status codes
+
+**Status**: ✅ 11 interface specifications complete (3 HTTP API specs added)
 
 ## Architecture Overview
 
@@ -77,6 +83,13 @@ RepoRoller follows clean architecture principles with clear boundaries:
 - Shared domain types (branded types)
 - Other business logic modules
 
+**HTTP API Layer** may depend on:
+
+- Interface traits
+- Business domain types (for translation)
+- HTTP framework types (Axum, Tokio)
+- Business logic modules (calls them)
+
 **Infrastructure** may depend on:
 
 - Interface traits (to implement them)
@@ -90,6 +103,12 @@ RepoRoller follows clean architecture principles with clear boundaries:
 - Infrastructure implementations (GitHubClient, etc.)
 - External service clients directly
 - Framework-specific code
+- HTTP API types
+
+**HTTP API Layer** must NEVER be imported by:
+
+- Business logic
+- Infrastructure implementations (except API-specific infra)
 
 ## Type System Conventions
 
@@ -178,12 +197,18 @@ Interface specifications map to source code as follows:
 
 | Specification | Source Location |
 |---------------|----------------|
+| **Domain Types** | |
 | Shared Types | `repo_roller_core/src/types.rs` |
 | Repository Domain | `repo_roller_core/src/repository.rs` |
 | Configuration | `config_manager/src/lib.rs` |
 | Authentication | `auth_handler/src/lib.rs` |
+| **External Integration** | |
 | GitHub Integration | `github_client/src/lib.rs` |
 | Template Processing | `template_engine/src/lib.rs` |
+| **HTTP API** | |
+| API Request Types | `repo_roller_api/src/models/request.rs` |
+| API Response Types | `repo_roller_api/src/models/response.rs` |
+| API Error Handling | `repo_roller_api/src/errors.rs` |
 
 ## Contributing to Specifications
 

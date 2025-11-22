@@ -962,7 +962,10 @@ fn test_system_error_resource_unavailable() {
 #[test]
 fn test_repo_roller_result_type_ok() {
     let result: RepoRollerResult<i32> = Ok(42);
-    assert_eq!(result.unwrap(), 42);
+    assert!(result.is_ok());
+    if let Ok(value) = result {
+        assert_eq!(value, 42);
+    }
 }
 
 #[test]
@@ -976,7 +979,7 @@ fn test_repo_roller_result_type_err() {
 #[test]
 fn test_repository_result_type_ok() {
     let result: RepositoryResult<String> = Ok("success".to_string());
-    assert_eq!(result.unwrap(), "success");
+    assert_eq!(result, Ok("success".to_string()));
 }
 
 #[test]
@@ -990,13 +993,14 @@ fn test_configuration_result_type() {
 #[test]
 fn test_template_result_type() {
     let result: TemplateResult<Vec<u8>> = Ok(vec![1, 2, 3]);
-    assert_eq!(result.unwrap(), vec![1, 2, 3]);
+    assert_eq!(result, Ok(vec![1, 2, 3]));
 }
 
 #[test]
 fn test_authentication_result_type() {
     let result: AuthenticationResult<bool> = Ok(true);
-    assert_eq!(result.unwrap(), true);
+    assert!(result.is_ok());
+    assert_eq!(result, Ok(true));
 }
 
 #[test]

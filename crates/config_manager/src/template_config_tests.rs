@@ -223,9 +223,9 @@ fn test_template_config_with_repository_settings() {
 
     let repo = config.repository.unwrap();
     assert!(repo.wiki.is_some());
-    assert_eq!(repo.wiki.as_ref().unwrap().value, false);
+    assert!(!repo.wiki.as_ref().unwrap().value);
     assert!(repo.issues.is_some());
-    assert_eq!(repo.issues.as_ref().unwrap().value, true);
+    assert!(repo.issues.as_ref().unwrap().value);
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn test_template_config_with_pull_request_settings() {
         pr.required_approving_review_count.as_ref().unwrap().value,
         2
     );
-    assert_eq!(pr.require_code_owner_reviews.as_ref().unwrap().value, true);
+    assert!(pr.require_code_owner_reviews.as_ref().unwrap().value);
 }
 
 #[test]
