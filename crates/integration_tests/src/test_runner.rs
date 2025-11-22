@@ -18,6 +18,7 @@ use crate::utils::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestR
 
 /// Test scenario definitions matching the integration testing strategy.
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Some variants only used in organization_settings_scenarios tests
 pub enum TestScenario {
     /// Basic repository creation with minimal template
     BasicCreation,
@@ -39,6 +40,7 @@ pub enum TestScenario {
 
 impl TestScenario {
     /// Get the test name for repository naming
+    #[allow(dead_code)] // Used in organization_settings_scenarios tests
     pub fn test_name(&self) -> &'static str {
         match self {
             TestScenario::BasicCreation => "basic",
@@ -89,6 +91,7 @@ impl TestScenario {
     }
 
     /// Get the team name for team-specific scenarios
+    #[allow(dead_code)] // Used in organization_settings_scenarios tests
     pub fn team_name(&self) -> Option<&'static str> {
         match self {
             TestScenario::TeamConfiguration => Some("platform"),
@@ -98,6 +101,7 @@ impl TestScenario {
     }
 
     /// Get the repository type for type-specific scenarios
+    #[allow(dead_code)] // Used in organization_settings_scenarios tests
     pub fn repository_type(&self) -> Option<&'static str> {
         match self {
             TestScenario::RepositoryType => Some("library"),

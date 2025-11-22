@@ -15,29 +15,25 @@
 //!
 //! See: .llm/rest-api-implementation-guide.md
 
+use async_trait::async_trait;
 use axum::{
     extract::{Path, State},
-    Extension,
-    Json,
+    Extension, Json,
 };
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{
     errors::ApiError,
     middleware::AuthContext,
-    models::{
-        request::*,
-        response::*,
-    },
+    models::{request::*, response::*},
     AppState,
 };
 
 // Domain service imports
 use config_manager::{
     ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
-    OrganizationSettingsManager, MetadataRepositoryProvider,
+    MetadataRepositoryProvider, OrganizationSettingsManager,
 };
 use github_client::GitHubClient;
 
@@ -61,7 +57,13 @@ use github_client::GitHubClient;
 async fn create_settings_manager(
     auth: &AuthContext,
     state: &AppState,
-) -> Result<(OrganizationSettingsManager, Arc<dyn MetadataRepositoryProvider>), ApiError> {
+) -> Result<
+    (
+        OrganizationSettingsManager,
+        Arc<dyn MetadataRepositoryProvider>,
+    ),
+    ApiError,
+> {
     // Create GitHub client with installation token
     let octocrab = github_client::create_token_client(&auth.token)
         .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
@@ -90,9 +92,8 @@ fn is_valid_repository_name(name: &str) -> bool {
         return false;
     }
 
-    name.chars().all(|c| {
-        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.'
-    })
+    name.chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.')
 }
 
 /// POST /api/v1/repositories
@@ -106,7 +107,7 @@ pub async fn create_repository(
     Json(request): Json<CreateRepositoryRequest>,
 ) -> Result<(axum::http::StatusCode, Json<CreateRepositoryResponse>), ApiError> {
     use crate::translation::{
-        http_create_repository_request_to_domain, domain_repository_creation_result_to_http,
+        domain_repository_creation_result_to_http, http_create_repository_request_to_domain,
     };
 
     // Translate HTTP request to domain request (includes validation)
@@ -193,7 +194,10 @@ pub async fn validate_repository_name(
 
     // Check for invalid characters
     if !is_valid_repository_name(&request.name) {
-        messages.push("Repository name can only contain lowercase letters, numbers, hyphens, and underscores".to_string());
+        messages.push(
+            "Repository name can only contain lowercase letters, numbers, hyphens, and underscores"
+                .to_string(),
+        );
         valid = false;
 
         // Check specifically for uppercase
@@ -209,7 +213,11 @@ pub async fn validate_repository_name(
     let response = ValidateRepositoryNameResponse {
         valid,
         available,
-        messages: if messages.is_empty() { None } else { Some(messages) },
+        messages: if messages.is_empty() {
+            None
+        } else {
+            Some(messages)
+        },
     };
 
     Ok(Json(response))
@@ -268,7 +276,10 @@ pub async fn validate_repository_request(
         if request.template == "nonexistent-template" {
             errors.push(ValidationResult {
                 field: "template".to_string(),
-                message: format!("Template '{}' does not exist in organization", request.template),
+                message: format!(
+                    "Template '{}' does not exist in organization",
+                    request.template
+                ),
                 severity: ValidationSeverity::Error,
             });
         }
@@ -338,24 +349,26 @@ pub async fn list_templates(
     let (_manager, provider) = create_settings_manager(&auth, &state).await?;
 
     // List templates using the metadata provider
-    let template_names = provider
-        .list_templates(&params.org)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list templates for organization '{}': {:?}", params.org, e);
-            ApiError::from(anyhow::anyhow!(
-                "Failed to list templates: {}",
-                e
-            ))
-        })?;
+    let template_names = provider.list_templates(&params.org).await.map_err(|e| {
+        tracing::error!(
+            "Failed to list templates for organization '{}': {:?}",
+            params.org,
+            e
+        );
+        ApiError::from(anyhow::anyhow!("Failed to list templates: {}", e))
+    })?;
 
     // Load template configurations to get details
     let mut templates = Vec::new();
     for template_name in template_names {
-        match provider.load_template_configuration(&params.org, &template_name).await {
+        match provider
+            .load_template_configuration(&params.org, &template_name)
+            .await
+        {
             Ok(config) => {
                 // Extract variable names from the template config
-                let variable_names: Vec<String> = config.variables
+                let variable_names: Vec<String> = config
+                    .variables
                     .unwrap_or_default()
                     .keys()
                     .cloned()
@@ -369,7 +382,11 @@ pub async fn list_templates(
                 });
             }
             Err(e) => {
-                tracing::warn!("Failed to load template configuration for '{}': {:?}", template_name, e);
+                tracing::warn!(
+                    "Failed to load template configuration for '{}': {:?}",
+                    template_name,
+                    e
+                );
                 // Skip templates that can't be loaded
                 continue;
             }
@@ -507,17 +524,15 @@ pub async fn validate_template(
                         warnings: vec![],
                     }))
                 }
-                _ => {
-                    Ok(Json(ValidateTemplateResponse {
-                        valid: false,
-                        errors: vec![ValidationResult {
-                            field: "template".to_string(),
-                            message: format!("Template validation failed: {}", e),
-                            severity: ValidationSeverity::Error,
-                        }],
-                        warnings: vec![],
-                    }))
-                }
+                _ => Ok(Json(ValidateTemplateResponse {
+                    valid: false,
+                    errors: vec![ValidationResult {
+                        field: "template".to_string(),
+                        message: format!("Template validation failed: {}", e),
+                        severity: ValidationSeverity::Error,
+                    }],
+                    warnings: vec![],
+                })),
             }
         }
     }
@@ -542,10 +557,19 @@ pub async fn list_repository_types(
         .await
         .map_err(|e| {
             // If metadata repository not found, return empty list
-            if matches!(e, config_manager::ConfigurationError::MetadataRepositoryNotFound { .. }) {
-                return ApiError::from(anyhow::anyhow!("Metadata repository not found for organization '{}'", params.org));
+            if matches!(
+                e,
+                config_manager::ConfigurationError::MetadataRepositoryNotFound { .. }
+            ) {
+                return ApiError::from(anyhow::anyhow!(
+                    "Metadata repository not found for organization '{}'",
+                    params.org
+                ));
             }
-            ApiError::from(anyhow::anyhow!("Failed to discover metadata repository: {}", e))
+            ApiError::from(anyhow::anyhow!(
+                "Failed to discover metadata repository: {}",
+                e
+            ))
         })?;
 
     // List available repository types
@@ -586,7 +610,12 @@ pub async fn get_repository_type_config(
     let metadata_repo = provider
         .discover_metadata_repository(&params.org)
         .await
-        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to discover metadata repository: {}", e)))?;
+        .map_err(|e| {
+            ApiError::from(anyhow::anyhow!(
+                "Failed to discover metadata repository: {}",
+                e
+            ))
+        })?;
 
     // Load repository type configuration
     let type_config = provider
@@ -601,7 +630,10 @@ pub async fn get_repository_type_config(
                     params.org
                 ));
             }
-            ApiError::from(anyhow::anyhow!("Failed to load repository type configuration: {}", e))
+            ApiError::from(anyhow::anyhow!(
+                "Failed to load repository type configuration: {}",
+                e
+            ))
         })?;
 
     // If configuration is None, type doesn't exist
@@ -642,7 +674,12 @@ pub async fn get_global_defaults(
     let metadata_repo = provider
         .discover_metadata_repository(&params.org)
         .await
-        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to discover metadata repository: {}", e)))?;
+        .map_err(|e| {
+            ApiError::from(anyhow::anyhow!(
+                "Failed to discover metadata repository: {}",
+                e
+            ))
+        })?;
 
     // Load global defaults
     let global_defaults = provider
@@ -683,20 +720,21 @@ pub async fn preview_configuration(
     }
 
     // Resolve merged configuration
-    let merged = manager
-        .resolve_configuration(&context)
-        .await
-        .map_err(|e| {
-            // Check if it's a template not found error
-            if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
-                return ApiError::from(anyhow::anyhow!("Template '{}' not found", request.template));
-            }
-            ApiError::from(anyhow::anyhow!("Failed to resolve configuration: {}", e))
-        })?;
+    let merged = manager.resolve_configuration(&context).await.map_err(|e| {
+        // Check if it's a template not found error
+        if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
+            return ApiError::from(anyhow::anyhow!("Template '{}' not found", request.template));
+        }
+        ApiError::from(anyhow::anyhow!("Failed to resolve configuration: {}", e))
+    })?;
 
     // Convert merged configuration to JSON
-    let merged_configuration = serde_json::to_value(&merged)
-        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to serialize merged configuration: {}", e)))?;
+    let merged_configuration = serde_json::to_value(&merged).map_err(|e| {
+        ApiError::from(anyhow::anyhow!(
+            "Failed to serialize merged configuration: {}",
+            e
+        ))
+    })?;
 
     // Extract source attribution from the merged configuration's source trace
     // Source trace extraction is a future enhancement (Task 9.7)
@@ -728,10 +766,7 @@ pub async fn validate_organization(
     let mut warnings = Vec::new();
 
     // Try to discover metadata repository
-    let metadata_repo = match provider
-        .discover_metadata_repository(&params.org)
-        .await
-    {
+    let metadata_repo = match provider.discover_metadata_repository(&params.org).await {
         Ok(repo) => repo,
         Err(e) => {
             errors.push(ValidationResult {
@@ -749,10 +784,7 @@ pub async fn validate_organization(
     };
 
     // Try to load global defaults
-    if let Err(e) = provider
-        .load_global_defaults(&metadata_repo)
-        .await
-    {
+    if let Err(e) = provider.load_global_defaults(&metadata_repo).await {
         errors.push(ValidationResult {
             field: "global_defaults".to_string(),
             message: format!("Failed to load global defaults: {}", e),

@@ -76,12 +76,12 @@ fn test_override_policies_integration() {
     // Fixed policy cannot be overridden
     let fixed_value = OverridableValue::fixed(true);
     assert!(!fixed_value.can_override());
-    assert_eq!(*fixed_value.get(), true);
+    assert!(*fixed_value.get());
 
     // Allowed policy can be overridden
     let allowed_value = OverridableValue::allowed(false);
     assert!(allowed_value.can_override());
-    assert_eq!(*allowed_value.get(), false);
+    assert!(!(*allowed_value.get()));
 
     // Test with different types
     let fixed_int = OverridableValue::fixed(42);

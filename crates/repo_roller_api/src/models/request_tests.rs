@@ -24,7 +24,10 @@ fn test_create_repository_request_full() {
     assert_eq!(req.visibility, Some("private".to_string()));
     assert_eq!(req.team, Some("platform".to_string()));
     assert_eq!(req.repository_type, Some("library".to_string()));
-    assert_eq!(req.variables.get("project_name"), Some(&"MyLib".to_string()));
+    assert_eq!(
+        req.variables.get("project_name"),
+        Some(&"MyLib".to_string())
+    );
 }
 
 /// Test CreateRepositoryRequest deserialization with minimal fields
@@ -100,7 +103,6 @@ fn test_preview_configuration_request_minimal() {
     assert_eq!(req.team, None);
     assert_eq!(req.repository_type, None);
 }
-
 
 #[test]
 fn test_create_repository_request_deserialization() {

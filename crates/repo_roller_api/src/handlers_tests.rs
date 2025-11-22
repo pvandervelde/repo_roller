@@ -36,7 +36,10 @@ async fn test_health_check_returns_json() {
 async fn test_health_check_includes_version() {
     let response = health_check().await;
 
-    assert_eq!(response.0.version, Some(env!("CARGO_PKG_VERSION").to_string()));
+    assert_eq!(
+        response.0.version,
+        Some(env!("CARGO_PKG_VERSION").to_string())
+    );
 }
 
 /// Test that health check timestamp is valid ISO 8601
@@ -87,7 +90,9 @@ async fn test_create_repository_success() {
     assert_eq!(response.status(), StatusCode::CREATED);
 
     // Verify response structure
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     // Check required fields in response
@@ -99,7 +104,8 @@ async fn test_create_repository_success() {
     assert!(response_json["createdAt"].is_string());
 
     assert!(response_json["appliedConfiguration"].is_object());
-}/// Test create_repository endpoint with missing required fields
+}
+/// Test create_repository endpoint with missing required fields
 ///
 /// Verifies that requests missing required fields return 422 Unprocessable Entity
 /// (Axum's default for JSON deserialization errors).
@@ -154,11 +160,16 @@ async fn test_create_repository_invalid_name() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let error_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(error_json["error"].is_object());
-    assert!(error_json["error"]["message"].as_str().unwrap().contains("name"));
+    assert!(error_json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("name"));
 }
 
 /// Test create_repository endpoint without authentication
@@ -212,7 +223,9 @@ async fn test_validate_repository_name_valid() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], true);
@@ -244,7 +257,9 @@ async fn test_validate_repository_name_invalid() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], false);
@@ -254,7 +269,8 @@ async fn test_validate_repository_name_invalid() {
     assert!(response_json["messages"].is_array());
     let messages = response_json["messages"].as_array().unwrap();
     assert!(!messages.is_empty());
-}/// Test validate_repository_name endpoint with empty name
+}
+/// Test validate_repository_name endpoint with empty name
 ///
 /// Verifies that empty repository name returns 200 OK with valid=false
 /// and appropriate error message.
@@ -279,7 +295,9 @@ async fn test_validate_repository_name_empty() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], false);
@@ -320,7 +338,9 @@ async fn test_validate_repository_request_valid() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], true);
@@ -357,7 +377,9 @@ async fn test_validate_repository_request_missing_variables() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], false);
@@ -393,17 +415,19 @@ async fn test_validate_repository_request_nonexistent_template() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], false);
 
     let errors = response_json["errors"].as_array().unwrap();
     assert!(!errors.is_empty());
-    assert!(errors.iter().any(|e|
-        e["message"].as_str().unwrap().contains("template") ||
-        e["field"].as_str().unwrap().contains("template")
-    ));
+    assert!(errors
+        .iter()
+        .any(|e| e["message"].as_str().unwrap().contains("template")
+            || e["field"].as_str().unwrap().contains("template")));
 }
 
 // ============================================================================
@@ -429,7 +453,9 @@ async fn test_list_templates_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     // Check response structure
@@ -463,7 +489,9 @@ async fn test_list_templates_empty() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(response_json["templates"].is_array());
@@ -508,7 +536,9 @@ async fn test_get_template_details_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     // Check required fields
@@ -538,11 +568,16 @@ async fn test_get_template_details_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let error_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(error_json["error"].is_object());
-    assert!(error_json["error"]["message"].as_str().unwrap().contains("template"));
+    assert!(error_json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("template"));
 }
 
 /// Test get_template_details endpoint without authentication
@@ -583,7 +618,9 @@ async fn test_validate_template_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], true);
@@ -609,7 +646,9 @@ async fn test_validate_template_invalid() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], false);
@@ -671,7 +710,6 @@ async fn test_validate_template_no_auth() {
 ///
 /// These tests require real GitHub infrastructure with configured metadata repositories.
 /// The following tests verify authentication and basic request validation only.
-
 /// Test list_repository_types endpoint without authentication
 ///
 /// Verifies that unauthenticated requests return 401 Unauthorized.

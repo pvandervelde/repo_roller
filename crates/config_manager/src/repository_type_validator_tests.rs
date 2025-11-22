@@ -12,7 +12,7 @@ fn test_validator_creation() {
 /// Verify validator default works.
 #[test]
 fn test_validator_default() {
-    let validator = RepositoryTypeValidator::default();
+    let validator = RepositoryTypeValidator;
     assert!(std::mem::size_of_val(&validator) == 0);
 }
 

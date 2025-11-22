@@ -16,9 +16,7 @@
 //! ```
 
 use clap::Subcommand;
-use config_manager::{
-    GitHubMetadataProvider, MetadataProviderConfig, MetadataRepositoryProvider,
-};
+use config_manager::{GitHubMetadataProvider, MetadataProviderConfig, MetadataRepositoryProvider};
 use github_client::GitHubClient;
 use keyring::Entry;
 use std::sync::Arc;
@@ -268,7 +266,8 @@ async fn template_validate(org: &str, template: &str, format: &str) -> Result<()
     println!("{}", output);
 
     Err(Error::Config(
-        "Template validation not yet implemented - see Task 9.3 template discovery endpoints".to_string(),
+        "Template validation not yet implemented - see Task 9.3 template discovery endpoints"
+            .to_string(),
     ))
 }
 

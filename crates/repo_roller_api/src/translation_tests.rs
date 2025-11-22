@@ -27,7 +27,10 @@ fn test_http_to_domain_create_repository_request_valid() {
     assert_eq!(domain_req.owner.as_ref(), "myorg");
     assert_eq!(domain_req.template.as_ref(), "rust-library");
     assert_eq!(domain_req.variables.len(), 2);
-    assert_eq!(domain_req.variables.get("author"), Some(&"John Doe".to_string()));
+    assert_eq!(
+        domain_req.variables.get("author"),
+        Some(&"John Doe".to_string())
+    );
 }
 
 /// Test translation fails with invalid repository name
@@ -107,9 +110,12 @@ fn test_domain_to_http_create_repository_response() {
 
     assert_eq!(http_response.repository.name, "my-repo");
     assert_eq!(http_response.repository.full_name, "myorg/my-repo");
-    assert_eq!(http_response.repository.url, "https://github.com/myorg/my-repo");
+    assert_eq!(
+        http_response.repository.url,
+        "https://github.com/myorg/my-repo"
+    );
     assert_eq!(http_response.repository.visibility, "private");
-    assert!(http_response.created_at.len() > 0); // Timestamp should be formatted
+    assert!(!http_response.created_at.is_empty()); // Timestamp should be formatted
 }
 
 /// Test visibility defaults to "private" when not specified
@@ -182,7 +188,16 @@ fn test_http_to_domain_multiple_variables() {
 
     let domain_req = result.unwrap();
     assert_eq!(domain_req.variables.len(), 3);
-    assert_eq!(domain_req.variables.get("var1"), Some(&"value1".to_string()));
-    assert_eq!(domain_req.variables.get("var2"), Some(&"value2".to_string()));
-    assert_eq!(domain_req.variables.get("var3"), Some(&"value3".to_string()));
+    assert_eq!(
+        domain_req.variables.get("var1"),
+        Some(&"value1".to_string())
+    );
+    assert_eq!(
+        domain_req.variables.get("var2"),
+        Some(&"value2".to_string())
+    );
+    assert_eq!(
+        domain_req.variables.get("var3"),
+        Some(&"value3".to_string())
+    );
 }

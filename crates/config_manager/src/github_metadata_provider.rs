@@ -401,7 +401,8 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
             })?;
 
         // Extract repository names
-        let template_names: Vec<String> = repos.iter().map(|repo| repo.name().to_string()).collect();
+        let template_names: Vec<String> =
+            repos.iter().map(|repo| repo.name().to_string()).collect();
 
         tracing::info!(
             "Found {} template(s) in organization '{}': {:?}",
@@ -457,4 +458,3 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         Ok(config)
     }
 }
-

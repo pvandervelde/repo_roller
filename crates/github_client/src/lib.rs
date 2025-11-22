@@ -611,7 +611,7 @@ impl RepositoryClient for GitHubClient {
         let repositories: Vec<models::Repository> = search_result
             .items
             .into_iter()
-            .map(|octocrab_repo| models::Repository::from(octocrab_repo))
+            .map(models::Repository::from)
             .collect();
 
         info!(

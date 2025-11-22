@@ -2,8 +2,8 @@
 //!
 //! This module provides the main server configuration and startup logic.
 
-use std::net::SocketAddr;
 use axum::Router;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::signal;
 

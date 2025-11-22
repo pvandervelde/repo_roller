@@ -99,7 +99,10 @@ fn test_authentication_error_session_expired() {
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(response.error.code, "AuthenticationError");
-    assert_eq!(response.error.message, "Session expired, please log in again");
+    assert_eq!(
+        response.error.message,
+        "Session expired, please log in again"
+    );
     assert!(response.error.details.is_none());
 }
 
@@ -178,6 +181,6 @@ fn test_error_response_without_details() {
 // - RepositoryError → various status codes depending on variant
 // - ConfigurationError → 500 Internal Server Error or 400 Bad Request
 // - TemplateError → 400 Bad Request or 404 Not Found
-// - GitHubError → 502 Bad Gateway or 500 Internal Server Error  
+// - GitHubError → 502 Bad Gateway or 500 Internal Server Error
 // - SystemError → 500 Internal Server Error
 // These tests will be added as error conversion functions are implemented.

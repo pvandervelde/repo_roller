@@ -86,7 +86,7 @@ pub async fn auth_middleware(
     let auth_header = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| AuthError::MissingToken)?;
+        .ok_or(AuthError::MissingToken)?;
 
     // Validate Bearer token format
     let token = extract_bearer_token(auth_header)?;
@@ -195,10 +195,7 @@ pub async fn organization_auth_middleware(
 /// Request tracing middleware.
 ///
 /// Adds request ID and logging context for observability.
-pub async fn tracing_middleware(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn tracing_middleware(request: Request, next: Next) -> Response {
     // Generate request ID
     let request_id = uuid::Uuid::new_v4().to_string();
 

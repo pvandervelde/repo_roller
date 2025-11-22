@@ -89,6 +89,13 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         ))
     }
 
+    async fn search_repositories(
+        &self,
+        _query: &str,
+    ) -> Result<Vec<models::Repository>, GitHubError> {
+        Ok(vec![])
+    }
+
     async fn get_installation_token_for_org(&self, _org_name: &str) -> Result<String, GitHubError> {
         // Track the call if a tracker is configured
         if let Some(tracker) = &self.config.token_call_tracker {

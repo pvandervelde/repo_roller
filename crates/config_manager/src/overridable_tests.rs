@@ -6,14 +6,14 @@ use super::*;
 fn test_new_creates_overridable_value() {
     let value = OverridableValue::new(42, true);
     assert_eq!(value.value, 42);
-    assert_eq!(value.override_allowed, true);
+    assert!(value.override_allowed);
 }
 
 #[test]
 fn test_new_creates_fixed_value() {
     let value = OverridableValue::new(100, false);
     assert_eq!(value.value, 100);
-    assert_eq!(value.override_allowed, false);
+    assert!(!value.override_allowed);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn test_default_creates_default_value_with_override_allowed() {
 #[test]
 fn test_default_for_bool() {
     let value: OverridableValue<bool> = OverridableValue::default();
-    assert_eq!(value.value, false); // bool::default()
+    assert!(!value.value); // bool::default()
     assert!(value.override_allowed);
 }
 
@@ -149,8 +149,8 @@ fn test_deserialize_from_toml_format() {
     "#;
 
     let value: OverridableValue<bool> = toml::from_str(toml).expect("Failed to deserialize");
-    assert_eq!(value.value, true);
-    assert_eq!(value.override_allowed, false);
+    assert!(value.value);
+    assert!(!value.override_allowed);
 }
 
 #[test]
@@ -163,8 +163,8 @@ fn test_deserialize_inline_table_format() {
     }
 
     let config: Config = toml::from_str(toml).expect("Failed to deserialize");
-    assert_eq!(config.setting.value, true);
-    assert_eq!(config.setting.override_allowed, false);
+    assert!(config.setting.value);
+    assert!(!config.setting.override_allowed);
 }
 
 #[test]
@@ -213,9 +213,9 @@ fn test_deserialize_with_multiple_settings() {
     }
 
     let config: Config = toml::from_str(toml).expect("Failed to deserialize");
-    assert_eq!(config.repository.issues.value, true);
+    assert!(config.repository.issues.value);
     assert!(config.repository.issues.override_allowed);
-    assert_eq!(config.repository.wiki.value, false);
+    assert!(!config.repository.wiki.value);
     assert!(!config.repository.wiki.override_allowed);
 }
 
@@ -269,7 +269,7 @@ fn test_deserialize_from_full_format() {
     }
 
     let config: Config = toml::from_str(toml).expect("Failed to deserialize");
-    assert_eq!(config.setting.value, true);
+    assert!(config.setting.value);
     assert!(!config.setting.override_allowed);
 }
 
@@ -287,7 +287,7 @@ fn test_deserialize_from_simple_format() {
     }
 
     let config: Config = toml::from_str(toml).expect("Failed to deserialize");
-    assert_eq!(config.setting.value, true);
+    assert!(config.setting.value);
     assert!(
         config.setting.override_allowed,
         "Simple format should default to override_allowed = true"
@@ -363,14 +363,14 @@ fn test_mixed_formats_in_same_config() {
     let config: Config = toml::from_str(toml).expect("Failed to deserialize");
 
     // Global (explicit format)
-    assert_eq!(config.global.issues.value, true);
+    assert!(config.global.issues.value);
     assert!(!config.global.issues.override_allowed);
-    assert_eq!(config.global.wiki.value, false);
+    assert!(!config.global.wiki.value);
     assert!(config.global.wiki.override_allowed);
 
     // Team (simple format)
-    assert_eq!(config.team.discussions.value, true);
+    assert!(config.team.discussions.value);
     assert!(config.team.discussions.override_allowed);
-    assert_eq!(config.team.projects.value, false);
+    assert!(!config.team.projects.value);
     assert!(config.team.projects.override_allowed);
 }

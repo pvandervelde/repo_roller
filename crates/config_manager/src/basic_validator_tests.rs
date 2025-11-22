@@ -24,7 +24,7 @@ fn test_validator_creation() {
 /// Verify default implementation works.
 #[test]
 fn test_validator_default() {
-    let _validator = BasicConfigurationValidator::default();
+    let _validator = BasicConfigurationValidator;
 }
 
 // ============================================================================

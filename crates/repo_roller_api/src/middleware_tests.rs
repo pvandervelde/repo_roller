@@ -6,10 +6,10 @@
 use super::*;
 use axum::{
     body::Body,
-    http::{Request, StatusCode, header},
+    http::{header, Request, StatusCode},
     middleware,
-    Router,
     routing::get,
+    Router,
 };
 use tower::ServiceExt; // for `oneshot`
 
@@ -25,10 +25,7 @@ async fn test_auth_middleware_missing_token() {
         .route("/test", get(test_handler))
         .layer(middleware::from_fn(auth_middleware));
 
-    let request = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -119,8 +116,7 @@ fn test_auth_context_creation() {
 /// Test AuthContext with installation ID
 #[test]
 fn test_auth_context_with_installation_id() {
-    let context = AuthContext::new("test_token".to_string())
-        .with_installation_id(12345);
+    let context = AuthContext::new("test_token".to_string()).with_installation_id(12345);
 
     assert_eq!(context.installation_id, Some(12345));
 }
@@ -128,8 +124,7 @@ fn test_auth_context_with_installation_id() {
 /// Test AuthContext with organization
 #[test]
 fn test_auth_context_with_organization() {
-    let context = AuthContext::new("test_token".to_string())
-        .with_organization("myorg".to_string());
+    let context = AuthContext::new("test_token".to_string()).with_organization("myorg".to_string());
 
     assert_eq!(context.organization, Some("myorg".to_string()));
 }
@@ -141,10 +136,7 @@ async fn test_tracing_middleware_logs_requests() {
         .route("/test", get(test_handler))
         .layer(middleware::from_fn(tracing_middleware));
 
-    let request = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);

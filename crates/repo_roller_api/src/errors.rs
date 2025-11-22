@@ -83,7 +83,11 @@ impl ApiError {
 
     /// Create a validation error with field information
     pub fn validation_error(field: impl Into<String>, message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!("validation error in field {}: {}", field.into(), message.into()))
+        ApiError(anyhow::anyhow!(
+            "validation error in field {}: {}",
+            field.into(),
+            message.into()
+        ))
     }
 
     /// Create a not found error
@@ -119,12 +123,13 @@ impl From<anyhow::Error> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         // Try to downcast to RepoRollerError for proper conversion
-        let (status, error_response) = if let Some(repo_error) = self.0.downcast_ref::<RepoRollerError>() {
-            convert_reporoller_error(repo_error)
-        } else {
-            // Fallback for non-RepoRollerError types (temporary during migration)
-            convert_error(&self.0)
-        };
+        let (status, error_response) =
+            if let Some(repo_error) = self.0.downcast_ref::<RepoRollerError>() {
+                convert_reporoller_error(repo_error)
+            } else {
+                // Fallback for non-RepoRollerError types (temporary during migration)
+                convert_error(&self.0)
+            };
 
         // Log error server-side
         log_error(&self.0, status);
@@ -141,29 +146,28 @@ fn convert_error(error: &anyhow::Error) -> (StatusCode, ErrorResponse) {
     // Fallback error conversion for anyhow errors
     let error_msg = error.to_string();
 
-    let (status, code, message) = if error_msg.contains("authentication")
-        || error_msg.contains("token")
-    {
-        (
-            StatusCode::UNAUTHORIZED,
-            "AuthenticationError",
-            error.to_string(),
-        )
-    } else if error_msg.contains("not found") {
-        (StatusCode::NOT_FOUND, "NotFound", error.to_string())
-    } else if error_msg.contains("validation") || error_msg.contains("invalid") {
-        (
-            StatusCode::BAD_REQUEST,
-            "ValidationError",
-            error.to_string(),
-        )
-    } else {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "InternalError",
-            "An internal error occurred".to_string(),
-        )
-    };
+    let (status, code, message) =
+        if error_msg.contains("authentication") || error_msg.contains("token") {
+            (
+                StatusCode::UNAUTHORIZED,
+                "AuthenticationError",
+                error.to_string(),
+            )
+        } else if error_msg.contains("not found") {
+            (StatusCode::NOT_FOUND, "NotFound", error.to_string())
+        } else if error_msg.contains("validation") || error_msg.contains("invalid") {
+            (
+                StatusCode::BAD_REQUEST,
+                "ValidationError",
+                error.to_string(),
+            )
+        } else {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "InternalError",
+                "An internal error occurred".to_string(),
+            )
+        };
 
     (
         status,
@@ -287,7 +291,9 @@ fn convert_reporoller_error(error: &RepoRollerError) -> (StatusCode, ErrorRespon
 /// Convert ValidationError to HTTP error response.
 ///
 /// Validation errors result in 400 Bad Request with details about what failed validation.
-fn convert_validation_error(error: &repo_roller_core::ValidationError) -> (StatusCode, ErrorResponse) {
+fn convert_validation_error(
+    error: &repo_roller_core::ValidationError,
+) -> (StatusCode, ErrorResponse) {
     use repo_roller_core::ValidationError;
 
     let (code, message, details) = match error {
@@ -298,12 +304,18 @@ fn convert_validation_error(error: &repo_roller_core::ValidationError) -> (Statu
         ),
         ValidationError::TooLong { field, actual, max } => (
             "ValidationError",
-            format!("Field '{}' is too long: {} characters (max: {})", field, actual, max),
+            format!(
+                "Field '{}' is too long: {} characters (max: {})",
+                field, actual, max
+            ),
             Some(json!({ "field": field, "actual": actual, "max": max })),
         ),
         ValidationError::TooShort { field, actual, min } => (
             "ValidationError",
-            format!("Field '{}' is too short: {} characters (min: {})", field, actual, min),
+            format!(
+                "Field '{}' is too short: {} characters (min: {})",
+                field, actual, min
+            ),
             Some(json!({ "field": field, "actual": actual, "min": min })),
         ),
         ValidationError::InvalidFormat { field, reason } => (
@@ -331,19 +343,41 @@ fn convert_validation_error(error: &repo_roller_core::ValidationError) -> (Statu
             format!("Required field '{}' is missing", field),
             Some(json!({ "field": field })),
         ),
-        ValidationError::PatternMismatch { field, pattern, value } => (
+        ValidationError::PatternMismatch {
+            field,
+            pattern,
+            value,
+        } => (
             "ValidationError",
-            format!("Field '{}' must match pattern '{}', got: '{}'", field, pattern, value),
+            format!(
+                "Field '{}' must match pattern '{}', got: '{}'",
+                field, pattern, value
+            ),
             Some(json!({ "field": field, "pattern": pattern, "value": value })),
         ),
-        ValidationError::LengthConstraint { field, min, max, actual } => (
+        ValidationError::LengthConstraint {
+            field,
+            min,
+            max,
+            actual,
+        } => (
             "ValidationError",
-            format!("Field '{}' length must be between {} and {}, got {}", field, min, max, actual),
+            format!(
+                "Field '{}' length must be between {} and {}, got {}",
+                field, min, max, actual
+            ),
             Some(json!({ "field": field, "min": min, "max": max, "actual": actual })),
         ),
-        ValidationError::InvalidOption { field, options, value } => (
+        ValidationError::InvalidOption {
+            field,
+            options,
+            value,
+        } => (
             "ValidationError",
-            format!("Field '{}' must be one of {:?}, got: '{}'", field, options, value),
+            format!(
+                "Field '{}' must be one of {:?}, got: '{}'",
+                field, options, value
+            ),
             Some(json!({ "field": field, "options": options, "value": value })),
         ),
     };
@@ -361,7 +395,9 @@ fn convert_validation_error(error: &repo_roller_core::ValidationError) -> (Statu
 }
 
 /// Convert RepositoryError to HTTP error response.
-fn convert_repository_error(error: &repo_roller_core::RepositoryError) -> (StatusCode, ErrorResponse) {
+fn convert_repository_error(
+    error: &repo_roller_core::RepositoryError,
+) -> (StatusCode, ErrorResponse) {
     use repo_roller_core::RepositoryError;
 
     let (status, code, message, details) = match error {
@@ -398,7 +434,10 @@ fn convert_repository_error(error: &repo_roller_core::RepositoryError) -> (Statu
         RepositoryError::OperationTimeout { timeout_secs } => (
             StatusCode::REQUEST_TIMEOUT,
             "RepositoryOperationTimeout",
-            format!("Repository operation timed out after {} seconds", timeout_secs),
+            format!(
+                "Repository operation timed out after {} seconds",
+                timeout_secs
+            ),
             Some(json!({ "timeout_secs": timeout_secs })),
         ),
     };
@@ -416,7 +455,9 @@ fn convert_repository_error(error: &repo_roller_core::RepositoryError) -> (Statu
 }
 
 /// Convert ConfigurationError to HTTP error response.
-fn convert_configuration_error(error: &config_manager::ConfigurationError) -> (StatusCode, ErrorResponse) {
+fn convert_configuration_error(
+    error: &config_manager::ConfigurationError,
+) -> (StatusCode, ErrorResponse) {
     use config_manager::ConfigurationError;
 
     let (status, code, message) = match error {
@@ -448,7 +489,10 @@ fn convert_configuration_error(error: &config_manager::ConfigurationError) -> (S
         ConfigurationError::ValidationFailed { error_count, .. } => (
             StatusCode::BAD_REQUEST,
             "ConfigurationValidationFailed",
-            format!("Configuration validation failed with {} error(s)", error_count),
+            format!(
+                "Configuration validation failed with {} error(s)",
+                error_count
+            ),
         ),
         _ => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -495,7 +539,10 @@ fn convert_template_error(error: &repo_roller_core::TemplateError) -> (StatusCod
         TemplateError::SubstitutionFailed { variable, reason } => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "TemplateSubstitutionFailed",
-            format!("Variable substitution failed for '{}': {}", variable, reason),
+            format!(
+                "Variable substitution failed for '{}': {}",
+                variable, reason
+            ),
             Some(json!({ "variable": variable, "reason": reason })),
         ),
         TemplateError::RequiredVariableMissing { variable } => (
@@ -507,7 +554,10 @@ fn convert_template_error(error: &repo_roller_core::TemplateError) -> (StatusCod
         TemplateError::ProcessingTimeout { timeout_secs } => (
             StatusCode::REQUEST_TIMEOUT,
             "TemplateProcessingTimeout",
-            format!("Template processing timed out after {} seconds", timeout_secs),
+            format!(
+                "Template processing timed out after {} seconds",
+                timeout_secs
+            ),
             Some(json!({ "timeout_secs": timeout_secs })),
         ),
         TemplateError::SecurityViolation { reason } => (
@@ -541,10 +591,16 @@ fn convert_github_error(error: &repo_roller_core::GitHubError) -> (StatusCode, E
     use repo_roller_core::GitHubError;
 
     let (status, code, message) = match error {
-        GitHubError::ApiRequestFailed { status: api_status, message: api_message } => (
+        GitHubError::ApiRequestFailed {
+            status: api_status,
+            message: api_message,
+        } => (
             StatusCode::BAD_GATEWAY,
             "GitHubApiRequestFailed",
-            format!("GitHub API request failed ({}): {}", api_status, api_message),
+            format!(
+                "GitHub API request failed ({}): {}",
+                api_status, api_message
+            ),
         ),
         GitHubError::AuthenticationFailed { reason } => (
             StatusCode::UNAUTHORIZED,
@@ -607,10 +663,7 @@ fn convert_system_error(error: &repo_roller_core::SystemError) -> (StatusCode, E
             "GitOperationError",
             format!("Git operation '{}' failed: {}", operation, reason),
         ),
-        SystemError::Network { reason } => (
-            "NetworkError",
-            format!("Network error: {}", reason),
-        ),
+        SystemError::Network { reason } => ("NetworkError", format!("Network error: {}", reason)),
         SystemError::Serialization { reason } => (
             "SerializationError",
             format!("Serialization error: {}", reason),

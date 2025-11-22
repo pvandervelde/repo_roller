@@ -19,8 +19,8 @@ use tower::ServiceExt;
 /// Helper function to create test app state from environment
 fn test_app_state() -> AppState {
     // Use metadata repository name from env or default
-    let metadata_repo = std::env::var("METADATA_REPOSITORY_NAME")
-        .unwrap_or_else(|_| ".reporoller".to_string());
+    let metadata_repo =
+        std::env::var("METADATA_REPOSITORY_NAME").unwrap_or_else(|_| ".reporoller".to_string());
 
     AppState::new(metadata_repo)
 }
@@ -33,8 +33,7 @@ fn test_token() -> String {
 
 /// Helper function to get test organization from environment
 fn test_org() -> String {
-    std::env::var("TEST_ORG")
-        .unwrap_or_else(|_| "test-org".to_string())
+    std::env::var("TEST_ORG").unwrap_or_else(|_| "test-org".to_string())
 }
 
 // ============================================================================
@@ -104,7 +103,10 @@ async fn test_get_repository_type_config_success() {
 
     let request = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/orgs/{}/repository-types/{}", org, type_name))
+        .uri(format!(
+            "/api/v1/orgs/{}/repository-types/{}",
+            org, type_name
+        ))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -141,7 +143,10 @@ async fn test_get_repository_type_config_not_found() {
 
     let request = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/orgs/{}/repository-types/nonexistent-type", org))
+        .uri(format!(
+            "/api/v1/orgs/{}/repository-types/nonexistent-type",
+            org
+        ))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -204,8 +209,7 @@ async fn test_preview_configuration_success() {
     let token = test_token();
     let org = test_org();
 
-    let template = std::env::var("TEST_TEMPLATE")
-        .unwrap_or_else(|_| "default".to_string());
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
 
     let request_body = json!({
         "template": template,
@@ -249,8 +253,7 @@ async fn test_preview_configuration_with_overrides() {
     let token = test_token();
     let org = test_org();
 
-    let template = std::env::var("TEST_TEMPLATE")
-        .unwrap_or_else(|_| "default".to_string());
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
     let team = std::env::var("TEST_TEAM").ok();
     let repo_type = std::env::var("TEST_REPOSITORY_TYPE").ok();
 
@@ -399,8 +402,7 @@ async fn test_validate_organization_no_metadata_repo() {
 async fn test_complete_rest_api_workflow() {
     let token = test_token();
     let org = test_org();
-    let template = std::env::var("TEST_TEMPLATE")
-        .unwrap_or_else(|_| "default".to_string());
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
 
     // Step 1: Validate organization
     let app = create_router(test_app_state());
@@ -412,9 +414,15 @@ async fn test_complete_rest_api_workflow() {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK, "Validation should succeed");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Validation should succeed"
+    );
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     if !validation["valid"].as_bool().unwrap_or(false) {
@@ -433,7 +441,11 @@ async fn test_complete_rest_api_workflow() {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK, "List types should succeed");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "List types should succeed"
+    );
 
     // Step 3: Get global defaults
     let app = create_router(test_app_state());
@@ -445,7 +457,11 @@ async fn test_complete_rest_api_workflow() {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK, "Get defaults should succeed");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Get defaults should succeed"
+    );
 
     // Step 4: Preview configuration
     let app = create_router(test_app_state());
@@ -510,8 +526,14 @@ async fn test_list_templates_success() {
     println!("Found {} template(s)", templates.len());
 
     for template in templates {
-        assert!(template["name"].is_string(), "Each template should have a name");
-        assert!(template["description"].is_string(), "Each template should have a description");
+        assert!(
+            template["name"].is_string(),
+            "Each template should have a name"
+        );
+        assert!(
+            template["description"].is_string(),
+            "Each template should have a description"
+        );
     }
 }
 
@@ -587,7 +609,10 @@ async fn test_get_template_details_not_found() {
 
     let request = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/orgs/{}/templates/nonexistent-template", org))
+        .uri(format!(
+            "/api/v1/orgs/{}/templates/nonexistent-template",
+            org
+        ))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -622,7 +647,10 @@ async fn test_validate_template_success() {
 
     let request = Request::builder()
         .method("POST")
-        .uri(format!("/api/v1/orgs/{}/templates/{}/validate", org, template_name))
+        .uri(format!(
+            "/api/v1/orgs/{}/templates/{}/validate",
+            org, template_name
+        ))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -675,7 +703,10 @@ async fn test_validate_template_not_found() {
 
     let request = Request::builder()
         .method("POST")
-        .uri(format!("/api/v1/orgs/{}/templates/nonexistent/validate", org))
+        .uri(format!(
+            "/api/v1/orgs/{}/templates/nonexistent/validate",
+            org
+        ))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -958,7 +989,9 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     if !validation["valid"].as_bool().unwrap_or(false) {
@@ -980,7 +1013,9 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let templates: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let template_list = templates["templates"].as_array().unwrap();
 
@@ -990,7 +1025,11 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     }
 
     let template_name = template_list[0]["name"].as_str().unwrap();
-    println!("✓ Found {} template(s), using: {}", template_list.len(), template_name);
+    println!(
+        "✓ Found {} template(s), using: {}",
+        template_list.len(),
+        template_name
+    );
 
     println!("\n=== Step 3: Get Template Details ===");
     let app = create_router(test_app_state());
@@ -1004,17 +1043,28 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let template_details: serde_json::Value = serde_json::from_slice(&body).unwrap();
     println!("✓ Template details loaded");
-    println!("  Description: {}", template_details["description"].as_str().unwrap_or(""));
-    println!("  Variables: {}", template_details["variables"].as_object().unwrap().len());
+    println!(
+        "  Description: {}",
+        template_details["description"].as_str().unwrap_or("")
+    );
+    println!(
+        "  Variables: {}",
+        template_details["variables"].as_object().unwrap().len()
+    );
 
     println!("\n=== Step 4: Validate Template ===");
     let app = create_router(test_app_state());
     let request = Request::builder()
         .method("POST")
-        .uri(format!("/api/v1/orgs/{}/templates/{}/validate", org, template_name))
+        .uri(format!(
+            "/api/v1/orgs/{}/templates/{}/validate",
+            org, template_name
+        ))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -1022,7 +1072,9 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let template_validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     if !template_validation["valid"].as_bool().unwrap_or(false) {
@@ -1046,10 +1098,15 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let preview: serde_json::Value = serde_json::from_slice(&body).unwrap();
     println!("✓ Configuration preview generated");
-    println!("  Merged configuration available: {}", preview["mergedConfiguration"].is_object());
+    println!(
+        "  Merged configuration available: {}",
+        preview["mergedConfiguration"].is_object()
+    );
 
     println!("\n=== Step 6: Validate Repository Request ===");
     let app = create_router(test_app_state());
@@ -1070,7 +1127,9 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let request_validation: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     if request_validation["valid"].as_bool().unwrap_or(false) {
@@ -1083,4 +1142,3 @@ async fn test_complete_repository_creation_workflow_dry_run() {
     println!("\n=== Complete Workflow Test Passed ===");
     println!("All API endpoints worked together successfully!");
 }
-

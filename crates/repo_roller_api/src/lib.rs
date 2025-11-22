@@ -24,9 +24,9 @@
 //! - `.llm/rest-api-implementation-guide.md` - Implementation guide
 
 pub mod errors;
+pub mod handlers;
 pub mod middleware;
 pub mod models;
-pub mod handlers;
 pub mod routes;
 pub mod server;
 pub mod translation;
@@ -36,8 +36,7 @@ pub use errors::{ApiError, ErrorResponse};
 pub use models::{request, response};
 pub use server::{ApiConfig, ApiServer};
 pub use translation::{
-    http_create_repository_request_to_domain,
-    domain_repository_creation_result_to_http,
+    domain_repository_creation_result_to_http, http_create_repository_request_to_domain,
 };
 
 /// API version

@@ -36,9 +36,9 @@ fn test_deserialize_repository_settings() {
 
     let repo = config.repository.unwrap();
     assert!(repo.discussions.is_some());
-    assert_eq!(repo.discussions.as_ref().unwrap().value, false);
+    assert!(!repo.discussions.as_ref().unwrap().value);
     assert!(repo.projects.is_some());
-    assert_eq!(repo.projects.as_ref().unwrap().value, true);
+    assert!(repo.projects.as_ref().unwrap().value);
 }
 
 #[test]
@@ -72,10 +72,7 @@ fn test_deserialize_branch_protection() {
 
     let bp = config.branch_protection.unwrap();
     assert!(bp.require_pull_request_reviews.is_some());
-    assert_eq!(
-        bp.require_pull_request_reviews.as_ref().unwrap().value,
-        true
-    );
+    assert!(bp.require_pull_request_reviews.as_ref().unwrap().value);
 }
 
 #[test]
@@ -250,12 +247,14 @@ fn test_partial_config_with_only_labels() {
 
 #[test]
 fn test_serialize_round_trip() {
-    let mut config = RepositoryTypeConfig::default();
-    config.labels = Some(vec![LabelConfig {
-        name: "bug".to_string(),
-        color: "d73a4a".to_string(),
-        description: "Something isn't working".to_string(),
-    }]);
+    let config = RepositoryTypeConfig {
+        labels: Some(vec![LabelConfig {
+            name: "bug".to_string(),
+            color: "d73a4a".to_string(),
+            description: "Something isn't working".to_string(),
+        }]),
+        ..Default::default()
+    };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
     let parsed: RepositoryTypeConfig = toml::from_str(&toml).expect("Failed to parse");
@@ -306,6 +305,6 @@ fn test_values_auto_wrapped_with_override_allowed() {
     let repo = config.repository.as_ref().unwrap();
     let discussions = repo.discussions.as_ref().unwrap();
 
-    assert_eq!(discussions.value, false);
-    assert_eq!(discussions.override_allowed, true); // Auto-wrapped
+    assert!(!discussions.value);
+    assert!(discussions.override_allowed); // Auto-wrapped
 }

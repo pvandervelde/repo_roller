@@ -335,7 +335,7 @@ fn test_repository_creation_result_timestamp() {
     let result = RepositoryCreationResult {
         repository_url: "https://github.com/my-org/my-repo".to_string(),
         repository_id: "R_kgDOABCDEF".to_string(),
-        created_at: timestamp.clone(),
+        created_at: timestamp,
         default_branch: "main".to_string(),
     };
 
@@ -450,7 +450,7 @@ fn test_repository_creation_result_success_scenario() {
     let result = RepositoryCreationResult {
         repository_url: "https://github.com/acme-corp/awesome-project".to_string(),
         repository_id: "R_kgDOHXjK7A".to_string(),
-        created_at: timestamp.clone(),
+        created_at: timestamp,
         default_branch: "main".to_string(),
     };
 

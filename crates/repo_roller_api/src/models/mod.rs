@@ -11,5 +11,7 @@ pub mod request;
 pub mod response;
 
 // Re-export commonly used types
-pub use request::{CreateRepositoryRequest, PreviewConfigurationRequest, ValidateRepositoryNameRequest};
+pub use request::{
+    CreateRepositoryRequest, PreviewConfigurationRequest, ValidateRepositoryNameRequest,
+};
 pub use response::{CreateRepositoryResponse, ListTemplatesResponse};

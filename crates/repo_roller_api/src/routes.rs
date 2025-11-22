@@ -27,18 +27,14 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use std::time::Duration;
 use tower_http::{
     cors::CorsLayer,
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
     timeout::TimeoutLayer,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
-use std::time::Duration;
 
-use crate::{
-    handlers,
-    middleware as api_middleware,
-    AppState,
-};
+use crate::{handlers, middleware as api_middleware, AppState};
 
 /// Create the complete API router with all routes configured.
 ///
@@ -62,11 +58,7 @@ pub fn create_router(state: AppState) -> Router {
             Method::OPTIONS,
         ])
         // Allow common headers
-        .allow_headers([
-            header::AUTHORIZATION,
-            header::CONTENT_TYPE,
-            header::ACCEPT,
-        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
         // Allow credentials (cookies, authorization headers)
         .allow_credentials(false)
         // Cache preflight responses for 1 hour
@@ -84,8 +76,14 @@ pub fn create_router(state: AppState) -> Router {
     let api_v1 = Router::new()
         // Repository operations
         .route("/repositories", post(handlers::create_repository))
-        .route("/repositories/validate-name", post(handlers::validate_repository_name))
-        .route("/repositories/validate", post(handlers::validate_repository_request))
+        .route(
+            "/repositories/validate-name",
+            post(handlers::validate_repository_name),
+        )
+        .route(
+            "/repositories/validate",
+            post(handlers::validate_repository_request),
+        )
         // Organization-specific routes
         .nest("/orgs/:org", organization_routes())
         // Health check (no auth required)
@@ -99,8 +97,7 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state);
 
     // Root router with API version prefix
-    Router::new()
-        .nest("/api/v1", api_v1)
+    Router::new().nest("/api/v1", api_v1)
 }
 
 /// Organization-specific routes (nested under /orgs/:org)
@@ -109,17 +106,28 @@ fn organization_routes() -> Router<AppState> {
         // Template routes
         .route("/templates", get(handlers::list_templates))
         .route("/templates/:template", get(handlers::get_template_details))
-        .route("/templates/:template/validate", post(handlers::validate_template))
+        .route(
+            "/templates/:template/validate",
+            post(handlers::validate_template),
+        )
         // Repository type routes
         .route("/repository-types", get(handlers::list_repository_types))
-        .route("/repository-types/:type", get(handlers::get_repository_type_config))
+        .route(
+            "/repository-types/:type",
+            get(handlers::get_repository_type_config),
+        )
         // Configuration routes
         .route("/defaults", get(handlers::get_global_defaults))
-        .route("/configuration/preview", post(handlers::preview_configuration))
+        .route(
+            "/configuration/preview",
+            post(handlers::preview_configuration),
+        )
         // Organization validation
         .route("/validate", post(handlers::validate_organization))
         // Add organization-specific authorization middleware
-        .layer(middleware::from_fn(api_middleware::organization_auth_middleware))
+        .layer(middleware::from_fn(
+            api_middleware::organization_auth_middleware,
+        ))
 }
 
 #[cfg(test)]
