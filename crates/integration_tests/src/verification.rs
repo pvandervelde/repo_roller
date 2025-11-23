@@ -110,16 +110,98 @@ pub struct ExpectedBranchProtection {
 ///
 /// Verification result indicating whether settings match
 pub async fn verify_repository_settings(
-    _client: &GitHubClient,
-    _owner: &str,
-    _repo: &str,
-    _expected: &ExpectedRepositorySettings,
+    client: &GitHubClient,
+    owner: &str,
+    repo: &str,
+    expected: &ExpectedRepositorySettings,
 ) -> Result<ConfigurationVerification> {
-    // TODO: Implement repository settings verification
-    // Will require adding get_repository_settings() to GitHubClient
-    Ok(ConfigurationVerification::failure(
-        "Repository settings verification not yet implemented".to_string(),
-    ))
+    let actual = client.get_repository_settings(owner, repo).await?;
+
+    let mut result = ConfigurationVerification::success();
+    result.settings_verified = true;
+
+    // TODO: The Repository model needs to be extended to include has_issues, has_wiki,
+    // has_discussions, and has_projects fields. These are available in the GitHub API
+    // response but not currently exposed in our model.
+    // For now, we return None indicating these fields aren't available.
+    fn get_bool_from_repo(_repo: &github_client::models::Repository, _field: &str) -> Option<bool> {
+        None
+    }
+
+    // Check has_issues if expected
+    if let Some(expected_issues) = expected.has_issues {
+        match get_bool_from_repo(&actual, "has_issues") {
+            Some(actual_issues) if actual_issues == expected_issues => {
+                // Match - continue
+            }
+            Some(actual_issues) => {
+                result.add_failure(format!(
+                    "has_issues: expected {}, got {}",
+                    expected_issues, actual_issues
+                ));
+            }
+            None => {
+                result.add_failure("has_issues: field not available in API response".to_string());
+            }
+        }
+    }
+
+    // Check has_wiki if expected
+    if let Some(expected_wiki) = expected.has_wiki {
+        match get_bool_from_repo(&actual, "has_wiki") {
+            Some(actual_wiki) if actual_wiki == expected_wiki => {
+                // Match - continue
+            }
+            Some(actual_wiki) => {
+                result.add_failure(format!(
+                    "has_wiki: expected {}, got {}",
+                    expected_wiki, actual_wiki
+                ));
+            }
+            None => {
+                result.add_failure("has_wiki: field not available in API response".to_string());
+            }
+        }
+    }
+
+    // Check has_discussions if expected
+    if let Some(expected_discussions) = expected.has_discussions {
+        match get_bool_from_repo(&actual, "has_discussions") {
+            Some(actual_discussions) if actual_discussions == expected_discussions => {
+                // Match - continue
+            }
+            Some(actual_discussions) => {
+                result.add_failure(format!(
+                    "has_discussions: expected {}, got {}",
+                    expected_discussions, actual_discussions
+                ));
+            }
+            None => {
+                result
+                    .add_failure("has_discussions: field not available in API response".to_string());
+            }
+        }
+    }
+
+    // Check has_projects if expected
+    if let Some(expected_projects) = expected.has_projects {
+        match get_bool_from_repo(&actual, "has_projects") {
+            Some(actual_projects) if actual_projects == expected_projects => {
+                // Match - continue
+            }
+            Some(actual_projects) => {
+                result.add_failure(format!(
+                    "has_projects: expected {}, got {}",
+                    expected_projects, actual_projects
+                ));
+            }
+            None => {
+                result.add_failure("has_projects: field not available in API response".to_string());
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// Verify custom properties match expected configuration.
@@ -182,16 +264,92 @@ pub async fn verify_custom_properties(
 ///
 /// Verification result indicating whether branch protection matches
 pub async fn verify_branch_protection(
-    _client: &GitHubClient,
-    _owner: &str,
-    _repo: &str,
-    _expected: &ExpectedBranchProtection,
+    client: &GitHubClient,
+    owner: &str,
+    repo: &str,
+    expected: &ExpectedBranchProtection,
 ) -> Result<ConfigurationVerification> {
-    // TODO: Implement branch protection verification
-    // Will require adding get_branch_protection() to GitHubClient
-    Ok(ConfigurationVerification::failure(
-        "Branch protection verification not yet implemented".to_string(),
-    ))
+    let actual = client
+        .get_branch_protection(owner, repo, &expected.branch)
+        .await?;
+
+    let mut result = ConfigurationVerification::success();
+    result.branch_protection_verified = true;
+
+    match actual {
+        None => {
+            result.add_failure(format!(
+                "Branch protection not configured for branch '{}'",
+                expected.branch
+            ));
+        }
+        Some(protection) => {
+            // Check required_approving_review_count if expected
+            if let Some(expected_count) = expected.required_approving_review_count {
+                match protection.required_approving_review_count {
+                    Some(actual_count) if actual_count == expected_count => {
+                        // Match - continue
+                    }
+                    Some(actual_count) => {
+                        result.add_failure(format!(
+                            "required_approving_review_count: expected {}, got {}",
+                            expected_count, actual_count
+                        ));
+                    }
+                    None => {
+                        result.add_failure(format!(
+                            "required_approving_review_count: expected {}, but not configured",
+                            expected_count
+                        ));
+                    }
+                }
+            }
+
+            // Check require_code_owner_reviews if expected
+            if let Some(expected_code_owner) = expected.require_code_owner_reviews {
+                match protection.require_code_owner_reviews {
+                    Some(actual_code_owner) if actual_code_owner == expected_code_owner => {
+                        // Match - continue
+                    }
+                    Some(actual_code_owner) => {
+                        result.add_failure(format!(
+                            "require_code_owner_reviews: expected {}, got {}",
+                            expected_code_owner, actual_code_owner
+                        ));
+                    }
+                    None => {
+                        result.add_failure(format!(
+                            "require_code_owner_reviews: expected {}, but not configured",
+                            expected_code_owner
+                        ));
+                    }
+                }
+            }
+
+            // Check dismiss_stale_reviews if expected
+            if let Some(expected_dismiss_stale) = expected.dismiss_stale_reviews {
+                match protection.dismiss_stale_reviews {
+                    Some(actual_dismiss_stale) if actual_dismiss_stale == expected_dismiss_stale => {
+                        // Match - continue
+                    }
+                    Some(actual_dismiss_stale) => {
+                        result.add_failure(format!(
+                            "dismiss_stale_reviews: expected {}, got {}",
+                            expected_dismiss_stale, actual_dismiss_stale
+                        ));
+                    }
+                    None => {
+                        result.add_failure(format!(
+                            "dismiss_stale_reviews: expected {}, but not configured",
+                            expected_dismiss_stale
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// Verify labels match expected configuration.
