@@ -6,7 +6,7 @@
 //! verify that settings were actually applied.
 
 use anyhow::Result;
-use github_client::GitHubClient;
+use github_client::{GitHubClient, RepositoryClient};
 use std::collections::HashMap;
 
 /// Results of configuration verification against actual GitHub repository state.
@@ -135,16 +135,38 @@ pub async fn verify_repository_settings(
 ///
 /// Verification result indicating whether custom properties match
 pub async fn verify_custom_properties(
-    _client: &GitHubClient,
-    _owner: &str,
-    _repo: &str,
-    _expected: &HashMap<String, String>,
+    client: &GitHubClient,
+    owner: &str,
+    repo: &str,
+    expected: &HashMap<String, String>,
 ) -> Result<ConfigurationVerification> {
-    // TODO: Implement custom properties verification
-    // Will require adding get_custom_properties() to GitHubClient
-    Ok(ConfigurationVerification::failure(
-        "Custom properties verification not yet implemented".to_string(),
-    ))
+    let actual = client.get_custom_properties(owner, repo).await?;
+
+    let mut result = ConfigurationVerification::success();
+    result.custom_properties_verified = true;
+
+    // Check that all expected properties exist with correct values
+    for (key, expected_value) in expected {
+        match actual.get(key) {
+            Some(actual_value) if actual_value == expected_value => {
+                // Match - continue
+            }
+            Some(actual_value) => {
+                result.add_failure(format!(
+                    "Custom property '{}': expected '{}', got '{}'",
+                    key, expected_value, actual_value
+                ));
+            }
+            None => {
+                result.add_failure(format!("Custom property '{}' not found", key));
+            }
+        }
+    }
+
+    // Note: We don't fail for extra properties that weren't expected
+    // This allows for future additions without breaking tests
+
+    Ok(result)
 }
 
 /// Verify branch protection rules match expected configuration.
@@ -185,16 +207,27 @@ pub async fn verify_branch_protection(
 ///
 /// Verification result indicating whether labels match
 pub async fn verify_labels(
-    _client: &GitHubClient,
-    _owner: &str,
-    _repo: &str,
-    _expected: &[String],
+    client: &GitHubClient,
+    owner: &str,
+    repo: &str,
+    expected: &[String],
 ) -> Result<ConfigurationVerification> {
-    // TODO: Implement labels verification
-    // Will require adding list_repository_labels() to GitHubClient
-    Ok(ConfigurationVerification::failure(
-        "Labels verification not yet implemented".to_string(),
-    ))
+    let actual = client.list_repository_labels(owner, repo).await?;
+
+    let mut result = ConfigurationVerification::success();
+    result.labels_verified = true;
+
+    // Check that all expected labels exist
+    for expected_label in expected {
+        if !actual.contains(expected_label) {
+            result.add_failure(format!("Label '{}' not found", expected_label));
+        }
+    }
+
+    // Note: We don't fail for extra labels that weren't expected
+    // GitHub repositories often have default labels
+
+    Ok(result)
 }
 
 /// Load expected configuration from metadata repository for comparison.
