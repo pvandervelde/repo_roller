@@ -1465,7 +1465,7 @@ fn is_not_found_error(e: &octocrab::Error) -> bool {
     match e {
         octocrab::Error::GitHub { source, .. } => {
             // Check if the error message or status indicates 404
-            source.message.contains("404") || source.status_code == 404
+            source.message.contains("404") || source.status_code == http::StatusCode::NOT_FOUND
         }
         _ => false,
     }

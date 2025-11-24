@@ -115,7 +115,7 @@ pub async fn verify_repository_settings(
     repo: &str,
     expected: &ExpectedRepositorySettings,
 ) -> Result<ConfigurationVerification> {
-    let actual = client.get_repository_settings(owner, repo).await?;
+    let _actual = client.get_repository_settings(owner, repo).await?;
 
     let mut result = ConfigurationVerification::success();
     result.settings_verified = true;
@@ -123,14 +123,12 @@ pub async fn verify_repository_settings(
     // TODO: The Repository model needs to be extended to include has_issues, has_wiki,
     // has_discussions, and has_projects fields. These are available in the GitHub API
     // response but not currently exposed in our model.
-    // For now, we return None indicating these fields aren't available.
-    fn get_bool_from_repo(_repo: &github_client::models::Repository, _field: &str) -> Option<bool> {
-        None
-    }
 
     // Check has_issues if expected
     if let Some(expected_issues) = expected.has_issues {
-        match get_bool_from_repo(&actual, "has_issues") {
+        // TODO: Repository model doesn't expose has_issues field yet
+        let actual_issues = None::<bool>;
+        match actual_issues {
             Some(actual_issues) if actual_issues == expected_issues => {
                 // Match - continue
             }
@@ -148,7 +146,9 @@ pub async fn verify_repository_settings(
 
     // Check has_wiki if expected
     if let Some(expected_wiki) = expected.has_wiki {
-        match get_bool_from_repo(&actual, "has_wiki") {
+        // TODO: Repository model doesn't expose has_wiki field yet
+        let actual_wiki = None::<bool>;
+        match actual_wiki {
             Some(actual_wiki) if actual_wiki == expected_wiki => {
                 // Match - continue
             }
@@ -166,7 +166,9 @@ pub async fn verify_repository_settings(
 
     // Check has_discussions if expected
     if let Some(expected_discussions) = expected.has_discussions {
-        match get_bool_from_repo(&actual, "has_discussions") {
+        // TODO: Repository model doesn't expose has_discussions field yet
+        let actual_discussions = None::<bool>;
+        match actual_discussions {
             Some(actual_discussions) if actual_discussions == expected_discussions => {
                 // Match - continue
             }
@@ -177,15 +179,18 @@ pub async fn verify_repository_settings(
                 ));
             }
             None => {
-                result
-                    .add_failure("has_discussions: field not available in API response".to_string());
+                result.add_failure(
+                    "has_discussions: field not available in API response".to_string(),
+                );
             }
         }
     }
 
     // Check has_projects if expected
     if let Some(expected_projects) = expected.has_projects {
-        match get_bool_from_repo(&actual, "has_projects") {
+        // TODO: Repository model doesn't expose has_projects field yet
+        let actual_projects = None::<bool>;
+        match actual_projects {
             Some(actual_projects) if actual_projects == expected_projects => {
                 // Match - continue
             }
@@ -329,7 +334,9 @@ pub async fn verify_branch_protection(
             // Check dismiss_stale_reviews if expected
             if let Some(expected_dismiss_stale) = expected.dismiss_stale_reviews {
                 match protection.dismiss_stale_reviews {
-                    Some(actual_dismiss_stale) if actual_dismiss_stale == expected_dismiss_stale => {
+                    Some(actual_dismiss_stale)
+                        if actual_dismiss_stale == expected_dismiss_stale =>
+                    {
                         // Match - continue
                     }
                     Some(actual_dismiss_stale) => {
