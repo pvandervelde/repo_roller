@@ -1,0 +1,184 @@
+name: E2E Containerized Tests
+
+# End-to-end tests that build Docker image and run tests against containerized API
+#
+# Required Secrets:
+#   - INTEGRATION_TEST_GITHUB_APP_ID: GitHub App ID for authentication
+#   - INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY: GitHub App private key (PEM format)
+#   - INTEGRATION_TEST_ORG: Test organization name
+#   - GITHUB_TOKEN: Automatically provided by GitHub Actions
+#
+# Configuration:
+#   - METADATA_REPOSITORY_NAME: ".reporoller-test" (test metadata repository)
+#   - TEST_TEMPLATE: "template-test-basic" (basic test template)
+
+on:
+    pull_request:
+        branches: [master]
+        paths:
+            - "crates/repo_roller_api/**"
+            - "crates/integration_tests/**"
+            - ".github/workflows/e2e-tests.yml"
+            - "Dockerfile"
+
+    # Allow manual triggering
+    workflow_dispatch:
+
+env:
+    CARGO_TERM_COLOR: always
+    RUST_BACKTRACE: 1
+
+jobs:
+    e2e-tests:
+        name: E2E Container Tests
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+
+        permissions:
+            contents: read
+            issues: write
+            pull-requests: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust dependencies
+              uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2
+              with:
+                  key: e2e-tests
+                  cache-on-failure: true
+
+            - name: Verify Docker is available
+              run: |
+                  echo "Checking Docker daemon..."
+                  docker info
+                  echo "✓ Docker is available"
+
+            - name: Build Docker image
+              run: |
+                  echo "🐳 Building repo_roller_api Docker image..."
+                  docker build -t repo_roller_api:test -f crates/repo_roller_api/Dockerfile .
+                  echo "✓ Docker image built successfully"
+
+            - name: Verify Docker image
+              run: |
+                  echo "Verifying Docker image..."
+                  docker images | grep repo_roller_api
+                  echo "✓ Image verified"
+
+            - name: Validate environment setup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  echo "Validating E2E test environment..."
+
+                  if [ -z "$GITHUB_APP_ID" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$GITHUB_APP_PRIVATE_KEY" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$TEST_ORG" ]; then
+                    echo "❌ INTEGRATION_TEST_ORG secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$GITHUB_TOKEN" ]; then
+                    echo "❌ GITHUB_TOKEN not available"
+                    exit 1
+                  fi
+
+                  echo "✅ All required secrets are configured"
+                  echo "📋 GitHub App ID: $GITHUB_APP_ID"
+                  echo "📋 Test Organization: $TEST_ORG"
+
+            - name: Run E2E containerized tests
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  METADATA_REPOSITORY_NAME: ".reporoller-test"
+                  TEST_TEMPLATE: "template-test-basic"
+                  RUST_LOG: info
+              run: |
+                  echo "🚀 Running E2E containerized tests..."
+                  echo "⚠ Tests run sequentially to avoid port conflicts"
+
+                  # Run E2E tests with single thread to avoid port conflicts
+                  cargo test \
+                    --package integration_tests \
+                    --test e2e_containerized \
+                    -- --ignored --test-threads=1 \
+                    --nocapture
+
+            - name: Cleanup Docker resources
+              if: always()
+              run: |
+                  echo "🧹 Cleaning up Docker resources..."
+
+                  # Stop and remove test containers
+                  docker ps -a | grep repo_roller_api_test | awk '{print $1}' | xargs -r docker rm -f
+
+                  # Remove test images
+                  docker images | grep repo_roller_api | grep test | awk '{print $3}' | xargs -r docker rmi -f
+
+                  echo "✓ Docker cleanup complete"
+
+            - name: Upload test logs
+              if: failure()
+              uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+              with:
+                  name: e2e-test-logs
+                  path: |
+                      *.log
+                      target/debug/deps/e2e_containerized-*.log
+                  retention-days: 7
+                  if-no-files-found: ignore
+
+            - name: Comment on PR with results
+              if: github.event_name == 'pull_request' && always()
+              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+              with:
+                  script: |
+                      const success = '${{ job.status }}' === 'success';
+                      const statusEmoji = success ? '✅' : '❌';
+                      const statusText = success ? 'PASSED' : 'FAILED';
+
+                      const commentBody = `
+                      ## ${statusEmoji} E2E Containerized Tests ${statusText}
+
+                      **Workflow**: \`${{ github.workflow }}\`
+                      **Run ID**: [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+                      **Commit**: \`${{ github.sha }}\`
+
+                      ${success ?
+                        '🎉 All E2E containerized tests passed! The API works correctly in Docker container.' :
+                        '⚠️ E2E containerized tests failed. Please review the logs and fix any issues.'
+                      }
+
+                      ### What was tested:
+                      - ✓ Docker image build
+                      - ✓ Container startup and health check
+                      - ✓ HTTP endpoints via external client
+                      - ✓ Complete request/response cycle
+                      - ✓ Production deployment environment
+                      `;
+
+                      github.rest.issues.createComment({
+                        issue_number: context.issue.number,
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        body: commentBody
+                      });
