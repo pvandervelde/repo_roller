@@ -622,6 +622,146 @@ impl RepositoryClient for GitHubClient {
 
         Ok(repositories)
     }
+
+    async fn get_custom_properties(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<std::collections::HashMap<String, String>, Error> {
+        info!("Fetching custom properties for repository");
+
+        // GitHub API endpoint: GET /repos/{owner}/{repo}/properties/values
+        let route = format!("/repos/{}/{}/properties/values", owner, repo);
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(response) => {
+                // Parse the response array of {property_name, value} objects
+                let properties = response.as_array().ok_or_else(|| {
+                    error!("Custom properties response is not an array");
+                    Error::InvalidResponse
+                })?;
+
+                let mut property_map = std::collections::HashMap::new();
+                for prop in properties {
+                    if let (Some(name), Some(value)) = (
+                        prop.get("property_name").and_then(|v| v.as_str()),
+                        prop.get("value").and_then(|v| v.as_str()),
+                    ) {
+                        property_map.insert(name.to_string(), value.to_string());
+                    }
+                }
+
+                info!(
+                    count = property_map.len(),
+                    "Successfully retrieved custom properties"
+                );
+                Ok(property_map)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to get custom properties", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn list_repository_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error> {
+        info!("Listing repository labels");
+
+        let result = self
+            .client
+            .issues(owner, repo)
+            .list_labels_for_repo()
+            .send()
+            .await;
+
+        match result {
+            Ok(labels) => {
+                let label_names: Vec<String> =
+                    labels.items.into_iter().map(|label| label.name).collect();
+
+                info!(count = label_names.len(), "Successfully listed labels");
+                Ok(label_names)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to list repository labels", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn get_repository_settings(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<models::Repository, Error> {
+        info!("Getting repository settings");
+
+        let result = self.client.repos(owner, repo).get().await;
+
+        match result {
+            Ok(repo) => {
+                info!("Successfully retrieved repository settings");
+                Ok(repo.into())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to get repository settings", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn get_branch_protection(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch: &str,
+    ) -> Result<Option<models::BranchProtection>, Error> {
+        info!(branch = branch, "Getting branch protection rules");
+
+        // GitHub API endpoint: GET /repos/{owner}/{repo}/branches/{branch}/protection
+        let url = format!("repos/{}/{}/branches/{}/protection", owner, repo, branch);
+
+        let result: Result<serde_json::Value, octocrab::Error> =
+            self.client.get(url, None::<&()>).await;
+
+        match result {
+            Ok(protection_data) => {
+                info!("Successfully retrieved branch protection rules");
+
+                // Extract review requirements if present
+                let review_count = protection_data
+                    .get("required_pull_request_reviews")
+                    .and_then(|reviews| reviews.get("required_approving_review_count"))
+                    .and_then(|count| count.as_u64())
+                    .map(|c| c as u32);
+
+                let code_owner_reviews = protection_data
+                    .get("required_pull_request_reviews")
+                    .and_then(|reviews| reviews.get("require_code_owner_reviews"))
+                    .and_then(|v| v.as_bool());
+
+                let dismiss_stale = protection_data
+                    .get("required_pull_request_reviews")
+                    .and_then(|reviews| reviews.get("dismiss_stale_reviews"))
+                    .and_then(|v| v.as_bool());
+
+                Ok(Some(models::BranchProtection {
+                    required_approving_review_count: review_count,
+                    require_code_owner_reviews: code_owner_reviews,
+                    dismiss_stale_reviews: dismiss_stale,
+                }))
+            }
+            Err(e) if is_not_found_error(&e) => {
+                info!("No branch protection configured");
+                Ok(None)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to get branch protection", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
 }
 
 /// JWT claims structure for GitHub App authentication.
@@ -933,6 +1073,84 @@ pub trait RepositoryClient: Send + Sync {
     /// # }
     /// ```
     async fn search_repositories(&self, query: &str) -> Result<Vec<models::Repository>, Error>;
+
+    /// Gets custom properties for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    ///
+    /// # Returns
+    ///
+    /// A map of custom property names to their values.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if the API call fails.
+    async fn get_custom_properties(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<std::collections::HashMap<String, String>, Error>;
+
+    /// Lists labels for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    ///
+    /// # Returns
+    ///
+    /// A vector of label names.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if the API call fails.
+    async fn list_repository_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error>;
+
+    /// Gets repository settings including feature flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    ///
+    /// # Returns
+    ///
+    /// The repository model containing all settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if the API call fails.
+    async fn get_repository_settings(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<models::Repository, Error>;
+
+    /// Gets branch protection rules for a specific branch.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `branch` - The branch name to get protection rules for
+    ///
+    /// # Returns
+    ///
+    /// Optional branch protection data if protection is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if the API call fails.
+    async fn get_branch_protection(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch: &str,
+    ) -> Result<Option<models::BranchProtection>, Error>;
 }
 
 /// Settings that can be updated for an existing repository.
@@ -1232,4 +1450,23 @@ fn log_octocrab_error(message: &str, e: octocrab::Error) {
         ),
         _ => error!(error_message = e.to_string(), message),
     };
+}
+
+/// Checks if an octocrab error is a 404 Not Found error.
+///
+/// # Arguments
+///
+/// * `e` - The octocrab error to check
+///
+/// # Returns
+///
+/// `true` if the error is a 404 Not Found, `false` otherwise
+fn is_not_found_error(e: &octocrab::Error) -> bool {
+    match e {
+        octocrab::Error::GitHub { source, .. } => {
+            // Check if the error message or status indicates 404
+            source.message.contains("404") || source.status_code == http::StatusCode::NOT_FOUND
+        }
+        _ => false,
+    }
 }

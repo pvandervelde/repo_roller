@@ -815,6 +815,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64",
+ "http",
  "jsonwebtoken",
  "octocrab",
  "rand",

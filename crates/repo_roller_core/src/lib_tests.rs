@@ -126,6 +126,45 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         // Not implemented in test mock - return success
         Ok(())
     }
+
+    async fn get_custom_properties(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<std::collections::HashMap<String, String>, GitHubError> {
+        // Not implemented in test mock - return empty properties
+        Ok(std::collections::HashMap::new())
+    }
+
+    async fn list_repository_labels(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<String>, GitHubError> {
+        // Not implemented in test mock - return empty labels
+        Ok(vec![])
+    }
+
+    async fn get_repository_settings(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<github_client::models::Repository, GitHubError> {
+        // Not implemented in test mock - return error
+        Err(GitHubError::AuthError(
+            "Not implemented in test".to_string(),
+        ))
+    }
+
+    async fn get_branch_protection(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _branch: &str,
+    ) -> Result<Option<github_client::models::BranchProtection>, GitHubError> {
+        // Not implemented in test mock - return None (no protection)
+        Ok(None)
+    }
 }
 
 /// Configuration for mock repository client behavior

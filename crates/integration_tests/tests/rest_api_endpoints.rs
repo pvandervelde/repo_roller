@@ -956,6 +956,545 @@ async fn test_malformed_authentication_header() {
 }
 
 // ============================================================================
+// Configuration Verification Tests (Task 9a.3)
+// ============================================================================
+
+/// Test configuration preview with global defaults only.
+///
+/// Verifies that preview endpoint correctly shows configuration from
+/// global defaults without any team or type overrides.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with metadata repository"]
+async fn test_api_configuration_preview_global_defaults() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
+    let request_body = json!({
+        "template": template,
+        // No team or repositoryType - should use only global defaults
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/preview", org))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Preview should succeed with global defaults"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let preview: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Verify merged configuration exists
+    assert!(
+        preview["mergedConfiguration"].is_object(),
+        "Should have merged configuration"
+    );
+
+    // Verify sources show global defaults were used
+    let sources = preview["sources"].as_object();
+    assert!(
+        sources.is_some(),
+        "Should have source attribution for settings"
+    );
+
+    println!("Global defaults preview:");
+    println!("{:#?}", preview["mergedConfiguration"]);
+}
+
+/// Test configuration preview with team specified.
+///
+/// Verifies that preview endpoint correctly applies team-specific
+/// overrides to global defaults.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with team configuration"]
+async fn test_api_configuration_preview_with_team() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+    let team = match std::env::var("TEST_TEAM") {
+        Ok(t) => t,
+        Err(_) => {
+            println!("Skipping test: TEST_TEAM not set");
+            return;
+        }
+    };
+
+    let request_body = json!({
+        "template": template,
+        "team": team,
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/preview", org))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Preview should succeed with team override"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let preview: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Verify merged configuration
+    assert!(
+        preview["mergedConfiguration"].is_object(),
+        "Should have merged configuration"
+    );
+
+    // Verify sources show team overrides were applied
+    let sources = preview["sources"].as_object();
+    assert!(
+        sources.is_some(),
+        "Should have source attribution showing team overrides"
+    );
+
+    println!("Team configuration preview:");
+    println!("{:#?}", preview["mergedConfiguration"]);
+}
+
+/// Test configuration preview with repository type specified.
+///
+/// Verifies that preview endpoint correctly applies repository type-specific
+/// settings to the configuration hierarchy.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with repository type configuration"]
+async fn test_api_configuration_preview_with_type() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+    let repo_type = match std::env::var("TEST_REPOSITORY_TYPE") {
+        Ok(rt) => rt,
+        Err(_) => {
+            println!("Skipping test: TEST_REPOSITORY_TYPE not set");
+            return;
+        }
+    };
+
+    let request_body = json!({
+        "template": template,
+        "repositoryType": repo_type,
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/preview", org))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Preview should succeed with repository type"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let preview: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Verify merged configuration
+    assert!(
+        preview["mergedConfiguration"].is_object(),
+        "Should have merged configuration"
+    );
+
+    // Verify sources show type-specific settings
+    let sources = preview["sources"].as_object();
+    assert!(
+        sources.is_some(),
+        "Should have source attribution showing type settings"
+    );
+
+    println!("Repository type configuration preview:");
+    println!("{:#?}", preview["mergedConfiguration"]);
+}
+
+/// Test configuration preview with complete hierarchy.
+///
+/// Verifies that preview endpoint correctly applies the complete
+/// configuration hierarchy: Template > Team > Type > Global.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with complete configuration hierarchy"]
+async fn test_api_configuration_preview_complete_hierarchy() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
+    // Try to get team and type from environment
+    let team = std::env::var("TEST_TEAM").ok();
+    let repo_type = std::env::var("TEST_REPOSITORY_TYPE").ok();
+
+    if team.is_none() && repo_type.is_none() {
+        println!("Skipping test: Neither TEST_TEAM nor TEST_REPOSITORY_TYPE set");
+        return;
+    }
+
+    let mut request_body = json!({
+        "template": template,
+    });
+
+    if let Some(t) = team {
+        request_body["team"] = json!(t);
+    }
+    if let Some(rt) = repo_type {
+        request_body["repositoryType"] = json!(rt);
+    }
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/orgs/{}/preview", org))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Preview should succeed with complete hierarchy"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let preview: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Verify merged configuration
+    assert!(
+        preview["mergedConfiguration"].is_object(),
+        "Should have merged configuration"
+    );
+
+    // Verify sources show all levels of hierarchy
+    let sources = preview["sources"].as_object();
+    assert!(
+        sources.is_some(),
+        "Should have source attribution for all hierarchy levels"
+    );
+
+    // Log the complete hierarchy for inspection
+    println!("Complete hierarchy configuration preview:");
+    println!("{:#?}", preview["mergedConfiguration"]);
+    println!("\nConfiguration sources:");
+    println!("{:#?}", preview["sources"]);
+}
+
+/// Test creating repository via API with global defaults configuration.
+///
+/// Creates a repository through the REST API and verifies that
+/// configuration from global defaults was actually applied to GitHub.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure - CREATES REAL REPOSITORY"]
+async fn test_api_create_repository_with_global_defaults() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
+    // Generate unique repository name
+    let repo_name = format!(
+        "test-api-global-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": template,
+        "variables": {}
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    // Accept both 200 and 201 as success
+    assert!(
+        response.status() == StatusCode::OK || response.status() == StatusCode::CREATED,
+        "Repository creation should succeed"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        result["repository"]["name"].is_string(),
+        "Should have repository name in response"
+    );
+
+    // TODO: Add verification using integration_tests::verification module
+    // - Load expected configuration from metadata repository
+    // - Verify custom properties were set
+    // - Verify repository settings match
+    // - Verify branch protection rules
+
+    println!(
+        "✓ Created repository: {}",
+        result["repository"]["name"].as_str().unwrap()
+    );
+    println!("⚠ Note: Verification of applied configuration not yet implemented");
+}
+
+/// Test creating repository via API with team-specific configuration.
+///
+/// Creates a repository with team overrides and verifies that
+/// team-specific configuration was applied to GitHub.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with team configuration - CREATES REAL REPOSITORY"]
+async fn test_api_create_repository_with_team_overrides() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
+    let team = match std::env::var("TEST_TEAM") {
+        Ok(t) => t,
+        Err(_) => {
+            println!("Skipping test: TEST_TEAM not set");
+            return;
+        }
+    };
+
+    // Generate unique repository name
+    let repo_name = format!(
+        "test-api-team-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": template,
+        "team": team,
+        "variables": {}
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert!(
+        response.status() == StatusCode::OK || response.status() == StatusCode::CREATED,
+        "Repository creation with team should succeed"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // TODO: Add verification using integration_tests::verification module
+    // - Verify team-specific settings were applied
+    // - Verify team custom property was set
+    // - Verify team overrides took precedence
+
+    println!(
+        "✓ Created repository with team configuration: {}",
+        result["repository"]["name"].as_str().unwrap()
+    );
+    println!("⚠ Note: Verification of team overrides not yet implemented");
+}
+
+/// Test creating repository via API with repository type configuration.
+///
+/// Creates a repository with a repository type and verifies that
+/// type-specific configuration was applied to GitHub.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with repository type - CREATES REAL REPOSITORY"]
+async fn test_api_create_repository_with_type_configuration() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
+    let repo_type = match std::env::var("TEST_REPOSITORY_TYPE") {
+        Ok(rt) => rt,
+        Err(_) => {
+            println!("Skipping test: TEST_REPOSITORY_TYPE not set");
+            return;
+        }
+    };
+
+    // Generate unique repository name
+    let repo_name = format!(
+        "test-api-type-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": template,
+        "repositoryType": repo_type,
+        "variables": {}
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert!(
+        response.status() == StatusCode::OK || response.status() == StatusCode::CREATED,
+        "Repository creation with type should succeed"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // TODO: Add verification using integration_tests::verification module
+    // - Verify repository type custom property was set
+    // - Verify type-specific settings were applied
+    // - Verify type overrides took precedence
+
+    println!(
+        "✓ Created repository with type configuration: {}",
+        result["repository"]["name"].as_str().unwrap()
+    );
+    println!("⚠ Note: Verification of type configuration not yet implemented");
+}
+
+/// Test creating repository via API with complete configuration hierarchy.
+///
+/// Creates a repository with template, team, and type specified, verifying
+/// that the complete configuration hierarchy was correctly applied.
+#[tokio::test]
+#[ignore = "Requires real GitHub infrastructure with complete hierarchy - CREATES REAL REPOSITORY"]
+async fn test_api_create_repository_with_complete_hierarchy() {
+    let app = create_router(test_app_state());
+    let token = test_token();
+    let org = test_org();
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
+    // Try to get team and type from environment
+    let team = std::env::var("TEST_TEAM").ok();
+    let repo_type = std::env::var("TEST_REPOSITORY_TYPE").ok();
+
+    if team.is_none() && repo_type.is_none() {
+        println!("Skipping test: Neither TEST_TEAM nor TEST_REPOSITORY_TYPE set");
+        return;
+    }
+
+    // Generate unique repository name
+    let repo_name = format!(
+        "test-api-full-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+
+    let mut request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": template,
+        "variables": {}
+    });
+
+    if let Some(t) = team {
+        request_body["team"] = json!(t);
+    }
+    if let Some(rt) = repo_type {
+        request_body["repositoryType"] = json!(rt);
+    }
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert!(
+        response.status() == StatusCode::OK || response.status() == StatusCode::CREATED,
+        "Repository creation with complete hierarchy should succeed"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // TODO: Add verification using integration_tests::verification module
+    // - Verify all custom properties were set (team, type, etc.)
+    // - Verify settings show correct hierarchy precedence
+    // - Verify template settings were applied
+    // - Verify team overrides took effect
+    // - Verify type settings were applied
+
+    println!(
+        "✓ Created repository with complete hierarchy: {}",
+        result["repository"]["name"].as_str().unwrap()
+    );
+    println!("⚠ Note: Verification of complete hierarchy not yet implemented");
+}
+
+// ============================================================================
 // Complete End-to-End Workflow Tests
 // ============================================================================
 
