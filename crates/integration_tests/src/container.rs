@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::env;
 use std::time::Duration;
 use tokio::time::sleep;
+use uuid::Uuid;
 
 /// Configuration for running API container in tests
 pub struct ApiContainerConfig {
@@ -37,17 +38,23 @@ pub struct ApiContainerConfig {
 impl ApiContainerConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Result<Self> {
+        let github_app_id = env::var("GITHUB_APP_ID").context("GITHUB_APP_ID not set")?;
+        let github_app_private_key =
+            env::var("GITHUB_APP_PRIVATE_KEY").context("GITHUB_APP_PRIVATE_KEY not set")?;
+        let test_org = env::var("TEST_ORG").context("TEST_ORG not set")?;
+        let metadata_repo = env::var("METADATA_REPOSITORY_NAME")
+            .unwrap_or_else(|_| ".reporoller".to_string());
+        let port = env::var("TEST_API_PORT")
+            .unwrap_or_else(|_| "8080".to_string())
+            .parse()
+            .context("Invalid TEST_API_PORT")?;
+
         Ok(Self {
-            github_app_id: env::var("GITHUB_APP_ID").context("GITHUB_APP_ID not set")?,
-            github_app_private_key: env::var("GITHUB_APP_PRIVATE_KEY")
-                .context("GITHUB_APP_PRIVATE_KEY not set")?,
-            test_org: env::var("TEST_ORG").context("TEST_ORG not set")?,
-            metadata_repo: env::var("METADATA_REPOSITORY_NAME")
-                .unwrap_or_else(|_| ".reporoller".to_string()),
-            port: env::var("TEST_API_PORT")
-                .unwrap_or_else(|_| "8080".to_string())
-                .parse()
-                .context("Invalid TEST_API_PORT")?,
+            github_app_id,
+            github_app_private_key,
+            test_org,
+            metadata_repo,
+            port,
         })
     }
 }
@@ -99,10 +106,12 @@ impl ApiContainer {
         tracing::info!("Building repo_roller_api Docker image...");
 
         // Build from workspace root with proper context
-        let mut build_options = BuildImageOptions::default();
-        build_options.dockerfile = "crates/repo_roller_api/Dockerfile";
-        build_options.t = "repo_roller_api:test";
-        build_options.rm = true;
+        let build_options = BuildImageOptions {
+            dockerfile: "crates/repo_roller_api/Dockerfile",
+            t: "repo_roller_api:test",
+            rm: true,
+            ..Default::default()
+        };
 
         // Use bollard's build_image with the current directory as context
         let mut stream = self.docker.build_image(build_options, None, None);
@@ -128,6 +137,12 @@ impl ApiContainer {
     /// or ensure your CI/CD pipeline has built it.
     pub async fn start(&mut self) -> Result<String> {
         let image = "repo_roller_api:test";
+
+        // Generate unique container name to avoid conflicts
+        let container_name = format!("repo_roller_api_test_{}", Uuid::new_v4());
+
+        // Try to cleanup any existing containers with similar names (best effort)
+        let _ = self.cleanup_old_containers().await;
 
         // Container configuration
         let env_vars = vec![
@@ -172,7 +187,7 @@ impl ApiContainer {
             .docker
             .create_container(
                 Some(CreateContainerOptions {
-                    name: "repo_roller_api_test",
+                    name: container_name.as_str(),
                     ..Default::default()
                 }),
                 container_config,
@@ -200,14 +215,24 @@ impl ApiContainer {
     /// Wait for container to become healthy
     async fn wait_for_health(&self) -> Result<()> {
         let base_url = format!("http://localhost:{}", self.config.port);
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .context("Failed to create HTTP client")?;
 
         tracing::info!("Waiting for API server to be ready...");
 
-        for attempt in 1..=30 {
-            sleep(Duration::from_secs(1)).await;
+        // Increase timeout to 60 seconds with shorter initial delays
+        for attempt in 1..=60 {
+            // Start with shorter delays, increase over time
+            let delay = if attempt < 10 {
+                Duration::from_millis(500)
+            } else {
+                Duration::from_secs(1)
+            };
+            sleep(delay).await;
 
-            match client.get(&format!("{}/health", base_url)).send().await {
+            match client.get(format!("{}/health", base_url)).send().await {
                 Ok(response) if response.status().is_success() => {
                     tracing::info!("✓ API server is ready (attempt {})", attempt);
                     return Ok(());
@@ -221,7 +246,52 @@ impl ApiContainer {
             }
         }
 
-        anyhow::bail!("Container failed to become healthy after 30 seconds")
+        anyhow::bail!("Container failed to become healthy after 60 seconds")
+    }
+
+    /// Cleanup old test containers (best effort)
+    async fn cleanup_old_containers(&self) -> Result<()> {
+        use bollard::container::ListContainersOptions;
+
+        // List all containers (including stopped ones)
+        let containers = self
+            .docker
+            .list_containers(Some(ListContainersOptions::<String> {
+                all: true,
+                ..Default::default()
+            }))
+            .await?;
+
+        // Find containers with our test name pattern
+        for container in containers {
+            if let Some(names) = container.names {
+                for name in names {
+                    if name.contains("repo_roller_api_test") {
+                        if let Some(id) = &container.id {
+                            tracing::debug!("Cleaning up old container: {}", name);
+                            // Try to stop if running
+                            let _ = self
+                                .docker
+                                .stop_container(id, Some(StopContainerOptions { t: 5 }))
+                                .await;
+                            // Try to remove
+                            let _ = self
+                                .docker
+                                .remove_container(
+                                    id,
+                                    Some(RemoveContainerOptions {
+                                        force: true,
+                                        ..Default::default()
+                                    }),
+                                )
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Stop and remove the container

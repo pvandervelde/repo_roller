@@ -70,10 +70,6 @@ async fn main() -> anyhow::Result<()> {
             .parse()
             .expect("Invalid API_PORT"),
         host: env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
-        request_timeout_secs: env::var("REQUEST_TIMEOUT_SECS")
-            .unwrap_or_else(|_| "30".to_string())
-            .parse()
-            .expect("Invalid REQUEST_TIMEOUT_SECS"),
     };
 
     let metadata_repo =

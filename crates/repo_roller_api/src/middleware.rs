@@ -28,9 +28,6 @@ pub struct AuthContext {
     /// Bearer token from Authorization header
     pub token: String,
 
-    /// Installation ID (extracted from token or validated separately)
-    pub installation_id: Option<u64>,
-
     /// Organization name (if validated)
     pub organization: Option<String>,
 }
@@ -40,15 +37,8 @@ impl AuthContext {
     pub fn new(token: String) -> Self {
         Self {
             token,
-            installation_id: None,
             organization: None,
         }
-    }
-
-    /// Create context with installation ID
-    pub fn with_installation_id(mut self, id: u64) -> Self {
-        self.installation_id = Some(id);
-        self
     }
 
     /// Create context with organization
