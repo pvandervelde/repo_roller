@@ -246,7 +246,37 @@ impl ApiContainer {
             }
         }
 
+        // Health check failed - get container logs for debugging
+        if let Some(container_id) = &self.container_id {
+            tracing::error!("Container failed health check. Fetching logs...");
+            if let Ok(logs) = self.get_container_logs(container_id).await {
+                tracing::error!("Container logs:\n{}", logs);
+            }
+        }
+
         anyhow::bail!("Container failed to become healthy after 60 seconds")
+    }
+
+    /// Get container logs for debugging
+    async fn get_container_logs(&self, container_id: &str) -> Result<String> {
+        use bollard::container::LogsOptions;
+        use futures_util::TryStreamExt;
+
+        let options = LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            tail: "100".to_string(),
+            ..Default::default()
+        };
+
+        let mut logs = self.docker.logs(container_id, Some(options));
+        let mut output = String::new();
+
+        while let Ok(Some(log)) = logs.try_next().await {
+            output.push_str(&log.to_string());
+        }
+
+        Ok(output)
     }
 
     /// Cleanup old test containers (best effort)
