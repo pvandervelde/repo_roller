@@ -58,7 +58,7 @@ async fn test_e2e_health_check() -> Result<()> {
     // Test health endpoint
     let client = Client::new();
     let response = client
-        .get(&format!("{}/api/v1/health", base_url))
+        .get(format!("{}/api/v1/health", base_url))
         .send()
         .await?;
 
@@ -134,7 +134,7 @@ async fn test_e2e_get_global_defaults() -> Result<()> {
 
     let client = Client::new();
     let response = client
-        .get(&format!("{}/api/v1/orgs/{}/defaults", base_url, org))
+        .get(format!("{}/api/v1/orgs/{}/defaults", base_url, org))
         .header("Authorization", format!("Bearer {}", get_github_token()?))
         .send()
         .await?;
@@ -183,7 +183,7 @@ async fn test_e2e_configuration_preview() -> Result<()> {
     });
 
     let response = client
-        .post(&format!("{}/api/v1/orgs/{}/preview", base_url, org))
+        .post(format!("{}/api/v1/orgs/{}/preview", base_url, org))
         .header("Authorization", format!("Bearer {}", get_github_token()?))
         .header("Content-Type", "application/json")
         .json(&request_body)
@@ -245,7 +245,7 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     });
 
     let response = client
-        .post(&format!("{}/api/v1/repositories", base_url))
+        .post(format!("{}/api/v1/repositories", base_url))
         .header("Authorization", format!("Bearer {}", get_github_token()?))
         .header("Content-Type", "application/json")
         .json(&request_body)
@@ -306,7 +306,7 @@ async fn test_e2e_list_templates() -> Result<()> {
 
     let client = Client::new();
     let response = client
-        .get(&format!("{}/api/v1/orgs/{}/templates", base_url, org))
+        .get(format!("{}/api/v1/orgs/{}/templates", base_url, org))
         .header("Authorization", format!("Bearer {}", get_github_token()?))
         .send()
         .await?;
@@ -349,7 +349,7 @@ async fn test_e2e_validate_organization() -> Result<()> {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{}/api/v1/orgs/{}/validate", base_url, org))
+        .post(format!("{}/api/v1/orgs/{}/validate", base_url, org))
         .header("Authorization", format!("Bearer {}", get_github_token()?))
         .send()
         .await?;
