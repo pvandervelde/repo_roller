@@ -6,7 +6,6 @@ name: E2E Containerized Tests
 #   - INTEGRATION_TEST_GITHUB_APP_ID: GitHub App ID for authentication
 #   - INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY: GitHub App private key (PEM format)
 #   - INTEGRATION_TEST_ORG: Test organization name
-#   - GITHUB_TOKEN: Automatically provided by GitHub Actions
 #
 # Configuration:
 #   - METADATA_REPOSITORY_NAME: ".reporoller-test" (test metadata repository)
@@ -75,7 +74,6 @@ jobs:
                   GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
                   GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
                   TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   echo "Validating E2E test environment..."
 
@@ -94,11 +92,6 @@ jobs:
                     exit 1
                   fi
 
-                  if [ -z "$GITHUB_TOKEN" ]; then
-                    echo "❌ GITHUB_TOKEN not available"
-                    exit 1
-                  fi
-
                   echo "✅ All required secrets are configured"
                   echo "📋 GitHub App ID: $GITHUB_APP_ID"
                   echo "📋 Test Organization: $TEST_ORG"
@@ -108,7 +101,6 @@ jobs:
                   GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
                   GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
                   TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   METADATA_REPOSITORY_NAME: ".reporoller-test"
                   TEST_TEMPLATE: "template-test-basic"
                   RUST_LOG: info
