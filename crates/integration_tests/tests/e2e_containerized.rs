@@ -186,11 +186,11 @@ async fn test_e2e_get_global_defaults() -> Result<()> {
         .send()
         .await?;
 
-    assert_eq!(
-        response.status(),
+    let response = assert_status_with_body(
+        response,
         StatusCode::OK,
         "Should return 200 OK for global defaults"
-    );
+    ).await?;
 
     let json: serde_json::Value = response.json().await?;
     assert!(
@@ -238,11 +238,11 @@ async fn test_e2e_configuration_preview() -> Result<()> {
         .send()
         .await?;
 
-    assert_eq!(
-        response.status(),
+    let response = assert_status_with_body(
+        response,
         StatusCode::OK,
         "Configuration preview should return 200 OK"
-    );
+    ).await?;
 
     let json: serde_json::Value = response.json().await?;
     assert!(
@@ -301,11 +301,11 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
         .send()
         .await?;
 
-    assert_eq!(
-        response.status(),
+    let response = assert_status_with_body(
+        response,
         StatusCode::CREATED,
         "Repository creation should return 201 Created"
-    );
+    ).await?;
 
     let json: serde_json::Value = response.json().await?;
     assert_eq!(
