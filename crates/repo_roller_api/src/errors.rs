@@ -469,10 +469,20 @@ fn convert_configuration_error(
                 error_count
             ),
         ),
-        _ => (
+        ConfigurationError::FileAccessError { path, reason } => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "ConfigurationError",
-            "Configuration system error".to_string(),
+            "ConfigurationFileAccessError",
+            format!("Cannot access configuration file '{}': {}", path, reason),
+        ),
+        ConfigurationError::RequiredConfigMissing { key } => (
+            StatusCode::BAD_REQUEST,
+            "RequiredConfigMissing",
+            format!("Required configuration '{}' is missing", key),
+        ),
+        ConfigurationError::HierarchyResolutionFailed { reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "ConfigurationHierarchyFailed",
+            format!("Configuration hierarchy resolution failed: {}", reason),
         ),
     };
 
