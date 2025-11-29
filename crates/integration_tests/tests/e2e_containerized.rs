@@ -198,8 +198,8 @@ async fn test_e2e_get_global_defaults() -> Result<()> {
 
     let json: serde_json::Value = response.json().await?;
     assert!(
-        json["repository"].is_object(),
-        "Response should contain 'repository' settings. Got: {}",
+        json["defaults"]["repository"].is_object(),
+        "Response should contain 'defaults.repository' settings. Got: {}",
         serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
     );
 
@@ -255,8 +255,8 @@ async fn test_e2e_configuration_preview() -> Result<()> {
 
     let json: serde_json::Value = response.json().await?;
     assert!(
-        json["configuration"].is_object(),
-        "Response should contain 'configuration'. Got: {}",
+        json["mergedConfiguration"].is_object(),
+        "Response should contain 'mergedConfiguration'. Got: {}",
         serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
     );
     assert!(
