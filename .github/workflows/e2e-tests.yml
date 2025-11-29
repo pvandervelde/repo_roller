@@ -9,7 +9,13 @@ name: E2E Containerized Tests
 #
 # Configuration:
 #   - METADATA_REPOSITORY_NAME: ".reporoller-test" (test metadata repository)
-#   - TEST_TEMPLATE: "template-test-basic" (basic test template)
+#   - TEST_TEMPLATE: "template-test-basic" (basic test template - must exist in metadata repo)
+#
+# Note: The test_e2e_create_repository_with_global_defaults test will fail if
+# TEST_TEMPLATE references a non-existent template. To set up the template:
+#   1. Create templates/template-test-basic/ directory in metadata repository
+#   2. Add template.toml with basic configuration
+#   3. Add README.md with template description
 
 on:
     pull_request:
