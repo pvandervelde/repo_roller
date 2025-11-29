@@ -35,29 +35,28 @@ use serde_json::json;
 /// list_installations(), which requires an installation token (not a PAT).
 async fn get_github_installation_token() -> Result<String> {
     use auth_handler::{GitHubAuthService, UserAuthenticationService};
-    
+
     let app_id = std::env::var("GITHUB_APP_ID")
         .map_err(|_| anyhow::anyhow!("GITHUB_APP_ID not set"))?
         .parse::<u64>()
         .map_err(|_| anyhow::anyhow!("GITHUB_APP_ID must be a valid number"))?;
-    
+
     let private_key = std::env::var("GITHUB_APP_PRIVATE_KEY")
         .map_err(|_| anyhow::anyhow!("GITHUB_APP_PRIVATE_KEY not set"))?;
-    
-    let org = std::env::var("TEST_ORG")
-        .map_err(|_| anyhow::anyhow!("TEST_ORG not set"))?;
-    
+
+    let org = std::env::var("TEST_ORG").map_err(|_| anyhow::anyhow!("TEST_ORG not set"))?;
+
     tracing::info!("Generating installation token for org: {}", org);
-    
+
     // Create auth service and get installation token for the test organization
     let auth_service = GitHubAuthService::new(app_id, private_key);
     let token = auth_service
         .get_installation_token_for_org(&org)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to get installation token: {}", e))?;
-    
+
     tracing::info!("Successfully generated installation token");
-    
+
     Ok(token)
 }
 
@@ -69,7 +68,10 @@ async fn assert_status_with_body(
 ) -> Result<reqwest::Response> {
     let status = response.status();
     if status != expected {
-        let body = response.text().await.unwrap_or_else(|_| "<failed to read body>".to_string());
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
         panic!(
             "{}\n  Expected: {}\n  Got: {}\n  Response body: {}",
             context, expected, status, body
@@ -149,8 +151,9 @@ async fn test_e2e_list_repository_types() -> Result<()> {
     let response = assert_status_with_body(
         response,
         StatusCode::OK,
-        "Should return 200 OK for repository types"
-    ).await?;
+        "Should return 200 OK for repository types",
+    )
+    .await?;
 
     let json: serde_json::Value = response.json().await?;
     assert!(
@@ -189,13 +192,15 @@ async fn test_e2e_get_global_defaults() -> Result<()> {
     let response = assert_status_with_body(
         response,
         StatusCode::OK,
-        "Should return 200 OK for global defaults"
-    ).await?;
+        "Should return 200 OK for global defaults",
+    )
+    .await?;
 
     let json: serde_json::Value = response.json().await?;
     assert!(
         json["repository"].is_object(),
-        "Response should contain 'repository' settings"
+        "Response should contain 'repository' settings. Got: {}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
     );
 
     container.stop().await?;
@@ -231,7 +236,10 @@ async fn test_e2e_configuration_preview() -> Result<()> {
     });
 
     let response = client
-        .post(format!("{}/api/v1/orgs/{}/configuration/preview", base_url, org))
+        .post(format!(
+            "{}/api/v1/orgs/{}/configuration/preview",
+            base_url, org
+        ))
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
         .json(&request_body)
@@ -241,17 +249,20 @@ async fn test_e2e_configuration_preview() -> Result<()> {
     let response = assert_status_with_body(
         response,
         StatusCode::OK,
-        "Configuration preview should return 200 OK"
-    ).await?;
+        "Configuration preview should return 200 OK",
+    )
+    .await?;
 
     let json: serde_json::Value = response.json().await?;
     assert!(
         json["configuration"].is_object(),
-        "Response should contain 'configuration'"
+        "Response should contain 'configuration'. Got: {}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
     );
     assert!(
         json["sources"].is_object(),
-        "Response should contain 'sources' tracking"
+        "Response should contain 'sources' tracking. Got: {}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
     );
 
     container.stop().await?;
@@ -304,8 +315,9 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     let response = assert_status_with_body(
         response,
         StatusCode::CREATED,
-        "Repository creation should return 201 Created"
-    ).await?;
+        "Repository creation should return 201 Created",
+    )
+    .await?;
 
     let json: serde_json::Value = response.json().await?;
     assert_eq!(
