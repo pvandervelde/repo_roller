@@ -39,5 +39,15 @@ axum.workspace = true
 tower = "0.5"
 http-body-util = "0.1"
 
+# Docker container testing
+testcontainers = "0.23"
+bollard = "0.17"
+
+# HTTP client for E2E tests
+reqwest = { version = "0.12", features = ["json"] }
+
+# Async utilities
+futures-util = "0.3"
+
 [dev-dependencies]
 tokio-test = "=0.4.4"
