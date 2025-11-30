@@ -3,7 +3,10 @@
 
 use super::*;
 use async_trait::async_trait;
-use config_manager::{Config, TemplateConfig};
+use config_manager::{
+    ConfigurationResult, MetadataRepository, MetadataRepositoryProvider, TemplateConfig,
+    TemplateMetadata,
+};
 use github_client::{
     errors::Error as GitHubError, models, RepositoryClient, RepositorySettingsUpdate,
 };
@@ -32,6 +35,98 @@ impl auth_handler::UserAuthenticationService for MockAuthService {
         _org_name: &str,
     ) -> auth_handler::AuthResult<String> {
         Err(auth_handler::AuthError::InvalidCredentials)
+    }
+}
+
+/// Mock metadata provider for testing
+///
+/// Returns a configured TemplateConfig for testing purposes
+struct MockMetadataProvider {
+    template_config: Option<TemplateConfig>,
+}
+
+impl MockMetadataProvider {
+    fn with_template(template_config: TemplateConfig) -> Self {
+        Self {
+            template_config: Some(template_config),
+        }
+    }
+
+    fn empty() -> Self {
+        Self {
+            template_config: None,
+        }
+    }
+}
+
+#[async_trait]
+impl MetadataRepositoryProvider for MockMetadataProvider {
+    async fn load_template_configuration(
+        &self,
+        _org: &str,
+        _template_name: &str,
+    ) -> ConfigurationResult<TemplateConfig> {
+        self.template_config.clone().ok_or_else(|| {
+            config_manager::ConfigurationError::InvalidConfiguration {
+                field: "template".to_string(),
+                reason: "Template not found".to_string(),
+            }
+        })
+    }
+
+    async fn discover_metadata_repository(
+        &self,
+        _org: &str,
+    ) -> ConfigurationResult<MetadataRepository> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn load_global_defaults(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<config_manager::GlobalDefaults> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn load_team_configuration(
+        &self,
+        _repo: &MetadataRepository,
+        _team: &str,
+    ) -> ConfigurationResult<Option<config_manager::TeamConfig>> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn load_repository_type_configuration(
+        &self,
+        _repo: &MetadataRepository,
+        _repo_type: &str,
+    ) -> ConfigurationResult<Option<config_manager::RepositoryTypeConfig>> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn load_standard_labels(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<std::collections::HashMap<String, config_manager::LabelConfig>> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn list_available_repository_types(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<String>> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn validate_repository_structure(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<()> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn list_templates(&self, _org: &str) -> ConfigurationResult<Vec<String>> {
+        unimplemented!("Not used in these tests")
     }
 }
 
@@ -316,25 +411,28 @@ async fn test_create_repository_type_conversion() {
     )
     .build();
 
-    let config = Config {
-        templates: vec![TemplateConfig {
+    let template_config = TemplateConfig {
+        template: TemplateMetadata {
             name: "basic".to_string(),
-            source_repo: "owner/template-repo".to_string(),
-            variable_configs: None,
-            description: None,
-            topics: None,
-            features: None,
-            pr_settings: None,
-            labels: None,
-            branch_protection_rules: None,
-            action_permissions: None,
-            required_variables: None,
-        }],
+            description: "Test template".to_string(),
+            author: "Test".to_string(),
+            tags: vec![],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
     };
 
+    let metadata_provider = MockMetadataProvider::with_template(template_config);
     let auth_service = MockAuthService;
 
-    let result = create_repository(request, &config, &auth_service, ".reporoller").await;
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
 
     // Should fail during authentication with mock service
     assert!(result.is_err());
@@ -360,13 +458,10 @@ async fn test_create_repository_error_handling() {
     )
     .build();
 
-    let config = Config {
-        templates: vec![], // Empty templates - will cause error
-    };
-
+    let metadata_provider = MockMetadataProvider::empty(); // No templates - will cause error
     let auth_service = MockAuthService;
 
-    let result = create_repository(request, &config, &auth_service, ".reporoller").await;
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
 
     // Should return an error
     assert!(result.is_err());
@@ -391,9 +486,10 @@ async fn test_create_repository_preserves_variables() {
     assert_eq!(request.variables.get("author").unwrap(), "Jane Doe");
 
     // Function signature accepts the request - type checking works
-    let config = Config { templates: vec![] };
+    let metadata_provider = MockMetadataProvider::empty();
     let auth_service = MockAuthService;
-    let _result = create_repository(request, &config, &auth_service, ".reporoller").await;
+    let _result =
+        create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
 }
 
 /// Verify that branded types prevent type confusion.
@@ -424,10 +520,10 @@ async fn test_create_repository_result_type() {
     )
     .build();
 
-    let config = Config { templates: vec![] };
+    let metadata_provider = MockMetadataProvider::empty();
     let auth_service = MockAuthService;
 
-    let result = create_repository(request, &config, &auth_service, ".reporoller").await;
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
 
     // Verify the result type is RepoRollerResult<RepositoryCreationResult>
     match result {
@@ -440,6 +536,7 @@ async fn test_create_repository_result_type() {
             assert!(
                 matches!(error, RepoRollerError::GitHub(_))
                     || matches!(error, RepoRollerError::System(_))
+                    || matches!(error, RepoRollerError::Template(_))
             );
         }
     }

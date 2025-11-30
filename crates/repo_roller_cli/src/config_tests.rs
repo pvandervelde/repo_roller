@@ -6,7 +6,6 @@ use tempfile::TempDir;
 fn test_app_config_default() {
     let config = AppConfig::default();
 
-    assert!(config.core.templates.is_empty());
     assert_eq!(config.authentication.auth_method, "token");
     assert_eq!(
         config.organization.metadata_repository_name,
@@ -52,7 +51,6 @@ fn test_app_config_save_and_load() {
 
     // Create a test configuration
     let original_config = AppConfig {
-        core: Config { templates: vec![] },
         authentication: AuthenticationConfig {
             auth_method: "token".to_string(),
         },
@@ -72,7 +70,6 @@ fn test_app_config_save_and_load() {
 
     // Verify the loaded configuration matches
     assert_eq!(loaded_config.authentication.auth_method, "token");
-    assert!(loaded_config.core.templates.is_empty());
 }
 
 #[test]

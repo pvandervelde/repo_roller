@@ -606,19 +606,19 @@ pub(crate) fn replace_template_variables(
     // In a full implementation, these would come from user input
     let user_variables = HashMap::new();
 
-    // Convert config_manager::VariableConfig to template_engine::VariableConfig
+    // Convert config_manager::TemplateVariable to template_engine::VariableConfig
     let mut variable_configs = HashMap::new();
-    if let Some(ref template_vars) = template.variable_configs {
-        for (name, config) in template_vars {
+    if let Some(ref template_vars) = template.variables {
+        for (name, var) in template_vars {
             let engine_config = template_engine::VariableConfig {
-                description: config.description.clone(),
-                example: config.example.clone(),
-                required: config.required,
-                pattern: config.pattern.clone(),
-                min_length: config.min_length,
-                max_length: config.max_length,
-                options: config.options.clone(),
-                default: config.default.clone(),
+                description: var.description.clone(),
+                example: var.example.clone(),
+                required: var.required,
+                pattern: None,
+                min_length: None,
+                max_length: None,
+                options: None,
+                default: var.default.clone(),
             };
             variable_configs.insert(name.clone(), engine_config);
         }
@@ -776,6 +776,7 @@ pub(crate) fn replace_template_variables(
 pub(crate) async fn prepare_local_repository(
     request: &RepositoryCreationRequest,
     template: &config_manager::TemplateConfig,
+    template_source: &str,
     template_fetcher: &dyn TemplateFetcher,
     merged_config: &config_manager::MergedConfiguration,
 ) -> RepoRollerResult<TempDir> {
@@ -788,9 +789,9 @@ pub(crate) async fn prepare_local_repository(
     })?;
 
     // Fetch template files
-    info!("Fetching template files from: {}", template.source_repo);
+    info!("Fetching template files from: {}", template_source);
     let files = template_fetcher
-        .fetch_template_files(&template.source_repo)
+        .fetch_template_files(template_source)
         .await
         .map_err(|e| {
             error!("Failed to fetch template files: {}", e);
