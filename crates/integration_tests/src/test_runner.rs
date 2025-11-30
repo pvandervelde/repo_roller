@@ -9,12 +9,12 @@
 //! e2e_containerized.rs are currently the active tests.
 
 use anyhow::{Context, Result};
+use auth_handler::UserAuthenticationService;
 use github_client::{create_app_client, GitHubClient};
 use repo_roller_core::{
     create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
     TemplateName,
 };
-use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 
 use crate::utils::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
@@ -113,11 +113,13 @@ impl TestScenario {
         }
     }
 
-    /// Create a mock template configuration for testing
-    /// TODO: Update to use new TemplateConfig from template_config.rs
-    #[allow(dead_code, clippy::unused_unit)]
-    pub fn create_mock_template(&self, _org: &str) -> () {
-        unimplemented!("Legacy template creation - needs update to new TemplateConfig structure")
+    /// Get the template configuration for testing
+    ///
+    /// Note: Templates are now loaded from actual GitHub repositories via MetadataRepositoryProvider.
+    /// This method is kept for API compatibility but no longer creates mock templates.
+    #[allow(dead_code)]
+    pub fn template_repository(&self) -> String {
+        format!("template-{}", self.template_name())
         /*
         let description = match self {
             TestScenario::ErrorHandling => {
@@ -388,178 +390,187 @@ impl IntegrationTestRunner {
         self.run_single_test(scenario).await
     }
 
-    /// Run a single test scenario
-    /// TODO: Update to use new MetadataRepositoryProvider
-    #[allow(dead_code, unused_variables)]
-    async fn run_single_test(&mut self, _scenario: TestScenario) -> TestResult {
-        unimplemented!("Legacy test - needs migration to MetadataRepositoryProvider")
-        /*
-            let start_time = std::time::Instant::now();
-            let mut details = TestDetails::default();
-            let mut error_message = None;
+    /// Run a single test scenario using the new MetadataRepositoryProvider system
+    async fn run_single_test(&mut self, scenario: TestScenario) -> TestResult {
+        let start_time = std::time::Instant::now();
+        let mut details = TestDetails::default();
+        let mut error_message = None;
 
-            info!(scenario = ?scenario, "Starting test scenario");
+        info!(scenario = ?scenario, "Starting test scenario");
 
-            // Generate unique repository name
-            let repo_name = generate_test_repo_name(scenario.test_name());
-            let test_repo = TestRepository::new(repo_name.clone(), self.config.test_org.clone());
+        // Generate unique repository name
+        let repo_name = generate_test_repo_name(scenario.test_name());
+        let test_repo = TestRepository::new(repo_name.clone(), self.config.test_org.clone());
 
-            let success = match self
-                .execute_test_scenario(&scenario, &test_repo, &mut details)
-                .await
-            {
-                Ok(_) => {
-                    if scenario.should_succeed() {
-                        info!(scenario = ?scenario, repo_name = repo_name, "Test scenario completed successfully");
-                        true
-                    } else {
-                        warn!(scenario = ?scenario, repo_name = repo_name, "Test scenario succeeded but was expected to fail");
-                        false
-                    }
-                }
-                Err(e) => {
-                    if scenario.should_succeed() {
-                        error!(scenario = ?scenario, repo_name = repo_name, error = %e, "Test scenario failed");
-                        error_message = Some(e.to_string());
-                        false
-                    } else {
-                        info!(scenario = ?scenario, repo_name = repo_name, "Test scenario failed as expected");
-                        true
-                    }
-                }
-            };
-
-            let duration = start_time.elapsed();
-
-            // Track created repository for cleanup
-            if details.repository_created {
-                self.created_repositories.push(test_repo.clone());
-            }
-
-            TestResult {
-                scenario,
-                success,
-                repository: if details.repository_created {
-                    Some(test_repo)
+        let success = match self
+            .execute_test_scenario(&scenario, &test_repo, &mut details)
+            .await
+        {
+            Ok(_) => {
+                if scenario.should_succeed() {
+                    info!(scenario = ?scenario, repo_name = repo_name, "Test scenario completed successfully");
+                    true
                 } else {
-                    None
-                },
-                error: error_message,
-                duration,
-                details,
+                    warn!(scenario = ?scenario, repo_name = repo_name, "Test scenario succeeded but was expected to fail");
+                    false
+                }
             }
+            Err(e) => {
+                if scenario.should_succeed() {
+                    error!(scenario = ?scenario, repo_name = repo_name, error = %e, "Test scenario failed");
+                    error_message = Some(e.to_string());
+                    false
+                } else {
+                    info!(scenario = ?scenario, repo_name = repo_name, "Test scenario failed as expected");
+                    true
+                }
+            }
+        };
+
+        let duration = start_time.elapsed();
+
+        // Track created repository for cleanup
+        if details.repository_created {
+            self.created_repositories.push(test_repo.clone());
         }
 
-        /// Execute the actual test scenario logic
-        async fn execute_test_scenario(
-            &self,
-            scenario: &TestScenario,
-            test_repo: &TestRepository,
-            details: &mut TestDetails,
-        ) -> Result<()> {
-            // Step 1: Create repository creation request
-            info!(scenario = ?scenario, "Creating repository request");
+        TestResult {
+            scenario,
+            success,
+            repository: if details.repository_created {
+                Some(test_repo)
+            } else {
+                None
+            },
+            error: error_message,
+            duration,
+            details,
+        }
+    }
 
-            let name = RepositoryName::new(&test_repo.name)
-                .map_err(|e| anyhow::anyhow!("Invalid repository name: {}", e))?;
-            let owner = OrganizationName::new(&test_repo.owner)
-                .map_err(|e| anyhow::anyhow!("Invalid organization name: {}", e))?;
-            let template = TemplateName::new(scenario.template_name())
-                .map_err(|e| anyhow::anyhow!("Invalid template name: {}", e))?;
+    /// Execute the actual test scenario logic using real GitHub system
+    async fn execute_test_scenario(
+        &self,
+        scenario: &TestScenario,
+        test_repo: &TestRepository,
+        details: &mut TestDetails,
+    ) -> Result<()> {
+        // Step 1: Create repository creation request
+        info!(scenario = ?scenario, "Creating repository request");
 
-            let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
-            details.request_created = true;
+        let name = RepositoryName::new(&test_repo.name)
+            .map_err(|e| anyhow::anyhow!("Invalid repository name: {}", e))?;
+        let owner = OrganizationName::new(&test_repo.owner)
+            .map_err(|e| anyhow::anyhow!("Invalid organization name: {}", e))?;
+        let template = TemplateName::new(scenario.template_name())
+            .map_err(|e| anyhow::anyhow!("Invalid template name: {}", e))?;
 
-            // Step 2: Create mock configuration with test template
-            info!(scenario = ?scenario, "Creating test configuration");
+        let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+        details.request_created = true;
 
-            let template_config = scenario.create_mock_template(&self.config.test_org);
-            let config = Config {
-                templates: vec![template_config],
-            };
-            details.config_loaded = true;
+        // Step 2: Create authentication service
+        info!(scenario = ?scenario, "Setting up authentication");
+        let auth_service = auth_handler::GitHubAuthService::new(
+            self.config.github_app_id,
+            self.config.github_app_private_key.clone(),
+        );
 
-            // Step 3: Call the repository creation function
-            info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
+        // Step 3: Get installation token and create GitHub client
+        let installation_token = auth_service
+            .get_installation_token_for_org(&self.config.test_org)
+            .await
+            .context("Failed to get installation token")?;
 
-            // Get metadata repository name from scenario
-            let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
+        let github_client = github_client::create_token_client(&installation_token)
+            .context("Failed to create GitHub client")?;
+        let github_client = github_client::GitHubClient::new(github_client);
 
-            // Create authentication service
-            let auth_service = auth_handler::GitHubAuthService::new(
-                self.config.github_app_id,
-                self.config.github_app_private_key.clone(),
-            );
+        // Step 4: Create metadata provider
+        info!(scenario = ?scenario, "Creating metadata provider");
+        let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
+        let metadata_provider = config_manager::GitHubMetadataProvider::new(
+            github_client,
+            config_manager::MetadataProviderConfig::explicit(metadata_repo_name),
+        );
+        details.config_loaded = true;
 
-            let result = create_repository(request, &config, &auth_service, metadata_repo_name).await;
+        // Step 5: Call the repository creation function
+        info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
 
-            // Step 4: Evaluate the result
-            match result {
-                Ok(creation_result) => {
-                    info!(
-                        scenario = ?scenario,
-                        repo_name = test_repo.name,
-                        repo_url = creation_result.repository_url,
-                        "Repository creation succeeded"
-                    );
-                    details.repository_created = true;
+        let result = create_repository(
+            request,
+            &metadata_provider,
+            &auth_service,
+            metadata_repo_name,
+        )
+        .await;
 
-                    // Step 5: Validate the created repository
-                    self.validate_github_repository(test_repo)
-                        .await
-                        .context("GitHub repository validation failed")?;
-                    details.validation_passed = true;
+        // Step 6: Evaluate the result
+        match result {
+            Ok(creation_result) => {
+                info!(
+                    scenario = ?scenario,
+                    repo_name = test_repo.name,
+                    repo_url = creation_result.repository_url,
+                    "Repository creation succeeded"
+                );
+                details.repository_created = true;
 
-                    Ok(())
-                }
-                Err(e) => {
-                    let error_msg = format!("Repository creation failed: {}", e);
-                    error!(scenario = ?scenario, repo_name = test_repo.name, error = %e, "Repository creation failed");
-                    Err(anyhow::anyhow!(error_msg))
-                }
+                // Step 7: Validate the created repository
+                self.validate_github_repository(test_repo)
+                    .await
+                    .context("GitHub repository validation failed")?;
+                details.validation_passed = true;
+
+                Ok(())
+            }
+            Err(e) => {
+                let error_msg = format!("Repository creation failed: {}", e);
+                error!(scenario = ?scenario, repo_name = test_repo.name, error = %e, "Repository creation failed");
+                Err(anyhow::anyhow!(error_msg))
             }
         }
+    }
 
-        /// Validate that the repository was created correctly on GitHub
-        async fn validate_github_repository(&self, test_repo: &TestRepository) -> Result<()> {
-            debug!(repo_name = test_repo.name, "Validating GitHub repository");
+    /// Validate that the repository was created correctly on GitHub
+    async fn validate_github_repository(&self, test_repo: &TestRepository) -> Result<()> {
+        debug!(repo_name = test_repo.name, "Validating GitHub repository");
 
-            // Get installation token for validation
-            let installation_token = self
-                .github_client
-                .get_installation_token_for_org(&test_repo.owner)
-                .await
-                .context("Failed to get installation token for validation")?;
+        // Get installation token for validation
+        let installation_token = self
+            .github_client
+            .get_installation_token_for_org(&test_repo.owner)
+            .await
+            .context("Failed to get installation token for validation")?;
 
-            let installation_client = github_client::create_token_client(&installation_token)
-                .context("Failed to create installation token client")?;
+        let installation_client = github_client::create_token_client(&installation_token)
+            .context("Failed to create installation token client")?;
 
-            // Check that repository exists
-            let repo_result = installation_client
-                .repos(&test_repo.owner, &test_repo.name)
-                .get()
-                .await;
+        // Check that repository exists
+        let repo_result = installation_client
+            .repos(&test_repo.owner, &test_repo.name)
+            .get()
+            .await;
 
-            match repo_result {
-                Ok(repo) => {
-                    debug!(
+        match repo_result {
+            Ok(repo) => {
+                debug!(
+                    repo_name = test_repo.name,
+                    private = repo.private,
+                    "Repository validation successful"
+                );
+
+                if !repo.private.unwrap_or(false) {
+                    warn!(
                         repo_name = test_repo.name,
-                        private = repo.private,
-                        "Repository validation successful"
+                        "Repository should be private but is public"
                     );
-
-                    if !repo.private.unwrap_or(false) {
-                        warn!(
-                            repo_name = test_repo.name,
-                            "Repository should be private but is public"
-                        );
-                    }
-
-                    Ok(())
                 }
-                Err(e) => Err(anyhow::anyhow!("Repository validation failed: {}", e)),
+
+                Ok(())
             }
-            */
+            Err(e) => Err(anyhow::anyhow!("Repository validation failed: {}", e)),
+        }
     }
 
     /// Clean up all created test repositories
