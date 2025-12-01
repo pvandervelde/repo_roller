@@ -21,11 +21,11 @@
 //! # Examples
 //!
 //! ```rust
-//! use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig, TemplateMetadata};
+//! use config_manager::{ConfigurationMerger, GlobalDefaults, TemplateConfig, TemplateMetadata};
 //!
 //! let merger = ConfigurationMerger::new();
 //! let global = GlobalDefaults::default();
-//! let template = NewTemplateConfig {
+//! let template = TemplateConfig {
 //!     template: TemplateMetadata {
 //!         name: "example".to_string(),
 //!         description: "Example template".to_string(),
@@ -80,14 +80,14 @@ use crate::{
 /// ```rust
 /// use config_manager::{
 ///     ConfigurationMerger, GlobalDefaults, RepositoryTypeConfig,
-///     TeamConfig, NewTemplateConfig, TemplateMetadata
+///     TeamConfig, TemplateConfig, TemplateMetadata
 /// };
 ///
 /// let merger = ConfigurationMerger::new();
 /// let global_defaults = GlobalDefaults::default();
 /// let repository_type_config = RepositoryTypeConfig::default();
 /// let team_config = TeamConfig::default();
-/// let template_config = NewTemplateConfig {
+/// let template_config = TemplateConfig {
 ///     template: TemplateMetadata {
 ///         name: "example".to_string(),
 ///         description: "Example".to_string(),
@@ -161,11 +161,11 @@ impl ConfigurationMerger {
     /// # Examples
     ///
     /// ```rust
-    /// use config_manager::{ConfigurationMerger, GlobalDefaults, NewTemplateConfig, TemplateMetadata};
+    /// use config_manager::{ConfigurationMerger, GlobalDefaults, TemplateConfig, TemplateMetadata};
     ///
     /// let merger = ConfigurationMerger::new();
     /// let global = GlobalDefaults::default();
-    /// let template = NewTemplateConfig {
+    /// let template = TemplateConfig {
     ///     template: TemplateMetadata {
     ///         name: "example".to_string(),
     ///         description: "Example".to_string(),
