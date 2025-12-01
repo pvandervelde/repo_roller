@@ -60,15 +60,15 @@ impl TestScenario {
     /// Get the template name for this test scenario
     pub fn template_name(&self) -> &'static str {
         match self {
-            TestScenario::BasicCreation => "test-basic",
-            TestScenario::VariableSubstitution => "test-variables",
-            TestScenario::FileFiltering => "test-filtering",
+            TestScenario::BasicCreation => "template-test-basic",
+            TestScenario::VariableSubstitution => "template-test-variables",
+            TestScenario::FileFiltering => "template-test-filtering",
             TestScenario::ErrorHandling => "test-nonexistent",
             // Organization settings scenarios use basic template
-            TestScenario::OrganizationSettings => "test-basic",
-            TestScenario::TeamConfiguration => "test-basic",
-            TestScenario::RepositoryType => "test-basic",
-            TestScenario::ConfigurationHierarchy => "test-basic",
+            TestScenario::OrganizationSettings => "template-test-basic",
+            TestScenario::TeamConfiguration => "template-test-basic",
+            TestScenario::RepositoryType => "template-test-basic",
+            TestScenario::ConfigurationHierarchy => "template-test-basic",
         }
     }
 
@@ -453,7 +453,7 @@ mod tests {
         let basic = TestScenario::BasicCreation;
         assert_eq!(basic.test_name(), "basic");
         assert!(basic.should_succeed());
-        assert_eq!(basic.template_name(), "test-basic");
+        assert_eq!(basic.template_name(), "template-test-basic");
 
         let error = TestScenario::ErrorHandling;
         assert_eq!(error.test_name(), "error-handling");
