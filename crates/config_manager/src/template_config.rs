@@ -220,6 +220,22 @@ pub struct TemplateVariable {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<bool>,
 
+    /// Regex pattern for value validation (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+
+    /// Minimum length for string values (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_length: Option<usize>,
+
+    /// Maximum length for string values (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+
+    /// List of allowed values (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<String>>,
+
     /// Default value if not provided by user (optional).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,

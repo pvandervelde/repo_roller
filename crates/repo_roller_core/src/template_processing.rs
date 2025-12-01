@@ -614,10 +614,10 @@ pub(crate) fn replace_template_variables(
                 description: var.description.clone(),
                 example: var.example.clone(),
                 required: var.required,
-                pattern: None,
-                min_length: None,
-                max_length: None,
-                options: None,
+                pattern: var.pattern.clone(),
+                min_length: var.min_length,
+                max_length: var.max_length,
+                options: var.options.clone(),
                 default: var.default.clone(),
             };
             variable_configs.insert(name.clone(), engine_config);

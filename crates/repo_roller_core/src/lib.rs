@@ -228,8 +228,9 @@ mod tests;
 ///     RepositoryCreationRequestBuilder, RepositoryName,
 ///     OrganizationName, TemplateName, create_repository
 /// };
-/// use config_manager::Config;
-/// use auth_handler::GitHubAuthService;
+/// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
+/// use auth_handler::{GitHubAuthService, UserAuthenticationService};
+/// use github_client;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
@@ -240,10 +241,17 @@ mod tests;
 /// .variable("author", "Jane Doe")
 /// .build();
 ///
-/// let config = Config { templates: vec![] };
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
+/// let token = auth_service.get_installation_token_for_org("my-org").await?;
+/// let github_client = github_client::create_token_client(&token)?;
+/// let github_client = github_client::GitHubClient::new(github_client);
+/// 
+/// let metadata_provider = GitHubMetadataProvider::new(
+///     github_client,
+///     MetadataProviderConfig::explicit(".reporoller")
+/// );
 ///
-/// match create_repository(request, &config, &auth_service, ".reporoller").await {
+/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller").await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);

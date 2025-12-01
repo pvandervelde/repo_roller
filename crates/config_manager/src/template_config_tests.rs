@@ -81,12 +81,20 @@ fn test_template_variable_with_all_fields() {
         description: "Service name".to_string(),
         example: Some("user-service".to_string()),
         required: Some(true),
+        pattern: Some("^[a-z][a-z0-9-]*$".to_string()),
+        min_length: Some(3),
+        max_length: Some(50),
+        options: Some(vec!["service-a".to_string(), "service-b".to_string()]),
         default: Some("my-service".to_string()),
     };
 
     assert_eq!(var.description, "Service name");
     assert_eq!(var.example, Some("user-service".to_string()));
     assert_eq!(var.required, Some(true));
+    assert_eq!(var.pattern, Some("^[a-z][a-z0-9-]*$".to_string()));
+    assert_eq!(var.min_length, Some(3));
+    assert_eq!(var.max_length, Some(50));
+    assert_eq!(var.options.as_ref().unwrap().len(), 2);
     assert_eq!(var.default, Some("my-service".to_string()));
 }
 
@@ -96,12 +104,20 @@ fn test_template_variable_minimal() {
         description: "Port number".to_string(),
         example: None,
         required: None,
+        pattern: None,
+        min_length: None,
+        max_length: None,
+        options: None,
         default: None,
     };
 
     assert_eq!(var.description, "Port number");
     assert!(var.example.is_none());
     assert!(var.required.is_none());
+    assert!(var.pattern.is_none());
+    assert!(var.min_length.is_none());
+    assert!(var.max_length.is_none());
+    assert!(var.options.is_none());
     assert!(var.default.is_none());
 }
 
