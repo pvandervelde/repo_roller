@@ -245,7 +245,7 @@ mod tests;
 /// let token = auth_service.get_installation_token_for_org("my-org").await?;
 /// let github_client = github_client::create_token_client(&token)?;
 /// let github_client = github_client::GitHubClient::new(github_client);
-/// 
+///
 /// let metadata_provider = GitHubMetadataProvider::new(
 ///     github_client,
 ///     MetadataProviderConfig::explicit(".reporoller")
@@ -474,10 +474,7 @@ pub async fn create_repository(
         .load_template_configuration(request.owner.as_ref(), request.template.as_ref())
         .await
         .map_err(|e| {
-            error!(
-                "Template '{}' not found: {}",
-                request.template, e
-            );
+            error!("Template '{}' not found: {}", request.template, e);
             RepoRollerError::Template(TemplateError::TemplateNotFound {
                 name: request.template.as_ref().to_string(),
             })

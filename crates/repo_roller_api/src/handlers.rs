@@ -114,9 +114,8 @@ pub async fn create_repository(
     let domain_request = http_create_repository_request_to_domain(request.clone())?;
 
     // Create GitHub client for template operations
-    let github_client = github_client::create_token_client(&auth.token).map_err(|e| {
-        ApiError::internal(format!("Failed to create GitHub client: {}", e))
-    })?;
+    let github_client = github_client::create_token_client(&auth.token)
+        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     // Create metadata provider for template discovery and loading
