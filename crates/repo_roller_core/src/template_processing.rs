@@ -602,9 +602,8 @@ pub(crate) fn replace_template_variables(
     // Extract configuration-driven variables from merged config
     let config_variables = extract_config_variables(merged_config);
 
-    // For MVP, we'll use empty user variables and get variable configs from template
-    // In a full implementation, these would come from user input
-    let user_variables = HashMap::new();
+    // Use user-provided variables from the request
+    let user_variables = req.variables.clone();
 
     // Convert config_manager::TemplateVariable to template_engine::VariableConfig
     let mut variable_configs = HashMap::new();
