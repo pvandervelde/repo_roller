@@ -307,7 +307,28 @@ impl IntegrationTestRunner {
         let template = TemplateName::new(scenario.template_name())
             .map_err(|e| anyhow::anyhow!("Invalid template name: {}", e))?;
 
-        let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+        // Build request with scenario-specific variables
+        let mut builder = RepositoryCreationRequestBuilder::new(name, owner, template);
+        
+        // Add test variables based on scenario
+        match scenario {
+            TestScenario::VariableSubstitution => {
+                builder = builder
+                    .variable("project_name", "test-project")
+                    .variable("author_name", "Integration Test")
+                    .variable("license_type", "MIT");
+            }
+            TestScenario::FileFiltering => {
+                builder = builder
+                    .variable("include_docs", "true")
+                    .variable("include_config", "true");
+            }
+            _ => {
+                // Other scenarios don't require specific variables
+            }
+        }
+        
+        let request = builder.build();
         details.request_created = true;
 
         // Step 2: Create authentication service
