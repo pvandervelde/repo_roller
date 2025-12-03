@@ -144,14 +144,6 @@ pub struct TestDetails {
     pub config_loaded: bool,
     pub repository_created: bool,
     pub validation_passed: bool,
-    /// Whether configuration verification was performed
-    pub configuration_verified: bool,
-    /// Whether repository settings matched expected configuration
-    pub settings_match: bool,
-    /// Whether custom properties matched expected configuration
-    pub custom_properties_match: bool,
-    /// Whether branch protection matched expected configuration
-    pub branch_protection_match: bool,
 }
 
 /// Integration test runner that orchestrates all test scenarios

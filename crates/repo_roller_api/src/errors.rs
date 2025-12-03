@@ -66,21 +66,6 @@ pub struct ErrorDetails {
 pub struct ApiError(anyhow::Error);
 
 impl ApiError {
-    /// Create a new API error from any error type
-    pub fn new(err: impl Into<anyhow::Error>) -> Self {
-        ApiError(err.into())
-    }
-
-    /// Create an authentication error
-    pub fn authentication(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
-    }
-
-    /// Create a validation error
-    pub fn validation(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
-    }
-
     /// Create a validation error with field information
     pub fn validation_error(field: impl Into<String>, message: impl Into<String>) -> Self {
         ApiError(anyhow::anyhow!(
@@ -88,16 +73,6 @@ impl ApiError {
             field.into(),
             message.into()
         ))
-    }
-
-    /// Create a not found error
-    pub fn not_found(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
-    }
-
-    /// Create an internal server error
-    pub fn internal(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
     }
 }
 
