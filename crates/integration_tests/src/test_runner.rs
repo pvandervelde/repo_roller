@@ -313,7 +313,8 @@ impl IntegrationTestRunner {
         // Add test variables based on scenario
         match scenario {
             TestScenario::VariableSubstitution => {
-                // Variables matching template-test-variables/Cargo.toml placeholders
+                // Variables matching template-test-variables template files
+                // (README.md, Cargo.toml, config.yml, src/main.rs)
                 builder = builder
                     .variable("project_name", "test-project")
                     .variable("version", "0.1.0")
@@ -324,7 +325,9 @@ impl IntegrationTestRunner {
                         "A test project for integration testing",
                     )
                     .variable("license", "MIT")
-                    .variable("license_type", "MIT");
+                    .variable("license_type", "MIT")
+                    .variable("environment", "test")
+                    .variable("debug_mode", "true");
             }
             TestScenario::FileFiltering => {
                 builder = builder
