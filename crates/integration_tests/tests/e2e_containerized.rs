@@ -28,9 +28,33 @@ use integration_tests::container::{ApiContainer, ApiContainerConfig};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 
-/// Helper to get GitHub token from environment
-fn get_github_token() -> Result<String> {
-    std::env::var("GITHUB_TOKEN").map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set"))
+/// Helper to get GitHub installation token from environment.
+///
+/// Creates a proper GitHub App installation token using the app credentials.
+/// This is required because the auth middleware validates tokens by calling
+/// list_installations(), which requires an installation token (not a PAT).
+async fn get_github_installation_token() -> Result<String> {
+    use auth_handler::{GitHubAuthService, UserAuthenticationService};
+    
+    let app_id = std::env::var("GITHUB_APP_ID")
+        .map_err(|_| anyhow::anyhow!("GITHUB_APP_ID not set"))?
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("GITHUB_APP_ID must be a valid number"))?;
+    
+    let private_key = std::env::var("GITHUB_APP_PRIVATE_KEY")
+        .map_err(|_| anyhow::anyhow!("GITHUB_APP_PRIVATE_KEY not set"))?;
+    
+    let org = std::env::var("TEST_ORG")
+        .map_err(|_| anyhow::anyhow!("TEST_ORG not set"))?;
+    
+    // Create auth service and get installation token for the test organization
+    let auth_service = GitHubAuthService::new(app_id, private_key);
+    let token = auth_service
+        .get_installation_token_for_org(&org)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to get installation token: {}", e))?;
+    
+    Ok(token)
 }
 
 // ============================================================================
@@ -94,9 +118,10 @@ async fn test_e2e_list_repository_types() -> Result<()> {
     let base_url = container.start().await?;
 
     let client = Client::new();
+    let token = get_github_installation_token().await?;
     let response = client
         .get(format!("{}/api/v1/orgs/{}/repository-types", base_url, org))
-        .header("Authorization", format!("Bearer {}", get_github_token()?))
+        .header("Authorization", format!("Bearer {}", token))
         .send()
         .await?;
 
@@ -133,9 +158,10 @@ async fn test_e2e_get_global_defaults() -> Result<()> {
     let base_url = container.start().await?;
 
     let client = Client::new();
+    let token = get_github_installation_token().await?;
     let response = client
         .get(format!("{}/api/v1/orgs/{}/defaults", base_url, org))
-        .header("Authorization", format!("Bearer {}", get_github_token()?))
+        .header("Authorization", format!("Bearer {}", token))
         .send()
         .await?;
 
@@ -178,13 +204,14 @@ async fn test_e2e_configuration_preview() -> Result<()> {
     let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
 
     let client = Client::new();
+    let token = get_github_installation_token().await?;
     let request_body = json!({
         "template": template
     });
 
     let response = client
         .post(format!("{}/api/v1/orgs/{}/preview", base_url, org))
-        .header("Authorization", format!("Bearer {}", get_github_token()?))
+        .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -237,6 +264,7 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
 
     let client = Client::new();
+    let token = get_github_installation_token().await?;
     let request_body = json!({
         "name": repo_name,
         "organization": org,
@@ -246,7 +274,7 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", get_github_token()?))
+        .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -305,9 +333,10 @@ async fn test_e2e_list_templates() -> Result<()> {
     let base_url = container.start().await?;
 
     let client = Client::new();
+    let token = get_github_installation_token().await?;
     let response = client
         .get(format!("{}/api/v1/orgs/{}/templates", base_url, org))
-        .header("Authorization", format!("Bearer {}", get_github_token()?))
+        .header("Authorization", format!("Bearer {}", token))
         .send()
         .await?;
 
@@ -348,9 +377,10 @@ async fn test_e2e_validate_organization() -> Result<()> {
     let base_url = container.start().await?;
 
     let client = Client::new();
+    let token = get_github_installation_token().await?;
     let response = client
         .post(format!("{}/api/v1/orgs/{}/validate", base_url, org))
-        .header("Authorization", format!("Bearer {}", get_github_token()?))
+        .header("Authorization", format!("Bearer {}", token))
         .send()
         .await?;
 
