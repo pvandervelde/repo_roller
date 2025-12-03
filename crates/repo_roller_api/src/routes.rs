@@ -72,8 +72,8 @@ pub fn create_router(state: AppState) -> Router {
     // Configure request timeout (30 seconds)
     let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
 
-    // API v1 routes
-    let api_v1 = Router::new()
+    // Protected API routes (require authentication)
+    let protected_routes = Router::new()
         // Repository operations
         .route("/repositories", post(handlers::create_repository))
         .route(
@@ -86,10 +86,15 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Organization-specific routes
         .nest("/orgs/:org", organization_routes())
-        // Health check (no auth required)
+        // Add auth middleware only to protected routes
+        .layer(middleware::from_fn(api_middleware::auth_middleware));
+
+    // API v1 routes (includes both protected and public routes)
+    let api_v1 = Router::new()
+        .merge(protected_routes)
+        // Health check (no auth required - added after auth middleware)
         .route("/health", get(handlers::health_check))
-        // Add middleware layers (order matters: last added runs first)
-        .layer(middleware::from_fn(api_middleware::auth_middleware))
+        // Add remaining middleware layers
         .layer(middleware::from_fn(api_middleware::tracing_middleware))
         .layer(timeout_layer)
         .layer(trace_layer)
