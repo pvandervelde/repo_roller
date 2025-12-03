@@ -57,7 +57,10 @@ async fn test_e2e_health_check() -> Result<()> {
 
     // Test health endpoint
     let client = Client::new();
-    let response = client.get(&format!("{}/health", base_url)).send().await?;
+    let response = client
+        .get(&format!("{}/api/v1/health", base_url))
+        .send()
+        .await?;
 
     assert_eq!(
         response.status(),
