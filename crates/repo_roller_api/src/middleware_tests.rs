@@ -109,16 +109,7 @@ fn test_extract_bearer_token_wrong_scheme() {
 fn test_auth_context_creation() {
     let context = AuthContext::new("test_token".to_string());
     assert_eq!(context.token, "test_token");
-    assert!(context.installation_id.is_none());
     assert!(context.organization.is_none());
-}
-
-/// Test AuthContext with installation ID
-#[test]
-fn test_auth_context_with_installation_id() {
-    let context = AuthContext::new("test_token".to_string()).with_installation_id(12345);
-
-    assert_eq!(context.installation_id, Some(12345));
 }
 
 /// Test AuthContext with organization

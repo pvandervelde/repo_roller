@@ -67,6 +67,7 @@ mod path_validation_tests {
         let repo_path = temp_dir.path();
 
         // Unix-style absolute paths (work on all platforms)
+        #[allow(unused_mut)] // mut needed on Windows for extend()
         let mut absolute_paths = vec![
             "/etc/passwd",           // Unix absolute
             "/tmp/malicious.txt",    // Unix temp directory
