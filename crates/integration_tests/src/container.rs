@@ -232,7 +232,11 @@ impl ApiContainer {
             };
             sleep(delay).await;
 
-            match client.get(format!("{}/health", base_url)).send().await {
+            match client
+                .get(format!("{}/api/v1/health", base_url))
+                .send()
+                .await
+            {
                 Ok(response) if response.status().is_success() => {
                     tracing::info!("✓ API server is ready (attempt {})", attempt);
                     return Ok(());
