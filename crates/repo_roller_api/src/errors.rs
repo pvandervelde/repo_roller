@@ -74,6 +74,13 @@ impl ApiError {
             message.into()
         ))
     }
+
+    /// Create an internal error with a message
+    ///
+    /// Used for unexpected failures that should result in a 500 Internal Server Error.
+    pub fn internal(message: impl Into<String>) -> Self {
+        ApiError(anyhow::anyhow!("internal error: {}", message.into()))
+    }
 }
 
 impl From<RepoRollerError> for ApiError {
