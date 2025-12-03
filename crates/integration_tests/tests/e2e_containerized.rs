@@ -95,10 +95,7 @@ async fn test_e2e_list_repository_types() -> Result<()> {
 
     let client = Client::new();
     let response = client
-        .get(&format!(
-            "{}/api/v1/orgs/{}/repository-types",
-            base_url, org
-        ))
+        .get(format!("{}/api/v1/orgs/{}/repository-types", base_url, org))
         .header("Authorization", format!("Bearer {}", get_github_token()?))
         .send()
         .await?;
