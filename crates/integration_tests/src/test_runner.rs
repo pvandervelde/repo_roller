@@ -309,13 +309,21 @@ impl IntegrationTestRunner {
 
         // Build request with scenario-specific variables
         let mut builder = RepositoryCreationRequestBuilder::new(name, owner, template);
-        
+
         // Add test variables based on scenario
         match scenario {
             TestScenario::VariableSubstitution => {
+                // Variables matching template-test-variables/Cargo.toml placeholders
                 builder = builder
                     .variable("project_name", "test-project")
+                    .variable("version", "0.1.0")
                     .variable("author_name", "Integration Test")
+                    .variable("author_email", "test@example.com")
+                    .variable(
+                        "project_description",
+                        "A test project for integration testing",
+                    )
+                    .variable("license", "MIT")
                     .variable("license_type", "MIT");
             }
             TestScenario::FileFiltering => {
@@ -327,7 +335,7 @@ impl IntegrationTestRunner {
                 // Other scenarios don't require specific variables
             }
         }
-        
+
         let request = builder.build();
         details.request_created = true;
 
