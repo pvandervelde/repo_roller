@@ -47,6 +47,8 @@ async fn get_github_installation_token() -> Result<String> {
     let org = std::env::var("TEST_ORG")
         .map_err(|_| anyhow::anyhow!("TEST_ORG not set"))?;
     
+    tracing::info!("Generating installation token for org: {}", org);
+    
     // Create auth service and get installation token for the test organization
     let auth_service = GitHubAuthService::new(app_id, private_key);
     let token = auth_service
@@ -54,7 +56,26 @@ async fn get_github_installation_token() -> Result<String> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to get installation token: {}", e))?;
     
+    tracing::info!("Successfully generated installation token");
+    
     Ok(token)
+}
+
+/// Helper to assert response status with detailed error logging.
+async fn assert_status_with_body(
+    response: reqwest::Response,
+    expected: StatusCode,
+    context: &str,
+) -> Result<reqwest::Response> {
+    let status = response.status();
+    if status != expected {
+        let body = response.text().await.unwrap_or_else(|_| "<failed to read body>".to_string());
+        panic!(
+            "{}\n  Expected: {}\n  Got: {}\n  Response body: {}",
+            context, expected, status, body
+        );
+    }
+    Ok(response)
 }
 
 // ============================================================================
@@ -125,11 +146,11 @@ async fn test_e2e_list_repository_types() -> Result<()> {
         .send()
         .await?;
 
-    assert_eq!(
-        response.status(),
+    let response = assert_status_with_body(
+        response,
         StatusCode::OK,
         "Should return 200 OK for repository types"
-    );
+    ).await?;
 
     let json: serde_json::Value = response.json().await?;
     assert!(
@@ -210,7 +231,7 @@ async fn test_e2e_configuration_preview() -> Result<()> {
     });
 
     let response = client
-        .post(format!("{}/api/v1/orgs/{}/preview", base_url, org))
+        .post(format!("{}/api/v1/orgs/{}/configuration/preview", base_url, org))
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
         .json(&request_body)
