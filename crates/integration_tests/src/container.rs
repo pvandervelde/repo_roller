@@ -42,8 +42,8 @@ impl ApiContainerConfig {
         let github_app_private_key =
             env::var("GITHUB_APP_PRIVATE_KEY").context("GITHUB_APP_PRIVATE_KEY not set")?;
         let test_org = env::var("TEST_ORG").context("TEST_ORG not set")?;
-        let metadata_repo = env::var("METADATA_REPOSITORY_NAME")
-            .unwrap_or_else(|_| ".reporoller".to_string());
+        let metadata_repo =
+            env::var("METADATA_REPOSITORY_NAME").unwrap_or_else(|_| ".reporoller".to_string());
         let port = env::var("TEST_API_PORT")
             .unwrap_or_else(|_| "8080".to_string())
             .parse()
