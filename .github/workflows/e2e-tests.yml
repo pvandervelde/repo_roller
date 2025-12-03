@@ -95,6 +95,13 @@ jobs:
                   echo "✅ All required secrets are configured"
                   echo "📋 GitHub App ID: $GITHUB_APP_ID"
                   echo "📋 Test Organization: $TEST_ORG"
+                  echo "📋 Metadata Repository: $METADATA_REPOSITORY_NAME"
+                  echo ""
+                  echo "⚠️  IMPORTANT: The metadata repository must exist in the test organization!"
+                  echo "   Expected location: $TEST_ORG/.reporoller-test"
+                  echo "   If tests fail with 404/500 errors, verify:"
+                  echo "   1. Repository exists: https://github.com/$TEST_ORG/.reporoller-test"
+                  echo "   2. GitHub App has access to the repository"
 
             - name: Run E2E containerized tests
               env:
