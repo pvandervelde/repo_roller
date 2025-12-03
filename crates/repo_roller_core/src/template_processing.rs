@@ -789,12 +789,13 @@ pub(crate) async fn prepare_local_repository(
 
     // Fetch template files
     // Convert owner/repo format to full GitHub URL
-    let github_url = if template_source.starts_with("http://") || template_source.starts_with("https://") {
-        template_source.to_string()
-    } else {
-        format!("https://github.com/{}", template_source)
-    };
-    
+    let github_url =
+        if template_source.starts_with("http://") || template_source.starts_with("https://") {
+            template_source.to_string()
+        } else {
+            format!("https://github.com/{}", template_source)
+        };
+
     info!("Fetching template files from: {}", github_url);
     let files = template_fetcher
         .fetch_template_files(&github_url)
