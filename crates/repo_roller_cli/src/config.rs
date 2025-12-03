@@ -13,7 +13,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use config_manager::Config;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -54,11 +53,7 @@ mod tests;
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {
-    /// Core configuration (templates, repository settings, etc.)
-    #[serde(flatten)]
-    pub core: Config,
-
-    /// - CLI-specific configuration
+    /// CLI-specific configuration
     #[serde(default)]
     pub authentication: AuthenticationConfig,
 
@@ -100,8 +95,8 @@ impl AppConfig {
     ///
     /// let config_path = Path::new("./config.toml");
     /// match AppConfig::load(&config_path) {
-    ///     Ok(config) => println!("Loaded {} templates", config.core.templates.len()),
-    ///     Err(e) => eprintln!("Failed to load config: {}", e),
+    ///     Ok(config) => println!(\"Configuration loaded successfully\"),
+    ///     Err(e) => eprintln!(\"Failed to load config: {}\", e),
     /// }
     /// ```
     pub fn load(path: &Path) -> Result<Self, Error> {
@@ -191,7 +186,6 @@ impl AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            core: Config { templates: vec![] },
             authentication: AuthenticationConfig::new(),
             organization: OrganizationConfig::new(),
         }

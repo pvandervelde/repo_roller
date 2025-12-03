@@ -227,7 +227,7 @@ pub struct ValidationWarning {
 ///
 ///     async fn validate_template_config(
 ///         &self,
-///         config: &config_manager::NewTemplateConfig,
+///         config: &config_manager::TemplateConfig,
 ///     ) -> config_manager::ConfigurationResult<ValidationResult> {
 ///         Ok(ValidationResult::new())
 ///     }

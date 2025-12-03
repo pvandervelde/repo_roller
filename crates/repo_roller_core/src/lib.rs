@@ -35,8 +35,9 @@
 //!     create_repository, RepositoryCreationRequestBuilder,
 //!     RepositoryName, OrganizationName, TemplateName
 //! };
-//! use config_manager::Config;
+//! use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
 //! use auth_handler::GitHubAuthService;
+//! use github_client::GitHubClient;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a type-safe repository creation request
@@ -48,8 +49,12 @@
 //! .variable("author", "Jane Doe")
 //! .build();
 //!
-//! // Load configuration with available templates
-//! let config = Config { templates: vec![] }; // Would be loaded from config file
+//! // Create GitHub client and metadata provider
+//! let github_client = github_client::create_token_client("installation-token")?;
+//! let metadata_provider = GitHubMetadataProvider::new(
+//!     GitHubClient::new(github_client),
+//!     MetadataProviderConfig::explicit(".reporoller")
+//! );
 //!
 //! // Create authentication service
 //! let auth_service = GitHubAuthService::new(12345, "private-key-content".to_string());
@@ -57,7 +62,7 @@
 //! // Create the repository
 //! match create_repository(
 //!     request,
-//!     &config,
+//!     &metadata_provider,
 //!     &auth_service,
 //!     ".reporoller" // Metadata repository name
 //! ).await {
@@ -223,8 +228,9 @@ mod tests;
 ///     RepositoryCreationRequestBuilder, RepositoryName,
 ///     OrganizationName, TemplateName, create_repository
 /// };
-/// use config_manager::Config;
-/// use auth_handler::GitHubAuthService;
+/// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
+/// use auth_handler::{GitHubAuthService, UserAuthenticationService};
+/// use github_client;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
@@ -235,10 +241,17 @@ mod tests;
 /// .variable("author", "Jane Doe")
 /// .build();
 ///
-/// let config = Config { templates: vec![] };
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
+/// let token = auth_service.get_installation_token_for_org("my-org").await?;
+/// let github_client = github_client::create_token_client(&token)?;
+/// let github_client = github_client::GitHubClient::new(github_client);
 ///
-/// match create_repository(request, &config, &auth_service, ".reporoller").await {
+/// let metadata_provider = GitHubMetadataProvider::new(
+///     github_client,
+///     MetadataProviderConfig::explicit(".reporoller")
+/// );
+///
+/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller").await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
@@ -347,9 +360,8 @@ async fn create_github_repository(
 /// # Arguments
 ///
 /// * `request` - Type-safe repository creation request with branded types
-/// * `config` - Application configuration containing template definitions
-/// * `app_id` - GitHub App ID for authentication
-/// * `app_key` - GitHub App private key for authentication
+/// * `metadata_provider` - Provider for loading template configurations from GitHub
+/// * `auth_service` - Authentication service for GitHub operations
 /// * `metadata_repository_name` - Name of the repository containing organization configuration (e.g., ".reporoller")
 ///
 /// # Returns
@@ -372,8 +384,9 @@ async fn create_github_repository(
 ///     RepositoryCreationRequestBuilder, RepositoryName,
 ///     OrganizationName, TemplateName, create_repository
 /// };
-/// use config_manager::Config;
+/// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
 /// use auth_handler::GitHubAuthService;
+/// use github_client::GitHubClient;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
@@ -383,11 +396,15 @@ async fn create_github_repository(
 /// )
 /// .build();
 ///
-/// let config = Config { templates: vec![] };
+/// let github_client = github_client::create_token_client("token")?;
+/// let metadata_provider = GitHubMetadataProvider::new(
+///     GitHubClient::new(github_client),
+///     MetadataProviderConfig::explicit(".reporoller")
+/// );
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
 /// let result = create_repository(
 ///     request,
-///     &config,
+///     &metadata_provider,
 ///     &auth_service,
 ///     ".reporoller"
 /// ).await?;
@@ -397,7 +414,7 @@ async fn create_github_repository(
 /// ```
 pub async fn create_repository(
     request: RepositoryCreationRequest,
-    config: &dyn config_manager::ConfigurationManager,
+    metadata_provider: &dyn config_manager::MetadataRepositoryProvider,
     auth_service: &dyn auth_handler::UserAuthenticationService,
     metadata_repository_name: &str,
 ) -> RepoRollerResult<RepositoryCreationResult> {
@@ -448,30 +465,32 @@ pub async fn create_repository(
     )
     .await?;
 
-    // Step 4: Find template configuration
+    // Step 4: Load template configuration from GitHub
     debug!(
-        "Searching for template '{}' in configuration",
-        request.template
+        "Loading template '{}' from organization '{}'",
+        request.template, request.owner
     );
-    let template = config
-        .get_template(request.template.as_ref())
+    let template = metadata_provider
+        .load_template_configuration(request.owner.as_ref(), request.template.as_ref())
         .await
         .map_err(|e| {
-            error!(
-                "Template '{}' not found in configuration: {}",
-                request.template, e
-            );
+            error!("Template '{}' not found: {}", request.template, e);
             RepoRollerError::Template(TemplateError::TemplateNotFound {
                 name: request.template.as_ref().to_string(),
             })
         })?;
 
-    info!("Template '{}' found in configuration", request.template);
+    info!("Template '{}' loaded successfully", request.template);
+
+    // Construct source repository identifier for template fetcher
+    // Format: "org/repo" (e.g., "my-org/template-rust-library")
+    let template_source = format!("{}/{}", request.owner.as_ref(), request.template.as_ref());
 
     // Step 5: Prepare local repository with template files
     let local_repo_path = template_processing::prepare_local_repository(
         &request,
         &template,
+        &template_source,
         &template_fetcher,
         &merged_config,
     )

@@ -602,23 +602,22 @@ pub(crate) fn replace_template_variables(
     // Extract configuration-driven variables from merged config
     let config_variables = extract_config_variables(merged_config);
 
-    // For MVP, we'll use empty user variables and get variable configs from template
-    // In a full implementation, these would come from user input
-    let user_variables = HashMap::new();
+    // Use user-provided variables from the request
+    let user_variables = req.variables.clone();
 
-    // Convert config_manager::VariableConfig to template_engine::VariableConfig
+    // Convert config_manager::TemplateVariable to template_engine::VariableConfig
     let mut variable_configs = HashMap::new();
-    if let Some(ref template_vars) = template.variable_configs {
-        for (name, config) in template_vars {
+    if let Some(ref template_vars) = template.variables {
+        for (name, var) in template_vars {
             let engine_config = template_engine::VariableConfig {
-                description: config.description.clone(),
-                example: config.example.clone(),
-                required: config.required,
-                pattern: config.pattern.clone(),
-                min_length: config.min_length,
-                max_length: config.max_length,
-                options: config.options.clone(),
-                default: config.default.clone(),
+                description: var.description.clone(),
+                example: var.example.clone(),
+                required: var.required,
+                pattern: var.pattern.clone(),
+                min_length: var.min_length,
+                max_length: var.max_length,
+                options: var.options.clone(),
+                default: var.default.clone(),
             };
             variable_configs.insert(name.clone(), engine_config);
         }
@@ -776,6 +775,7 @@ pub(crate) fn replace_template_variables(
 pub(crate) async fn prepare_local_repository(
     request: &RepositoryCreationRequest,
     template: &config_manager::TemplateConfig,
+    template_source: &str,
     template_fetcher: &dyn TemplateFetcher,
     merged_config: &config_manager::MergedConfiguration,
 ) -> RepoRollerResult<TempDir> {
@@ -788,9 +788,17 @@ pub(crate) async fn prepare_local_repository(
     })?;
 
     // Fetch template files
-    info!("Fetching template files from: {}", template.source_repo);
+    // Convert owner/repo format to full GitHub URL
+    let github_url =
+        if template_source.starts_with("http://") || template_source.starts_with("https://") {
+            template_source.to_string()
+        } else {
+            format!("https://github.com/{}", template_source)
+        };
+
+    info!("Fetching template files from: {}", github_url);
     let files = template_fetcher
-        .fetch_template_files(&template.source_repo)
+        .fetch_template_files(&github_url)
         .await
         .map_err(|e| {
             error!("Failed to fetch template files: {}", e);

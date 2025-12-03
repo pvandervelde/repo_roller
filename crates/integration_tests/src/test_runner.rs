@@ -3,15 +3,18 @@
 //! This module implements comprehensive end-to-end testing of the RepoRoller
 //! functionality, including repository creation, template processing, variable
 //! substitution, and error handling scenarios.
+//!
+//! NOTE: This module needs to be updated to use the new MetadataRepositoryProvider
+//! system instead of the legacy Config-based approach. The E2E tests in
+//! e2e_containerized.rs are currently the active tests.
 
 use anyhow::{Context, Result};
-use config_manager::{Config, TemplateConfig};
+use auth_handler::UserAuthenticationService;
 use github_client::{create_app_client, GitHubClient};
 use repo_roller_core::{
     create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
     TemplateName,
 };
-use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 
 use crate::utils::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
@@ -57,15 +60,15 @@ impl TestScenario {
     /// Get the template name for this test scenario
     pub fn template_name(&self) -> &'static str {
         match self {
-            TestScenario::BasicCreation => "test-basic",
-            TestScenario::VariableSubstitution => "test-variables",
-            TestScenario::FileFiltering => "test-filtering",
+            TestScenario::BasicCreation => "template-test-basic",
+            TestScenario::VariableSubstitution => "template-test-variables",
+            TestScenario::FileFiltering => "template-test-filtering",
             TestScenario::ErrorHandling => "test-nonexistent",
             // Organization settings scenarios use basic template
-            TestScenario::OrganizationSettings => "test-basic",
-            TestScenario::TeamConfiguration => "test-basic",
-            TestScenario::RepositoryType => "test-basic",
-            TestScenario::ConfigurationHierarchy => "test-basic",
+            TestScenario::OrganizationSettings => "template-test-basic",
+            TestScenario::TeamConfiguration => "template-test-basic",
+            TestScenario::RepositoryType => "template-test-basic",
+            TestScenario::ConfigurationHierarchy => "template-test-basic",
         }
     }
 
@@ -110,167 +113,16 @@ impl TestScenario {
         }
     }
 
-    /// Create a mock template configuration for testing
-    pub fn create_mock_template(&self, org: &str) -> TemplateConfig {
-        let description = match self {
-            TestScenario::ErrorHandling => {
-                Some("Non-existent template for testing error handling".to_string())
-            }
-            _ => Some(format!("Test template for {}", self.test_name())),
-        };
-
-        // Create variable configurations with defaults for VariableSubstitution scenario
-        let variable_configs = if matches!(self, TestScenario::VariableSubstitution) {
-            let mut configs = HashMap::new();
-
-            configs.insert(
-                "project_name".to_string(),
-                config_manager::VariableConfig {
-                    description: "Name of the project".to_string(),
-                    example: Some("my-awesome-project".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("test-project".to_string()),
-                },
-            );
-
-            configs.insert(
-                "project_description".to_string(),
-                config_manager::VariableConfig {
-                    description: "Description of the project".to_string(),
-                    example: Some("A simple test project".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("Integration test project for RepoRoller".to_string()),
-                },
-            );
-
-            configs.insert(
-                "author_name".to_string(),
-                config_manager::VariableConfig {
-                    description: "Author's name".to_string(),
-                    example: Some("John Doe".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("RepoRoller Test".to_string()),
-                },
-            );
-
-            configs.insert(
-                "author_email".to_string(),
-                config_manager::VariableConfig {
-                    description: "Author's email".to_string(),
-                    example: Some("john@example.com".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("test@example.com".to_string()),
-                },
-            );
-
-            configs.insert(
-                "version".to_string(),
-                config_manager::VariableConfig {
-                    description: "Project version".to_string(),
-                    example: Some("1.0.0".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("0.1.0".to_string()),
-                },
-            );
-
-            configs.insert(
-                "license".to_string(),
-                config_manager::VariableConfig {
-                    description: "License type".to_string(),
-                    example: Some("MIT".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("MIT".to_string()),
-                },
-            );
-
-            configs.insert(
-                "custom_ignore".to_string(),
-                config_manager::VariableConfig {
-                    description: "Additional gitignore patterns".to_string(),
-                    example: Some("*.tmp".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("*.test".to_string()),
-                },
-            );
-
-            configs.insert(
-                "debug_mode".to_string(),
-                config_manager::VariableConfig {
-                    description: "Boolean for debug mode".to_string(),
-                    example: Some("true".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("true".to_string()),
-                },
-            );
-
-            configs.insert(
-                "environment".to_string(),
-                config_manager::VariableConfig {
-                    description: "Environment name".to_string(),
-                    example: Some("production".to_string()),
-                    required: Some(false),
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                    options: None,
-                    default: Some("development".to_string()),
-                },
-            );
-
-            Some(configs)
-        } else {
-            Some(HashMap::new())
-        };
-
-        TemplateConfig {
-            name: self.template_name().to_string(),
-            source_repo: format!(
-                "https://github.com/{}/template-{}",
-                org,
-                self.template_name()
-            ),
-            description,
-            topics: Some(vec!["test".to_string(), "repo-roller".to_string()]),
-            features: None,
-            pr_settings: None,
-            labels: None,
-            branch_protection_rules: None,
-            action_permissions: None,
-            required_variables: None,
-            variable_configs,
-        }
+    /// Get the expected template repository name for this scenario.
+    ///
+    /// Returns the repository name that should contain the template for this test scenario.
+    /// Templates are loaded from actual GitHub repositories via MetadataRepositoryProvider.
+    ///
+    /// # Returns
+    /// A string in the format "template-{template_name}"
+    #[allow(dead_code)]
+    pub fn template_repository(&self) -> String {
+        format!("template-{}", self.template_name())
     }
 }
 
@@ -380,7 +232,7 @@ impl IntegrationTestRunner {
         self.run_single_test(scenario).await
     }
 
-    /// Run a single test scenario
+    /// Run a single test scenario using the new MetadataRepositoryProvider system
     async fn run_single_test(&mut self, scenario: TestScenario) -> TestResult {
         let start_time = std::time::Instant::now();
         let mut details = TestDetails::default();
@@ -438,7 +290,7 @@ impl IntegrationTestRunner {
         }
     }
 
-    /// Execute the actual test scenario logic
+    /// Execute the actual test scenario logic using real GitHub system
     async fn execute_test_scenario(
         &self,
         scenario: &TestScenario,
@@ -455,33 +307,79 @@ impl IntegrationTestRunner {
         let template = TemplateName::new(scenario.template_name())
             .map_err(|e| anyhow::anyhow!("Invalid template name: {}", e))?;
 
-        let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+        // Build request with scenario-specific variables
+        let mut builder = RepositoryCreationRequestBuilder::new(name, owner, template);
+
+        // Add test variables based on scenario
+        match scenario {
+            TestScenario::VariableSubstitution => {
+                // Variables matching template-test-variables template files
+                // (README.md, Cargo.toml, config.yml, src/main.rs)
+                builder = builder
+                    .variable("project_name", "test-project")
+                    .variable("version", "0.1.0")
+                    .variable("author_name", "Integration Test")
+                    .variable("author_email", "test@example.com")
+                    .variable(
+                        "project_description",
+                        "A test project for integration testing",
+                    )
+                    .variable("license", "MIT")
+                    .variable("license_type", "MIT")
+                    .variable("environment", "test")
+                    .variable("debug_mode", "true");
+            }
+            TestScenario::FileFiltering => {
+                builder = builder
+                    .variable("include_docs", "true")
+                    .variable("include_config", "true");
+            }
+            _ => {
+                // Other scenarios don't require specific variables
+            }
+        }
+
+        let request = builder.build();
         details.request_created = true;
 
-        // Step 2: Create mock configuration with test template
-        info!(scenario = ?scenario, "Creating test configuration");
-
-        let template_config = scenario.create_mock_template(&self.config.test_org);
-        let config = Config {
-            templates: vec![template_config],
-        };
-        details.config_loaded = true;
-
-        // Step 3: Call the repository creation function
-        info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
-
-        // Get metadata repository name from scenario
-        let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
-
-        // Create authentication service
+        // Step 2: Create authentication service
+        info!(scenario = ?scenario, "Setting up authentication");
         let auth_service = auth_handler::GitHubAuthService::new(
             self.config.github_app_id,
             self.config.github_app_private_key.clone(),
         );
 
-        let result = create_repository(request, &config, &auth_service, metadata_repo_name).await;
+        // Step 3: Get installation token and create GitHub client
+        let installation_token = auth_service
+            .get_installation_token_for_org(&self.config.test_org)
+            .await
+            .context("Failed to get installation token")?;
 
-        // Step 4: Evaluate the result
+        let github_client = github_client::create_token_client(&installation_token)
+            .context("Failed to create GitHub client")?;
+        let github_client = github_client::GitHubClient::new(github_client);
+
+        // Step 4: Create metadata provider
+        info!(scenario = ?scenario, "Creating metadata provider");
+        let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
+        let metadata_provider = config_manager::GitHubMetadataProvider::new(
+            github_client,
+            config_manager::MetadataProviderConfig::explicit(metadata_repo_name),
+        );
+        details.config_loaded = true;
+
+        // Step 5: Call the repository creation function
+        info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
+
+        let result = create_repository(
+            request,
+            &metadata_provider,
+            &auth_service,
+            metadata_repo_name,
+        )
+        .await;
+
+        // Step 6: Evaluate the result
         match result {
             Ok(creation_result) => {
                 info!(
@@ -492,7 +390,7 @@ impl IntegrationTestRunner {
                 );
                 details.repository_created = true;
 
-                // Step 5: Validate the created repository
+                // Step 7: Validate the created repository
                 self.validate_github_repository(test_repo)
                     .await
                     .context("GitHub repository validation failed")?;
@@ -587,7 +485,7 @@ mod tests {
         let basic = TestScenario::BasicCreation;
         assert_eq!(basic.test_name(), "basic");
         assert!(basic.should_succeed());
-        assert_eq!(basic.template_name(), "test-basic");
+        assert_eq!(basic.template_name(), "template-test-basic");
 
         let error = TestScenario::ErrorHandling;
         assert_eq!(error.test_name(), "error-handling");
@@ -596,10 +494,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any())] // Disabled until migration to new TemplateConfig
     fn test_mock_template_creation() {
         let scenario = TestScenario::VariableSubstitution;
         let template = scenario.create_mock_template("glitchgrove");
-        assert_eq!(template.name, "test-variables");
-        assert!(template.source_repo.contains("template-test-variables"));
+        //assert_eq!(template.name, "test-variables");
+        //assert!(template.source_repo.contains("template-test-variables"));
     }
 }

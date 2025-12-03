@@ -26,6 +26,7 @@ use crate::{
     config::{get_config_path, AppConfig},
     errors::Error,
 };
+use auth_handler::UserAuthenticationService;
 use clap::{arg, Args};
 use keyring::Entry;
 use repo_roller_core::{
@@ -175,10 +176,38 @@ pub async fn create_repository(
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(app_id, app_key);
 
+    // Get installation token for the organization
+    let installation_token = auth_service
+        .get_installation_token_for_org(request.owner.as_ref())
+        .await
+        .map_err(|e| {
+            repo_roller_core::RepoRollerError::Authentication(
+                repo_roller_core::AuthenticationError::AuthenticationFailed {
+                    reason: format!("Failed to get installation token: {}", e),
+                },
+            )
+        })?;
+
+    // Create GitHub client for metadata provider
+    let github_client = github_client::create_token_client(&installation_token).map_err(|e| {
+        repo_roller_core::RepoRollerError::System(repo_roller_core::SystemError::Internal {
+            reason: format!("Failed to create GitHub client: {}", e),
+        })
+    })?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    // Create metadata provider
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(
+            &config.organization.metadata_repository_name,
+        ),
+    );
+
     // Use the new function with dependency injection
     repo_roller_core::create_repository(
         request,
-        &config.core,
+        &metadata_provider,
         &auth_service,
         &config.organization.metadata_repository_name,
     )

@@ -113,11 +113,16 @@ pub async fn create_repository(
     // Translate HTTP request to domain request (includes validation)
     let domain_request = http_create_repository_request_to_domain(request.clone())?;
 
-    // Create ConfigurationManager - templates come from GitHub repos, not config file
-    // The OrganizationSettingsManager loads actual template configurations from
-    // the metadata repository during create_repository() execution.
-    // This empty Config satisfies the legacy trait requirement.
-    let config_manager = config_manager::Config { templates: vec![] };
+    // Create GitHub client for template operations
+    let github_client = github_client::create_token_client(&auth.token)
+        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    // Create metadata provider for template discovery and loading
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(&state.metadata_repository_name),
+    );
 
     // Create authentication service that returns the installation token we already have
     // The auth middleware has already validated this token with GitHub
@@ -127,7 +132,7 @@ pub async fn create_repository(
     // Call domain service to create repository
     let result = repo_roller_core::create_repository(
         domain_request,
-        &config_manager,
+        &metadata_provider,
         &auth_service,
         &state.metadata_repository_name,
     )
