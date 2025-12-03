@@ -46,6 +46,6 @@ http-body-util = "0.1"
 tower = { workspace = true, features = ["util"] }
 hyper = { workspace = true, features = ["full"] }
 
-[lib]
+[[bin]]
 name = "repo_roller_api"
-path = "src/lib.rs"
+path = "src/main.rs"
