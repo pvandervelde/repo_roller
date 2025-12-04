@@ -36,6 +36,7 @@ use config_manager::{
     MetadataRepositoryProvider, OrganizationSettingsManager,
 };
 use github_client::GitHubClient;
+use repo_roller_core::RepoRollerError;
 
 /// Create an OrganizationSettingsManager and MetadataRepositoryProvider for a request.
 ///
@@ -560,22 +561,7 @@ pub async fn list_repository_types(
     let metadata_repo = provider
         .discover_metadata_repository(&params.org)
         .await
-        .map_err(|e| {
-            // If metadata repository not found, return empty list
-            if matches!(
-                e,
-                config_manager::ConfigurationError::MetadataRepositoryNotFound { .. }
-            ) {
-                return ApiError::from(anyhow::anyhow!(
-                    "Metadata repository not found for organization '{}'",
-                    params.org
-                ));
-            }
-            ApiError::from(anyhow::anyhow!(
-                "Failed to discover metadata repository: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // List available repository types
     // Note: GitHub tree API for listing directory contents is documented in Technical Debt
@@ -583,7 +569,7 @@ pub async fn list_repository_types(
     let type_names = provider
         .list_available_repository_types(&metadata_repo)
         .await
-        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to list repository types: {}", e)))?;
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // Convert to response format
     // Descriptions are loaded from repository type configurations when they exist
@@ -615,31 +601,13 @@ pub async fn get_repository_type_config(
     let metadata_repo = provider
         .discover_metadata_repository(&params.org)
         .await
-        .map_err(|e| {
-            ApiError::from(anyhow::anyhow!(
-                "Failed to discover metadata repository: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // Load repository type configuration
     let type_config = provider
         .load_repository_type_configuration(&metadata_repo, &params.type_name)
         .await
-        .map_err(|e| {
-            // Check if it's a not found error
-            if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
-                return ApiError::from(anyhow::anyhow!(
-                    "Repository type '{}' not found in organization '{}'",
-                    params.type_name,
-                    params.org
-                ));
-            }
-            ApiError::from(anyhow::anyhow!(
-                "Failed to load repository type configuration: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // If configuration is None, type doesn't exist
     let config = type_config.ok_or_else(|| {
@@ -679,18 +647,13 @@ pub async fn get_global_defaults(
     let metadata_repo = provider
         .discover_metadata_repository(&params.org)
         .await
-        .map_err(|e| {
-            ApiError::from(anyhow::anyhow!(
-                "Failed to discover metadata repository: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // Load global defaults
     let global_defaults = provider
         .load_global_defaults(&metadata_repo)
         .await
-        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to load global defaults: {}", e)))?;
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // Convert to JSON for response
     let defaults = serde_json::to_value(&global_defaults)
@@ -725,13 +688,10 @@ pub async fn preview_configuration(
     }
 
     // Resolve merged configuration
-    let merged = manager.resolve_configuration(&context).await.map_err(|e| {
-        // Check if it's a template not found error
-        if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
-            return ApiError::from(anyhow::anyhow!("Template '{}' not found", request.template));
-        }
-        ApiError::from(anyhow::anyhow!("Failed to resolve configuration: {}", e))
-    })?;
+    let merged = manager
+        .resolve_configuration(&context)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // Convert merged configuration to JSON
     let merged_configuration = serde_json::to_value(&merged).map_err(|e| {
