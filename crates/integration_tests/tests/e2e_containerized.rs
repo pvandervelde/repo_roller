@@ -297,17 +297,17 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
 
     let repo_name = format!("e2e-test-global-{}", chrono::Utc::now().timestamp());
     let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
-    
+
     // List available templates first to help debug
     let client = Client::new();
     let token = get_github_installation_token().await?;
-    
+
     let list_response = client
         .get(format!("{}/api/v1/orgs/{}/templates", base_url, org))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await?;
-    
+
     if list_response.status().is_success() {
         if let Ok(json) = list_response.json::<serde_json::Value>().await {
             if let Some(templates) = json["templates"].as_array() {

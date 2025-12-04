@@ -131,16 +131,12 @@ async fn validate_token(token: &str) -> Result<(), AuthError> {
 
     // Validate the token by calling a simple API that installation tokens can access
     // We'll use the rate_limit endpoint which is always accessible
-    octocrab
-        .ratelimit()
-        .get()
-        .await
-        .map_err(|e| {
-            tracing::warn!("Token validation failed - GitHub API error: {}", e);
-            AuthError::from(AuthenticationError::AuthenticationFailed {
-                reason: "Failed to validate token with GitHub API".to_string(),
-            })
-        })?;
+    octocrab.ratelimit().get().await.map_err(|e| {
+        tracing::warn!("Token validation failed - GitHub API error: {}", e);
+        AuthError::from(AuthenticationError::AuthenticationFailed {
+            reason: "Failed to validate token with GitHub API".to_string(),
+        })
+    })?;
 
     tracing::info!("Token validated successfully");
 
