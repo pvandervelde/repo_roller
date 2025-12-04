@@ -26,10 +26,11 @@ RUN cargo build --release --package repo_roller_api
 # Stage 2: Runtime
 FROM debian:bookworm-slim
 
-# Install runtime dependencies (OpenSSL for HTTPS)
+# Install runtime dependencies (OpenSSL for HTTPS, git for template cloning)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
