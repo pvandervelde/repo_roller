@@ -5,11 +5,29 @@
     Creates GitHub test template repositories for RepoRoller integration tests.
 
 .DESCRIPTION
-    This script creates the four test template repositories required for RepoRoller integration tests:
+    This script creates test template repositories required for RepoRoller integration tests.
+    
+    Basic templates (4):
     - test-basic: Basic repository creation testing
     - test-variables: Variable substitution testing
     - test-filtering: File filtering testing
     - test-invalid: Error handling testing
+    
+    Template processing edge cases (10):
+    - template-large-files: Large file handling (>10MB)
+    - template-binary-files: Binary file preservation
+    - template-deep-nesting: Deep directory nesting (>10 levels)
+    - template-many-files: Many files handling (>1000 files)
+    - template-unicode-names: Unicode characters in filenames
+    - template-with-symlinks: Symbolic link handling
+    - template-with-scripts: Executable permission preservation
+    - template-with-dotfiles: Hidden file processing
+    - template-empty-dirs: Empty directory handling
+    - template-no-extensions: Extensionless file processing
+    
+    Variable substitution edge cases (2):
+    - template-nested-variables: Nested variable substitution
+    - template-variable-paths: Variables in file/directory names
 
 .PARAMETER Organization
     The GitHub organization to create repositories in. Defaults to 'pvandervelde'.
@@ -41,6 +59,7 @@ $ErrorActionPreference = "Stop"
 
 # Template repositories to create
 $Templates = @(
+    # Basic templates
     @{
         Name        = "template-test-basic"
         Description = "Basic repository template for RepoRoller integration tests"
@@ -60,6 +79,70 @@ $Templates = @(
         Name        = "template-test-invalid"
         Description = "Error handling template for RepoRoller integration tests"
         Path        = "tests/templates/test-invalid"
+    },
+    
+    # Template processing edge cases
+    @{
+        Name        = "template-large-files"
+        Description = "Large file handling test template (>10MB files) for RepoRoller integration tests"
+        Path        = "tests/templates/template-large-files"
+    },
+    @{
+        Name        = "template-binary-files"
+        Description = "Binary file preservation test template (PNG, PDF, ZIP) for RepoRoller integration tests"
+        Path        = "tests/templates/template-binary-files"
+    },
+    @{
+        Name        = "template-deep-nesting"
+        Description = "Deep directory nesting test template (>10 levels) for RepoRoller integration tests"
+        Path        = "tests/templates/template-deep-nesting"
+    },
+    @{
+        Name        = "template-many-files"
+        Description = "Many files test template (>1000 files) for RepoRoller integration tests"
+        Path        = "tests/templates/template-many-files"
+    },
+    @{
+        Name        = "template-unicode-names"
+        Description = "Unicode filename test template (Japanese, Cyrillic, emoji) for RepoRoller integration tests"
+        Path        = "tests/templates/template-unicode-names"
+    },
+    @{
+        Name        = "template-with-symlinks"
+        Description = "Symbolic link handling test template for RepoRoller integration tests"
+        Path        = "tests/templates/template-with-symlinks"
+    },
+    @{
+        Name        = "template-with-scripts"
+        Description = "Executable permission preservation test template for RepoRoller integration tests"
+        Path        = "tests/templates/template-with-scripts"
+    },
+    @{
+        Name        = "template-with-dotfiles"
+        Description = "Hidden file processing test template (.gitignore, .env, etc.) for RepoRoller integration tests"
+        Path        = "tests/templates/template-with-dotfiles"
+    },
+    @{
+        Name        = "template-empty-dirs"
+        Description = "Empty directory handling test template (.gitkeep) for RepoRoller integration tests"
+        Path        = "tests/templates/template-empty-dirs"
+    },
+    @{
+        Name        = "template-no-extensions"
+        Description = "Extensionless file processing test template (Dockerfile, Makefile, LICENSE) for RepoRoller integration tests"
+        Path        = "tests/templates/template-no-extensions"
+    },
+    
+    # Variable substitution edge cases
+    @{
+        Name        = "template-nested-variables"
+        Description = "Nested variable substitution test template for RepoRoller integration tests"
+        Path        = "tests/templates/template-nested-variables"
+    },
+    @{
+        Name        = "template-variable-paths"
+        Description = "Variables in file/directory names test template for RepoRoller integration tests"
+        Path        = "tests/templates/template-variable-paths"
     }
 )
 
@@ -124,7 +207,18 @@ function Test-RepositoryExists
     try
     {
         # Try to get repository information using GitHub CLI
-        $output = gh repo view "$Organization/$Name" --json name, owner 2>$null
+        # Suppress stderr but capture stdout
+        $output = gh repo view "$Organization/$Name" --json name,owner 2>&1
+        
+        # Check if the command failed (exitcode or error message)
+        if ($LASTEXITCODE -ne 0)
+        {
+            if ($Verbose)
+            {
+                Write-Host "Repository does not exist (gh command failed with exit code $LASTEXITCODE)" -ForegroundColor Gray
+            }
+            return $false
+        }
 
         if ($Verbose)
         {
@@ -151,6 +245,7 @@ function Test-RepositoryExists
             if ($Verbose)
             {
                 Write-Host "Failed to parse JSON output - repository likely doesn't exist" -ForegroundColor Gray
+                Write-Host "Output was: $output" -ForegroundColor Gray
             }
             return $false
         }
@@ -216,9 +311,16 @@ function Remove-Repository
 
 function New-Repository
 {
-    param([string]$Organization, [string]$Name, [string]$Description, [string]$TemplatePath)
+    param([string]$Organization, [string]$Name, [string]$Description, [string]$TemplatePath, [bool]$RepositoryExists)
 
-    Write-Host "Creating repository: $Organization/$Name" -ForegroundColor Cyan
+    if ($RepositoryExists)
+    {
+        Write-Host "Updating repository: $Organization/$Name" -ForegroundColor Cyan
+    }
+    else
+    {
+        Write-Host "Creating repository: $Organization/$Name" -ForegroundColor Cyan
+    }
 
     # Create temporary directory for git operations
     $tempDir = Join-Path $env:TEMP "repo-roller-$Name-$(Get-Random)"
@@ -233,24 +335,45 @@ function New-Repository
         Push-Location $tempDir
         git init
         git add .
-        git commit -m "Initial commit: $Description"
+        git commit -m "Update template: $Description"
 
-        # Create GitHub repository
-        gh repo create "$Organization/$Name" --public --description "$Description"
+        if (-not $RepositoryExists)
+        {
+            # Create GitHub repository
+            gh repo create "$Organization/$Name" --public --description "$Description"
 
-        # Enable template repository feature after creation
-        gh api repos/$Organization/$Name --method PATCH --field is_template=true
+            # Enable template repository feature after creation
+            gh api repos/$Organization/$Name --method PATCH --field is_template=true
 
-        # Push to GitHub
+            # Add reporoller-template topic
+            gh api repos/$Organization/$Name/topics --method PUT --field names[]='reporoller-template'
+        }
+        else
+        {
+            # Update existing repository settings
+            gh api repos/$Organization/$Name --method PATCH --field description="$Description" --field is_template=true
+            
+            # Add/update reporoller-template topic
+            gh api repos/$Organization/$Name/topics --method PUT --field names[]='reporoller-template'
+        }
+
+        # Push to GitHub (force push to overwrite main branch)
         git remote add origin "https://github.com/$Organization/$Name.git"
         git branch -M main
-        git push -u origin main
+        git push -u origin main --force
 
-        Write-Host "✓ Repository created: $Organization/$Name" -ForegroundColor Green
+        if ($RepositoryExists)
+        {
+            Write-Host "✓ Repository updated: $Organization/$Name" -ForegroundColor Green
+        }
+        else
+        {
+            Write-Host "✓ Repository created: $Organization/$Name" -ForegroundColor Green
+        }
     }
     catch
     {
-        Write-Error "Failed to create repository: $Organization/$Name. Error: $_"
+        Write-Error "Failed to create/update repository: $Organization/$Name. Error: $_"
     }
     finally
     {
@@ -309,17 +432,19 @@ foreach ($template in $Templates)
     {
         if ($Force)
         {
-            Remove-Repository $Organization $repoName
-            Start-Sleep -Seconds 2  # Give GitHub time to process deletion
+            Write-Host "Repository exists - will update content" -ForegroundColor Yellow
+            New-Repository $Organization $repoName $template.Description $template.Path -RepositoryExists $true
         }
         else
         {
-            Write-Host "Repository already exists: $Organization/$repoName (use -Force to recreate)" -ForegroundColor Yellow
+            Write-Host "Repository already exists: $Organization/$repoName (use -Force to update)" -ForegroundColor Yellow
             continue
         }
     }
-
-    New-Repository $Organization $repoName $template.Description $template.Path
+    else
+    {
+        New-Repository $Organization $repoName $template.Description $template.Path -RepositoryExists $false
+    }
 }
 
 Write-Host ""
@@ -329,3 +454,16 @@ foreach ($template in $Templates)
 {
     Write-Host "  - https://github.com/$Organization/$($template.Name)" -ForegroundColor White
 }
+
+Write-Host ""
+Write-Host "📝 Next Steps:" -ForegroundColor Yellow
+Write-Host "1. Update the metadata repository (.reporoller-test) with template definitions" -ForegroundColor White
+Write-Host "2. Configure global.toml with template-to-repository mappings" -ForegroundColor White
+Write-Host "3. Add any repository-type-specific configurations" -ForegroundColor White
+Write-Host "4. Run integration tests to verify templates work correctly" -ForegroundColor White
+Write-Host ""
+Write-Host "Example metadata repository structure:" -ForegroundColor Gray
+Write-Host "  .reporoller-test/" -ForegroundColor Gray
+Write-Host "    global.toml          # Template mappings" -ForegroundColor Gray
+Write-Host "    repository-types/    # Type definitions" -ForegroundColor Gray
+Write-Host "    team-configs/        # Team-specific overrides" -ForegroundColor Gray
