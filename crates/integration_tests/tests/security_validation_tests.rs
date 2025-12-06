@@ -107,7 +107,10 @@ async fn test_organization_name_validation_edge_cases() -> Result<()> {
 
     // Test: Empty organization name
     let result = OrganizationName::new("");
-    assert!(result.is_err(), "Empty organization name should be rejected");
+    assert!(
+        result.is_err(),
+        "Empty organization name should be rejected"
+    );
 
     // Test: Only special characters
     let special_char_names = vec!["!!!", "@@@", "###", "***"];
@@ -175,11 +178,7 @@ async fn test_template_name_validation_security() -> Result<()> {
     }
 
     // Test: Absolute paths
-    let absolute_paths = vec![
-        "/etc/passwd",
-        "/root/.ssh/id_rsa",
-        "C:\\Windows\\System32",
-    ];
+    let absolute_paths = vec!["/etc/passwd", "/root/.ssh/id_rsa", "C:\\Windows\\System32"];
 
     for name in absolute_paths {
         let result = TemplateName::new(name);
@@ -300,7 +299,8 @@ async fn test_secrets_not_exposed_in_errors() -> Result<()> {
     info!("Testing that secrets are not exposed in errors");
 
     // Test: Invalid GitHub App private key
-    let fake_private_key = "-----BEGIN RSA PRIVATE KEY-----\nFAKE_KEY_DATA\n-----END RSA PRIVATE KEY-----";
+    let fake_private_key =
+        "-----BEGIN RSA PRIVATE KEY-----\nFAKE_KEY_DATA\n-----END RSA PRIVATE KEY-----";
 
     let auth_service = auth_handler::GitHubAuthService::new(12345, fake_private_key.to_string());
 
@@ -410,17 +410,26 @@ async fn test_very_long_input_validation() -> Result<()> {
     // Test: Very long repository name
     let very_long_name = "repository_".repeat(100); // 1100 characters
     let result = RepositoryName::new(&very_long_name);
-    assert!(result.is_err(), "Very long repository name should be rejected");
+    assert!(
+        result.is_err(),
+        "Very long repository name should be rejected"
+    );
 
     // Test: Very long organization name
     let very_long_org = "organization_".repeat(100);
     let result = OrganizationName::new(&very_long_org);
-    assert!(result.is_err(), "Very long organization name should be rejected");
+    assert!(
+        result.is_err(),
+        "Very long organization name should be rejected"
+    );
 
     // Test: Very long template name
     let very_long_template = "template_".repeat(100);
     let result = TemplateName::new(&very_long_template);
-    assert!(result.is_err(), "Very long template name should be rejected");
+    assert!(
+        result.is_err(),
+        "Very long template name should be rejected"
+    );
 
     // Test: Very long variable values (should be allowed but monitored)
     let very_long_value = "value".repeat(1000); // 5000 characters

@@ -165,10 +165,8 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!(
-        "test-hierarchy-complete-{}",
-        uuid::Uuid::new_v4()
-    ))?;
+    let repo_name =
+        RepositoryName::new(&format!("test-hierarchy-complete-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Global: issues = true, wiki = false

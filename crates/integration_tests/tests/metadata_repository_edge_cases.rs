@@ -110,7 +110,8 @@ async fn test_nonexistent_repository_type() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-nonexistent-type-{}", uuid::Uuid::new_v4()))?;
+    let repo_name =
+        RepositoryName::new(&format!("test-nonexistent-type-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Request with repository_type = "nonexistent-type"

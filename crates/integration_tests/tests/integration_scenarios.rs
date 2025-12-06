@@ -274,7 +274,7 @@ async fn test_basic_creation_with_configuration_verification() -> Result<()> {
             has_projects: Some(false),
         }),
         custom_properties: None, // Basic template has no custom properties
-        branch_protection: None,  // Basic template has no branch protection
+        branch_protection: None, // Basic template has no branch protection
         labels: Some(vec![
             "bug".to_string(),
             "enhancement".to_string(),
@@ -285,19 +285,14 @@ async fn test_basic_creation_with_configuration_verification() -> Result<()> {
     // Create GitHub client for verification
     let github_token = std::env::var("GITHUB_TOKEN")
         .expect("GITHUB_TOKEN environment variable required for verification");
-    let octocrab = github_client::create_token_client(&github_token)
-        .expect("Failed to create GitHub client");
+    let octocrab =
+        github_client::create_token_client(&github_token).expect("Failed to create GitHub client");
     let github_client = github_client::GitHubClient::new(octocrab);
 
     // Verify labels (the only verification that doesn't require Repository model extension)
     if let Some(expected_labels) = &expected_config.labels {
-        let label_verification = verify_labels(
-            &github_client,
-            &repo.owner,
-            &repo.name,
-            expected_labels,
-        )
-        .await?;
+        let label_verification =
+            verify_labels(&github_client, &repo.owner, &repo.name, expected_labels).await?;
 
         if !label_verification.passed {
             info!(
@@ -369,8 +364,8 @@ async fn test_variable_substitution_with_verification() -> Result<()> {
     // Create GitHub client
     let github_token = std::env::var("GITHUB_TOKEN")
         .expect("GITHUB_TOKEN environment variable required for verification");
-    let octocrab = github_client::create_token_client(&github_token)
-        .expect("Failed to create GitHub client");
+    let octocrab =
+        github_client::create_token_client(&github_token).expect("Failed to create GitHub client");
     let github_client = github_client::GitHubClient::new(octocrab);
 
     // TODO: Verify that variables were substituted in template files

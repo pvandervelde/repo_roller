@@ -248,9 +248,11 @@ async fn test_invalid_github_app_credentials() -> Result<()> {
 
     // Test with invalid App ID
     let fake_app_id = 999999999u64;
-    let fake_private_key = "-----BEGIN RSA PRIVATE KEY-----\nINVALID\n-----END RSA PRIVATE KEY-----";
+    let fake_private_key =
+        "-----BEGIN RSA PRIVATE KEY-----\nINVALID\n-----END RSA PRIVATE KEY-----";
 
-    let auth_service = auth_handler::GitHubAuthService::new(fake_app_id, fake_private_key.to_string());
+    let auth_service =
+        auth_handler::GitHubAuthService::new(fake_app_id, fake_private_key.to_string());
 
     // Attempt to get installation token
     let result = auth_service
@@ -368,10 +370,7 @@ async fn test_error_message_quality() -> Result<()> {
     assert!(result.is_err());
 
     let error_msg = result.unwrap_err().to_string();
-    assert!(
-        !error_msg.is_empty(),
-        "Error message should not be empty"
-    );
+    assert!(!error_msg.is_empty(), "Error message should not be empty");
     assert!(
         error_msg.len() > 10,
         "Error message should be descriptive, got: {}",
@@ -383,20 +382,14 @@ async fn test_error_message_quality() -> Result<()> {
     assert!(result.is_err());
 
     let error_msg = result.unwrap_err().to_string();
-    assert!(
-        !error_msg.is_empty(),
-        "Error message should not be empty"
-    );
+    assert!(!error_msg.is_empty(), "Error message should not be empty");
 
     // Example: Invalid template name
     let result = TemplateName::new("../../../etc/passwd");
     assert!(result.is_err());
 
     let error_msg = result.unwrap_err().to_string();
-    assert!(
-        !error_msg.is_empty(),
-        "Error message should not be empty"
-    );
+    assert!(!error_msg.is_empty(), "Error message should not be empty");
 
     info!("✓ Error message quality tests passed");
     Ok(())
