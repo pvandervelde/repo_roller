@@ -1,0 +1,11 @@
+# Greeting with Nested Variables
+
+{{greeting}}
+
+This message was generated using nested variable substitution:
+- first_name = "{{first_name}}"
+- last_name = "{{last_name}}"
+- full_name = "{{full_name}}" (derived from first_name + last_name)
+- greeting = "{{greeting}}" (derived from full_name)
+
+{{farewell}}

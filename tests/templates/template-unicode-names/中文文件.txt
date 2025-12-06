@@ -1,0 +1,5 @@
+# 中文文件
+
+这个文件用于测试文件名中的中文字符。
+
+This file tests Chinese characters in filenames.

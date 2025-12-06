@@ -1,0 +1,5 @@
+# Real File
+
+This is the actual file that symlinks will point to.
+
+Content: Test data for symlink testing.

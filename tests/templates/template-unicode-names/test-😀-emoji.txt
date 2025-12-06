@@ -1,0 +1,7 @@
+# Emoji Filename Test 😀
+
+This file tests emoji characters in filenames.
+
+Filename contains: 😀 (grinning face emoji)
+
+If you can read this, emoji filenames are supported!
