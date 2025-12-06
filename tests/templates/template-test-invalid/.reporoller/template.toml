@@ -1,4 +1,5 @@
 [template]
 name = "template-test-invalid"
 description = "Invalid template for error handling tests"
-version = "1.0.0"
+author = "RepoRoller Test Suite"
+tags = ["test", "error-handling"]
