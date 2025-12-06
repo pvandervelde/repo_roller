@@ -1,0 +1,4 @@
+[template]
+name = "template-deep-nesting"
+description = "Template with deeply nested directory structure (12 levels) for path handling tests"
+version = "1.0.0"

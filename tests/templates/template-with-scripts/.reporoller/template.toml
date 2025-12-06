@@ -1,0 +1,4 @@
+[template]
+name = "template-with-scripts"
+description = "Template with executable scripts for permission preservation tests"
+version = "1.0.0"

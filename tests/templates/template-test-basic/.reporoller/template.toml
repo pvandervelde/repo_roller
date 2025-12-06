@@ -1,0 +1,4 @@
+[template]
+name = "template-test-basic"
+description = "Basic test template for RepoRoller integration tests"
+version = "1.0.0"

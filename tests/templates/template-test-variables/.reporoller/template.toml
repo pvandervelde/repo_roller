@@ -1,0 +1,4 @@
+[template]
+name = "template-test-variables"
+description = "Template with variable substitution for testing"
+version = "1.0.0"

@@ -1,0 +1,4 @@
+[template]
+name = "template-test-filtering"
+description = "Template with file filtering rules for testing"
+version = "1.0.0"

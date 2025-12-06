@@ -1,0 +1,4 @@
+[template]
+name = "template-empty-dirs"
+description = "Template with empty directories using .gitkeep for empty directory tests"
+version = "1.0.0"

@@ -1,0 +1,4 @@
+[template]
+name = "template-with-symlinks"
+description = "Template with symbolic links for symlink handling tests"
+version = "1.0.0"

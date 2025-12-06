@@ -1,0 +1,4 @@
+[template]
+name = "template-large-files"
+description = "Template with large files (12MB+) for size limit testing"
+version = "1.0.0"

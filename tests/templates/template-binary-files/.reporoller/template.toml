@@ -1,0 +1,4 @@
+[template]
+name = "template-binary-files"
+description = "Template with binary files (images, PDFs, archives) for binary handling tests"
+version = "1.0.0"
