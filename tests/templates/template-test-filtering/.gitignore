@@ -1,0 +1,32 @@
+# Build artifacts (should be excluded)
+target/
+build/
+dist/
+*.o
+*.exe
+*.dll
+*.so
+
+# Temporary files (should be excluded)
+*.tmp
+*.temp
+.cache/
+temp/
+
+# IDE files (should be excluded)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files (should be excluded)
+.DS_Store
+Thumbs.db
+
+# Log files (should be excluded)
+*.log
+logs/
+
+# Dependencies (should be excluded)
+node_modules/
+vendor/
