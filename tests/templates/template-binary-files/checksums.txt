@@ -5,7 +5,7 @@ These checksums can be used to verify binary files were transferred without corr
 ## SHA256 Checksums
 
 - `test-image.png`: To be calculated after creation
-- `test-document.pdf`: To be calculated after creation  
+- `test-document.pdf`: To be calculated after creation
 - `test-archive.zip`: To be calculated after creation
 
 ## Verification

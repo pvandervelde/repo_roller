@@ -6,13 +6,13 @@
 
 .DESCRIPTION
     This script creates test template repositories required for RepoRoller integration tests.
-    
+
     Basic templates (4):
     - test-basic: Basic repository creation testing
     - test-variables: Variable substitution testing
     - test-filtering: File filtering testing
     - test-invalid: Error handling testing
-    
+
     Template processing edge cases (10):
     - template-large-files: Large file handling (>10MB)
     - template-binary-files: Binary file preservation
@@ -24,7 +24,7 @@
     - template-with-dotfiles: Hidden file processing
     - template-empty-dirs: Empty directory handling
     - template-no-extensions: Extensionless file processing
-    
+
     Variable substitution edge cases (2):
     - template-nested-variables: Nested variable substitution
     - template-variable-paths: Variables in file/directory names
@@ -80,7 +80,7 @@ $Templates = @(
         Description = "Error handling template for RepoRoller integration tests"
         Path        = "tests/templates/test-invalid"
     },
-    
+
     # Template processing edge cases
     @{
         Name        = "template-large-files"
@@ -132,7 +132,7 @@ $Templates = @(
         Description = "Extensionless file processing test template (Dockerfile, Makefile, LICENSE) for RepoRoller integration tests"
         Path        = "tests/templates/template-no-extensions"
     },
-    
+
     # Variable substitution edge cases
     @{
         Name        = "template-nested-variables"
@@ -208,8 +208,8 @@ function Test-RepositoryExists
     {
         # Try to get repository information using GitHub CLI
         # Suppress stderr but capture stdout
-        $output = gh repo view "$Organization/$Name" --json name,owner 2>&1
-        
+        $output = gh repo view "$Organization/$Name" --json name, owner 2>&1
+
         # Check if the command failed (exitcode or error message)
         if ($LASTEXITCODE -ne 0)
         {
@@ -352,7 +352,7 @@ function New-Repository
         {
             # Update existing repository settings
             gh api repos/$Organization/$Name --method PATCH --field description="$Description" --field is_template=true
-            
+
             # Add/update reporoller-template topic
             gh api repos/$Organization/$Name/topics --method PUT --field names[]='reporoller-template'
         }

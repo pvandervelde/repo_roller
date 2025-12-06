@@ -8,7 +8,7 @@ This template is used for **integration testing** to verify that the template pr
 
 - **Test File**: `crates/integration_tests/tests/template_processing_edge_cases.rs`
 - **Test Function**: `test_large_file_processing()`
-- **Validates**: 
+- **Validates**:
   - Large file transfer without corruption
   - Memory handling for >10MB files
   - Processing performance

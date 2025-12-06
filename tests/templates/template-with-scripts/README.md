@@ -27,6 +27,7 @@ This template is used for **integration testing** to verify that file permission
 Run the setup script to set executable permissions:
 
 **Unix/Linux/macOS:**
+
 ```bash
 chmod +x setup-permissions.sh
 ./setup-permissions.sh

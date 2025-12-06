@@ -28,11 +28,13 @@ This template is used for **integration testing** to verify how symbolic links a
 Run the appropriate script for your platform:
 
 **Unix/Linux/macOS:**
+
 ```bash
 ./setup-symlinks.sh
 ```
 
 **Windows (requires admin privileges):**
+
 ```powershell
 .\setup-symlinks.ps1
 ```

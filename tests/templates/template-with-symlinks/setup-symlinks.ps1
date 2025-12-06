@@ -9,7 +9,8 @@ Set-Location $scriptDir
 # Check for admin privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-if (-not $isAdmin) {
+if (-not $isAdmin)
+{
     Write-Error "This script requires Administrator privileges to create symlinks on Windows."
     Write-Host "Please run PowerShell as Administrator and try again."
     exit 1
