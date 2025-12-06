@@ -63,22 +63,22 @@ $Templates = @(
     @{
         Name        = "template-test-basic"
         Description = "Basic repository template for RepoRoller integration tests"
-        Path        = "tests/templates/test-basic"
+        Path        = "tests/templates/template-test-basic"
     },
     @{
         Name        = "template-test-variables"
         Description = "Variable substitution template for RepoRoller integration tests"
-        Path        = "tests/templates/test-variables"
+        Path        = "tests/templates/template-test-variables"
     },
     @{
         Name        = "template-test-filtering"
         Description = "File filtering template for RepoRoller integration tests"
-        Path        = "tests/templates/test-filtering"
+        Path        = "tests/templates/template-test-filtering"
     },
     @{
         Name        = "template-test-invalid"
         Description = "Error handling template for RepoRoller integration tests"
-        Path        = "tests/templates/test-invalid"
+        Path        = "tests/templates/template-test-invalid"
     },
 
     # Template processing edge cases
