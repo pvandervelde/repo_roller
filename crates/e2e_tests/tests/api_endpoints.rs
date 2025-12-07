@@ -24,7 +24,7 @@
 //! ```
 
 use anyhow::Result;
-use integration_tests::container::{ApiContainer, ApiContainerConfig};
+use e2e_tests::{ApiContainer, ApiContainerConfig};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 

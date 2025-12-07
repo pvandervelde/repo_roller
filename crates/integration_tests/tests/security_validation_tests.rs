@@ -4,6 +4,7 @@
 //! and protects against common security vulnerabilities.
 
 use anyhow::Result;
+use auth_handler::UserAuthenticationService;
 use integration_tests::utils::TestConfig;
 use repo_roller_core::{
     OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,

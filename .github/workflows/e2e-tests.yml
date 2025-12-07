@@ -22,7 +22,7 @@ on:
         branches: [master]
         paths:
             - "crates/repo_roller_api/**"
-            - "crates/integration_tests/**"
+            - "crates/e2e_tests/**"
             - ".github/workflows/e2e-tests.yml"
             - "Dockerfile"
 
@@ -123,8 +123,7 @@ jobs:
 
                   # Run E2E tests with single thread to avoid port conflicts
                   cargo test \
-                    --package integration_tests \
-                    --test e2e_containerized \
+                    --package e2e_tests \
                     -- --ignored --test-threads=1 \
                     --nocapture
 
