@@ -35,7 +35,7 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
 async fn test_malformed_global_toml_error() -> Result<()> {
     info!("Testing malformed global.toml error handling");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Metadata repository with syntactically invalid global.toml
@@ -59,7 +59,7 @@ async fn test_malformed_global_toml_error() -> Result<()> {
 async fn test_missing_global_toml_file() -> Result<()> {
     info!("Testing missing global.toml file handling");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Metadata repository exists
@@ -82,7 +82,7 @@ async fn test_missing_global_toml_file() -> Result<()> {
 async fn test_conflicting_team_configuration() -> Result<()> {
     info!("Testing conflicting team configuration");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global: wiki = fixed(false) (cannot be overridden)
@@ -103,10 +103,10 @@ async fn test_conflicting_team_configuration() -> Result<()> {
 async fn test_nonexistent_repository_type() -> Result<()> {
     info!("Testing nonexistent repository type error");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
-    let repo_name =
-        RepositoryName::new(&format!("test-nonexistent-type-{}", uuid::Uuid::new_v4()))?;
+    let _repo_name =
+        RepositoryName::new(format!("test-nonexistent-type-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Request with repository_type = "nonexistent-type"
@@ -129,7 +129,7 @@ async fn test_nonexistent_repository_type() -> Result<()> {
 async fn test_metadata_update_during_creation() -> Result<()> {
     info!("Testing metadata update during creation");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Start repository creation (load metadata)
@@ -153,7 +153,7 @@ async fn test_metadata_update_during_creation() -> Result<()> {
 async fn test_malformed_team_toml() -> Result<()> {
     info!("Testing malformed team TOML error handling");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Metadata repository with teams/invalid-team.toml (bad syntax)
@@ -174,9 +174,9 @@ async fn test_malformed_team_toml() -> Result<()> {
 async fn test_missing_team_file() -> Result<()> {
     info!("Testing missing team file error");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-missing-team-{}", uuid::Uuid::new_v4()))?;
+    let _repo_name = RepositoryName::new(format!("test-missing-team-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Request specifies team = "nonexistent-team"
@@ -197,7 +197,7 @@ async fn test_missing_team_file() -> Result<()> {
 async fn test_inconsistent_metadata_structure() -> Result<()> {
     info!("Testing inconsistent metadata structure");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Metadata repository missing required directories (teams/, types/)
@@ -218,7 +218,7 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
 async fn test_metadata_repository_access_denied() -> Result<()> {
     info!("Testing metadata repository access denied");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Metadata repository exists
@@ -242,7 +242,7 @@ async fn test_metadata_repository_access_denied() -> Result<()> {
 async fn test_duplicate_label_definitions() -> Result<()> {
     info!("Testing duplicate label definitions");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global labels include "bug" with color "#FF0000"

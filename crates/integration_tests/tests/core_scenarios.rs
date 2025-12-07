@@ -37,7 +37,7 @@ async fn test_basic_repository_creation() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("basic");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -97,7 +97,7 @@ async fn test_variable_substitution() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("variables");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -169,7 +169,7 @@ async fn test_file_filtering() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("filtering");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -280,7 +280,7 @@ async fn test_organization_settings() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("org-settings");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -349,7 +349,7 @@ async fn test_team_configuration() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("team-config");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -415,7 +415,7 @@ async fn test_repository_type_configuration() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("repo-type");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -484,7 +484,7 @@ async fn test_configuration_hierarchy() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let repo_name = generate_test_repo_name("config-hierarchy");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(

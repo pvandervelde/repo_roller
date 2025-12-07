@@ -21,7 +21,7 @@ async fn test_nested_variable_substitution() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-nested-vars-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-nested-vars-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with variable defined as: greeting = "Hello, {{name}}!"
@@ -33,7 +33,7 @@ async fn test_nested_variable_substitution() -> Result<()> {
     let mut variables = HashMap::new();
     variables.insert("name".to_string(), "World".to_string());
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-nested-variables")?,
@@ -76,10 +76,10 @@ async fn test_missing_required_variable_error() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-missing-var-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-missing-var-{}", uuid::Uuid::new_v4()))?;
 
     // Create request without providing required variable
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?, // Requires project_name variable
@@ -128,7 +128,7 @@ async fn test_very_long_variable_values() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-long-vars-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-long-vars-{}", uuid::Uuid::new_v4()))?;
 
     // Create 10,000 character string
     let long_value = "a".repeat(10_000);
@@ -136,7 +136,7 @@ async fn test_very_long_variable_values() -> Result<()> {
     let mut variables = HashMap::new();
     variables.insert("description".to_string(), long_value);
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?,
@@ -164,7 +164,7 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-hbs-syntax-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-hbs-syntax-{}", uuid::Uuid::new_v4()))?;
 
     // Variable value contains Handlebars syntax
     let mut variables = HashMap::new();
@@ -173,7 +173,7 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
         "Use {{variable}} syntax".to_string(),
     );
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?,
@@ -201,7 +201,7 @@ async fn test_special_characters_in_variables() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-special-chars-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-special-chars-{}", uuid::Uuid::new_v4()))?;
 
     let mut variables = HashMap::new();
     // Test various special characters
@@ -209,7 +209,7 @@ async fn test_special_characters_in_variables() -> Result<()> {
     variables.insert("author".to_string(), "O'Brien".to_string());
     variables.insert("company".to_string(), "Smith & Jones".to_string());
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?,
@@ -236,7 +236,7 @@ async fn test_invalid_variable_names() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-invalid-names-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-invalid-names-{}", uuid::Uuid::new_v4()))?;
 
     let mut variables = HashMap::new();
     // Try invalid variable names
@@ -244,7 +244,7 @@ async fn test_invalid_variable_names() -> Result<()> {
     variables.insert("invalid.name.with.dots".to_string(), "value".to_string());
     variables.insert("123_starts_with_number".to_string(), "value".to_string());
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?,
@@ -271,12 +271,12 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-var-filenames-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-var-filenames-{}", uuid::Uuid::new_v4()))?;
 
     let mut variables = HashMap::new();
     variables.insert("project_name".to_string(), "MyProject".to_string());
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-variable-paths")?,
@@ -304,7 +304,7 @@ async fn test_variable_length_validation() -> Result<()> {
     let _config = TestConfig::from_env()?;
 
     let _repo_name =
-        RepositoryName::new(&format!("test-length-validation-{}", uuid::Uuid::new_v4()))?;
+        RepositoryName::new(format!("test-length-validation-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template variable with min_length = 5, max_length = 20

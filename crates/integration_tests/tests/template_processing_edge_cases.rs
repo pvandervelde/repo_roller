@@ -20,7 +20,7 @@ async fn test_large_file_processing() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-large-files-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-large-files-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with files >10MB (e.g., large data file, big JSON)
@@ -29,7 +29,7 @@ async fn test_large_file_processing() -> Result<()> {
     // 4. Verify large files transferred correctly
     // 5. Check file size matches expected
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-large-files")?,
@@ -50,7 +50,7 @@ async fn test_binary_file_preservation() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-binary-files-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-binary-files-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with binary files (PNG, PDF, ZIP)
@@ -59,7 +59,7 @@ async fn test_binary_file_preservation() -> Result<()> {
     // 4. Verify checksums match original files
     // 5. Verify no text substitution in binary files
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-binary-files")?,
@@ -80,7 +80,7 @@ async fn test_deep_directory_nesting() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-deep-nesting-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-deep-nesting-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with >10 levels of nested directories
@@ -89,7 +89,7 @@ async fn test_deep_directory_nesting() -> Result<()> {
     // 4. Verify all directories created
     // 5. Verify files accessible at all levels
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-deep-nesting")?,
@@ -110,7 +110,7 @@ async fn test_many_files_template() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-many-files-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-many-files-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with >1000 files
@@ -119,7 +119,7 @@ async fn test_many_files_template() -> Result<()> {
     // 4. Check processing time is reasonable (<5 minutes)
     // 5. Verify no files are lost/skipped
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-many-files")?,
@@ -140,7 +140,7 @@ async fn test_unicode_filenames() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-unicode-files-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-unicode-files-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with files named:
@@ -152,7 +152,7 @@ async fn test_unicode_filenames() -> Result<()> {
     // 3. Verify all files created with correct names
     // 4. Verify files are accessible
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-unicode-names")?,
@@ -173,7 +173,7 @@ async fn test_symlink_handling() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-symlinks-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-symlinks-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with symbolic links
@@ -181,7 +181,7 @@ async fn test_symlink_handling() -> Result<()> {
     // 3. Verify behavior (skip symlinks? resolve them? error?)
     // 4. Document expected behavior in test
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-with-symlinks")?,
@@ -202,7 +202,7 @@ async fn test_executable_permissions_preserved() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-permissions-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-permissions-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with executable scripts (chmod +x)
@@ -211,7 +211,7 @@ async fn test_executable_permissions_preserved() -> Result<()> {
     // 4. Verify executable bit is set
     // 5. Note: GitHub may not preserve all Unix permissions
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-with-scripts")?,
@@ -231,7 +231,7 @@ async fn test_hidden_files_processing() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-hidden-files-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-hidden-files-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with .gitignore, .env.example, .github/ directory
@@ -239,7 +239,7 @@ async fn test_hidden_files_processing() -> Result<()> {
     // 3. Verify all hidden files/directories created
     // 4. Verify content is correct
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-with-dotfiles")?,
@@ -260,7 +260,7 @@ async fn test_empty_directory_handling() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-empty-dirs-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-empty-dirs-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with empty directories (with .gitkeep)
@@ -268,7 +268,7 @@ async fn test_empty_directory_handling() -> Result<()> {
     // 3. Verify directories exist (via .gitkeep presence)
     // 4. Document expected behavior
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-empty-dirs")?,
@@ -288,7 +288,7 @@ async fn test_files_without_extensions() -> Result<()> {
 
     let config = TestConfig::from_env()?;
 
-    let repo_name = RepositoryName::new(&format!("test-no-extension-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-no-extension-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Template with files like "Dockerfile", "Makefile", "LICENSE"
@@ -296,7 +296,7 @@ async fn test_files_without_extensions() -> Result<()> {
     // 3. Verify all files created correctly
     // 4. Verify content processed (variable substitution works)
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let _request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-no-extensions")?,

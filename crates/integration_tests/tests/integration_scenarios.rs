@@ -146,9 +146,12 @@ async fn test_error_handling() -> Result<()> {
         results.success,
         "Error handling test should pass (error was expected and received)"
     );
-    
+
     // Verify no repository was created (since creation failed as expected)
-    assert!(results.repository.is_none(), "Should not have created repository");
+    assert!(
+        results.repository.is_none(),
+        "Should not have created repository"
+    );
 
     Ok(())
 }
@@ -378,7 +381,7 @@ async fn test_variable_substitution_with_verification() -> Result<()> {
     };
     let octocrab =
         github_client::create_token_client(&github_token).expect("Failed to create GitHub client");
-    let github_client = github_client::GitHubClient::new(octocrab);
+    let _github_client = github_client::GitHubClient::new(octocrab);
 
     // TODO: Verify that variables were substituted in template files
     // This requires:

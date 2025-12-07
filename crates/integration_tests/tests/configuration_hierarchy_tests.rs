@@ -16,7 +16,7 @@ use tracing::info;
 async fn test_override_protection_prevents_template_override() -> Result<()> {
     info!("Testing override protection enforcement");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global defaults with override_allowed = false for wiki setting
@@ -36,7 +36,7 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
 async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
     info!("Testing fixed value enforcement");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global setting with OverridableValue::Fixed(true) for security_advisories
@@ -55,7 +55,7 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
 async fn test_null_and_empty_value_handling() -> Result<()> {
     info!("Testing null and empty value handling");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global with description = "Default description"
@@ -75,7 +75,7 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
 async fn test_partial_field_overrides() -> Result<()> {
     info!("Testing partial field overrides");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global: issues = true, wiki = false, projects = true
@@ -94,7 +94,7 @@ async fn test_partial_field_overrides() -> Result<()> {
 async fn test_label_collection_merging() -> Result<()> {
     info!("Testing label collection merging");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global labels: ["bug", "enhancement"]
@@ -115,7 +115,7 @@ async fn test_label_collection_merging() -> Result<()> {
 async fn test_webhook_collection_accumulation() -> Result<()> {
     info!("Testing webhook collection accumulation");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global webhook: https://global.example.com/webhook
@@ -136,7 +136,7 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
 async fn test_invalid_repository_type_combination() -> Result<()> {
     info!("Testing invalid repository type combination");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Template configured for repository_type = "service" with policy = Fixed
@@ -155,10 +155,10 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
 async fn test_complete_four_level_hierarchy() -> Result<()> {
     info!("Testing complete four-level configuration hierarchy");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
-    let repo_name =
-        RepositoryName::new(&format!("test-hierarchy-complete-{}", uuid::Uuid::new_v4()))?;
+    let _repo_name =
+        RepositoryName::new(format!("test-hierarchy-complete-{}", uuid::Uuid::new_v4()))?;
 
     // TODO: This test requires:
     // 1. Global: issues = true, wiki = false
@@ -184,7 +184,7 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 async fn test_hierarchy_with_missing_levels() -> Result<()> {
     info!("Testing hierarchy with missing middle levels");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Request with no repository type or team specified
@@ -204,7 +204,7 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 async fn test_conflicting_collection_items() -> Result<()> {
     info!("Testing conflicting collection items");
 
-    let config = TestConfig::from_env()?;
+    let _config = TestConfig::from_env()?;
 
     // TODO: This test requires:
     // 1. Global label "bug" with color "#FF0000"
