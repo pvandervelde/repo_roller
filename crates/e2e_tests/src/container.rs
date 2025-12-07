@@ -90,7 +90,7 @@ impl ApiContainer {
     /// # Example
     ///
     /// ```no_run
-    /// # use integration_tests::container::{ApiContainer, ApiContainerConfig};
+    /// # use e2e_tests::container::{ApiContainer, ApiContainerConfig};
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = ApiContainerConfig::from_env()?;
     /// let mut container = ApiContainer::new(config).await?;
