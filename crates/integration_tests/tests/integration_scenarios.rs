@@ -209,7 +209,7 @@ async fn test_complete_integration_workflow() -> Result<()> {
     assert_eq!(results.len(), 8, "Should have run 8 test scenarios");
 
     let success_count = results.iter().filter(|r| r.success).count();
-    let expected_successes = 7; // All except ErrorHandling should succeed
+    let expected_successes = 8; // All tests should succeed (ErrorHandling succeeds when error is properly handled)
 
     assert_eq!(
         success_count, expected_successes,
@@ -217,19 +217,13 @@ async fn test_complete_integration_workflow() -> Result<()> {
         expected_successes
     );
 
-    // Verify specific test results
+    // Verify all test results
     for result in &results {
-        match result.scenario {
-            integration_tests::test_runner::TestScenario::ErrorHandling => {
-                assert!(
-                    !result.success,
-                    "Error handling test should fail as expected"
-                );
-            }
-            _ => {
-                assert!(result.success, "Test {:?} should succeed", result.scenario);
-            }
-        }
+        assert!(
+            result.success,
+            "Test {:?} should succeed (success=true means test executed as expected)",
+            result.scenario
+        );
     }
 
     Ok(())
