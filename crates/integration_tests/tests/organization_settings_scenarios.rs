@@ -17,7 +17,6 @@ use tracing::info;
 /// - Default branch, repository features, PR settings are applied
 /// - No team or type-specific overrides are applied
 #[tokio::test]
-#[ignore = "Requires GitHub App with custom properties permissions and metadata repository"]
 async fn test_organization_settings_with_global_defaults() -> Result<()> {
     info!("Starting organization settings with global defaults test");
 
@@ -61,7 +60,6 @@ async fn test_organization_settings_with_global_defaults() -> Result<()> {
 /// - Team settings override global defaults where specified
 /// - Custom properties include team information
 #[tokio::test]
-#[ignore = "Requires GitHub App with custom properties permissions and metadata repository"]
 async fn test_team_configuration_overrides() -> Result<()> {
     info!("Starting team configuration overrides test");
 
@@ -105,7 +103,6 @@ async fn test_team_configuration_overrides() -> Result<()> {
 /// - Custom properties include repo_type field
 /// - Type-specific settings override global and team defaults
 #[tokio::test]
-#[ignore = "Requires GitHub App with custom properties permissions and metadata repository"]
 async fn test_repository_type_configuration() -> Result<()> {
     info!("Starting repository type configuration test");
 
@@ -150,7 +147,6 @@ async fn test_repository_type_configuration() -> Result<()> {
 /// - All custom properties from all levels are combined
 /// - Validation ensures proper merge order
 #[tokio::test]
-#[ignore = "Requires GitHub App with custom properties permissions and metadata repository"]
 async fn test_configuration_hierarchy_merging() -> Result<()> {
     info!("Starting configuration hierarchy merging test");
 
@@ -189,7 +185,6 @@ async fn test_configuration_hierarchy_merging() -> Result<()> {
 /// This test runs all organization settings scenarios to verify
 /// the complete integration of the configuration system.
 #[tokio::test]
-#[ignore = "Requires GitHub App with custom properties permissions and metadata repository"]
 async fn test_complete_organization_settings_workflow() -> Result<()> {
     info!("Starting complete organization settings workflow test");
 

@@ -344,7 +344,6 @@ async fn test_secrets_not_exposed_in_errors() -> Result<()> {
 /// Verifies that repeated authentication failures trigger rate limiting
 /// to prevent brute force attacks.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure and may trigger rate limits"]
 async fn test_authentication_rate_limiting() -> Result<()> {
     info!("Testing authentication rate limiting");
 

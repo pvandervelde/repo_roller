@@ -13,7 +13,6 @@ use tracing::info;
 /// Verifies that when a global setting has `override_allowed = false`,
 /// template cannot override it.
 #[tokio::test]
-#[ignore = "Requires metadata repository with override protection configured"]
 async fn test_override_protection_prevents_template_override() -> Result<()> {
     info!("Testing override protection enforcement");
 
@@ -34,7 +33,6 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
 /// Verifies that `OverridableValue::Fixed` values cannot be
 /// overridden by any higher precedence level.
 #[tokio::test]
-#[ignore = "Requires metadata repository with fixed values"]
 async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
     info!("Testing fixed value enforcement");
 
@@ -54,7 +52,6 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
 ///
 /// Verifies that null/empty values are handled correctly during merge.
 #[tokio::test]
-#[ignore = "Requires metadata repository"]
 async fn test_null_and_empty_value_handling() -> Result<()> {
     info!("Testing null and empty value handling");
 
@@ -75,7 +72,6 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
 /// Verifies that team can override some fields while leaving others
 /// to fall through from global/repository type.
 #[tokio::test]
-#[ignore = "Requires metadata repository with team configuration"]
 async fn test_partial_field_overrides() -> Result<()> {
     info!("Testing partial field overrides");
 
@@ -95,7 +91,6 @@ async fn test_partial_field_overrides() -> Result<()> {
 /// Verifies that labels from all levels (global, type, team, template)
 /// are combined and deduplicated.
 #[tokio::test]
-#[ignore = "Requires metadata repository with labels at multiple levels"]
 async fn test_label_collection_merging() -> Result<()> {
     info!("Testing label collection merging");
 
@@ -117,7 +112,6 @@ async fn test_label_collection_merging() -> Result<()> {
 /// Verifies that webhooks from different levels accumulate
 /// (not override - all webhooks should be created).
 #[tokio::test]
-#[ignore = "Requires metadata repository with webhooks at multiple levels"]
 async fn test_webhook_collection_accumulation() -> Result<()> {
     info!("Testing webhook collection accumulation");
 
@@ -139,7 +133,6 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
 /// Verifies that requesting a repository type that contradicts
 /// template requirements produces clear error.
 #[tokio::test]
-#[ignore = "Requires template with specific repository type requirement"]
 async fn test_invalid_repository_type_combination() -> Result<()> {
     info!("Testing invalid repository type combination");
 
@@ -159,7 +152,6 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
 ///
 /// Verifies complete precedence chain when all 4 levels are configured.
 #[tokio::test]
-#[ignore = "Requires complete hierarchy setup - CREATES A REPOSITORY"]
 async fn test_complete_four_level_hierarchy() -> Result<()> {
     info!("Testing complete four-level configuration hierarchy");
 
@@ -189,7 +181,6 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 /// Verifies that when repository type or team is not specified,
 /// the hierarchy skips those levels correctly.
 #[tokio::test]
-#[ignore = "Requires metadata repository"]
 async fn test_hierarchy_with_missing_levels() -> Result<()> {
     info!("Testing hierarchy with missing middle levels");
 
@@ -210,7 +201,6 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 /// Verifies handling when same label/webhook appears at multiple levels
 /// with different configurations.
 #[tokio::test]
-#[ignore = "Requires metadata repository with duplicate items"]
 async fn test_conflicting_collection_items() -> Result<()> {
     info!("Testing conflicting collection items");
 

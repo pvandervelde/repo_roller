@@ -13,7 +13,6 @@ use tracing::info;
 /// Verifies that when organization doesn't have .reporoller-test repository,
 /// the system falls back to template-only configuration.
 #[tokio::test]
-#[ignore = "Requires organization without metadata repository"]
 async fn test_missing_metadata_repository_fallback() -> Result<()> {
     info!("Testing missing metadata repository fallback");
 
@@ -33,7 +32,6 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
 /// Verifies that invalid TOML syntax in global configuration
 /// produces clear error message.
 #[tokio::test]
-#[ignore = "Requires metadata repository with invalid TOML"]
 async fn test_malformed_global_toml_error() -> Result<()> {
     info!("Testing malformed global.toml error handling");
 
@@ -58,7 +56,6 @@ async fn test_malformed_global_toml_error() -> Result<()> {
 /// Verifies behavior when metadata repository exists but
 /// global.toml is missing.
 #[tokio::test]
-#[ignore = "Requires metadata repository without global.toml"]
 async fn test_missing_global_toml_file() -> Result<()> {
     info!("Testing missing global.toml file handling");
 
@@ -82,7 +79,6 @@ async fn test_missing_global_toml_file() -> Result<()> {
 /// Verifies handling when team configuration contradicts
 /// global policy.
 #[tokio::test]
-#[ignore = "Requires metadata repository with conflicting team config"]
 async fn test_conflicting_team_configuration() -> Result<()> {
     info!("Testing conflicting team configuration");
 
@@ -104,7 +100,6 @@ async fn test_conflicting_team_configuration() -> Result<()> {
 /// Verifies that requesting a repository type that doesn't exist
 /// in metadata repository produces clear error.
 #[tokio::test]
-#[ignore = "Requires metadata repository"]
 async fn test_nonexistent_repository_type() -> Result<()> {
     info!("Testing nonexistent repository type error");
 
@@ -131,7 +126,6 @@ async fn test_nonexistent_repository_type() -> Result<()> {
 /// Verifies handling when metadata repository is updated
 /// while repository creation is in progress.
 #[tokio::test]
-#[ignore = "Requires concurrent metadata update simulation"]
 async fn test_metadata_update_during_creation() -> Result<()> {
     info!("Testing metadata update during creation");
 
@@ -156,7 +150,6 @@ async fn test_metadata_update_during_creation() -> Result<()> {
 /// Verifies that invalid TOML in team configuration
 /// is handled gracefully.
 #[tokio::test]
-#[ignore = "Requires metadata repository with invalid team TOML"]
 async fn test_malformed_team_toml() -> Result<()> {
     info!("Testing malformed team TOML error handling");
 
@@ -178,7 +171,6 @@ async fn test_malformed_team_toml() -> Result<()> {
 /// Verifies that requesting a team that doesn't exist
 /// in metadata repository produces clear error.
 #[tokio::test]
-#[ignore = "Requires metadata repository"]
 async fn test_missing_team_file() -> Result<()> {
     info!("Testing missing team file error");
 
@@ -202,7 +194,6 @@ async fn test_missing_team_file() -> Result<()> {
 /// Verifies handling when metadata repository structure
 /// doesn't match expected layout.
 #[tokio::test]
-#[ignore = "Requires metadata repository with wrong structure"]
 async fn test_inconsistent_metadata_structure() -> Result<()> {
     info!("Testing inconsistent metadata structure");
 
@@ -224,7 +215,6 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
 /// Verifies handling when GitHub App doesn't have
 /// permission to access metadata repository.
 #[tokio::test]
-#[ignore = "Requires metadata repository with restricted access"]
 async fn test_metadata_repository_access_denied() -> Result<()> {
     info!("Testing metadata repository access denied");
 
@@ -249,7 +239,6 @@ async fn test_metadata_repository_access_denied() -> Result<()> {
 /// Verifies handling when same label is defined multiple times
 /// with different configurations.
 #[tokio::test]
-#[ignore = "Requires metadata repository with duplicate labels"]
 async fn test_duplicate_label_definitions() -> Result<()> {
     info!("Testing duplicate label definitions");
 

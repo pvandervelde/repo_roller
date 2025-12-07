@@ -15,7 +15,6 @@ use tracing::info;
 /// Verifies that large files are handled correctly without
 /// memory issues or timeouts.
 #[tokio::test]
-#[ignore = "Requires template with large files - CREATES A REPOSITORY"]
 async fn test_large_file_processing() -> Result<()> {
     info!("Testing large file processing");
 
@@ -46,7 +45,6 @@ async fn test_large_file_processing() -> Result<()> {
 /// Verifies that binary files (images, PDFs, executables)
 /// are copied correctly without corruption.
 #[tokio::test]
-#[ignore = "Requires template with binary files - CREATES A REPOSITORY"]
 async fn test_binary_file_preservation() -> Result<()> {
     info!("Testing binary file preservation");
 
@@ -77,7 +75,6 @@ async fn test_binary_file_preservation() -> Result<()> {
 /// Verifies that deeply nested directory structures (>10 levels)
 /// are handled correctly.
 #[tokio::test]
-#[ignore = "Requires template with deep nesting - CREATES A REPOSITORY"]
 async fn test_deep_directory_nesting() -> Result<()> {
     info!("Testing deep directory nesting");
 
@@ -108,7 +105,6 @@ async fn test_deep_directory_nesting() -> Result<()> {
 /// Verifies performance and correctness when template
 /// contains large number of files.
 #[tokio::test]
-#[ignore = "Requires template with many files - CREATES A REPOSITORY"]
 async fn test_many_files_template() -> Result<()> {
     info!("Testing template with many files");
 
@@ -139,7 +135,6 @@ async fn test_many_files_template() -> Result<()> {
 /// Verifies that filenames with Unicode, emojis, and special
 /// characters are handled correctly.
 #[tokio::test]
-#[ignore = "Requires template with Unicode filenames - CREATES A REPOSITORY"]
 async fn test_unicode_filenames() -> Result<()> {
     info!("Testing Unicode filenames");
 
@@ -173,7 +168,6 @@ async fn test_unicode_filenames() -> Result<()> {
 /// Verifies how the system handles symlinks (should probably skip them
 /// or resolve them, depending on design decision).
 #[tokio::test]
-#[ignore = "Requires template with symbolic links - CREATES A REPOSITORY"]
 async fn test_symlink_handling() -> Result<()> {
     info!("Testing symbolic link handling");
 
@@ -203,7 +197,6 @@ async fn test_symlink_handling() -> Result<()> {
 /// Verifies that executable bits and special permissions
 /// are preserved during template processing.
 #[tokio::test]
-#[ignore = "Requires template with executable files - CREATES A REPOSITORY"]
 async fn test_executable_permissions_preserved() -> Result<()> {
     info!("Testing executable permission preservation");
 
@@ -233,7 +226,6 @@ async fn test_executable_permissions_preserved() -> Result<()> {
 ///
 /// Verifies that hidden files (starting with .) are processed correctly.
 #[tokio::test]
-#[ignore = "Requires template with hidden files - CREATES A REPOSITORY"]
 async fn test_hidden_files_processing() -> Result<()> {
     info!("Testing hidden file processing");
 
@@ -263,7 +255,6 @@ async fn test_hidden_files_processing() -> Result<()> {
 /// Verifies handling of empty directories (Git doesn't track them,
 /// so .gitkeep files might be needed).
 #[tokio::test]
-#[ignore = "Requires template with empty directories - CREATES A REPOSITORY"]
 async fn test_empty_directory_handling() -> Result<()> {
     info!("Testing empty directory handling");
 
@@ -292,7 +283,6 @@ async fn test_empty_directory_handling() -> Result<()> {
 ///
 /// Verifies that files without extensions are processed correctly.
 #[tokio::test]
-#[ignore = "Requires template with extensionless files - CREATES A REPOSITORY"]
 async fn test_files_without_extensions() -> Result<()> {
     info!("Testing files without extensions");
 

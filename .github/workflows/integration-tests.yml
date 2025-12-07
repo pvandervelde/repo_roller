@@ -119,7 +119,7 @@ jobs:
           RUST_LOG: info
         run: |
           echo "🧹 Running scheduled orphan cleanup..."
-          cargo test --package integration_tests test_cleanup_orphaned_repositories -- --ignored --nocapture
+          cargo test --package integration_tests test_cleanup_orphaned_repositories -- --nocapture
 
       - name: Run integration tests
         if: github.event.inputs.cleanup_only != 'true'
@@ -135,7 +135,7 @@ jobs:
           if [ "${{ github.event.inputs.cleanup_only }}" = "true" ]; then
             echo "🧹 Running cleanup only..."
             MAX_AGE="${{ github.event.inputs.max_age_hours }}"
-            cargo test --package integration_tests test_cleanup_orphaned_repositories -- --ignored --nocapture
+            cargo test --package integration_tests test_cleanup_orphaned_repositories -- --nocapture
           else
             echo "🧪 Running full integration test suite..."
             cargo test --package integration_tests -- --nocapture --test-threads=1
@@ -171,7 +171,7 @@ jobs:
           echo "🚨 Test run failed, attempting emergency cleanup..."
 
           # Try to clean up any repositories created in the last hour
-          cargo test --package integration_tests test_cleanup_orphaned_repositories -- --ignored --nocapture || true
+          cargo test --package integration_tests test_cleanup_orphaned_repositories -- --nocapture || true
 
           echo "Emergency cleanup completed (best effort)"
 

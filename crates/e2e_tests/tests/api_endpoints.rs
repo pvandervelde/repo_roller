@@ -93,7 +93,6 @@ async fn assert_status_with_body(
 ///
 /// Note: Assumes Docker image "repo_roller_api:test" is already built.
 #[tokio::test]
-#[ignore = "Requires Docker daemon running and pre-built image"]
 async fn test_e2e_health_check() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let mut container = ApiContainer::new(config).await?;
@@ -131,7 +130,6 @@ async fn test_e2e_health_check() -> Result<()> {
 /// - Organization settings endpoints accessible
 /// - Response serialization correct
 #[tokio::test]
-#[ignore = "Requires Docker and real GitHub infrastructure with pre-built image"]
 async fn test_e2e_list_repository_types() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
@@ -172,7 +170,6 @@ async fn test_e2e_list_repository_types() -> Result<()> {
 /// - Metadata repository access works
 /// - Configuration serialization correct
 #[tokio::test]
-#[ignore = "Requires Docker and real GitHub infrastructure with pre-built image"]
 async fn test_e2e_get_global_defaults() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
@@ -218,7 +215,6 @@ async fn test_e2e_get_global_defaults() -> Result<()> {
 /// - Preview endpoint returns merged configuration
 /// - Source tracking included in response
 #[tokio::test]
-#[ignore = "Requires Docker and real GitHub infrastructure with pre-built image"]
 async fn test_e2e_configuration_preview() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
@@ -286,7 +282,6 @@ async fn test_e2e_configuration_preview() -> Result<()> {
 /// **Prerequisites**: TEST_TEMPLATE environment variable must reference an existing
 /// template in the metadata repository (e.g., templates/template-test-basic/).
 #[tokio::test]
-#[ignore = "Requires Docker and real GitHub infrastructure with pre-built image - CREATES REAL REPOSITORY"]
 async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
@@ -379,7 +374,6 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
 /// - GitHub topic search functions correctly
 /// - Template metadata serialization
 #[tokio::test]
-#[ignore = "Requires Docker and real GitHub infrastructure with pre-built image"]
 async fn test_e2e_list_templates() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
@@ -423,7 +417,6 @@ async fn test_e2e_list_templates() -> Result<()> {
 /// - Metadata repository validation
 /// - Error handling for invalid configurations
 #[tokio::test]
-#[ignore = "Requires Docker and real GitHub infrastructure with pre-built image"]
 async fn test_e2e_validate_organization() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();

@@ -239,7 +239,6 @@ async fn test_complete_integration_workflow() -> Result<()> {
 ///
 /// **CRITICAL**: This test verifies actual GitHub repository state, not just API success responses.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure"]
 async fn test_basic_creation_with_configuration_verification() -> Result<()> {
     info!("Starting basic repository creation with configuration verification");
 
@@ -335,7 +334,6 @@ async fn test_basic_creation_with_configuration_verification() -> Result<()> {
 /// This test not only creates a repository with variable substitution but also
 /// verifies that the variables were actually substituted in the created files.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure and file content inspection"]
 async fn test_variable_substitution_with_verification() -> Result<()> {
     info!("Starting variable substitution with content verification");
 
@@ -393,7 +391,6 @@ async fn test_variable_substitution_with_verification() -> Result<()> {
 /// This test verifies that file filtering rules are correctly applied by
 /// checking which files exist in the created repository.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure and file listing"]
 async fn test_file_filtering_with_verification() -> Result<()> {
     info!("Starting file filtering with directory structure verification");
 

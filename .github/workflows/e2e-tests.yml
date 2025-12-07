@@ -124,7 +124,7 @@ jobs:
                   # Run E2E tests with single thread to avoid port conflicts
                   cargo test \
                     --package e2e_tests \
-                    -- --ignored --test-threads=1 \
+                    -- --test-threads=1 \
                     --nocapture
 
             - name: Cleanup Docker resources

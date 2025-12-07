@@ -16,7 +16,6 @@ use tracing::info;
 /// Verifies that the system properly detects rate limiting and
 /// implements exponential backoff retry logic.
 #[tokio::test]
-#[ignore = "Requires triggering actual GitHub API rate limits"]
 async fn test_github_api_rate_limit_handling() -> Result<()> {
     info!("Testing GitHub API rate limit handling");
 
@@ -38,7 +37,6 @@ async fn test_github_api_rate_limit_handling() -> Result<()> {
 /// Verifies that transient network failures trigger retries
 /// with exponential backoff and eventual success.
 #[tokio::test]
-#[ignore = "Requires network failure simulation"]
 async fn test_github_api_network_failure_retry() -> Result<()> {
     info!("Testing GitHub API network failure retry");
 
@@ -58,7 +56,6 @@ async fn test_github_api_network_failure_retry() -> Result<()> {
 /// Verifies graceful handling when organization doesn't have
 /// a metadata repository configured.
 #[tokio::test]
-#[ignore = "Requires organization without metadata repository"]
 async fn test_metadata_repository_not_found() -> Result<()> {
     info!("Testing metadata repository not found handling");
 
@@ -163,7 +160,6 @@ async fn test_template_repository_not_found() -> Result<()> {
 /// Verifies that templates with invalid TOML syntax are
 /// detected and reported with clear error messages.
 #[tokio::test]
-#[ignore = "Requires template repository with invalid TOML"]
 async fn test_malformed_template_toml() -> Result<()> {
     info!("Testing malformed template TOML handling");
 
@@ -183,7 +179,6 @@ async fn test_malformed_template_toml() -> Result<()> {
 /// Verifies that unexpected JSON structures from GitHub API
 /// are handled gracefully with user-friendly errors.
 #[tokio::test]
-#[ignore = "Requires GitHub API mocking"]
 async fn test_github_api_unexpected_response() -> Result<()> {
     info!("Testing GitHub API unexpected response handling");
 
@@ -203,7 +198,6 @@ async fn test_github_api_unexpected_response() -> Result<()> {
 /// Verifies that if repository is created but configuration fails,
 /// the system attempts cleanup and reports the partial state.
 #[tokio::test]
-#[ignore = "Requires failure injection during configuration"]
 async fn test_partial_creation_failure_recovery() -> Result<()> {
     info!("Testing partial creation failure recovery");
 
@@ -223,7 +217,6 @@ async fn test_partial_creation_failure_recovery() -> Result<()> {
 /// Verifies that missing GitHub App permissions are detected
 /// and reported with actionable error messages.
 #[tokio::test]
-#[ignore = "Requires GitHub App with limited permissions"]
 async fn test_github_app_permission_errors() -> Result<()> {
     info!("Testing GitHub App permission error handling");
 
@@ -292,7 +285,6 @@ async fn test_invalid_github_app_credentials() -> Result<()> {
 /// Verifies that attempting to access an organization where
 /// the GitHub App is not installed returns clear error.
 #[tokio::test]
-#[ignore = "Requires organization without app installation"]
 async fn test_organization_not_accessible() -> Result<()> {
     info!("Testing organization not accessible error handling");
 
@@ -312,7 +304,6 @@ async fn test_organization_not_accessible() -> Result<()> {
 /// Verifies that creating multiple repositories concurrently
 /// doesn't cause conflicts or race conditions.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure - CREATES MULTIPLE REPOSITORIES"]
 async fn test_concurrent_repository_creation() -> Result<()> {
     info!("Testing concurrent repository creation");
 
@@ -335,7 +326,6 @@ async fn test_concurrent_repository_creation() -> Result<()> {
 /// Verifies that expired installation tokens are detected
 /// and automatically refreshed.
 #[tokio::test]
-#[ignore = "Requires token expiration simulation"]
 async fn test_expired_installation_token_refresh() -> Result<()> {
     info!("Testing expired installation token refresh");
 

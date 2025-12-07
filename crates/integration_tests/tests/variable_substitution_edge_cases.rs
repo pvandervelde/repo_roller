@@ -16,7 +16,6 @@ use tracing::info;
 /// Verifies that variables can reference other variables
 /// (e.g., {{full_name}} expands to "{{first_name}} {{last_name}}").
 #[tokio::test]
-#[ignore = "Requires template with nested variables - CREATES A REPOSITORY"]
 async fn test_nested_variable_substitution() -> Result<()> {
     info!("Testing nested variable substitution");
 
@@ -51,7 +50,6 @@ async fn test_nested_variable_substitution() -> Result<()> {
 /// Verifies that circular references between variables
 /// are detected and produce clear error.
 #[tokio::test]
-#[ignore = "Requires template with circular references"]
 async fn test_circular_variable_reference_detection() -> Result<()> {
     info!("Testing circular variable reference detection");
 
@@ -104,7 +102,6 @@ async fn test_missing_required_variable_error() -> Result<()> {
 /// Verifies that default values must still satisfy validation rules
 /// (pattern, length, options).
 #[tokio::test]
-#[ignore = "Requires template with invalid default value"]
 async fn test_default_value_validation() -> Result<()> {
     info!("Testing default value validation");
 
@@ -126,7 +123,6 @@ async fn test_default_value_validation() -> Result<()> {
 /// Verifies that variables with 10,000+ characters
 /// don't cause memory or performance issues.
 #[tokio::test]
-#[ignore = "Requires template - CREATES A REPOSITORY"]
 async fn test_very_long_variable_values() -> Result<()> {
     info!("Testing very long variable values");
 
@@ -163,7 +159,6 @@ async fn test_very_long_variable_values() -> Result<()> {
 /// Verifies that when a variable value contains Handlebars syntax,
 /// it's treated as literal text (not evaluated).
 #[tokio::test]
-#[ignore = "Requires template - CREATES A REPOSITORY"]
 async fn test_handlebars_syntax_in_variables() -> Result<()> {
     info!("Testing Handlebars syntax in variable values");
 
@@ -201,7 +196,6 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
 /// Verifies that special characters in variable values
 /// don't break template processing.
 #[tokio::test]
-#[ignore = "Requires template - CREATES A REPOSITORY"]
 async fn test_special_characters_in_variables() -> Result<()> {
     info!("Testing special characters in variable values");
 
@@ -272,7 +266,6 @@ async fn test_invalid_variable_names() -> Result<()> {
 ///
 /// Verifies that variables can be used in file and directory names.
 #[tokio::test]
-#[ignore = "Requires template with variable filenames - CREATES A REPOSITORY"]
 async fn test_variable_substitution_in_filenames() -> Result<()> {
     info!("Testing variable substitution in filenames");
 
@@ -305,7 +298,6 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
 ///
 /// Verifies that length constraints (min, max) are enforced.
 #[tokio::test]
-#[ignore = "Requires template with length constraints"]
 async fn test_variable_length_validation() -> Result<()> {
     info!("Testing variable length validation");
 

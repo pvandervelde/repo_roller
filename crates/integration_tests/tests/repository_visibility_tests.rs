@@ -25,7 +25,6 @@ use tracing::info;
 /// Verifies that when visibility is set to Private,
 /// the created repository is actually private on GitHub.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure - CREATES A REPOSITORY"]
 async fn test_create_private_repository_explicit() -> Result<()> {
     info!("Testing explicit private repository creation");
 
@@ -75,7 +74,6 @@ async fn test_create_private_repository_explicit() -> Result<()> {
 /// Verifies that when visibility is set to Public,
 /// the created repository is actually public on GitHub.
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure - CREATES A REPOSITORY"]
 async fn test_create_public_repository_explicit() -> Result<()> {
     info!("Testing explicit public repository creation");
 
@@ -125,7 +123,6 @@ async fn test_create_public_repository_explicit() -> Result<()> {
 /// the created repository is actually internal on GitHub.
 /// (Internal = visible to all enterprise members)
 #[tokio::test]
-#[ignore = "Requires real GitHub infrastructure - CREATES A REPOSITORY"]
 async fn test_create_internal_repository_explicit() -> Result<()> {
     info!("Testing explicit internal repository creation");
 
@@ -176,7 +173,6 @@ async fn test_create_internal_repository_explicit() -> Result<()> {
 /// Verifies that when no explicit visibility is set,
 /// the template's configured visibility is used.
 #[tokio::test]
-#[ignore = "Requires template with visibility configured"]
 async fn test_repository_visibility_from_template() -> Result<()> {
     info!("Testing repository visibility from template configuration");
 
@@ -228,7 +224,6 @@ async fn test_repository_visibility_from_template() -> Result<()> {
 /// Verifies that when no explicit visibility is set and template
 /// doesn't specify visibility, the organization default is used.
 #[tokio::test]
-#[ignore = "Requires organization with metadata repository"]
 async fn test_repository_visibility_from_organization() -> Result<()> {
     info!("Testing repository visibility from organization configuration");
 
@@ -284,7 +279,6 @@ async fn test_repository_visibility_from_organization() -> Result<()> {
 /// Verifies that explicit visibility in the request
 /// takes precedence over template configuration.
 #[tokio::test]
-#[ignore = "Requires template with visibility configured"]
 async fn test_explicit_visibility_overrides_template() -> Result<()> {
     info!("Testing explicit visibility overrides template");
 
@@ -337,7 +331,6 @@ async fn test_explicit_visibility_overrides_template() -> Result<()> {
 /// Verifies the complete precedence chain:
 /// Request > Template > Organization > Default
 #[tokio::test]
-#[ignore = "Requires complete test setup"]
 async fn test_visibility_configuration_hierarchy() -> Result<()> {
     info!("Testing visibility configuration hierarchy");
 
@@ -361,7 +354,6 @@ async fn test_visibility_configuration_hierarchy() -> Result<()> {
 /// Verifies that visibility can be updated after repository exists.
 /// (This would be a future feature for repository updates)
 #[tokio::test]
-#[ignore = "Requires repository update API (future feature)"]
 async fn test_update_repository_visibility() -> Result<()> {
     info!("Testing repository visibility updates");
 
@@ -383,7 +375,6 @@ async fn test_update_repository_visibility() -> Result<()> {
 /// Verifies that visibility is correctly set even when
 /// repository is created empty (no initial commit from template).
 #[tokio::test]
-#[ignore = "Requires empty repository support"]
 async fn test_visibility_with_empty_repository() -> Result<()> {
     info!("Testing visibility with empty repository");
 
@@ -434,7 +425,6 @@ async fn test_visibility_with_empty_repository() -> Result<()> {
 /// Verifies that if organization policy doesn't allow public repositories,
 /// attempts to create public repos fail with clear error.
 #[tokio::test]
-#[ignore = "Requires organization with public repo restrictions"]
 async fn test_visibility_organization_policy_enforcement() -> Result<()> {
     info!("Testing organization visibility policy enforcement");
 

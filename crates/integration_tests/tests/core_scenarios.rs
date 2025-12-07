@@ -274,7 +274,6 @@ async fn test_error_handling_invalid_template() -> Result<()> {
 /// Verifies that organization-level settings from metadata repository
 /// are correctly applied during repository creation.
 #[tokio::test]
-#[ignore = "Requires .reporoller-test metadata repository"]
 async fn test_organization_settings() -> Result<()> {
     init_test_logging();
     info!("Testing organization settings integration");
@@ -344,7 +343,6 @@ async fn test_organization_settings() -> Result<()> {
 /// Verifies that team-level configuration correctly overrides
 /// organization defaults.
 #[tokio::test]
-#[ignore = "Requires .reporoller-test metadata repository with team configuration"]
 async fn test_team_configuration() -> Result<()> {
     init_test_logging();
     info!("Testing team-specific configuration");
@@ -411,7 +409,6 @@ async fn test_team_configuration() -> Result<()> {
 /// Verifies that repository type-specific configuration
 /// is correctly applied.
 #[tokio::test]
-#[ignore = "Requires .reporoller-test metadata repository with type configuration"]
 async fn test_repository_type_configuration() -> Result<()> {
     init_test_logging();
     info!("Testing repository type configuration");
@@ -481,7 +478,6 @@ async fn test_repository_type_configuration() -> Result<()> {
 /// Verifies that configuration is correctly merged from multiple levels:
 /// Template > Team > Type > Global
 #[tokio::test]
-#[ignore = "Requires .reporoller-test metadata repository with full configuration hierarchy"]
 async fn test_configuration_hierarchy() -> Result<()> {
     init_test_logging();
     info!("Testing configuration hierarchy merging");
@@ -550,7 +546,6 @@ async fn test_configuration_hierarchy() -> Result<()> {
 ///
 /// This test is used by CI for scheduled cleanup runs.
 #[tokio::test]
-#[ignore = "Only run during scheduled cleanup or manually"]
 async fn test_cleanup_orphaned_repositories() -> Result<()> {
     init_test_logging();
     info!("Running orphaned repository cleanup");
