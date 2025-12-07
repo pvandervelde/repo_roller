@@ -11,7 +11,7 @@
 //! 2. Translates HTTP types to domain types
 //! 3. Calls business logic via service interfaces
 //! 4. Translates domain results to HTTP responses
-//! 5. Returns Result<Json<Response>, ApiError>
+//! 5. Returns `Result<Json<Response>, ApiError>`
 //!
 //! See: .llm/rest-api-implementation-guide.md
 

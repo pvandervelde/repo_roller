@@ -81,15 +81,12 @@
 //! ## Architecture
 //!
 //! The crate follows a dependency injection pattern for testability:
-//! - [`TemplateFetcher`] trait for retrieving template files
-//! - [`RepositoryClient`] trait for GitHub API operations
 //! - Configuration-driven template processing via [`template_engine`]
 //!
 //! ## Error Handling
 //!
 //! All operations return [`RepoRollerResult<T>`] which provides structured error
-//! information with domain-specific error types. Internal operations use the [`Error`] type for
-//! detailed error context.
+//! information with domain-specific error types.
 
 use github_client::{GitHubClient, RepositoryClient, RepositoryCreatePayload};
 use temp_dir::TempDir;
@@ -158,12 +155,12 @@ impl Timestamp {
         Self(Utc::now())
     }
 
-    /// Create a timestamp from a DateTime<Utc>
+    /// Create a timestamp from a `DateTime<Utc>`
     pub fn from_datetime(dt: DateTime<Utc>) -> Self {
         Self(dt)
     }
 
-    /// Get the inner DateTime<Utc>
+    /// Get the inner `DateTime<Utc>`
     pub fn as_datetime(&self) -> &DateTime<Utc> {
         &self.0
     }

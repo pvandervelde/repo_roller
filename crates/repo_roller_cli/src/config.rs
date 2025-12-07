@@ -95,8 +95,8 @@ impl AppConfig {
     ///
     /// let config_path = Path::new("./config.toml");
     /// match AppConfig::load(&config_path) {
-    ///     Ok(config) => println!(\"Configuration loaded successfully\"),
-    ///     Err(e) => eprintln!(\"Failed to load config: {}\", e),
+    ///     Ok(config) => println!("Configuration loaded successfully"),
+    ///     Err(e) => eprintln!("Failed to load config: {}", e),
     /// }
     /// ```
     pub fn load(path: &Path) -> Result<Self, Error> {

@@ -123,7 +123,7 @@ impl IntoResponse for ApiError {
 /// Convert domain error to HTTP status code and error response
 ///
 /// Provides error conversion for anyhow errors.
-/// Domain-specific errors use the From<RepoRollerError> implementation.
+/// Domain-specific errors use the `From<RepoRollerError>` implementation.
 fn convert_error(error: &anyhow::Error) -> (StatusCode, ErrorResponse) {
     // Fallback error conversion for anyhow errors
     let error_msg = error.to_string();

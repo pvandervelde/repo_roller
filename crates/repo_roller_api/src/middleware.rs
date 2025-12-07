@@ -26,24 +26,12 @@ use repo_roller_core::AuthenticationError;
 pub struct AuthContext {
     /// Bearer token from Authorization header
     pub token: String,
-
-    /// Organization name (if validated)
-    pub organization: Option<String>,
 }
 
 impl AuthContext {
     /// Create a new authentication context
     pub fn new(token: String) -> Self {
-        Self {
-            token,
-            organization: None,
-        }
-    }
-
-    /// Create context with organization
-    pub fn with_organization(mut self, org: String) -> Self {
-        self.organization = Some(org);
-        self
+        Self { token }
     }
 }
 
@@ -96,7 +84,7 @@ pub async fn auth_middleware(
 
 /// Extract Bearer token from Authorization header.
 ///
-/// Expected format: "Bearer <token>"
+/// Expected format: `Bearer <token>`
 fn extract_bearer_token(auth_header: &str) -> Result<String, AuthError> {
     let parts: Vec<&str> = auth_header.split_whitespace().collect();
 
