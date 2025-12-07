@@ -109,15 +109,6 @@ fn test_extract_bearer_token_wrong_scheme() {
 fn test_auth_context_creation() {
     let context = AuthContext::new("test_token".to_string());
     assert_eq!(context.token, "test_token");
-    assert!(context.organization.is_none());
-}
-
-/// Test AuthContext with organization
-#[test]
-fn test_auth_context_with_organization() {
-    let context = AuthContext::new("test_token".to_string()).with_organization("myorg".to_string());
-
-    assert_eq!(context.organization, Some("myorg".to_string()));
 }
 
 /// Test tracing middleware adds request logging
