@@ -8,10 +8,6 @@ publish = false
 name = "integration_tests"
 path = "src/lib.rs"
 
-[[bin]]
-name = "integration_tests"
-path = "src/main.rs"
-
 [dependencies]
 auth_handler = { path = "../auth_handler" }
 repo_roller_core = { path = "../repo_roller_core" }
