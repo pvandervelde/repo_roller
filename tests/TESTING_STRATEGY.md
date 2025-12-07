@@ -657,6 +657,71 @@ async fn test_invalid_configuration_rejected() {
 3. Verify network connectivity to GitHub
 4. Increase test timeout values if needed
 
+## Layer 4: End-to-End Containerized Tests
+
+**Location**: `crates/integration_tests/tests/e2e_containerized.rs`
+
+**Purpose**: Test complete deployment stack with Docker container
+
+**What These Tests Verify**:
+
+- Docker image builds correctly from Dockerfile
+- Container starts with proper environment variables
+- HTTP endpoints accessible from external HTTP client
+- Complete request/response cycle through container network
+- Production deployment environment simulation
+- Container health checks and graceful shutdown
+
+**Test Scenarios**:
+
+1. `test_e2e_health_check` - Health endpoint via container
+2. `test_e2e_list_repository_types` - Organization settings via HTTP
+3. `test_e2e_get_global_defaults` - Configuration loading via HTTP
+4. `test_e2e_configuration_preview` - Config merging via HTTP
+5. `test_e2e_create_repository_with_global_defaults` - Full repository creation
+6. `test_e2e_list_templates` - Template discovery via HTTP
+7. `test_e2e_validate_organization` - Validation endpoints via HTTP
+
+**Running E2E Containerized Tests**:
+
+```bash
+# Requires Docker daemon running
+docker info  # Verify Docker is available
+
+# Set environment variables
+export GITHUB_APP_ID="..."
+export GITHUB_APP_PRIVATE_KEY="..."
+export TEST_ORG="..."
+export GITHUB_TOKEN="..."
+export TEST_TEMPLATE="default"
+
+# Run E2E tests (sequentially to avoid port conflicts)
+cargo test -p integration_tests --test e2e_containerized -- --ignored --test-threads=1
+```
+
+**Notes**:
+
+- Tests run sequentially (`--test-threads=1`) to avoid port conflicts
+- Each test builds image (cached after first build), starts container, runs test, stops container
+- Complements existing integration tests (not replacement)
+- Most realistic test environment possible - matches production exactly
+- Tests container startup, environment variable injection, port binding
+- Uses `reqwest` HTTP client (external perspective, not in-process router)
+
+**Infrastructure**:
+
+- `container.rs` module manages Docker container lifecycle
+- Uses `bollard` crate for Docker API communication
+- Uses `testcontainers` patterns for test isolation
+- Automatic cleanup on test completion (even on failure)
+
+**CI Integration**:
+
+E2E tests run automatically in GitHub Actions (`.github/workflows/e2e-tests.yml`) on:
+
+- Pull requests touching API or container code
+- Manual workflow dispatch
+
 ## Summary
 
 This testing strategy ensures:
@@ -665,6 +730,7 @@ This testing strategy ensures:
 - ✅ **HTTP layer works** - API tests verify REST endpoints
 - ✅ **Configuration applies** - Verification tests check GitHub state
 - ✅ **Workflows complete** - End-to-end tests verify full scenarios
+- ✅ **Container deployment works** - E2E containerized tests verify Docker deployment
 - ✅ **Errors caught** - Validation tests catch configuration issues
 
-By following this strategy, we prevent false confidence from tests that only check success flags without verifying actual GitHub repository state.
+By following this strategy, we prevent false confidence from tests that only check success flags without verifying actual GitHub repository state and production deployment environment.

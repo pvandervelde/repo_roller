@@ -1,0 +1,5 @@
+[template]
+name = "template-empty-dirs"
+description = "Template with empty directories using .gitkeep for empty directory tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "empty-directories"]

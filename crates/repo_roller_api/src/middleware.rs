@@ -17,7 +17,6 @@ use axum::{
 use serde_json::json;
 
 use crate::errors::{ErrorDetails, ErrorResponse};
-use github_client::GitHubClient;
 use repo_roller_core::AuthenticationError;
 
 /// Authentication context attached to requests after successful authentication.
@@ -27,34 +26,12 @@ use repo_roller_core::AuthenticationError;
 pub struct AuthContext {
     /// Bearer token from Authorization header
     pub token: String,
-
-    /// Installation ID (extracted from token or validated separately)
-    pub installation_id: Option<u64>,
-
-    /// Organization name (if validated)
-    pub organization: Option<String>,
 }
 
 impl AuthContext {
     /// Create a new authentication context
     pub fn new(token: String) -> Self {
-        Self {
-            token,
-            installation_id: None,
-            organization: None,
-        }
-    }
-
-    /// Create context with installation ID
-    pub fn with_installation_id(mut self, id: u64) -> Self {
-        self.installation_id = Some(id);
-        self
-    }
-
-    /// Create context with organization
-    pub fn with_organization(mut self, org: String) -> Self {
-        self.organization = Some(org);
-        self
+        Self { token }
     }
 }
 
@@ -91,11 +68,12 @@ pub async fn auth_middleware(
     // Validate Bearer token format
     let token = extract_bearer_token(auth_header)?;
 
-    // Validate token against GitHub API and extract organization
-    let organization = validate_token_and_extract_org(&token).await?;
+    // Validate token against GitHub API
+    validate_token(&token).await?;
 
-    // Create authentication context with validated organization
-    let auth_context = AuthContext::new(token).with_organization(organization);
+    // Create authentication context without organization
+    // Organization will be extracted from path parameters by handlers
+    let auth_context = AuthContext::new(token);
 
     // Attach context to request extensions
     request.extensions_mut().insert(auth_context);
@@ -106,7 +84,7 @@ pub async fn auth_middleware(
 
 /// Extract Bearer token from Authorization header.
 ///
-/// Expected format: "Bearer <token>"
+/// Expected format: `Bearer <token>`
 fn extract_bearer_token(auth_header: &str) -> Result<String, AuthError> {
     let parts: Vec<&str> = auth_header.split_whitespace().collect();
 
@@ -121,54 +99,36 @@ fn extract_bearer_token(auth_header: &str) -> Result<String, AuthError> {
     Ok(parts[1].to_string())
 }
 
-/// Validate token against GitHub API and extract organization name.
+/// Validate token against GitHub API.
 ///
-/// This function:
-/// 1. Creates a GitHub client with the provided token
-/// 2. Lists installations accessible with the token
-/// 3. Extracts the organization from the installation
+/// This function validates an installation token by making a simple API call
+/// that installation tokens are authorized to make. We use the rate_limit
+/// endpoint which is always accessible and requires authentication.
 ///
 /// # Errors
 ///
 /// Returns `AuthError::ValidationFailed` if:
 /// - Token is invalid or expired (GitHub returns 401)
-/// - Token has no associated installations
 /// - GitHub API request fails
-async fn validate_token_and_extract_org(token: &str) -> Result<String, AuthError> {
+async fn validate_token(token: &str) -> Result<(), AuthError> {
     // Create GitHub client with the installation token
     let octocrab = github_client::create_token_client(token).map_err(|e| {
         tracing::warn!("Failed to create GitHub client with token: {}", e);
         AuthError::from(AuthenticationError::InvalidToken)
     })?;
 
-    let client = GitHubClient::new(octocrab);
-
-    // List installations to validate token and extract organization
-    let installations = client.list_installations().await.map_err(|e| {
+    // Validate the token by calling a simple API that installation tokens can access
+    // We'll use the rate_limit endpoint which is always accessible
+    octocrab.ratelimit().get().await.map_err(|e| {
         tracing::warn!("Token validation failed - GitHub API error: {}", e);
         AuthError::from(AuthenticationError::AuthenticationFailed {
             reason: "Failed to validate token with GitHub API".to_string(),
         })
     })?;
 
-    // Installation tokens should have at least one installation
-    if installations.is_empty() {
-        tracing::warn!("Token has no associated installations");
-        return Err(AuthError::from(AuthenticationError::AuthenticationFailed {
-            reason: "Token has no associated GitHub App installations".to_string(),
-        }));
-    }
+    tracing::info!("Token validated successfully");
 
-    // Extract organization from the first installation
-    // (Installation tokens are scoped to a single installation)
-    let org_name = installations[0].account.login.clone();
-
-    tracing::info!(
-        organization = %org_name,
-        "Token validated successfully"
-    );
-
-    Ok(org_name)
+    Ok(())
 }
 
 /// Organization authorization middleware.

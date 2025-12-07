@@ -1,0 +1,7 @@
+# Spëcîål Çhãrãctërs
+
+This file tests accented and special characters in filenames.
+
+Characters tested: ë î å ã ç
+
+These are common in European languages (French, Portuguese, etc.)

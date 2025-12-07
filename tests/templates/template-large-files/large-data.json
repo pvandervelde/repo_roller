@@ -1,0 +1,44 @@
+{
+    "test_purpose": "Large file handling test - this file is intentionally >10MB",
+    "data": [
+    ${ Array.from({ length: 100000
+            }, (_, i) => `    {
+                "id": ${i
+                },
+                "name": "Test Record ${i}",
+                "description": "This is a test record with sufficient data to make the file large enough for testing. It contains various fields that simulate a real data file with meaningful content that would be found in production systems.",
+                "timestamp": "2025-12-06T00:00:00Z",
+                "metadata": {
+                    "created_by": "test_suite",
+                    "purpose": "integration_testing",
+                    "category": "large_file_test",
+                    "tags": [
+                        "test",
+                        "large",
+                        "performance",
+                        "memory"
+                    ]
+                },
+                "values": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10
+                ],
+                "nested": {
+                    "level1": {
+                        "level2": {
+                            "level3": "deep nesting test"
+                        }
+                    }
+                }
+            }`).join(',\n')
+        }
+    ]
+}

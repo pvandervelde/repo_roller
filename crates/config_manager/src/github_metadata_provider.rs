@@ -224,7 +224,7 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         &self,
         repo: &MetadataRepository,
     ) -> ConfigurationResult<GlobalDefaults> {
-        let file_path = "global-defaults.toml";
+        let file_path = "global/defaults.toml";
         let content = self
             .client
             .get_file_content(&repo.organization, &repo.repository_name, file_path)

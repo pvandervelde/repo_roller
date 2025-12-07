@@ -1,0 +1,7 @@
+{
+    "project": "{{project_name}}",
+    "version": "1.0.0",
+    "description": "Configuration for {{project_name}}",
+    "main_file": "src/{{project_name}}_main.rs",
+    "test_file": "tests/test_{{project_name}}.rs"
+}

@@ -1,0 +1,9 @@
+# Configuration File
+
+This is a normal-sized file for comparison with the large data file.
+
+Project: Large File Test Template
+Purpose: Integration testing of large file handling
+Size: Small (~200 bytes)
+
+The large-data.json file in this template is intentionally >10MB to test memory handling and performance.

@@ -1,8 +1,8 @@
 //! Integration testing library for RepoRoller.
 //!
-//! This library provides utilities and test runners for comprehensive end-to-end
-//! testing of RepoRoller functionality, including repository creation, template
-//! processing, variable substitution, and error handling scenarios.
+//! This library provides utilities for integration testing of RepoRoller
+//! functionality, including repository creation, template processing,
+//! variable substitution, and error handling scenarios.
 
 pub mod test_runner;
 pub mod utils;

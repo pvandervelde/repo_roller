@@ -1,0 +1,22 @@
+# Gitignore Test File
+
+# IDE
+.vscode/
+.idea/
+
+# Build outputs
+target/
+dist/
+build/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Environment
+.env
+*.local
+
+# OS files
+.DS_Store
+Thumbs.db

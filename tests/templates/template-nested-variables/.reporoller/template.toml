@@ -1,0 +1,5 @@
+[template]
+name = "template-nested-variables"
+description = "Template with nested variable references for complex substitution tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "variables"]

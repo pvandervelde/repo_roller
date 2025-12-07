@@ -1,0 +1,5 @@
+[template]
+name = "template-unicode-names"
+description = "Template with Unicode filenames (Japanese, Cyrillic, Chinese, emoji) for encoding tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "unicode"]

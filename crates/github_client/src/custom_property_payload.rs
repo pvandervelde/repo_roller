@@ -4,7 +4,7 @@
 //! The GitHub API uses a different format than our internal `CustomProperty` type,
 //! so we need to transform between our domain type and GitHub's expected format.
 //!
-//! See: https://docs.github.com/en/rest/repos/custom-properties
+//! See: <https://docs.github.com/en/rest/repos/custom-properties>
 
 use serde::{Deserialize, Serialize};
 

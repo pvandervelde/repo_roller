@@ -11,12 +11,14 @@ members = [
     "crates/repo_roller_mcp",
     "crates/repo_roller_azure_fn",
     "crates/integration_tests",
+    "crates/e2e_tests",
 ]
 
 [workspace.package]
 authors = ["Patrick van der Velde"]
 repository = "https://github.com/pvandervelde/RepoRoller"
 version = "0.1.0"
+license = "Apache-2.0"
 license-file = "LICENSE"
 
 [workspace.dependencies]

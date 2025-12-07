@@ -1,0 +1,5 @@
+[template]
+name = "template-test-variables"
+description = "Template with variable substitution for testing"
+author = "RepoRoller Test Suite"
+tags = ["test", "variables"]

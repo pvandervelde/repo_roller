@@ -1,0 +1,5 @@
+[template]
+name = "template-test-filtering"
+description = "Template with file filtering rules for testing"
+author = "RepoRoller Test Suite"
+tags = ["test", "filtering"]

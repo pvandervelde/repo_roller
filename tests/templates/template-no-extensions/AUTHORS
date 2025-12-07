@@ -1,0 +1,13 @@
+# Authors
+
+This test template was created for integration testing.
+
+## Contributors
+
+- Test Suite Generator
+- Integration Test Framework
+
+## Purpose
+
+This AUTHORS file (without extension) tests that extensionless files
+are processed correctly during template processing.

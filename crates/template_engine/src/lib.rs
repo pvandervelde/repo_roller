@@ -111,9 +111,9 @@ mod tests;
 /// ## Source Format
 ///
 /// The `source` parameter format depends on the implementation:
-/// - GitHub: Repository URLs like "https://github.com/owner/repo" or "owner/repo"
+/// - GitHub: Repository URLs like <https://github.com/owner/repo> or "owner/repo"
 /// - Local: File system paths like "/path/to/template" or "C:\\templates\\basic"
-/// - HTTP: URLs to downloadable archives like "https://example.com/templates/rust.zip"
+/// - HTTP: URLs to downloadable archives like <https://example.com/templates/rust.zip>
 ///
 /// ## Return Format
 ///

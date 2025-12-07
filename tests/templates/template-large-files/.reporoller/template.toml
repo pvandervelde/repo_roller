@@ -1,0 +1,5 @@
+[template]
+name = "template-large-files"
+description = "Template with large files (12MB+) for size limit testing"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "large-files"]

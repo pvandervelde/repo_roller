@@ -1,0 +1,5 @@
+[template]
+name = "template-with-symlinks"
+description = "Template with symbolic links for symlink handling tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "symlinks"]

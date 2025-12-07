@@ -1,0 +1,5 @@
+# 日本語ファイル
+
+このファイルは日本語の文字を含むファイル名のテストに使用されます。
+
+This file tests Japanese characters in filenames.

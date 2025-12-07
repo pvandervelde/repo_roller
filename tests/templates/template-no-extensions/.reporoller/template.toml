@@ -1,0 +1,5 @@
+[template]
+name = "template-no-extensions"
+description = "Template with extensionless files (Dockerfile, Makefile, LICENSE) for file type detection tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "extensionless"]

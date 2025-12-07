@@ -1,0 +1,5 @@
+[template]
+name = "template-with-scripts"
+description = "Template with executable scripts for permission preservation tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "permissions"]

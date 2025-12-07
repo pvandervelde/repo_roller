@@ -1,0 +1,6 @@
+# This file exists to preserve the empty directory in Git
+
+Git does not track empty directories, so this .gitkeep file ensures
+the directory structure is maintained.
+
+This is a common convention in Git-based projects.

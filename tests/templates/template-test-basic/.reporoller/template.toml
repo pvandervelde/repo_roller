@@ -1,0 +1,5 @@
+[template]
+name = "template-test-basic"
+description = "Basic test template for RepoRoller integration tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "basic"]

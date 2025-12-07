@@ -1,0 +1,5 @@
+[template]
+name = "template-variable-paths"
+description = "Template with variables in file and directory paths for path substitution tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "variables", "paths"]

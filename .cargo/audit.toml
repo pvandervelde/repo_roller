@@ -20,6 +20,20 @@ ignore = [
     #
     # Ignoring because the crate is only used in tests to generate a keypair for the mock server.
     "RUSTSEC-2023-0071",
+
+    # Crate:     tokio-tar
+    # Version:   0.3.1
+    # Title:     `tokio-tar` parses PAX extended headers incorrectly, allows file smuggling
+    # Date:      2025-10-21
+    # ID:        RUSTSEC-2025-0111
+    # URL:       https://rustsec.org/advisories/RUSTSEC-2025-0111
+    # Solution:  No fixed upgrade is available!
+    #
+    # Ignoring because:
+    # - tokio-tar is a dev dependency via testcontainers (used only in E2E tests)
+    # - We control all Docker images used in tests (no untrusted tar files)
+    # - Migration to astral-tokio-tar tracked for future release
+    "RUSTSEC-2025-0111",
 ]
 # informational_warnings = ["unmaintained"] # warn for categories of informational advisories
 # severity_threshold = "low" # CVSS severity ("none", "low", "medium", "high", "critical")

@@ -1,0 +1,5 @@
+[template]
+name = "template-with-dotfiles"
+description = "Template with dotfiles and hidden directories for dotfile handling tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "dotfiles"]

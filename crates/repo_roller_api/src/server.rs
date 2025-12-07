@@ -17,9 +17,6 @@ pub struct ApiConfig {
 
     /// Host to bind to
     pub host: String,
-
-    /// Request timeout in seconds
-    pub request_timeout_secs: u64,
 }
 
 impl Default for ApiConfig {
@@ -27,7 +24,6 @@ impl Default for ApiConfig {
         Self {
             port: DEFAULT_PORT,
             host: "0.0.0.0".to_string(),
-            request_timeout_secs: 30,
         }
     }
 }
@@ -42,11 +38,6 @@ impl ApiServer {
     /// Create a new API server with the given configuration.
     pub fn new(config: ApiConfig, state: AppState) -> Self {
         Self { config, state }
-    }
-
-    /// Create a new API server with default configuration.
-    pub fn with_defaults(state: AppState) -> Self {
-        Self::new(ApiConfig::default(), state)
     }
 
     /// Build the Axum router with all routes and middleware.

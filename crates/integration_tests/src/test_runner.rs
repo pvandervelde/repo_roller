@@ -4,9 +4,9 @@
 //! functionality, including repository creation, template processing, variable
 //! substitution, and error handling scenarios.
 //!
-//! NOTE: This module needs to be updated to use the new MetadataRepositoryProvider
-//! system instead of the legacy Config-based approach. The E2E tests in
-//! e2e_containerized.rs are currently the active tests.
+//! This test runner uses the MetadataRepositoryProvider system and runs against
+//! actual GitHub template repositories. For containerized E2E tests that test
+//! the REST API layer, see e2e_containerized.rs.
 
 use anyhow::{Context, Result};
 use auth_handler::UserAuthenticationService;
@@ -144,14 +144,6 @@ pub struct TestDetails {
     pub config_loaded: bool,
     pub repository_created: bool,
     pub validation_passed: bool,
-    /// Whether configuration verification was performed
-    pub configuration_verified: bool,
-    /// Whether repository settings matched expected configuration
-    pub settings_match: bool,
-    /// Whether custom properties matched expected configuration
-    pub custom_properties_match: bool,
-    /// Whether branch protection matched expected configuration
-    pub branch_protection_match: bool,
 }
 
 /// Integration test runner that orchestrates all test scenarios
@@ -195,11 +187,16 @@ impl IntegrationTestRunner {
     pub async fn run_all_tests(&mut self) -> Result<Vec<TestResult>> {
         info!("Starting integration test suite");
 
+        // Run all integration test scenarios
         let scenarios = vec![
             TestScenario::BasicCreation,
             TestScenario::VariableSubstitution,
             TestScenario::FileFiltering,
             TestScenario::ErrorHandling,
+            TestScenario::OrganizationSettings,
+            TestScenario::TeamConfiguration,
+            TestScenario::RepositoryType,
+            TestScenario::ConfigurationHierarchy,
         ];
 
         let mut results = Vec::new();
@@ -210,17 +207,42 @@ impl IntegrationTestRunner {
             results.push(result);
         }
 
-        // Log summary
+        // Log detailed summary with pass/fail lists
         let total_tests = results.len();
-        let passed_tests = results.iter().filter(|r| r.success).count();
-        let failed_tests = total_tests - passed_tests;
+        let passed_tests: Vec<_> = results.iter().filter(|r| r.success).collect();
+        let failed_tests: Vec<_> = results.iter().filter(|r| !r.success).collect();
 
         info!(
             total = total_tests,
-            passed = passed_tests,
-            failed = failed_tests,
+            passed = passed_tests.len(),
+            failed = failed_tests.len(),
             "Integration test suite completed"
         );
+
+        // Log passed tests
+        if !passed_tests.is_empty() {
+            info!("Passed tests:");
+            for result in &passed_tests {
+                info!(
+                    scenario = ?result.scenario,
+                    duration_ms = result.duration.as_millis(),
+                    "  ✓"
+                );
+            }
+        }
+
+        // Log failed tests
+        if !failed_tests.is_empty() {
+            error!("Failed tests:");
+            for result in &failed_tests {
+                error!(
+                    scenario = ?result.scenario,
+                    duration_ms = result.duration.as_millis(),
+                    error = result.error.as_deref().unwrap_or("Unknown error"),
+                    "  ✗"
+                );
+            }
+        }
 
         Ok(results)
     }

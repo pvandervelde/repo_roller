@@ -1,0 +1,5 @@
+# Visible File
+
+This is a regular visible file for comparison with hidden files.
+
+If this file is processed but hidden files are not, the test will fail.

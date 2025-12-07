@@ -1,0 +1,5 @@
+[template]
+name = "template-binary-files"
+description = "Template with binary files (images, PDFs, archives) for binary handling tests"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "binary-files"]

@@ -66,21 +66,6 @@ pub struct ErrorDetails {
 pub struct ApiError(anyhow::Error);
 
 impl ApiError {
-    /// Create a new API error from any error type
-    pub fn new(err: impl Into<anyhow::Error>) -> Self {
-        ApiError(err.into())
-    }
-
-    /// Create an authentication error
-    pub fn authentication(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
-    }
-
-    /// Create a validation error
-    pub fn validation(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
-    }
-
     /// Create a validation error with field information
     pub fn validation_error(field: impl Into<String>, message: impl Into<String>) -> Self {
         ApiError(anyhow::anyhow!(
@@ -90,14 +75,11 @@ impl ApiError {
         ))
     }
 
-    /// Create a not found error
-    pub fn not_found(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
-    }
-
-    /// Create an internal server error
+    /// Create an internal error with a message
+    ///
+    /// Used for unexpected failures that should result in a 500 Internal Server Error.
     pub fn internal(message: impl Into<String>) -> Self {
-        ApiError(anyhow::anyhow!(message.into()))
+        ApiError(anyhow::anyhow!("internal error: {}", message.into()))
     }
 }
 
@@ -141,7 +123,7 @@ impl IntoResponse for ApiError {
 /// Convert domain error to HTTP status code and error response
 ///
 /// Provides error conversion for anyhow errors.
-/// Domain-specific errors use the From<RepoRollerError> implementation.
+/// Domain-specific errors use the `From<RepoRollerError>` implementation.
 fn convert_error(error: &anyhow::Error) -> (StatusCode, ErrorResponse) {
     // Fallback error conversion for anyhow errors
     let error_msg = error.to_string();
@@ -494,10 +476,20 @@ fn convert_configuration_error(
                 error_count
             ),
         ),
-        _ => (
+        ConfigurationError::FileAccessError { path, reason } => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "ConfigurationError",
-            "Configuration system error".to_string(),
+            "ConfigurationFileAccessError",
+            format!("Cannot access configuration file '{}': {}", path, reason),
+        ),
+        ConfigurationError::RequiredConfigMissing { key } => (
+            StatusCode::BAD_REQUEST,
+            "RequiredConfigMissing",
+            format!("Required configuration '{}' is missing", key),
+        ),
+        ConfigurationError::HierarchyResolutionFailed { reason } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "ConfigurationHierarchyFailed",
+            format!("Configuration hierarchy resolution failed: {}", reason),
         ),
     };
 

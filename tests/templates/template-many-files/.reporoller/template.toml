@@ -1,0 +1,5 @@
+[template]
+name = "template-many-files"
+description = "Template with 1200+ files for performance and pagination testing"
+author = "RepoRoller Test Suite"
+tags = ["test", "edge-case", "performance"]

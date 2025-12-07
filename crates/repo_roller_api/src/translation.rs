@@ -66,23 +66,25 @@ pub fn domain_repository_creation_result_to_http(
     http_req: &CreateRepositoryRequest,
 ) -> CreateRepositoryResponse {
     // Extract repository name from URL
-    // URL format: https://github.com/{org}/{repo}
+    // URL format: https://github.com/{org}/{repo}.git (git clone URL)
     let name = result
         .repository_url
         .rsplit('/')
         .next()
         .unwrap_or("unknown")
+        .trim_end_matches(".git")
         .to_string();
 
     let full_name = result
         .repository_url
         .trim_start_matches("https://github.com/")
+        .trim_end_matches(".git")
         .to_string();
 
     let repository_info = RepositoryInfo {
         name,
         full_name,
-        url: result.repository_url,
+        url: result.repository_url.trim_end_matches(".git").to_string(),
         visibility: http_req
             .visibility
             .clone()
