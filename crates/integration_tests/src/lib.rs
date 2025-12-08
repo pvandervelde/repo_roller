@@ -6,6 +6,7 @@
 
 pub mod fixtures;
 pub mod helpers;
+pub mod mock_github;
 pub mod test_runner;
 pub mod utils;
 pub mod verification;
