@@ -357,7 +357,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_with_backoff_succeeds_after_retries() {
-        let mut attempts = 0;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_clone = attempts.clone();
+
         let result = retry_with_backoff(
             RetryConfig {
                 max_attempts: 3,
@@ -365,12 +370,15 @@ mod tests {
                 backoff_multiplier: 2.0,
                 max_delay: Duration::from_millis(100),
             },
-            || async {
-                attempts += 1;
-                if attempts < 3 {
-                    Err("Temporary failure")
-                } else {
-                    Ok(42)
+            move || {
+                let attempts = attempts_clone.clone();
+                async move {
+                    let count = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    if count < 3 {
+                        Err("Temporary failure")
+                    } else {
+                        Ok(42)
+                    }
                 }
             },
         )
@@ -378,7 +386,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(result, 42);
-        assert_eq!(attempts, 3);
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
