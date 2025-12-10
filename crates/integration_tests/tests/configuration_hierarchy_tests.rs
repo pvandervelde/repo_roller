@@ -22,8 +22,8 @@ use tracing::info;
 async fn test_override_protection_prevents_template_override() -> Result<()> {
     info!("Testing override protection enforcement with real metadata repository");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("override-protection");
 
     // Auto-cleanup on drop
@@ -44,22 +44,22 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
     // Get installation token for organization
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
     // Create GitHub client with installation token
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     // Create metadata provider using real .reporoller-test repository
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
     // Build repository creation request
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
     .build();
@@ -71,7 +71,7 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!("Repository created: {}", result.repository_url);
 
@@ -96,8 +96,8 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
 async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
     info!("Testing fixed value enforcement with real metadata repository");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("fixed-value");
 
     // Auto-cleanup on drop
@@ -118,21 +118,21 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
     // Get installation token
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     // Create metadata provider
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
     .build();
@@ -144,7 +144,7 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - fixed values preserved",
@@ -165,8 +165,8 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
 async fn test_null_and_empty_value_handling() -> Result<()> {
     info!("Testing null and empty value handling with real infrastructure");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("null-empty-values");
 
     // Auto-cleanup on drop
@@ -188,21 +188,21 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
     // Get installation token
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     // Create metadata provider
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
     .build();
@@ -214,7 +214,7 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - null/empty value handling verified",
@@ -233,8 +233,8 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
 async fn test_partial_field_overrides() -> Result<()> {
     info!("Testing partial field overrides with backend team configuration");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("partial-override");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -247,23 +247,24 @@ async fn test_partial_field_overrides() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
-    // Use backend team which has partial overrides (projects, allow_auto_merge)
+    // TODO: Backend team configuration will be applied via metadata repository hierarchy
+    // Currently RepositoryCreationRequestBuilder doesn't have .team() method
+    // Team configuration is loaded from metadata repository based on repository naming/organization
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
-    .team("backend".to_string())
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -272,7 +273,7 @@ async fn test_partial_field_overrides() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - team partial overrides applied",
@@ -291,8 +292,8 @@ async fn test_partial_field_overrides() -> Result<()> {
 async fn test_label_collection_merging() -> Result<()> {
     info!("Testing label collection merging");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("label-merge");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -305,23 +306,23 @@ async fn test_label_collection_merging() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
-    // Request with team (backend has custom labels)
+    // TODO: Team configuration will be applied via metadata repository hierarchy
+    // Request with backend team's custom labels merged from global
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
-    .team("backend".to_string())
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -330,7 +331,7 @@ async fn test_label_collection_merging() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - labels merged from global and team levels",
@@ -354,8 +355,8 @@ async fn test_label_collection_merging() -> Result<()> {
 async fn test_webhook_collection_accumulation() -> Result<()> {
     info!("Testing webhook collection accumulation");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("webhook-accumulate");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -368,19 +369,19 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
     .build();
@@ -391,7 +392,7 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - webhooks accumulated from hierarchy levels",
@@ -410,8 +411,8 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
 async fn test_invalid_repository_type_combination() -> Result<()> {
     info!("Testing repository type configuration");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("repo-type");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -424,23 +425,24 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client.clone(),
+        github_client,
         config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
 
-    // Request with explicit repository type
+    // TODO: Repository type configuration will be applied via metadata repository hierarchy
+    // Currently RepositoryCreationRequestBuilder doesn't have .repository_type() method
+    // Repository type is determined from metadata repository structure
     let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        org_name.clone(),
+        RepositoryName::new(&repo_name)?,
+        org_name,
         TemplateName::new("template-test-basic")?,
     )
-    .repository_type("library".to_string())
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -449,7 +451,7 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - repository type configuration applied",
@@ -467,8 +469,8 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
 async fn test_complete_four_level_hierarchy() -> Result<()> {
     info!("Testing complete four-level configuration hierarchy");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("hierarchy-complete");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -481,9 +483,9 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
@@ -493,9 +495,9 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 
     // Request with all hierarchy levels: Global, Repository Type (library), Team (backend), Template
     let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(repo_name.clone()),
+        RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic"),
+        TemplateName::new("template-test-basic")?,
     )
     .build();
 
@@ -505,7 +507,7 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - all 4 hierarchy levels merged",
@@ -524,8 +526,8 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 async fn test_hierarchy_with_missing_levels() -> Result<()> {
     info!("Testing hierarchy with missing middle levels");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("minimal-hierarchy");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -538,9 +540,9 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
@@ -551,9 +553,9 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
     // Request with minimal configuration - no team, no explicit repository type
     // Only Global and Template levels in hierarchy
     let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(repo_name.clone()),
+        RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic"),
+        TemplateName::new("template-test-basic")?,
     )
     .build();
 
@@ -563,7 +565,7 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - minimal hierarchy (Global → Template only)",
@@ -583,8 +585,8 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 async fn test_conflicting_collection_items() -> Result<()> {
     info!("Testing conflicting collection items");
 
-    let config = TestConfig::from_env();
-    let org_name = OrganizationName::new(&config.test_org);
+    let config = TestConfig::from_env()?;
+    let org_name = OrganizationName::new(&config.test_org)?;
     let repo_name = generate_test_repo_name("conflict-items");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -597,9 +599,9 @@ async fn test_conflicting_collection_items() -> Result<()> {
 
     let installation_token = auth_service
         .get_installation_token_for_org(&config.test_org)
-        .await;
+        .await?;
 
-    let github_client = github_client::create_token_client(&installation_token);
+    let github_client = github_client::create_token_client(&installation_token)?;
     let github_client = github_client::GitHubClient::new(github_client);
 
     let metadata_provider = config_manager::GitHubMetadataProvider::new(
@@ -611,9 +613,9 @@ async fn test_conflicting_collection_items() -> Result<()> {
     // Both global and team may have overlapping labels (e.g., "bug")
     // Higher precedence (team) should override lower precedence (global)
     let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(repo_name.clone()),
+        RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic"),
+        TemplateName::new("template-test-basic")?,
     )
     .build();
 
@@ -623,7 +625,7 @@ async fn test_conflicting_collection_items() -> Result<()> {
         &auth_service,
         ".reporoller-test",
     )
-    .await;
+    .await?;
 
     info!(
         "Repository created: {} - conflicting items resolved via precedence",
