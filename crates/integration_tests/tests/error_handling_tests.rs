@@ -11,46 +11,6 @@ use repo_roller_core::{
 };
 use tracing::info;
 
-/// Test GitHub API rate limit handling.
-///
-/// Verifies that the system properly detects rate limiting and
-/// implements exponential backoff retry logic.
-#[tokio::test]
-async fn test_github_api_rate_limit_handling() -> Result<()> {
-    info!("Testing GitHub API rate limit handling");
-
-    // TODO: This test requires:
-    // 1. Triggering actual GitHub API rate limit (difficult in testing)
-    // 2. Verifying rate limit detection
-    // 3. Verifying exponential backoff
-    // 4. Verifying eventual success after rate limit resets
-    //
-    // Alternative: Mock GitHub API to return 429 responses
-    // and verify retry logic without hitting real rate limits
-
-    info!("⚠ Rate limit handling test needs GitHub API mocking infrastructure");
-    Ok(())
-}
-
-/// Test GitHub API network failure retry logic.
-///
-/// Verifies that transient network failures trigger retries
-/// with exponential backoff and eventual success.
-#[tokio::test]
-async fn test_github_api_network_failure_retry() -> Result<()> {
-    info!("Testing GitHub API network failure retry");
-
-    // TODO: This test requires:
-    // 1. Simulating network timeouts (mock GitHub API)
-    // 2. Verifying retry attempts
-    // 3. Testing transient failures (succeeds on retry)
-    // 4. Testing permanent failures (gives up after max retries)
-    // 5. Verifying backoff timing
-
-    info!("⚠ Network failure retry test needs network simulation infrastructure");
-    Ok(())
-}
-
 /// Test metadata repository not found error handling.
 ///
 /// Verifies graceful handling when organization doesn't have
@@ -174,63 +134,6 @@ async fn test_malformed_template_toml() -> Result<()> {
     Ok(())
 }
 
-/// Test GitHub API unexpected response handling.
-///
-/// Verifies that unexpected JSON structures from GitHub API
-/// are handled gracefully with user-friendly errors.
-#[tokio::test]
-async fn test_github_api_unexpected_response() -> Result<()> {
-    info!("Testing GitHub API unexpected response handling");
-
-    // TODO: This test requires:
-    // 1. Mocking GitHub API with unexpected JSON structure
-    // 2. Attempting to deserialize response
-    // 3. Verifying deserialization error is caught
-    // 4. Verifying user-friendly error message
-    // 5. Not exposing internal deserialization details
-
-    info!("⚠ Unexpected response test needs GitHub API mocking infrastructure");
-    Ok(())
-}
-
-/// Test partial repository creation failure recovery.
-///
-/// Verifies that if repository is created but configuration fails,
-/// the system attempts cleanup and reports the partial state.
-#[tokio::test]
-async fn test_partial_creation_failure_recovery() -> Result<()> {
-    info!("Testing partial creation failure recovery");
-
-    // TODO: This test requires:
-    // 1. Creating repository successfully
-    // 2. Injecting failure during configuration application
-    // 3. Verifying system attempts cleanup
-    // 4. Verifying error message indicates partial state
-    // 5. Testing cleanup actually removes the repository
-
-    info!("⚠ Partial creation failure test needs failure injection infrastructure");
-    Ok(())
-}
-
-/// Test GitHub App permission errors.
-///
-/// Verifies that missing GitHub App permissions are detected
-/// and reported with actionable error messages.
-#[tokio::test]
-async fn test_github_app_permission_errors() -> Result<()> {
-    info!("Testing GitHub App permission error handling");
-
-    // TODO: This test requires:
-    // 1. GitHub App with insufficient permissions
-    // 2. Attempting operation that requires missing permission
-    // 3. Verifying 403 Forbidden is returned
-    // 4. Verifying error message indicates missing permission
-    // 5. Suggesting which permission to add
-
-    info!("⚠ Permission error test needs GitHub App with limited permissions");
-    Ok(())
-}
-
 /// Test invalid GitHub App credentials handling.
 ///
 /// Verifies that invalid App ID or private key are detected
@@ -277,66 +180,6 @@ async fn test_invalid_github_app_credentials() -> Result<()> {
     );
 
     info!("✓ Invalid GitHub App credentials test passed");
-    Ok(())
-}
-
-/// Test organization not accessible error.
-///
-/// Verifies that attempting to access an organization where
-/// the GitHub App is not installed returns clear error.
-#[tokio::test]
-async fn test_organization_not_accessible() -> Result<()> {
-    info!("Testing organization not accessible error handling");
-
-    // TODO: This test requires:
-    // 1. Organization where GitHub App is not installed
-    // 2. Attempting to create repository in that org
-    // 3. Verifying 404 or 403 error
-    // 4. Verifying error message indicates installation needed
-    // 5. Providing link to install GitHub App
-
-    info!("⚠ Organization access test needs org without app installation");
-    Ok(())
-}
-
-/// Test concurrent repository creation.
-///
-/// Verifies that creating multiple repositories concurrently
-/// doesn't cause conflicts or race conditions.
-#[tokio::test]
-async fn test_concurrent_repository_creation() -> Result<()> {
-    info!("Testing concurrent repository creation");
-
-    let _config = TestConfig::from_env()?;
-
-    // TODO: This test would:
-    // 1. Spawn 5 concurrent repository creation tasks
-    // 2. All targeting same organization
-    // 3. Verify all succeed without conflicts
-    // 4. Verify no name collisions
-    // 5. Check for any race conditions
-    // 6. Clean up all created repositories
-
-    info!("⚠ Concurrent creation test needs concurrent execution infrastructure");
-    Ok(())
-}
-
-/// Test recovery from expired installation token.
-///
-/// Verifies that expired installation tokens are detected
-/// and automatically refreshed.
-#[tokio::test]
-async fn test_expired_installation_token_refresh() -> Result<()> {
-    info!("Testing expired installation token refresh");
-
-    // TODO: This test requires:
-    // 1. Creating request with nearly-expired token
-    // 2. Simulating token expiration during operation
-    // 3. Verifying system detects expiration
-    // 4. Verifying new token is obtained automatically
-    // 5. Verifying operation completes successfully
-
-    info!("⚠ Token expiration test needs token lifecycle simulation");
     Ok(())
 }
 
