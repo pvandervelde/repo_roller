@@ -115,19 +115,14 @@ pub async fn verify_repository_settings(
     repo: &str,
     expected: &ExpectedRepositorySettings,
 ) -> Result<ConfigurationVerification> {
-    let _actual = client.get_repository_settings(owner, repo).await?;
+    let actual = client.get_repository_settings(owner, repo).await?;
 
     let mut result = ConfigurationVerification::success();
     result.settings_verified = true;
 
-    // TODO: The Repository model needs to be extended to include has_issues, has_wiki,
-    // has_discussions, and has_projects fields. These are available in the GitHub API
-    // response but not currently exposed in our model.
-
     // Check has_issues if expected
     if let Some(expected_issues) = expected.has_issues {
-        // TODO: Repository model doesn't expose has_issues field yet
-        let actual_issues = None::<bool>;
+        let actual_issues = actual.has_issues();
         match actual_issues {
             Some(actual_issues) if actual_issues == expected_issues => {
                 // Match - continue
@@ -146,8 +141,7 @@ pub async fn verify_repository_settings(
 
     // Check has_wiki if expected
     if let Some(expected_wiki) = expected.has_wiki {
-        // TODO: Repository model doesn't expose has_wiki field yet
-        let actual_wiki = None::<bool>;
+        let actual_wiki = actual.has_wiki();
         match actual_wiki {
             Some(actual_wiki) if actual_wiki == expected_wiki => {
                 // Match - continue
@@ -166,8 +160,7 @@ pub async fn verify_repository_settings(
 
     // Check has_discussions if expected
     if let Some(expected_discussions) = expected.has_discussions {
-        // TODO: Repository model doesn't expose has_discussions field yet
-        let actual_discussions = None::<bool>;
+        let actual_discussions = actual.has_discussions();
         match actual_discussions {
             Some(actual_discussions) if actual_discussions == expected_discussions => {
                 // Match - continue
@@ -188,8 +181,7 @@ pub async fn verify_repository_settings(
 
     // Check has_projects if expected
     if let Some(expected_projects) = expected.has_projects {
-        // TODO: Repository model doesn't expose has_projects field yet
-        let actual_projects = None::<bool>;
+        let actual_projects = actual.has_projects();
         match actual_projects {
             Some(actual_projects) if actual_projects == expected_projects => {
                 // Match - continue
