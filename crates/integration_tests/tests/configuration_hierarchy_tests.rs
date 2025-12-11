@@ -84,11 +84,11 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
     // Fetch repository to verify settings
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     // Verify repository was created
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository verification passed");
@@ -179,11 +179,11 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository verification passed");
 
@@ -270,11 +270,11 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository verification passed");
 
@@ -350,13 +350,13 @@ async fn test_partial_field_overrides() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    
+
     // Verify projects setting
     // The backend team configuration should enable projects
     if let Some(has_projects) = repo.has_projects() {
@@ -364,11 +364,11 @@ async fn test_partial_field_overrides() -> Result<()> {
     } else {
         info!("⚠ Projects setting not available in repository model");
     }
-    
+
     // TODO: Verify allow_auto_merge enabled (backend team override)
     // This requires extending the Repository model to capture allow_auto_merge from GitHub API
     // GitHub's REST API returns this field in the repository object, but our model doesn't capture it yet
-    
+
     info!("✓ Repository verification passed");
 
     // Cleanup
@@ -447,20 +447,26 @@ async fn test_label_collection_merging() -> Result<()> {
     // Verify repository exists and check labels
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    
+
     // Check labels are applied
     let labels = verification_client
         .list_repository_labels(&config.test_org, &repo_name)
         .await?;
-    
-    assert!(!labels.is_empty(), "Repository should have labels from configuration hierarchy");
-    info!("✓ Repository has {} labels from hierarchy merge", labels.len());
+
+    assert!(
+        !labels.is_empty(),
+        "Repository should have labels from configuration hierarchy"
+    );
+    info!(
+        "✓ Repository has {} labels from hierarchy merge",
+        labels.len()
+    );
 
     // Cleanup
     let cleanup_client =
@@ -531,11 +537,11 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     // TODO: Add API to list webhooks and verify accumulation
     info!("✓ Repository verification passed");
@@ -612,11 +618,11 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository verification passed");
 
@@ -689,11 +695,11 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository verification passed");
 
@@ -768,11 +774,11 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository verification passed");
 
@@ -849,20 +855,23 @@ async fn test_conflicting_collection_items() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    
+
     // Check labels to verify deduplication
     let labels = verification_client
         .list_repository_labels(&config.test_org, &repo_name)
         .await?;
-    
+
     assert!(!labels.is_empty(), "Repository should have labels");
-    info!("✓ Repository has {} labels (duplicates resolved by precedence)", labels.len());
+    info!(
+        "✓ Repository has {} labels (duplicates resolved by precedence)",
+        labels.len()
+    );
 
     // Cleanup
     let cleanup_client =
