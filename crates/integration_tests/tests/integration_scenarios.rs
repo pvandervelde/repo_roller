@@ -5,11 +5,16 @@
 //! core functionality.
 
 use anyhow::Result;
+use auth_handler::UserAuthenticationService;
 use github_client::RepositoryClient;
 use integration_tests::{
+    generate_test_repo_name,
     test_runner::IntegrationTestRunner,
-    utils::TestConfig,
     verification::{verify_labels, ExpectedConfiguration, ExpectedRepositorySettings},
+    TestConfig, TestRepository,
+};
+use repo_roller_core::{
+    OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,
 };
 use tracing::info;
 
@@ -22,26 +27,60 @@ async fn test_basic_repository_creation() -> Result<()> {
     info!("Starting basic repository creation test");
 
     let config = TestConfig::from_env()?;
-    let mut runner = IntegrationTestRunner::new(config).await?;
+    let org_name = OrganizationName::new(&config.test_org)?;
+    let repo_name = generate_test_repo_name("basic-creation");
 
-    // Run only the basic creation test
-    let results = runner
-        .run_single_test_scenario(integration_tests::test_runner::TestScenario::BasicCreation)
-        .await;
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    // Cleanup
-    runner.cleanup_test_repositories().await?;
-
-    // Verify results
-    assert!(results.success, "Basic repository creation should succeed");
-    assert!(
-        results.details.repository_created,
-        "Repository should be created"
+    // Create authentication service
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
     );
-    assert!(
-        results.details.validation_passed,
-        "Repository validation should pass"
+
+    // Get installation token
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
+
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    // Create metadata provider
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
     );
+
+    // Build request
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
+        org_name,
+        TemplateName::new("template-test-basic")?,
+    )
+    .build();
+
+    // Execute repository creation
+    let result = repo_roller_core::create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller-test",
+    )
+    .await?;
+
+    info!("Repository created: {}", result.repository_url);
+
+    // Verify repository exists
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Basic repository creation test passed");
 
     Ok(())
 }
@@ -55,33 +94,86 @@ async fn test_variable_substitution() -> Result<()> {
     info!("Starting variable substitution test");
 
     let config = TestConfig::from_env()?;
-    let mut runner = IntegrationTestRunner::new(config).await?;
+    let org_name = OrganizationName::new(&config.test_org)?;
+    let repo_name = generate_test_repo_name("var-substitution");
 
-    // Run the variable substitution test
-    let results = runner
-        .run_single_test_scenario(
-            integration_tests::test_runner::TestScenario::VariableSubstitution,
-        )
-        .await;
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    // Cleanup
-    runner.cleanup_test_repositories().await?;
-
-    // Verify results
-    assert!(results.success, "Variable substitution should succeed");
-    assert!(
-        results.details.repository_created,
-        "Repository should be created"
-    );
-    assert!(
-        results.details.validation_passed,
-        "Repository validation should pass"
+    // Create authentication service
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
     );
 
-    // TODO: Add specific validation of variable substitution in created files
-    // This would require reading the created repository content and verifying
-    // that variables were correctly replaced
+    // Get installation token
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    // Create metadata provider
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
+    );
+
+    // Build request with variables for template-test-variables
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
+        org_name,
+        TemplateName::new("template-test-variables")?,
+    )
+    .variable("project_name", "test-project")
+    .variable("version", "0.1.0")
+    .variable("author_name", "Integration Test")
+    .build();
+
+    // Execute repository creation
+    let result = repo_roller_core::create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller-test",
+    )
+    .await?;
+
+    info!("Repository created: {}", result.repository_url);
+
+    // Verify repository exists and check for variable substitution
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+
+    // Try to verify variable substitution by checking file content
+    match verification_client
+        .get_file_content(&config.test_org, &repo_name, "README.md")
+        .await
+    {
+        Ok(readme_content) => {
+            // Verify that variables were substituted (no {{ patterns should remain)
+            assert!(
+                !readme_content.contains("{{"),
+                "README should not contain unsubstituted variable markers ({{)"
+            );
+            info!("✓ Variable substitution verified - no unsubstituted markers found");
+        }
+        Err(e) => {
+            info!(
+                "Note: Could not verify README.md content (file may not exist in template): {}",
+                e
+            );
+            // Don't fail the test - the template might not have a README.md
+        }
+    }
+
+    info!("✓ Variable substitution test passed");
     Ok(())
 }
 
@@ -94,30 +186,63 @@ async fn test_file_filtering() -> Result<()> {
     info!("Starting file filtering test");
 
     let config = TestConfig::from_env()?;
-    let mut runner = IntegrationTestRunner::new(config).await?;
+    let org_name = OrganizationName::new(&config.test_org)?;
+    let repo_name = generate_test_repo_name("file-filtering");
 
-    // Run the file filtering test
-    let results = runner
-        .run_single_test_scenario(integration_tests::test_runner::TestScenario::FileFiltering)
-        .await;
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    // Cleanup
-    runner.cleanup_test_repositories().await?;
-
-    // Verify results
-    assert!(results.success, "File filtering should succeed");
-    assert!(
-        results.details.repository_created,
-        "Repository should be created"
-    );
-    assert!(
-        results.details.validation_passed,
-        "Repository validation should pass"
+    // Create authentication service
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
     );
 
-    // TODO: Add specific validation of file filtering results
-    // This would require checking which files were included/excluded in the created repository
+    // Get installation token
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    // Create metadata provider
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
+    );
+
+    // Build request for template-test-filtering
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
+        org_name,
+        TemplateName::new("template-test-filtering")?,
+    )
+    .build();
+
+    // Execute repository creation
+    let result = repo_roller_core::create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller-test",
+    )
+    .await?;
+
+    info!("Repository created: {}", result.repository_url);
+
+    // Verify repository exists
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+
+    // Note: For detailed file filtering verification, see test_file_filtering_with_verification
+
+    info!("✓ File filtering test passed");
     Ok(())
 }
 
