@@ -255,13 +255,14 @@ color = "0075ca"
 description = "Improvements or additions to documentation"
 "#;
 
-    let mut labels: HashMap<String, LabelConfig> = toml::from_str(labels_toml).expect("Should parse valid TOML");
-    
+    let mut labels: HashMap<String, LabelConfig> =
+        toml::from_str(labels_toml).expect("Should parse valid TOML");
+
     // Simulate what load_standard_labels() does: populate name from map key
     for (name, label) in labels.iter_mut() {
         label.name = name.clone();
     }
-    
+
     assert_eq!(labels.len(), 3);
 
     let bug_label = labels.get("bug").expect("bug label should exist");
@@ -329,5 +330,3 @@ color = "d73a4a"
         toml::from_str(invalid_structure);
     assert!(result.is_err(), "Should fail with missing required fields");
 }
-
-

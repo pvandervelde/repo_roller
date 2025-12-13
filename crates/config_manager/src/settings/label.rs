@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LabelConfig {
     /// Label name.
-    /// 
+    ///
     /// When deserializing from a TOML map structure, this should be
     /// populated from the map key, not from a TOML field.
     #[serde(default)]
