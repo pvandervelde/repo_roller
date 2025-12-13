@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
-use integration_tests::utils::TestConfig;
 use repo_roller_core::{
     OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,
 };
@@ -213,8 +212,6 @@ async fn test_template_name_validation_security() -> Result<()> {
 #[tokio::test]
 async fn test_template_variable_injection_protection() -> Result<()> {
     info!("Testing template variable injection protection");
-
-    let _config = TestConfig::from_env()?;
 
     // Test: Script tags in variables
     let script_injection_values = vec![

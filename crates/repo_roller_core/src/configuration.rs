@@ -245,13 +245,25 @@ pub(crate) async fn apply_repository_configuration(
     // Apply labels
     if !merged_config.labels.is_empty() {
         debug!("Creating {} labels", merged_config.labels.len());
-        // TODO: Implement label creation via GitHub API
-        // This requires adding create_label() method to GitHubClient
-        // Tracked in separate task/issue
         for (label_name, label_config) in &merged_config.labels {
-            info!("Label to create: {} -> {:?}", label_name, label_config);
+            info!("Creating label: {} -> {:?}", label_name, label_config);
+            installation_repo_client
+                .create_label(
+                    owner,
+                    repo_name,
+                    &label_config.name,
+                    &label_config.color,
+                    &label_config.description,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to create label '{}': {}", label_name, e);
+                    RepoRollerError::System(SystemError::Internal {
+                        reason: format!("Failed to create label '{}': {}", label_name, e),
+                    })
+                })?;
         }
-        warn!("Label creation not yet implemented - requires GitHubClient::create_label() method");
+        info!("Successfully created {} labels", merged_config.labels.len());
     }
 
     // Apply webhooks

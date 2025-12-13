@@ -139,6 +139,14 @@ pub struct Repository {
     node_id: String,
     /// Whether the repository is private
     private: bool,
+    /// Whether issues are enabled for this repository
+    has_issues: Option<bool>,
+    /// Whether the wiki is enabled for this repository
+    has_wiki: Option<bool>,
+    /// Whether projects are enabled for this repository
+    has_projects: Option<bool>,
+    /// Whether discussions are enabled for this repository
+    has_discussions: Option<bool>,
 }
 
 impl Repository {
@@ -178,7 +186,47 @@ impl Repository {
             name,
             node_id,
             private,
+            has_issues: None,
+            has_wiki: None,
+            has_projects: None,
+            has_discussions: None,
         }
+    }
+
+    /// Returns whether issues are enabled for this repository.
+    ///
+    /// # Returns
+    ///
+    /// `Some(true)` if issues are enabled, `Some(false)` if disabled, or `None` if unknown.
+    pub fn has_issues(&self) -> Option<bool> {
+        self.has_issues
+    }
+
+    /// Returns whether the wiki is enabled for this repository.
+    ///
+    /// # Returns
+    ///
+    /// `Some(true)` if wiki is enabled, `Some(false)` if disabled, or `None` if unknown.
+    pub fn has_wiki(&self) -> Option<bool> {
+        self.has_wiki
+    }
+
+    /// Returns whether projects are enabled for this repository.
+    ///
+    /// # Returns
+    ///
+    /// `Some(true)` if projects are enabled, `Some(false)` if disabled, or `None` if unknown.
+    pub fn has_projects(&self) -> Option<bool> {
+        self.has_projects
+    }
+
+    /// Returns whether discussions are enabled for this repository.
+    ///
+    /// # Returns
+    ///
+    /// `Some(true)` if discussions are enabled, `Some(false)` if disabled, or `None` if unknown.
+    pub fn has_discussions(&self) -> Option<bool> {
+        self.has_discussions
     }
 
     /// Returns the GraphQL node ID of the repository.
@@ -213,6 +261,12 @@ impl From<octocrab::models::Repository> for Repository {
             full_name: value.full_name.unwrap_or(value.name.clone()),
             node_id: value.node_id.unwrap_or_default(),
             private: value.private.unwrap_or(false),
+            has_issues: value.has_issues,
+            has_wiki: value.has_wiki,
+            has_projects: value.has_projects,
+            // Note: has_discussions is not available in octocrab::models::Repository
+            // This field may need to be fetched separately via the GitHub API
+            has_discussions: None,
         }
     }
 }

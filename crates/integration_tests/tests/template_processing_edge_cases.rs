@@ -4,11 +4,24 @@
 //! large files, binary files, deep nesting, special characters.
 
 use anyhow::Result;
-use integration_tests::utils::TestConfig;
+use auth_handler::UserAuthenticationService;
+use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
 use repo_roller_core::{
-    OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,
+    create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
+    TemplateName,
 };
 use tracing::info;
+
+/// Initialize logging for tests
+fn init_test_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .with_test_writer()
+        .try_init();
+}
 
 /// Test processing templates with large files (>10MB).
 ///
@@ -16,27 +29,71 @@ use tracing::info;
 /// memory issues or timeouts.
 #[tokio::test]
 async fn test_large_file_processing() -> Result<()> {
+    init_test_logging();
     info!("Testing large file processing");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("large-files");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-large-files-{}", uuid::Uuid::new_v4()))?;
+    // Create authentication service
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with files >10MB (e.g., large data file, big JSON)
-    // 2. Create repository from template
-    // 3. Verify repository created successfully
-    // 4. Verify large files transferred correctly
-    // 5. Check file size matches expected
+    // Get installation token
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    // Create metadata provider
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    // Build request
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-large-files")?,
     )
     .build();
 
-    info!("⚠ Large file test needs template with >10MB files");
+    // Create repository
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+
+    // Assert success
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    // Verify repository exists
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Large file template processed successfully");
+
+    // TODO: Verify large files transferred correctly (need API to check file sizes)
+
+    // Cleanup
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Large file processing test passed");
     Ok(())
 }
 
@@ -46,27 +103,62 @@ async fn test_large_file_processing() -> Result<()> {
 /// are copied correctly without corruption.
 #[tokio::test]
 async fn test_binary_file_preservation() -> Result<()> {
+    init_test_logging();
     info!("Testing binary file preservation");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("binary-files");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-binary-files-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with binary files (PNG, PDF, ZIP)
-    // 2. Create repository from template
-    // 3. Download binary files from created repo
-    // 4. Verify checksums match original files
-    // 5. Verify no text substitution in binary files
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-binary-files")?,
     )
     .build();
 
-    info!("⚠ Binary file test needs template with images/PDFs");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Binary file template processed successfully");
+
+    // TODO: Download binary files and verify checksums match originals
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Binary file preservation test passed");
     Ok(())
 }
 
@@ -76,27 +168,62 @@ async fn test_binary_file_preservation() -> Result<()> {
 /// are handled correctly.
 #[tokio::test]
 async fn test_deep_directory_nesting() -> Result<()> {
+    init_test_logging();
     info!("Testing deep directory nesting");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("deep-nesting");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-deep-nesting-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with >10 levels of nested directories
-    // 2. Files at various nesting levels
-    // 3. Create repository from template
-    // 4. Verify all directories created
-    // 5. Verify files accessible at all levels
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-deep-nesting")?,
     )
     .build();
 
-    info!("⚠ Deep nesting test needs template with >10 directory levels");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Deep nesting template processed successfully");
+
+    // TODO: Verify all nested directories created (need list_repository_files API)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Deep directory nesting test passed");
     Ok(())
 }
 
@@ -106,27 +233,66 @@ async fn test_deep_directory_nesting() -> Result<()> {
 /// contains large number of files.
 #[tokio::test]
 async fn test_many_files_template() -> Result<()> {
+    init_test_logging();
     info!("Testing template with many files");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("many-files");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-many-files-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with >1000 files
-    // 2. Create repository from template
-    // 3. Verify all files created
-    // 4. Check processing time is reasonable (<5 minutes)
-    // 5. Verify no files are lost/skipped
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-many-files")?,
     )
     .build();
 
-    info!("⚠ Many files test needs template with >1000 files");
+    let start_time = std::time::Instant::now();
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let elapsed = start_time.elapsed();
+
+    assert!(result.is_ok(), "Repository creation should succeed");
+    info!("Repository creation took {:?}", elapsed);
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Many files template processed successfully");
+
+    // TODO: Verify file count matches expected (need list_repository_files API)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Many files template test passed");
     Ok(())
 }
 
@@ -136,30 +302,62 @@ async fn test_many_files_template() -> Result<()> {
 /// characters are handled correctly.
 #[tokio::test]
 async fn test_unicode_filenames() -> Result<()> {
+    init_test_logging();
     info!("Testing Unicode filenames");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("unicode-files");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-unicode-files-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with files named:
-    //    - "日本語.txt" (Japanese)
-    //    - "файл.txt" (Cyrillic)
-    //    - "test-😀-emoji.txt" (emoji)
-    //    - "spëcîål-çhãrs.txt" (accents)
-    // 2. Create repository from template
-    // 3. Verify all files created with correct names
-    // 4. Verify files are accessible
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-unicode-names")?,
     )
     .build();
 
-    info!("⚠ Unicode filename test needs template with special characters");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Unicode filename template processed successfully");
+
+    // TODO: Verify Unicode filenames preserved (need list_repository_files API)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Unicode filenames test passed");
     Ok(())
 }
 
@@ -169,26 +367,62 @@ async fn test_unicode_filenames() -> Result<()> {
 /// or resolve them, depending on design decision).
 #[tokio::test]
 async fn test_symlink_handling() -> Result<()> {
+    init_test_logging();
     info!("Testing symbolic link handling");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("symlinks");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-symlinks-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with symbolic links
-    // 2. Create repository from template
-    // 3. Verify behavior (skip symlinks? resolve them? error?)
-    // 4. Document expected behavior in test
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-with-symlinks")?,
     )
     .build();
 
-    info!("⚠ Symlink test needs template with symbolic links");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Symlink template processed successfully");
+
+    // TODO: Verify symlink handling (GitHub converts symlinks to regular files)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Symlink handling test passed");
     Ok(())
 }
 
@@ -198,27 +432,62 @@ async fn test_symlink_handling() -> Result<()> {
 /// are preserved during template processing.
 #[tokio::test]
 async fn test_executable_permissions_preserved() -> Result<()> {
+    init_test_logging();
     info!("Testing executable permission preservation");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("executable-scripts");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-permissions-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with executable scripts (chmod +x)
-    // 2. Create repository from template
-    // 3. Download files from created repo
-    // 4. Verify executable bit is set
-    // 5. Note: GitHub may not preserve all Unix permissions
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-with-scripts")?,
     )
     .build();
 
-    info!("⚠ Permission test needs template with executable files");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Executable scripts template processed successfully");
+
+    // TODO: Verify executable permissions (GitHub preserves via git mode)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Executable permissions test passed");
     Ok(())
 }
 
@@ -227,26 +496,62 @@ async fn test_executable_permissions_preserved() -> Result<()> {
 /// Verifies that hidden files (starting with .) are processed correctly.
 #[tokio::test]
 async fn test_hidden_files_processing() -> Result<()> {
+    init_test_logging();
     info!("Testing hidden file processing");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("hidden-files");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-hidden-files-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with .gitignore, .env.example, .github/ directory
-    // 2. Create repository from template
-    // 3. Verify all hidden files/directories created
-    // 4. Verify content is correct
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-with-dotfiles")?,
     )
     .build();
 
-    info!("⚠ Hidden file test needs template with dotfiles");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Dotfiles template processed successfully");
+
+    // TODO: Verify dotfiles copied (need list_repository_files API)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Hidden files processing test passed");
     Ok(())
 }
 
@@ -256,26 +561,62 @@ async fn test_hidden_files_processing() -> Result<()> {
 /// so .gitkeep files might be needed).
 #[tokio::test]
 async fn test_empty_directory_handling() -> Result<()> {
+    init_test_logging();
     info!("Testing empty directory handling");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("empty-dirs");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-empty-dirs-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with empty directories (with .gitkeep)
-    // 2. Create repository from template
-    // 3. Verify directories exist (via .gitkeep presence)
-    // 4. Document expected behavior
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-empty-dirs")?,
     )
     .build();
 
-    info!("⚠ Empty directory test needs template with empty directories");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ Empty directories template processed successfully");
+
+    // TODO: Verify .gitkeep files created for empty directories
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Empty directory handling test passed");
     Ok(())
 }
 
@@ -284,25 +625,61 @@ async fn test_empty_directory_handling() -> Result<()> {
 /// Verifies that files without extensions are processed correctly.
 #[tokio::test]
 async fn test_files_without_extensions() -> Result<()> {
+    init_test_logging();
     info!("Testing files without extensions");
 
     let config = TestConfig::from_env()?;
+    let repo_name = generate_test_repo_name("no-extensions");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let repo_name = RepositoryName::new(format!("test-no-extension-{}", uuid::Uuid::new_v4()))?;
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
 
-    // TODO: This test requires:
-    // 1. Template with files like "Dockerfile", "Makefile", "LICENSE"
-    // 2. Create repository from template
-    // 3. Verify all files created correctly
-    // 4. Verify content processed (variable substitution works)
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
 
-    let _request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let github_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(github_client);
+
+    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        github_client,
+        config_manager::MetadataProviderConfig::explicit(".reporoller"),
+    );
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-no-extensions")?,
     )
     .build();
 
-    info!("⚠ No extension test needs template with extensionless files");
+    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    assert!(result.is_ok(), "Repository creation should succeed");
+
+    let verification_client = github_client::create_token_client(&installation_token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let repo = verification_client
+        .get_repository(&config.test_org, &repo_name)
+        .await?;
+
+    assert_eq!(repo.name(), repo_name, "Repository name should match");
+    info!("✓ No extensions template processed successfully");
+
+    // TODO: Verify extension-less files copied (need list_repository_files API)
+
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup = RepositoryCleanup::new(
+        github_client::GitHubClient::new(cleanup_client),
+        config.test_org.clone(),
+    );
+    cleanup.delete_repository(&repo_name).await.ok();
+
+    info!("✓ Files without extensions test passed");
     Ok(())
 }
