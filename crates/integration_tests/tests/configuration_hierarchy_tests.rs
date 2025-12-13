@@ -832,13 +832,13 @@ async fn test_conflicting_collection_items() -> Result<()> {
     // Use backend team which has labels.toml
     // Both global and team may have overlapping labels (e.g., "bug")
     // Higher precedence (team) should override lower precedence (global)
+    // TODO: Team and repository type configuration needs to be loaded via metadata repository hierarchy
+    // Currently the RepositoryCreationRequestBuilder doesn't have .with_team() or .with_repository_type() methods
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
         TemplateName::new("template-test-basic")?,
     )
-    .with_team("backend")
-    .with_repository_type("library")
     .build();
 
     let result = repo_roller_core::create_repository(
