@@ -837,6 +837,8 @@ async fn test_conflicting_collection_items() -> Result<()> {
         org_name,
         TemplateName::new("template-test-basic")?,
     )
+    .with_team("backend")
+    .with_repository_type("library")
     .build();
 
     let result = repo_roller_core::create_repository(
