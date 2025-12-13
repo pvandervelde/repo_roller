@@ -322,16 +322,26 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         &self,
         repo: &MetadataRepository,
     ) -> ConfigurationResult<HashMap<String, LabelConfig>> {
-        let file_path = "labels.toml";
+        let file_path = "global/standard-labels.toml";
 
         match self
             .client
             .get_file_content(&repo.organization, &repo.repository_name, file_path)
             .await
         {
-            Ok(content) => toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
-                reason: format!("{}: {}", file_path, e),
-            }),
+            Ok(content) => {
+                let mut labels: HashMap<String, LabelConfig> =
+                    toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
+                        reason: format!("{}: {}", file_path, e),
+                    })?;
+
+                // Populate the name field from the map key
+                for (name, label) in labels.iter_mut() {
+                    label.name = name.clone();
+                }
+
+                Ok(labels)
+            }
             Err(_) => {
                 // Labels are optional - return empty map if file doesn't exist
                 Ok(HashMap::new())
