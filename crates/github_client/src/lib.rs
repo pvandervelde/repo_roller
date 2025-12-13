@@ -690,6 +690,38 @@ impl RepositoryClient for GitHubClient {
         }
     }
 
+    async fn create_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error> {
+        info!(name = name, "Creating repository label");
+
+        let url = format!("repos/{}/{}/labels", owner, repo);
+        let body = serde_json::json!({
+            "name": name,
+            "color": color,
+            "description": description,
+        });
+
+        let result: Result<serde_json::Value, octocrab::Error> =
+            self.client.post(url, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(name = name, "Successfully created label");
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to create label", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
     async fn get_repository_settings(
         &self,
         owner: &str,
@@ -1168,6 +1200,28 @@ pub trait RepositoryClient: Send + Sync {
     ///
     /// Returns `Error::InvalidResponse` if the API call fails.
     async fn list_repository_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error>;
+
+    /// Creates a label in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `name` - The name of the label
+    /// * `color` - The color of the label (hex code without #)
+    /// * `description` - The description of the label
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if the API call fails.
+    async fn create_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error>;
 
     /// Gets repository settings including feature flags.
     ///

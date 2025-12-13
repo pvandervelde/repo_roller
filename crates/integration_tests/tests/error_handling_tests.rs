@@ -73,7 +73,9 @@ async fn test_metadata_repository_not_found() -> Result<()> {
             assert!(
                 error_msg.to_lowercase().contains("metadata")
                     || error_msg.to_lowercase().contains("not found")
-                    || error_msg.to_lowercase().contains(".definitely-does-not-exist"),
+                    || error_msg
+                        .to_lowercase()
+                        .contains(".definitely-does-not-exist"),
                 "Error message should indicate metadata repository issue. Got: {}",
                 error_msg
             );

@@ -77,11 +77,11 @@ async fn test_basic_repository_creation() -> Result<()> {
     // Verify repository exists and is accessible
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     assert!(!repo.is_private(), "Repository should be public by default");
     info!("✓ Repository verification passed");
@@ -162,7 +162,7 @@ async fn test_variable_substitution() -> Result<()> {
     // Verify variable substitution by checking file contents
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     // Try to fetch README.md to verify variable substitution
     match verification_client
         .get_file_content(&config.test_org, &repo_name, "README.md")
@@ -174,7 +174,7 @@ async fn test_variable_substitution() -> Result<()> {
                 !content.contains("{{"),
                 "File should not contain unsubstituted variable markers"
             );
-            
+
             // Verify specific substituted values
             assert!(
                 content.contains("test-project") || content.contains("Integration Test"),
@@ -256,14 +256,14 @@ async fn test_file_filtering() -> Result<()> {
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository created successfully");
-    
+
     // TODO: Add file tree verification once list_repository_files() API is implemented
     // This would verify that:
     // - Files matching include patterns are present
@@ -392,18 +392,18 @@ async fn test_organization_settings() -> Result<()> {
     // Verify organization settings were applied
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    
+
     // Verify labels from metadata repository were applied
     let labels = verification_client
         .list_repository_labels(&config.test_org, &repo_name)
         .await?;
-    
+
     info!("Repository has {} labels", labels.len());
     info!("✓ Organization settings verification passed");
 
@@ -477,11 +477,11 @@ async fn test_team_configuration() -> Result<()> {
     // Verify team configuration was applied
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Team configuration verification passed");
 
@@ -558,11 +558,11 @@ async fn test_repository_type_configuration() -> Result<()> {
     // Verify repository type configuration was applied
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Repository type configuration verification passed");
 
@@ -639,18 +639,18 @@ async fn test_configuration_hierarchy() -> Result<()> {
     // Verify configuration hierarchy was applied correctly
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
-    
+
     let repo = verification_client
         .get_repository(&config.test_org, &repo_name)
         .await?;
-    
+
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    
+
     // Verify labels were merged from all hierarchy levels
     let labels = verification_client
         .list_repository_labels(&config.test_org, &repo_name)
         .await?;
-    
+
     info!(
         "Repository has {} labels (merged from Global → Type → Team → Template)",
         labels.len()

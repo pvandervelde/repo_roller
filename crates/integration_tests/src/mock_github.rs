@@ -51,12 +51,10 @@ impl GitHubMockServer {
     pub async fn mock_repository_not_found(&self, owner: &str, repo: &str) {
         Mock::given(method("GET"))
             .and(path(format!("/repos/{}/{}", owner, repo)))
-            .respond_with(
-                ResponseTemplate::new(404).set_body_json(json!({
-                    "message": "Not Found",
-                    "documentation_url": "https://docs.github.com/rest/reference/repos#get-a-repository"
-                })),
-            )
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+                "message": "Not Found",
+                "documentation_url": "https://docs.github.com/rest/reference/repos#get-a-repository"
+            })))
             .mount(&self.server)
             .await;
     }
@@ -65,12 +63,10 @@ impl GitHubMockServer {
     pub async fn mock_permission_denied(&self, path_pattern: &str) {
         Mock::given(method("GET"))
             .and(path_regex(path_pattern))
-            .respond_with(
-                ResponseTemplate::new(403).set_body_json(json!({
-                    "message": "Resource not accessible by integration",
-                    "documentation_url": "https://docs.github.com/rest/reference/repos"
-                })),
-            )
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "message": "Resource not accessible by integration",
+                "documentation_url": "https://docs.github.com/rest/reference/repos"
+            })))
             .mount(&self.server)
             .await;
     }
@@ -90,12 +86,10 @@ impl GitHubMockServer {
     pub async fn mock_unexpected_response(&self, path_pattern: &str) {
         Mock::given(method("GET"))
             .and(path_regex(path_pattern))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "unexpected_field": "this shouldn't be here",
-                    "missing_required_fields": true
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "unexpected_field": "this shouldn't be here",
+                "missing_required_fields": true
+            })))
             .mount(&self.server)
             .await;
     }
@@ -104,29 +98,27 @@ impl GitHubMockServer {
     pub async fn mock_create_repository_success(&self, owner: &str, repo_name: &str) {
         Mock::given(method("POST"))
             .and(path(format!("/orgs/{}/repos", owner)))
-            .respond_with(
-                ResponseTemplate::new(201).set_body_json(json!({
-                    "id": 123456789,
-                    "node_id": "MDEwOlJlcG9zaXRvcnkxMjM0NTY3ODk=",
-                    "name": repo_name,
-                    "full_name": format!("{}/{}", owner, repo_name),
-                    "private": false,
-                    "owner": {
-                        "login": owner,
-                        "id": 987654321,
-                        "type": "Organization"
-                    },
-                    "html_url": format!("https://github.com/{}/{}", owner, repo_name),
-                    "description": "Test repository",
-                    "created_at": "2024-01-08T12:00:00Z",
-                    "updated_at": "2024-01-08T12:00:00Z",
-                    "pushed_at": "2024-01-08T12:00:00Z",
-                    "default_branch": "main",
-                    "has_issues": true,
-                    "has_wiki": false,
-                    "has_projects": true
-                })),
-            )
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "id": 123456789,
+                "node_id": "MDEwOlJlcG9zaXRvcnkxMjM0NTY3ODk=",
+                "name": repo_name,
+                "full_name": format!("{}/{}", owner, repo_name),
+                "private": false,
+                "owner": {
+                    "login": owner,
+                    "id": 987654321,
+                    "type": "Organization"
+                },
+                "html_url": format!("https://github.com/{}/{}", owner, repo_name),
+                "description": "Test repository",
+                "created_at": "2024-01-08T12:00:00Z",
+                "updated_at": "2024-01-08T12:00:00Z",
+                "pushed_at": "2024-01-08T12:00:00Z",
+                "default_branch": "main",
+                "has_issues": true,
+                "has_wiki": false,
+                "has_projects": true
+            })))
             .mount(&self.server)
             .await;
     }
@@ -197,17 +189,15 @@ impl GitHubMockServer {
                 "/repos/{}/{}/contents/{}",
                 owner, repo, file_path
             )))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "name": file_path.split('/').last().unwrap_or(file_path),
-                    "path": file_path,
-                    "sha": "abc123",
-                    "size": content.len(),
-                    "type": "file",
-                    "content": encoded_content,
-                    "encoding": "base64"
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": file_path.split('/').last().unwrap_or(file_path),
+                "path": file_path,
+                "sha": "abc123",
+                "size": content.len(),
+                "type": "file",
+                "content": encoded_content,
+                "encoding": "base64"
+            })))
             .mount(&self.server)
             .await;
     }
@@ -243,20 +233,14 @@ impl GitHubMockServer {
     }
 
     /// Mock search repositories API.
-    pub async fn mock_search_repositories(
-        &self,
-        _query: &str,
-        results: Vec<serde_json::Value>,
-    ) {
+    pub async fn mock_search_repositories(&self, _query: &str, results: Vec<serde_json::Value>) {
         Mock::given(method("GET"))
             .and(path("/search/repositories"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "total_count": results.len(),
-                    "incomplete_results": false,
-                    "items": results
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "total_count": results.len(),
+                "incomplete_results": false,
+                "items": results
+            })))
             .mount(&self.server)
             .await;
     }
@@ -268,16 +252,14 @@ impl GitHubMockServer {
                 "/app/installations/{}/access_tokens",
                 installation_id
             )))
-            .respond_with(
-                ResponseTemplate::new(201).set_body_json(json!({
-                    "token": token,
-                    "expires_at": "2024-12-31T23:59:59Z",
-                    "permissions": {
-                        "contents": "write",
-                        "metadata": "read"
-                    }
-                })),
-            )
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "token": token,
+                "expires_at": "2024-12-31T23:59:59Z",
+                "permissions": {
+                    "contents": "write",
+                    "metadata": "read"
+                }
+            })))
             .mount(&self.server)
             .await;
     }
