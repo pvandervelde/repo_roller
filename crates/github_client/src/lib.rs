@@ -700,15 +700,12 @@ impl RepositoryClient for GitHubClient {
     ) -> Result<(), Error> {
         info!(name = name, "Creating repository label");
 
-        let url = format!("repos/{}/{}/labels", owner, repo);
-        let body = serde_json::json!({
-            "name": name,
-            "color": color,
-            "description": description,
-        });
-
-        let result: Result<octocrab::models::Label, octocrab::Error> =
-            self.client.post(url, Some(&body)).await;
+        // Use octocrab's built-in issues API to create labels
+        let result = self
+            .client
+            .issues(owner, repo)
+            .create_label(name, color, description)
+            .await;
 
         match result {
             Ok(_) => {
@@ -731,8 +728,14 @@ impl RepositoryClient for GitHubClient {
                         "Label already exists, updating instead of creating"
                     );
 
-                    // Update the existing label
+                    // Update the existing label using PATCH
                     let update_url = format!("repos/{}/{}/labels/{}", owner, repo, name);
+                    let body = serde_json::json!({
+                        "name": name,
+                        "color": color,
+                        "description": description,
+                    });
+                    
                     let update_result: Result<octocrab::models::Label, octocrab::Error> =
                         self.client.patch(update_url, Some(&body)).await;
 
