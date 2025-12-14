@@ -716,6 +716,13 @@ impl RepositoryClient for GitHubClient {
                 Ok(())
             }
             Err(e) => {
+                // Log the error details for debugging
+                debug!(
+                    name = name,
+                    error = ?e,
+                    "Label creation failed, checking if it already exists"
+                );
+
                 // Check if this is a "label already exists" error (422 Unprocessable Entity)
                 // In that case, update the existing label instead
                 if is_label_already_exists_error(&e) {
@@ -1633,10 +1640,17 @@ fn is_label_already_exists_error(e: &octocrab::Error) -> bool {
     match e {
         octocrab::Error::GitHub { source, .. } => {
             // GitHub returns 422 Unprocessable Entity when a label with the same name already exists
-            // Check the main error message for "already_exists" or "already exists" text
-            // GitHub error messages may contain phrases like "Label already exists" or "already_exists"
+            // Check both status code and error message
+            let is_422 = source.status_code == http::StatusCode::UNPROCESSABLE_ENTITY;
             let msg_lower = source.message.to_lowercase();
-            msg_lower.contains("already exists") || msg_lower.contains("already_exists")
+            let has_already_exists =
+                msg_lower.contains("already exists") || msg_lower.contains("already_exists");
+
+            // Also check for common validation error patterns from GitHub
+            let has_validation_error = msg_lower.contains("validation failed")
+                && (msg_lower.contains("label") || msg_lower.contains("name"));
+
+            is_422 && (has_already_exists || has_validation_error)
         }
         _ => false,
     }
