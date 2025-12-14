@@ -700,15 +700,19 @@ impl RepositoryClient for GitHubClient {
     ) -> Result<(), Error> {
         info!(name = name, "Creating repository label");
 
-        // Use octocrab's built-in issues API to create labels
-        let result = self
-            .client
-            .issues(owner, repo)
-            .create_label(name, color, description)
-            .await;
+        // Construct the API route manually
+        let route = format!("repos/{}/{}/labels", owner, repo);
+        let body = serde_json::json!({
+            "name": name,
+            "color": color,
+            "description": description,
+        });
+
+        // Send the request and get the raw response
+        let result = self.client._post(route, Some(&body)).await;
 
         match result {
-            Ok(_) => {
+            Ok(_response) => {
                 info!(name = name, "Successfully created label");
                 Ok(())
             }
@@ -730,14 +734,7 @@ impl RepositoryClient for GitHubClient {
 
                     // Update the existing label using PATCH
                     let update_url = format!("repos/{}/{}/labels/{}", owner, repo, name);
-                    let body = serde_json::json!({
-                        "name": name,
-                        "color": color,
-                        "description": description,
-                    });
-                    
-                    let update_result: Result<octocrab::models::Label, octocrab::Error> =
-                        self.client.patch(update_url, Some(&body)).await;
+                    let update_result = self.client._patch(update_url, Some(&body)).await;
 
                     match update_result {
                         Ok(_) => {
