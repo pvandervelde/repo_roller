@@ -716,8 +716,33 @@ impl RepositoryClient for GitHubClient {
                 Ok(())
             }
             Err(e) => {
-                log_octocrab_error("Failed to create label", e);
-                Err(Error::InvalidResponse)
+                // Check if this is a "label already exists" error (422 Unprocessable Entity)
+                // In that case, update the existing label instead
+                if is_label_already_exists_error(&e) {
+                    info!(
+                        name = name,
+                        "Label already exists, updating instead of creating"
+                    );
+
+                    // Update the existing label
+                    let update_url = format!("repos/{}/{}/labels/{}", owner, repo, name);
+                    let update_result: Result<serde_json::Value, octocrab::Error> =
+                        self.client.patch(update_url, Some(&body)).await;
+
+                    match update_result {
+                        Ok(_) => {
+                            info!(name = name, "Successfully updated existing label");
+                            Ok(())
+                        }
+                        Err(update_e) => {
+                            log_octocrab_error("Failed to update existing label", update_e);
+                            Err(Error::InvalidResponse)
+                        }
+                    }
+                } else {
+                    log_octocrab_error("Failed to create label", e);
+                    Err(Error::InvalidResponse)
+                }
             }
         }
     }
@@ -1601,6 +1626,20 @@ fn log_octocrab_error(message: &str, e: octocrab::Error) {
         ),
         _ => error!(error_message = e.to_string(), message),
     };
+}
+
+/// Checks if an octocrab error indicates a label already exists (HTTP 422 with specific message).
+fn is_label_already_exists_error(e: &octocrab::Error) -> bool {
+    match e {
+        octocrab::Error::GitHub { source, .. } => {
+            // GitHub returns 422 Unprocessable Entity when a label with the same name already exists
+            // Check the main error message for "already_exists" or "already exists" text
+            // GitHub error messages may contain phrases like "Label already exists" or "already_exists"
+            let msg_lower = source.message.to_lowercase();
+            msg_lower.contains("already exists") || msg_lower.contains("already_exists")
+        }
+        _ => false,
+    }
 }
 
 /// Checks if an octocrab error is a 404 Not Found error.
