@@ -228,6 +228,23 @@ impl OrganizationSettingsManager {
 
         debug!("Global defaults loaded successfully");
 
+        // Step 2.5: Load standard labels from global configuration
+        debug!("Loading standard labels");
+        let standard_labels = self
+            .metadata_provider
+            .load_standard_labels(&metadata_repo)
+            .await
+            .map_err(|e| {
+                warn!("Failed to load standard labels: {}", e);
+                e
+            })?;
+
+        if !standard_labels.is_empty() {
+            info!("Loaded {} standard labels", standard_labels.len());
+        } else {
+            debug!("No standard labels found");
+        }
+
         // Step 3: Load repository type configuration (if specified)
         let repository_type_config = if let Some(repo_type) = context.repository_type() {
             debug!("Loading repository type configuration: {}", repo_type);
@@ -300,7 +317,7 @@ impl OrganizationSettingsManager {
 
         // Step 6: Merge all configurations using ConfigurationMerger
         debug!("Merging configurations");
-        let merged = self
+        let mut merged = self
             .merger
             .merge_configurations(
                 &global_defaults,
@@ -312,6 +329,22 @@ impl OrganizationSettingsManager {
                 warn!("Configuration merge failed: {}", e);
                 e
             })?;
+
+        // Step 6.5: Merge standard labels into configuration
+        // Standard labels act as the baseline, and labels from other sources
+        // (repository type, team, template) override them by name
+        debug!("Merging standard labels into configuration");
+        for (label_name, label_config) in standard_labels {
+            // Only add if not already present (higher precedence sources override)
+            merged.labels.entry(label_name).or_insert(label_config);
+        }
+
+        if !merged.labels.is_empty() {
+            info!(
+                "Configuration has {} labels after merging",
+                merged.labels.len()
+            );
+        }
 
         // Step 7: Validate merged configuration
         debug!("Validating merged configuration");
