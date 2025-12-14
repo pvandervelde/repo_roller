@@ -707,7 +707,7 @@ impl RepositoryClient for GitHubClient {
             "description": description,
         });
 
-        let result: Result<serde_json::Value, octocrab::Error> =
+        let result: Result<octocrab::models::Label, octocrab::Error> =
             self.client.post(url, Some(&body)).await;
 
         match result {
@@ -733,7 +733,7 @@ impl RepositoryClient for GitHubClient {
 
                     // Update the existing label
                     let update_url = format!("repos/{}/{}/labels/{}", owner, repo, name);
-                    let update_result: Result<serde_json::Value, octocrab::Error> =
+                    let update_result: Result<octocrab::models::Label, octocrab::Error> =
                         self.client.patch(update_url, Some(&body)).await;
 
                     match update_result {
