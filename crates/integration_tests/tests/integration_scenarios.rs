@@ -128,6 +128,13 @@ async fn test_variable_substitution() -> Result<()> {
     .variable("project_name", "test-project")
     .variable("version", "0.1.0")
     .variable("author_name", "Integration Test")
+    .variable("author_email", "test@example.com")
+    .variable(
+        "project_description",
+        "A test project for integration testing",
+    )
+    .variable("license", "MIT")
+    .variable("license_type", "MIT")
     .build();
 
     // Execute repository creation
