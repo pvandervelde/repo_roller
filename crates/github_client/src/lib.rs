@@ -700,8 +700,8 @@ impl RepositoryClient for GitHubClient {
     ) -> Result<(), Error> {
         info!(name = name, "Creating repository label");
 
-        // Construct the API route manually
-        let route = format!("repos/{}/{}/labels", owner, repo);
+        // Construct the full API URL (octocrab's _post requires full URL, not relative path)
+        let url = format!("https://api.github.com/repos/{}/{}/labels", owner, repo);
         let body = serde_json::json!({
             "name": name,
             "color": color,
@@ -709,7 +709,7 @@ impl RepositoryClient for GitHubClient {
         });
 
         // Send the request and get the raw response
-        let result = self.client._post(route, Some(&body)).await;
+        let result = self.client._post(&url, Some(&body)).await;
 
         match result {
             Ok(_response) => {
@@ -733,8 +733,8 @@ impl RepositoryClient for GitHubClient {
                     );
 
                     // Update the existing label using PATCH
-                    let update_url = format!("repos/{}/{}/labels/{}", owner, repo, name);
-                    let update_result = self.client._patch(update_url, Some(&body)).await;
+                    let update_url = format!("https://api.github.com/repos/{}/{}/labels/{}", owner, repo, name);
+                    let update_result = self.client._patch(&update_url, Some(&body)).await;
 
                     match update_result {
                         Ok(_) => {
