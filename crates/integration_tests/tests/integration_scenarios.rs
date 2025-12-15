@@ -125,19 +125,19 @@ async fn test_variable_substitution() -> Result<()> {
         org_name,
         TemplateName::new("template-test-variables")?,
     )
-    .variable("project_name", "test-project")
-    .variable("version", "0.1.0")
-    .variable("author_name", "Integration Test")
-    .variable("author_email", "test@example.com")
-    .variable(
-        "project_description",
-        "A test project for integration testing",
-    )
-    .variable("license", "MIT")
-    .variable("license_type", "MIT")
-    .build();
-
-    // Execute repository creation
+            .variable("project_name", "test-project")
+            .variable("version", "0.1.0")
+            .variable("author_name", "Integration Test")
+            .variable("author_email", "test@example.com")
+            .variable(
+                "project_description",
+                "A test project for integration testing",
+            )
+            .variable("license", "MIT")
+            .variable("license_type", "MIT")
+            .variable("environment", "test")
+            .variable("debug_mode", "true")
+            .build();    // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
         &metadata_provider,
