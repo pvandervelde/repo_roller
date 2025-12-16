@@ -292,34 +292,70 @@ async fn test_error_handling() -> Result<()> {
 /// Test orphaned repository cleanup functionality.
 ///
 /// This test verifies that the cleanup system can find and remove orphaned test repositories.
+/// It creates a repository directly (not through the test runner) so it won't be auto-cleaned,
+/// then verifies the orphan cleanup can find and delete it.
 #[tokio::test]
 async fn test_orphaned_repository_cleanup() -> Result<()> {
     info!("Starting orphaned repository cleanup test");
 
     let config = TestConfig::from_env()?;
-    let mut runner = IntegrationTestRunner::new(config).await?;
+    let repo_name = generate_test_repo_name("orphan-cleanup");
+    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    // Create a test repository that we'll treat as orphaned
-    let results = runner
-        .run_single_test_scenario(integration_tests::test_runner::TestScenario::BasicCreation)
+    // Create authentication service
+    let auth_service = auth_handler::GitHubAuthService::new(
+        config.github_app_id,
+        config.github_app_private_key.clone(),
+    );
+
+    // Get installation token
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
+
+    let github_client = github_client::create_token_client(&installation_token)?;
+
+    // Create a simple test repository directly via GitHub API (not through test runner)
+    // This simulates an orphaned repository
+    let create_result = github_client
+        .orgs(&config.test_org)
+        .create_repo(&repo_name)
+        .description("Temporary test repository for orphan cleanup testing")
+        .send()
         .await;
 
     assert!(
-        results.success,
+        create_result.is_ok(),
         "Should create test repository for cleanup test"
     );
 
-    // Wait a moment to ensure timestamp difference
+    info!(
+        repo_name = repo_name,
+        "Created test repository for orphan cleanup testing"
+    );
+
+    // Wait a moment to ensure the repository is fully created
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-    // Now test cleanup with a very large max age (should clean up everything older than cutoff)
-    // Using a large value like 1000 hours ensures even very recent repos are considered "old enough"
-    let deleted_repos = runner.cleanup_orphaned_repositories(1000).await?;
+    // Now create a TestCleanup instance and test cleanup with large max age
+    // This should find and delete our orphaned test repository
+    let cleanup = integration_tests::TestCleanup::new(
+        auth_service,
+        config.test_org.clone(),
+    );
+
+    let deleted_repos = cleanup.cleanup_orphaned_repositories(1000).await?;
 
     // Verify that our test repository was cleaned up
     assert!(
-        !deleted_repos.is_empty(),
-        "Should have deleted at least one repository"
+        deleted_repos.contains(&repo_name),
+        "Should have deleted the test repository. Deleted: {:?}",
+        deleted_repos
+    );
+
+    info!(
+        deleted_count = deleted_repos.len(),
+        "Successfully cleaned up orphaned test repositories"
     );
 
     Ok(())
