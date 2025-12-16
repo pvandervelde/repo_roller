@@ -44,23 +44,28 @@ Write-Host "===================================" -ForegroundColor Magenta
 Write-Host ""
 
 # Check if gh CLI is available
-try {
+try
+{
     $null = gh --version
 }
-catch {
+catch
+{
     Write-Error "GitHub CLI (gh) is not installed or not in PATH. Please install it from https://cli.github.com/"
     exit 1
 }
 
 # Check if authenticated
-try {
+try
+{
     $authStatus = gh auth status 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    if ($LASTEXITCODE -ne 0)
+    {
         Write-Error "Not authenticated with GitHub CLI. Please run: gh auth login"
         exit 1
     }
 }
-catch {
+catch
+{
     Write-Error "Failed to check GitHub CLI authentication status"
     exit 1
 }
@@ -68,14 +73,15 @@ catch {
 Write-Host "🔍 Fetching repositories from $ORG organization..." -ForegroundColor Cyan
 
 # Fetch all repositories
-$repos = gh repo list $ORG --limit 300 --json name,createdAt | ConvertFrom-Json
+$repos = gh repo list $ORG --limit 300 --json name, createdAt | ConvertFrom-Json
 
 # Filter for test repositories
 $testRepos = $repos | Where-Object { $_.name -like "$PREFIX*" }
 
 Write-Host "   Found $($testRepos.Count) test repositories total" -ForegroundColor Gray
 
-if ($testRepos.Count -eq 0) {
+if ($testRepos.Count -eq 0)
+{
     Write-Host "✅ No test repositories found. Nothing to clean up!" -ForegroundColor Green
     exit 0
 }
@@ -91,7 +97,8 @@ $oldRepos = $testRepos | Where-Object {
     $createdAt -lt $cutoffTime
 } | Sort-Object createdAt
 
-if ($oldRepos.Count -eq 0) {
+if ($oldRepos.Count -eq 0)
+{
     Write-Host "✅ No repositories older than $MaxAgeHours hours found. Nothing to clean up!" -ForegroundColor Green
     Write-Host ""
     Write-Host "Age distribution of test repositories:" -ForegroundColor Cyan
@@ -122,7 +129,8 @@ $oldRepos | ForEach-Object {
 
 Write-Host ""
 
-if ($DryRun) {
+if ($DryRun)
+{
     Write-Host "🔍 DRY RUN MODE - No repositories will be deleted" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "To actually delete these repositories, run without -DryRun flag:" -ForegroundColor White
@@ -131,12 +139,14 @@ if ($DryRun) {
 }
 
 # Confirm deletion
-if (-not $Force) {
+if (-not $Force)
+{
     Write-Host "⚠️  WARNING: This will permanently delete $($oldRepos.Count) repositories!" -ForegroundColor Red
     Write-Host ""
     $confirmation = Read-Host "Type 'DELETE' to confirm deletion"
 
-    if ($confirmation -ne "DELETE") {
+    if ($confirmation -ne "DELETE")
+    {
         Write-Host ""
         Write-Host "❌ Deletion cancelled" -ForegroundColor Yellow
         exit 0
@@ -150,24 +160,29 @@ $deleted = 0
 $failed = 0
 $errors = @()
 
-foreach ($repo in $oldRepos) {
+foreach ($repo in $oldRepos)
+{
     $repoFullName = "$ORG/$($repo.name)"
 
-    try {
+    try
+    {
         Write-Host "   Deleting $repoFullName..." -ForegroundColor Gray
         gh repo delete $repoFullName --yes 2>&1 | Out-Null
 
-        if ($LASTEXITCODE -eq 0) {
+        if ($LASTEXITCODE -eq 0)
+        {
             $deleted++
             Write-Host "   ✓ Deleted $($repo.name)" -ForegroundColor Green
         }
-        else {
+        else
+        {
             $failed++
             $errors += "Failed to delete $($repo.name): Exit code $LASTEXITCODE"
             Write-Host "   ✗ Failed to delete $($repo.name)" -ForegroundColor Red
         }
     }
-    catch {
+    catch
+    {
         $failed++
         $errors += "Failed to delete $($repo.name): $($_.Exception.Message)"
         Write-Host "   ✗ Failed to delete $($repo.name): $($_.Exception.Message)" -ForegroundColor Red
@@ -176,22 +191,40 @@ foreach ($repo in $oldRepos) {
 
 Write-Host ""
 Write-Host "📊 Cleanup Summary:" -ForegroundColor Cyan
-Write-Host "   Successfully deleted: $deleted" -ForegroundColor $(if ($deleted -gt 0) { "Green" } else { "Gray" })
-Write-Host "   Failed: $failed" -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "Gray" })
+Write-Host "   Successfully deleted: $deleted" -ForegroundColor $(if ($deleted -gt 0)
+    {
+        "Green" 
+    }
+    else
+    {
+        "Gray" 
+    })
+Write-Host "   Failed: $failed" -ForegroundColor $(if ($failed -gt 0)
+    {
+        "Red" 
+    }
+    else
+    {
+        "Gray" 
+    })
 
-if ($errors.Count -gt 0) {
+if ($errors.Count -gt 0)
+{
     Write-Host ""
     Write-Host "❌ Errors encountered:" -ForegroundColor Red
-    foreach ($error in $errors) {
+    foreach ($error in $errors)
+    {
         Write-Host "   $error" -ForegroundColor DarkRed
     }
 }
 
 Write-Host ""
-if ($failed -eq 0) {
+if ($failed -eq 0)
+{
     Write-Host "✅ Cleanup completed successfully!" -ForegroundColor Green
 }
-else {
+else
+{
     Write-Host "⚠️  Cleanup completed with $failed failures" -ForegroundColor Yellow
     exit 1
 }
