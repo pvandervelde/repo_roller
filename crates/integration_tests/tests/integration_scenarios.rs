@@ -125,19 +125,19 @@ async fn test_variable_substitution() -> Result<()> {
         org_name,
         TemplateName::new("template-test-variables")?,
     )
-            .variable("project_name", "test-project")
-            .variable("version", "0.1.0")
-            .variable("author_name", "Integration Test")
-            .variable("author_email", "test@example.com")
-            .variable(
-                "project_description",
-                "A test project for integration testing",
-            )
-            .variable("license", "MIT")
-            .variable("license_type", "MIT")
-            .variable("environment", "test")
-            .variable("debug_mode", "true")
-            .build();    // Execute repository creation
+    .variable("project_name", "test-project")
+    .variable("version", "0.1.0")
+    .variable("author_name", "Integration Test")
+    .variable("author_email", "test@example.com")
+    .variable(
+        "project_description",
+        "A test project for integration testing",
+    )
+    .variable("license", "MIT")
+    .variable("license_type", "MIT")
+    .variable("environment", "test")
+    .variable("debug_mode", "true")
+    .build(); // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
         &metadata_provider,
@@ -313,15 +313,20 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
+    let octocrab_client = github_client::create_token_client(&installation_token)?;
+    let github_client = github_client::GitHubClient::new(octocrab_client);
 
     // Create a simple test repository directly via GitHub API (not through test runner)
     // This simulates an orphaned repository
+    use github_client::RepositoryClient;
+    let payload = github_client::RepositoryCreatePayload {
+        name: repo_name.clone(),
+        description: Some("Temporary test repository for orphan cleanup testing".to_string()),
+        ..Default::default()
+    };
+
     let create_result = github_client
-        .orgs(&config.test_org)
-        .create_repo(&repo_name)
-        .description("Temporary test repository for orphan cleanup testing")
-        .send()
+        .create_org_repository(&config.test_org, &payload)
         .await;
 
     assert!(
@@ -337,12 +342,16 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
     // Wait a moment to ensure the repository is fully created
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-    // Now create a TestCleanup instance and test cleanup with large max age
+    // Create GitHub client with App authentication for cleanup
+    let app_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup_client = github_client::GitHubClient::new(app_client);
+
+    // Now create a RepositoryCleanup instance and test cleanup with large max age
     // This should find and delete our orphaned test repository
-    let cleanup = integration_tests::TestCleanup::new(
-        auth_service,
-        config.test_org.clone(),
-    );
+    let cleanup =
+        integration_tests::utils::RepositoryCleanup::new(cleanup_client, config.test_org.clone());
 
     let deleted_repos = cleanup.cleanup_orphaned_repositories(1000).await?;
 
