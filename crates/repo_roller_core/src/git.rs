@@ -76,8 +76,10 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
                     // Try to read first 100 chars of file if it's text
                     if let Ok(path) = entry.path().canonicalize() {
                         if let Ok(content) = std::fs::read_to_string(&path) {
-                            let preview = if content.len() > 100 {
-                                format!("{}...", &content[..100])
+                            // Use char-aware truncation to handle Unicode properly
+                            let preview = if content.chars().count() > 100 {
+                                let truncated: String = content.chars().take(100).collect();
+                                format!("{}...", truncated)
                             } else {
                                 content
                             };
