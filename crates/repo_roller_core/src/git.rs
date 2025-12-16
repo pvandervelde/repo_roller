@@ -149,10 +149,11 @@ pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Sys
     debug!("Repository index retrieved");
 
     // Add all files in the working directory to the index
-    // This is equivalent to running `git add *` on the command line
-    // The "*" pattern matches all files recursively
+    // This is equivalent to running `git add .` on the command line
+    // Using "." instead of "*" to handle Unicode filenames correctly
+    // The "." pattern recursively adds all files and directories
     index
-        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
         .map_err(|e| {
             error!("Failed to add files to index: {}", e);
             SystemError::GitOperation {
