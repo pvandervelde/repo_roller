@@ -171,59 +171,117 @@ impl RepositoryCleanup {
         let installation_client = github_client::create_token_client(&installation_token)
             .context("Failed to create installation token client for orphan cleanup")?;
 
-        // List repositories in the organization
-        let repos_result = installation_client
-            .orgs(&self.test_org)
-            .list_repos()
-            .send()
-            .await;
+        // List repositories in the organization with pagination
+        // GitHub API returns max 100 items per page by default (30 if not specified)
+        let mut page = 1u32;
+        let per_page = 100u8;
 
-        match repos_result {
-            Ok(repos) => {
-                for repo in repos {
-                    let repo_name = repo.name;
+        info!(
+            org = self.test_org,
+            "Starting paginated repository listing (max {} repos per page)",
+            per_page
+        );
 
-                    // Check if this is a test repository
-                    if repo_name.starts_with("test-repo-roller-") {
-                        // Parse creation time from repository
-                        let created_at = repo
-                            .created_at
-                            .unwrap_or_else(|| cutoff_time + chrono::Duration::hours(1));
+        loop {
+            debug!(
+                org = self.test_org,
+                page = page,
+                "Fetching page {} of repositories",
+                page
+            );
 
-                        if created_at < cutoff_time {
-                            info!(
-                                repo_name = repo_name,
-                                created_at = %created_at,
-                                cutoff_time = %cutoff_time,
-                                "Found orphaned test repository, attempting deletion"
-                            );
+            let repos_result = installation_client
+                .orgs(&self.test_org)
+                .list_repos()
+                .per_page(per_page)
+                .page(page)
+                .send()
+                .await;
 
-                            if self.delete_repository(&repo_name).await.is_ok() {
-                                deleted_repos.push(repo_name);
+            match repos_result {
+                Ok(repos) => {
+                    let repo_count = repos.items.len();
+                    debug!(
+                        org = self.test_org,
+                        page = page,
+                        count = repo_count,
+                        "Retrieved {} repositories on page {}",
+                        repo_count,
+                        page
+                    );
+
+                    if repo_count == 0 {
+                        info!(
+                            org = self.test_org,
+                            total_pages = page - 1,
+                            "No more repositories to process"
+                        );
+                        break;
+                    }
+
+                    for repo in repos.items {
+                        let repo_name = repo.name;
+
+                        // Check if this is a test repository
+                        if repo_name.starts_with("test-repo-roller-") {
+                            // Parse creation time from repository
+                            let created_at = repo
+                                .created_at
+                                .unwrap_or_else(|| cutoff_time + chrono::Duration::hours(1));
+
+                            if created_at < cutoff_time {
+                                info!(
+                                    repo_name = repo_name,
+                                    created_at = %created_at,
+                                    cutoff_time = %cutoff_time,
+                                    "Found orphaned test repository, attempting deletion"
+                                );
+
+                                if self.delete_repository(&repo_name).await.is_ok() {
+                                    deleted_repos.push(repo_name);
+                                }
+                            } else {
+                                debug!(
+                                    repo_name = repo_name,
+                                    created_at = %created_at,
+                                    "Test repository is recent, skipping cleanup"
+                                );
                             }
-                        } else {
-                            debug!(
-                                repo_name = repo_name,
-                                created_at = %created_at,
-                                "Test repository is recent, skipping cleanup"
-                            );
                         }
                     }
+
+                    // If we got fewer repos than per_page, we've reached the end
+                    if repo_count < per_page as usize {
+                        info!(
+                            org = self.test_org,
+                            total_pages = page,
+                            "Reached last page of repositories"
+                        );
+                        break;
+                    }
+
+                    page += 1;
                 }
-            }
-            Err(e) => {
-                error!(
-                    org = self.test_org,
-                    error = %e,
-                    "Failed to list repositories for orphan cleanup"
-                );
-                return Err(anyhow::anyhow!("Failed to list repositories: {}", e));
+                Err(e) => {
+                    error!(
+                        org = self.test_org,
+                        page = page,
+                        error = %e,
+                        "Failed to list repositories for orphan cleanup"
+                    );
+                    return Err(anyhow::anyhow!(
+                        "Failed to list repositories on page {}: {}",
+                        page,
+                        e
+                    ));
+                }
             }
         }
 
         info!(
             org = self.test_org,
             deleted_count = deleted_repos.len(),
+            total_pages_processed = page,
             "Completed orphaned repository cleanup"
         );
 
