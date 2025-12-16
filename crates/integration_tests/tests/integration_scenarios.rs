@@ -309,8 +309,12 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
         "Should create test repository for cleanup test"
     );
 
-    // Now test cleanup with 0 hours max age (should clean up everything)
-    let deleted_repos = runner.cleanup_orphaned_repositories(0).await?;
+    // Wait a moment to ensure timestamp difference
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Now test cleanup with a very large max age (should clean up everything older than cutoff)
+    // Using a large value like 1000 hours ensures even very recent repos are considered "old enough"
+    let deleted_repos = runner.cleanup_orphaned_repositories(1000).await?;
 
     // Verify that our test repository was cleaned up
     assert!(
