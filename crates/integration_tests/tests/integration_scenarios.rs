@@ -339,8 +339,8 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
         "Created test repository for orphan cleanup testing"
     );
 
-    // Wait a moment to ensure the repository is fully created
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    // Wait a moment to ensure the repository is fully created and timestamped
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
     // Create GitHub client with App authentication for cleanup
     let app_client =
@@ -348,12 +348,13 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
             .await?;
     let cleanup_client = github_client::GitHubClient::new(app_client);
 
-    // Now create a RepositoryCleanup instance and test cleanup with large max age
-    // This should find and delete our orphaned test repository
+    // Now create a RepositoryCleanup instance and test cleanup with max_age = 0
+    // This means "delete repos older than 0 hours" which will catch our just-created repo
+    // after the 3-second sleep (created_at will be slightly in the past)
     let cleanup =
         integration_tests::utils::RepositoryCleanup::new(cleanup_client, config.test_org.clone());
 
-    let deleted_repos = cleanup.cleanup_orphaned_repositories(1000).await?;
+    let deleted_repos = cleanup.cleanup_orphaned_repositories(0).await?;
 
     // Verify that our test repository was cleaned up
     assert!(
