@@ -75,6 +75,8 @@ async fn test_nested_variable_substitution() -> Result<()> {
         "full_greeting".to_string(),
         "{{greeting_prefix}}, {{name}}!".to_string(),
     );
+    variables.insert("first_name".to_string(), "Hello".to_string());
+    variables.insert("last_name".to_string(), "World".to_string());
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
