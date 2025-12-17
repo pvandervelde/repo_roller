@@ -54,7 +54,7 @@ async fn test_nested_variable_substitution() -> Result<()> {
         config_manager::MetadataProviderConfig::explicit(".reporoller"),
     );
 
-    // Must provide all required variables for template-nested-variables
+    // Template-nested-variables requires all standard variables plus nested ones
     let mut variables = HashMap::new();
     variables.insert("project_name".to_string(), "test-project".to_string());
     variables.insert("version".to_string(), "0.1.0".to_string());
@@ -68,8 +68,13 @@ async fn test_nested_variable_substitution() -> Result<()> {
     variables.insert("license_type".to_string(), "MIT".to_string());
     variables.insert("environment".to_string(), "test".to_string());
     variables.insert("debug_mode".to_string(), "true".to_string());
-    variables.insert("first_name".to_string(), "Hello".to_string());
-    variables.insert("last_name".to_string(), "World".to_string());
+    // Template-specific nested variable support
+    variables.insert("name".to_string(), "World".to_string());
+    variables.insert("greeting_prefix".to_string(), "Hello".to_string());
+    variables.insert(
+        "full_greeting".to_string(),
+        "{{greeting_prefix}}, {{name}}!".to_string(),
+    );
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
@@ -239,8 +244,20 @@ async fn test_very_long_variable_values() -> Result<()> {
     // Create 10,000 character string
     let long_value = "a".repeat(10_000);
 
+    // Must provide all required variables for template-test-variables
     let mut variables = HashMap::new();
-    variables.insert("description".to_string(), long_value);
+    variables.insert("project_name".to_string(), "test-project".to_string());
+    variables.insert("version".to_string(), "0.1.0".to_string());
+    variables.insert("author_name".to_string(), "Integration Test".to_string());
+    variables.insert("author_email".to_string(), "test@example.com".to_string());
+    variables.insert(
+        "project_description".to_string(),
+        long_value, // Test very long value
+    );
+    variables.insert("license".to_string(), "MIT".to_string());
+    variables.insert("license_type".to_string(), "MIT".to_string());
+    variables.insert("environment".to_string(), "test".to_string());
+    variables.insert("debug_mode".to_string(), "true".to_string());
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
@@ -400,11 +417,26 @@ async fn test_special_characters_in_variables() -> Result<()> {
         config_manager::MetadataProviderConfig::explicit(".reporoller"),
     );
 
+    // Must provide all required variables for template-test-variables
     let mut variables = HashMap::new();
-    // Test various special characters
-    variables.insert("description".to_string(), "Test: <>\"'&${}[]()".to_string());
-    variables.insert("author".to_string(), "O'Brien".to_string());
-    variables.insert("company".to_string(), "Smith & Jones".to_string());
+    variables.insert("project_name".to_string(), "test-project".to_string());
+    variables.insert("version".to_string(), "0.1.0".to_string());
+    variables.insert(
+        "author_name".to_string(),
+        "O'Brien".to_string(), // Test apostrophe in value
+    );
+    variables.insert("author_email".to_string(), "test@example.com".to_string());
+    variables.insert(
+        "project_description".to_string(),
+        "Test: <>\"'&${}[]()".to_string(), // Test special characters
+    );
+    variables.insert(
+        "license".to_string(),
+        "Smith & Jones License".to_string(), // Test ampersand
+    );
+    variables.insert("license_type".to_string(), "MIT".to_string());
+    variables.insert("environment".to_string(), "test".to_string());
+    variables.insert("debug_mode".to_string(), "true".to_string());
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
