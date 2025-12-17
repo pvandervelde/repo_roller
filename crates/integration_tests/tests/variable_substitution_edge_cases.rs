@@ -68,16 +68,18 @@ async fn test_nested_variable_substitution() -> Result<()> {
     variables.insert("license_type".to_string(), "MIT".to_string());
     variables.insert("environment".to_string(), "test".to_string());
     variables.insert("debug_mode".to_string(), "true".to_string());
-    // Template-specific nested variable support
-    variables.insert("name".to_string(), "World".to_string());
-    variables.insert("greeting_prefix".to_string(), "Hello".to_string());
+    // Template-specific nested variable support (from config.toml)
+    variables.insert("first_name".to_string(), "Alice".to_string());
+    variables.insert("last_name".to_string(), "Smith".to_string());
     variables.insert(
-        "full_greeting".to_string(),
-        "{{greeting_prefix}}, {{name}}!".to_string(),
+        "full_name".to_string(),
+        "{{first_name}} {{last_name}}".to_string(),
     );
-    variables.insert("first_name".to_string(), "Hello".to_string());
-    variables.insert("last_name".to_string(), "World".to_string());
-
+    variables.insert("greeting".to_string(), "Hello, {{full_name}}!".to_string());
+    variables.insert(
+        "farewell".to_string(),
+        "Goodbye, {{full_name}}. Have a great day!".to_string(),
+    );
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
