@@ -54,8 +54,22 @@ async fn test_nested_variable_substitution() -> Result<()> {
         config_manager::MetadataProviderConfig::explicit(".reporoller"),
     );
 
+    // Must provide all required variables for template-nested-variables
     let mut variables = HashMap::new();
-    variables.insert("name".to_string(), "World".to_string());
+    variables.insert("project_name".to_string(), "test-project".to_string());
+    variables.insert("version".to_string(), "0.1.0".to_string());
+    variables.insert("author_name".to_string(), "Integration Test".to_string());
+    variables.insert("author_email".to_string(), "test@example.com".to_string());
+    variables.insert(
+        "project_description".to_string(),
+        "A test project for nested variables".to_string(),
+    );
+    variables.insert("license".to_string(), "MIT".to_string());
+    variables.insert("license_type".to_string(), "MIT".to_string());
+    variables.insert("environment".to_string(), "test".to_string());
+    variables.insert("debug_mode".to_string(), "true".to_string());
+    variables.insert("first_name".to_string(), "Hello".to_string());
+    variables.insert("last_name".to_string(), "World".to_string());
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
@@ -302,11 +316,20 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
     );
 
     // Variable value contains Handlebars syntax
+    // Note: Must provide all required variables for template-test-variables
     let mut variables = HashMap::new();
+    variables.insert("project_name".to_string(), "test-project".to_string());
+    variables.insert("version".to_string(), "0.1.0".to_string());
+    variables.insert("author_name".to_string(), "Integration Test".to_string());
+    variables.insert("author_email".to_string(), "test@example.com".to_string());
     variables.insert(
-        "description".to_string(),
-        "Use {{variable}} syntax".to_string(),
+        "project_description".to_string(),
+        "Use {{variable}} syntax".to_string(), // Test Handlebars in value
     );
+    variables.insert("license".to_string(), "MIT".to_string());
+    variables.insert("license_type".to_string(), "MIT".to_string());
+    variables.insert("environment".to_string(), "test".to_string());
+    variables.insert("debug_mode".to_string(), "true".to_string());
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
