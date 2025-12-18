@@ -43,13 +43,14 @@ impl Default for RetryConfig {
 ///
 /// ```no_run
 /// use integration_tests::helpers::{retry_with_backoff, RetryConfig};
+/// use anyhow::anyhow;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let result = retry_with_backoff(
 ///     RetryConfig::default(),
 ///     || async {
 ///         // Operation that might fail
-///         Ok(42)
+///         Ok::<i32, anyhow::Error>(42)
 ///     }
 /// ).await?;
 /// # Ok(())
