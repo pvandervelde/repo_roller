@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use github_client::{GitHubClient, RepositoryClient};
 use std::collections::HashMap;
+use tracing::{debug, warn};
 
 // Reference the tests module in the separate file
 #[cfg(test)]
@@ -340,10 +341,21 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
                     label.name = name.clone();
                 }
 
+                debug!(
+                    "Loaded {} standard labels from {}/{}",
+                    labels.len(),
+                    repo.repository_name,
+                    file_path
+                );
+
                 Ok(labels)
             }
-            Err(_) => {
+            Err(e) => {
                 // Labels are optional - return empty map if file doesn't exist
+                warn!(
+                    "Standard labels file not found in {}/{}: {:?}. Continuing without global labels.",
+                    repo.repository_name, file_path, e
+                );
                 Ok(HashMap::new())
             }
         }
