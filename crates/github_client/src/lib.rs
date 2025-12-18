@@ -690,6 +690,73 @@ impl RepositoryClient for GitHubClient {
         }
     }
 
+    async fn create_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error> {
+        info!(name = name, "Creating repository label");
+
+        // Construct the full API URL (octocrab's _post requires full URL, not relative path)
+        let url = format!("https://api.github.com/repos/{}/{}/labels", owner, repo);
+        let body = serde_json::json!({
+            "name": name,
+            "color": color,
+            "description": description,
+        });
+
+        // Send the request and get the raw response
+        let result = self.client._post(&url, Some(&body)).await;
+
+        match result {
+            Ok(_response) => {
+                info!(name = name, "Successfully created label");
+                Ok(())
+            }
+            Err(e) => {
+                // Log the error details for debugging
+                debug!(
+                    name = name,
+                    error = ?e,
+                    "Label creation failed, checking if it already exists"
+                );
+
+                // Check if this is a "label already exists" error (422 Unprocessable Entity)
+                // In that case, update the existing label instead
+                if is_label_already_exists_error(&e) {
+                    info!(
+                        name = name,
+                        "Label already exists, updating instead of creating"
+                    );
+
+                    // Update the existing label using PATCH
+                    let update_url = format!(
+                        "https://api.github.com/repos/{}/{}/labels/{}",
+                        owner, repo, name
+                    );
+                    let update_result = self.client._patch(&update_url, Some(&body)).await;
+
+                    match update_result {
+                        Ok(_) => {
+                            info!(name = name, "Successfully updated existing label");
+                            Ok(())
+                        }
+                        Err(update_e) => {
+                            log_octocrab_error("Failed to update existing label", update_e);
+                            Err(Error::InvalidResponse)
+                        }
+                    }
+                } else {
+                    log_octocrab_error("Failed to create label", e);
+                    Err(Error::InvalidResponse)
+                }
+            }
+        }
+    }
+
     async fn get_repository_settings(
         &self,
         owner: &str,
@@ -761,6 +828,65 @@ impl RepositoryClient for GitHubClient {
                 Err(Error::InvalidResponse)
             }
         }
+    }
+
+    async fn list_repository_files(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error> {
+        info!("Listing all files in repository");
+
+        let mut all_files = Vec::new();
+        let mut dirs_to_process = vec![String::new()]; // Start with root directory
+
+        while let Some(path) = dirs_to_process.pop() {
+            debug!(
+                "Processing directory: {}",
+                if path.is_empty() { "/" } else { &path }
+            );
+
+            // Get contents of current directory
+            let contents = self
+                .client
+                .repos(owner, repo)
+                .get_content()
+                .path(&path)
+                .send()
+                .await
+                .map_err(|e| {
+                    error!("Failed to get directory contents for path: {}", path);
+                    log_octocrab_error("Failed to get directory contents", e);
+                    Error::InvalidResponse
+                })?;
+
+            // Process each item in the directory
+            for item in contents.items {
+                let item_path = item.path;
+
+                match item.r#type.as_str() {
+                    "file" => {
+                        // Add file to the list
+                        all_files.push(item_path);
+                    }
+                    "dir" => {
+                        // Add directory to be processed
+                        dirs_to_process.push(item_path);
+                    }
+                    "symlink" => {
+                        // Include symlinks in the file list
+                        debug!("Found symlink: {}", item_path);
+                        all_files.push(item_path);
+                    }
+                    other => {
+                        debug!("Skipping item of type '{}': {}", other, item_path);
+                    }
+                }
+            }
+        }
+
+        info!(
+            "Successfully listed {} files in repository",
+            all_files.len()
+        );
+
+        Ok(all_files)
     }
 }
 
@@ -1110,6 +1236,28 @@ pub trait RepositoryClient: Send + Sync {
     /// Returns `Error::InvalidResponse` if the API call fails.
     async fn list_repository_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error>;
 
+    /// Creates a label in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `name` - The name of the label
+    /// * `color` - The color of the label (hex code without #)
+    /// * `description` - The description of the label
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if the API call fails.
+    async fn create_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error>;
+
     /// Gets repository settings including feature flags.
     ///
     /// # Arguments
@@ -1151,6 +1299,44 @@ pub trait RepositoryClient: Send + Sync {
         repo: &str,
         branch: &str,
     ) -> Result<Option<models::BranchProtection>, Error>;
+
+    /// Lists all files in a repository.
+    ///
+    /// This method retrieves a flat list of all file paths in the repository
+    /// using the GitHub Contents API. It recursively traverses directories
+    /// to build a complete file listing.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    ///
+    /// # Returns
+    ///
+    /// A vector of file paths relative to the repository root.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidResponse` if:
+    /// - The repository doesn't exist or is not accessible
+    /// - The API request fails
+    /// - Directory traversal fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use github_client::{GitHubClient, RepositoryClient};
+    ///
+    /// # async fn example(client: &GitHubClient) -> Result<(), Box<dyn std::error::Error>> {
+    /// let files = client.list_repository_files("my-org", "my-repo").await?;
+    ///
+    /// for file in files {
+    ///     println!("File: {}", file);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn list_repository_files(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error>;
 }
 
 /// Settings that can be updated for an existing repository.
@@ -1450,6 +1636,27 @@ fn log_octocrab_error(message: &str, e: octocrab::Error) {
         ),
         _ => error!(error_message = e.to_string(), message),
     };
+}
+
+/// Checks if an octocrab error indicates a label already exists (HTTP 422 with specific message).
+fn is_label_already_exists_error(e: &octocrab::Error) -> bool {
+    match e {
+        octocrab::Error::GitHub { source, .. } => {
+            // GitHub returns 422 Unprocessable Entity when a label with the same name already exists
+            // Check both status code and error message
+            let is_422 = source.status_code == http::StatusCode::UNPROCESSABLE_ENTITY;
+            let msg_lower = source.message.to_lowercase();
+            let has_already_exists =
+                msg_lower.contains("already exists") || msg_lower.contains("already_exists");
+
+            // Also check for common validation error patterns from GitHub
+            let has_validation_error = msg_lower.contains("validation failed")
+                && (msg_lower.contains("label") || msg_lower.contains("name"));
+
+            is_422 && (has_already_exists || has_validation_error)
+        }
+        _ => false,
+    }
 }
 
 /// Checks if an octocrab error is a 404 Not Found error.

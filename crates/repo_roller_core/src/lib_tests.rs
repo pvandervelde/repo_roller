@@ -240,6 +240,27 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         Ok(vec![])
     }
 
+    async fn create_label(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _name: &str,
+        _color: &str,
+        _description: &str,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return success
+        Ok(())
+    }
+
+    async fn list_repository_files(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<String>, GitHubError> {
+        // Not implemented in test mock - return empty files
+        Ok(vec![])
+    }
+
     async fn get_repository_settings(
         &self,
         _owner: &str,

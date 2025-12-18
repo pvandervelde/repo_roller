@@ -197,7 +197,36 @@ The integration tests expect these repositories to exist at:
 
 ### Cleanup
 
-To remove test repositories:
+#### Automated Cleanup (Recommended)
+
+A GitHub Actions workflow runs daily at 2 AM UTC to automatically clean up test repositories older than 1 hour:
+
+- **Scheduled**: `.github/workflows/cleanup-test-repos.yml` runs automatically
+- **Manual trigger**: Go to Actions → "Cleanup Test Repositories" → "Run workflow"
+  - Configure max age in hours (default: 1)
+  - Enable dry run mode to preview deletions
+
+The automated cleanup ensures the `glitchgrove` test organization stays clean without manual intervention.
+
+#### Manual Cleanup
+
+Use the cleanup script for immediate cleanup:
+
+```powershell
+# Preview what will be deleted (dry run)
+./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -DryRun
+
+# Delete test repositories older than 24 hours
+./tests/cleanup-test-repos.ps1 -MaxAgeHours 24
+
+# Force delete without confirmation
+./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -Force
+
+# Delete very old repos (1 week)
+./tests/cleanup-test-repos.ps1 -MaxAgeHours 168 -Force
+```
+
+Or use GitHub CLI directly:
 
 ```bash
 # Using GitHub CLI

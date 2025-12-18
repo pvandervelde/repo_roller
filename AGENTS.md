@@ -237,6 +237,96 @@ mod validation_tests {
 - Verify error paths and edge cases explicitly
 - Use `assert_eq!`, `assert!`, and `matches!` appropriately
 
+### Testing Infrastructure
+
+**CRITICAL**: Real GitHub testing infrastructure exists and must be used for integration tests.
+
+#### Test Organization (glitchgrove)
+
+All integration testing infrastructure is located in the `glitchgrove` GitHub organization:
+
+- **Environment Variable**: `TEST_ORG=glitchgrove`
+- **Metadata Repository**: `glitchgrove/.reporoller-test`
+- **Template Repositories**: 16+ template repositories with various test scenarios
+
+#### Metadata Repository Structure
+
+The `.reporoller-test` repository contains the complete configuration hierarchy:
+
+```
+.reporoller-test/
+├── README.md
+├── global/
+│   ├── defaults.toml          # Global defaults with override_allowed flags
+│   └── standard-labels.toml   # Global label configuration
+├── teams/
+│   ├── backend/               # Backend team configuration
+│   └── platform/              # Platform team configuration
+└── types/
+    ├── library/               # Library repository type configuration
+    └── service/               # Service repository type configuration
+```
+
+**Global Defaults** (`global/defaults.toml`):
+
+Fixed values (cannot be overridden):
+
+- `security_advisories = { value = true, override_allowed = false }`
+- `vulnerability_reporting = { value = true, override_allowed = false }`
+- `require_conversation_resolution = { value = true, override_allowed = false }`
+- `require_pull_request_reviews = { value = true, override_allowed = false }`
+
+Overridable values:
+
+- Other settings have `override_allowed = true`
+
+#### Template Repositories
+
+Available template repositories for testing various scenarios:
+
+**Basic Templates**:
+
+- `template-test-basic`: Simple template for basic functionality
+- `template-test-variables`: Variable substitution testing
+- `template-test-filtering`: File filtering scenarios
+- `template-test-invalid`: Invalid template structure
+
+**Edge Case Templates**:
+
+- `template-large-files`: Large file handling
+- `template-binary-files`: Binary content processing
+- `template-deep-nesting`: Deep directory structures
+- `template-many-files`: High file count scenarios
+- `template-unicode-names`: Unicode filename handling
+- `template-with-symlinks`: Symbolic link handling
+- `template-with-scripts`: Executable script handling
+- `template-with-dotfiles`: Hidden file handling
+- `template-empty-dirs`: Empty directory handling
+- `template-no-extensions`: Files without extensions
+- `template-nested-variables`: Complex variable nesting
+- `template-variable-paths`: Variables in file paths
+
+#### Integration Test Requirements
+
+**DO NOT** stub or mock the following when writing integration tests:
+
+- Real GitHub repositories in `glitchgrove` organization
+- Metadata repository configuration files
+- Template repository content
+
+**ALWAYS** use:
+
+- Real GitHub API calls to `glitchgrove` organization
+- Actual `.reporoller-test` metadata repository
+- Real template repositories for content testing
+- GitHub CLI (`gh`) for setup and verification when appropriate
+
+**Test Cleanup**:
+
+- Delete created test repositories after test completion
+- Use unique repository names (timestamp-based) to avoid conflicts
+- Handle cleanup in test teardown even on failure
+
 ## Rust-Specific Conventions
 
 ### Type Safety

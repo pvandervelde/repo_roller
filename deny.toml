@@ -80,6 +80,7 @@ feature-depth = 1
 ignore = [
     #"RUSTSEC-0000-0000",
     { id = "RUSTSEC-2023-0071", reason = "The rsa crate is only used in the tests to generate a temporary key-pair." },
+    { id = "RUSTSEC-2024-0384", reason = "instant crate is unmaintained. Indirect dependency via wiremock (dev dependency only). Wiremock is test-only dependency, no production impact." },
     { id = "RUSTSEC-2025-0111", reason = "tokio-tar vulnerability via testcontainers (dev dependency only). We control all Docker images used in tests. Tracked for migration to astral-tokio-tar." },
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained. Indirect dependency via bollard/testcontainers (dev dependency only). Migration to rustls-pki-types tracked." },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish

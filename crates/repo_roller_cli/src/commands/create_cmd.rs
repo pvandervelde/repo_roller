@@ -27,7 +27,7 @@ use crate::{
     errors::Error,
 };
 use auth_handler::UserAuthenticationService;
-use clap::{arg, Args};
+use clap::Args;
 use keyring::Entry;
 use repo_roller_core::{
     OrganizationName, RepoRollerResult, RepositoryCreationRequest,
