@@ -178,8 +178,7 @@ impl RepositoryCleanup {
 
         info!(
             org = self.test_org,
-            "Starting paginated repository listing (max {} repos per page)",
-            per_page
+            "Starting paginated repository listing (max {} repos per page)", per_page
         );
 
         loop {

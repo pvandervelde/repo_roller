@@ -733,7 +733,10 @@ impl RepositoryClient for GitHubClient {
                     );
 
                     // Update the existing label using PATCH
-                    let update_url = format!("https://api.github.com/repos/{}/{}/labels/{}", owner, repo, name);
+                    let update_url = format!(
+                        "https://api.github.com/repos/{}/{}/labels/{}",
+                        owner, repo, name
+                    );
                     let update_result = self.client._patch(&update_url, Some(&body)).await;
 
                     match update_result {
