@@ -2,7 +2,7 @@
 # Optimized for small image size and security
 
 # Stage 1: Build
-FROM rust:1.90-bookworm AS builder
+FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,7 +24,7 @@ COPY crates/ crates/
 RUN cargo build --release --package repo_roller_api
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:e899040a73d36e2b36fa33216943539d9957cba8172b858097c2cabcdb20a3e2
 
 # Install runtime dependencies (OpenSSL for HTTPS, git for template cloning)
 RUN apt-get update && apt-get install -y \
