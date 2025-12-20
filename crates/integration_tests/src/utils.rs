@@ -48,16 +48,61 @@ impl TestConfig {
     }
 }
 
+/// Extract workflow context from GitHub Actions environment for repository naming.
+///
+/// Returns:
+/// - `pr{number}` for pull request workflows (e.g., "pr123")
+/// - `main` for pushes to main/master branch
+/// - `local` for local development
+///
+/// Uses GITHUB_REF environment variable which contains:
+/// - `refs/pull/{number}/merge` for pull requests
+/// - `refs/heads/{branch}` for branch pushes
+fn get_workflow_context() -> String {
+    // Check if running in GitHub Actions PR context
+    if let Ok(github_ref) = env::var("GITHUB_REF") {
+        if github_ref.starts_with("refs/pull/") {
+            // Extract PR number from refs/pull/{number}/merge
+            if let Some(pr_num) = github_ref.split('/').nth(2) {
+                return format!("pr{}", pr_num);
+            }
+        } else if github_ref.starts_with("refs/heads/") {
+            // Extract branch name from refs/heads/{branch}
+            // Skip "refs/heads/" prefix (11 characters)
+            let branch = &github_ref[11..];
+            // Use 'main' for main/master branches
+            if branch == "main" || branch == "master" {
+                return "main".to_string();
+            }
+            // Use sanitized branch name for other branches (replace / with -)
+            return branch.replace('/', "-");
+        }
+    }
+    
+    // Fallback for local development
+    "local".to_string()
+}
+
 /// Generate a unique test repository name following the naming convention.
 ///
-/// Format: `test-repo-roller-{timestamp}-{test-name}-{random}`
-/// Example: `test-repo-roller-20240108-120000-basic-a1b2c3`
+/// Format: `test-repo-roller-{context}-{timestamp}-{test-name}-{random}`
+///
+/// Where context is:
+/// - `pr{number}` for PR workflows (e.g., pr123)
+/// - `main` for main branch workflows
+/// - `local` for local development
+///
+/// Examples:
+/// - `test-repo-roller-pr123-20240108-120000-basic-a1b2c3` (PR workflow)
+/// - `test-repo-roller-main-20240108-120000-basic-a1b2c3` (main branch)
+/// - `test-repo-roller-local-20240108-120000-basic-a1b2c3` (local dev)
 pub fn generate_test_repo_name(test_name: &str) -> String {
+    let context = get_workflow_context();
     let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
     let random_suffix = Uuid::new_v4().simple().to_string()[..6].to_lowercase();
     format!(
-        "test-repo-roller-{}-{}-{}",
-        timestamp, test_name, random_suffix
+        "test-repo-roller-{}-{}-{}-{}",
+        context, timestamp, test_name, random_suffix
     )
 }
 
@@ -324,11 +369,90 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_test_repo_name() {
+    fn test_generate_test_repo_name_with_context() {
         let name = generate_test_repo_name("basic");
         assert!(name.starts_with("test-repo-roller-"));
         assert!(name.contains("-basic-"));
-        assert!(name.len() > 30); // Should include timestamp and random suffix
+        // Should include context (pr, main, or local), timestamp, test name, and random suffix
+        assert!(name.len() > 35);
+        
+        // Verify format: test-repo-roller-{context}-{timestamp}-{test-name}-{random}
+        let parts: Vec<&str> = name.split('-').collect();
+        assert!(parts.len() >= 6); // test, repo, roller, context, more parts...
+    }
+
+    #[test]
+    #[ignore = "Environment variable tests must run in isolation"]
+    fn test_generate_test_repo_name_local_context() {
+        // When not in GitHub Actions, should use local context
+        std::env::remove_var("GITHUB_REF");
+        let name = generate_test_repo_name("auth");
+        eprintln!("Generated name: {}", name);
+        assert!(name.starts_with("test-repo-roller-local-"), "Name was: {}", name);
+        assert!(name.contains("-auth-"));
+    }
+
+    #[test]
+    #[ignore = "Environment variable tests must run in isolation"]
+    fn test_generate_test_repo_name_pr_context() {
+        // Simulate PR environment
+        std::env::set_var("GITHUB_REF", "refs/pull/123/merge");
+        let name = generate_test_repo_name("config");
+        eprintln!("Generated name: {}", name);
+        assert!(name.starts_with("test-repo-roller-pr123-"));
+        assert!(name.contains("-config-"));
+        std::env::remove_var("GITHUB_REF");
+    }
+
+    #[test]
+    #[ignore = "Environment variable tests must run in isolation"]
+    fn test_generate_test_repo_name_main_branch() {
+        // Simulate main branch environment
+        std::env::set_var("GITHUB_REF", "refs/heads/main");
+        let name = generate_test_repo_name("template");
+        eprintln!("Generated name: {}", name);
+        assert!(name.starts_with("test-repo-roller-main-"), "Name was: {}", name);
+        assert!(name.contains("-template-"));
+        std::env::remove_var("GITHUB_REF");
+    }
+
+    #[test]
+    fn test_get_workflow_context_pr() {
+        std::env::set_var("GITHUB_REF", "refs/pull/456/merge");
+        let context = get_workflow_context();
+        assert_eq!(context, "pr456");
+        std::env::remove_var("GITHUB_REF");
+    }
+
+    #[test]
+    fn test_get_workflow_context_main_branch() {
+        std::env::set_var("GITHUB_REF", "refs/heads/main");
+        let context = get_workflow_context();
+        assert_eq!(context, "main");
+        std::env::remove_var("GITHUB_REF");
+    }
+
+    #[test]
+    fn test_get_workflow_context_master_branch() {
+        std::env::set_var("GITHUB_REF", "refs/heads/master");
+        let context = get_workflow_context();
+        assert_eq!(context, "main");
+        std::env::remove_var("GITHUB_REF");
+    }
+
+    #[test]
+    fn test_get_workflow_context_feature_branch() {
+        std::env::set_var("GITHUB_REF", "refs/heads/feature/new-feature");
+        let context = get_workflow_context();
+        assert_eq!(context, "feature-new-feature");
+        std::env::remove_var("GITHUB_REF");
+    }
+
+    #[test]
+    fn test_get_workflow_context_local() {
+        std::env::remove_var("GITHUB_REF");
+        let context = get_workflow_context();
+        assert_eq!(context, "local");
     }
 
     #[test]

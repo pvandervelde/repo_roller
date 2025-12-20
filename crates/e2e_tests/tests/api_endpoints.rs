@@ -28,6 +28,51 @@ use e2e_tests::{ApiContainer, ApiContainerConfig};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 
+/// Generate a unique E2E test repository name with workflow context.
+///
+/// Format: `e2e-repo-roller-{context}-{timestamp}-{test-name}-{random}`
+///
+/// Where context is:
+/// - `pr{number}` for PR workflows
+/// - `main` for main branch workflows
+/// - `local` for local development
+fn generate_e2e_test_repo_name(test_name: &str) -> String {
+    use chrono::Utc;
+    use uuid::Uuid;
+    
+    // Extract workflow context from GitHub Actions environment
+    let context = if let Ok(github_ref) = std::env::var("GITHUB_REF") {
+        if github_ref.starts_with("refs/pull/") {
+            // Extract PR number from refs/pull/{number}/merge
+            github_ref
+                .split('/')
+                .nth(2)
+                .map(|pr| format!("pr{}", pr))
+                .unwrap_or_else(|| "local".to_string())
+        } else if github_ref.starts_with("refs/heads/") {
+            // Extract branch name - skip "refs/heads/" prefix (11 chars)
+            let branch = &github_ref[11..];
+            if branch == "main" || branch == "master" {
+                "main".to_string()
+            } else {
+                branch.replace('/', "-")
+            }
+        } else {
+            "local".to_string()
+        }
+    } else {
+        "local".to_string()
+    };
+    
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
+    let random_suffix = Uuid::new_v4().simple().to_string()[..6].to_lowercase();
+    
+    format!(
+        "e2e-repo-roller-{}-{}-{}-{}",
+        context, timestamp, test_name, random_suffix
+    )
+}
+
 /// Helper to get GitHub installation token from environment.
 ///
 /// Creates a proper GitHub App installation token using the app credentials.
@@ -290,7 +335,7 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
 
-    let repo_name = format!("e2e-test-global-{}", chrono::Utc::now().timestamp());
+    let repo_name = generate_e2e_test_repo_name("global");
     let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
 
     // List available templates first to help debug
