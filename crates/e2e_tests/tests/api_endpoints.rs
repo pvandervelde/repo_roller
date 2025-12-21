@@ -28,49 +28,9 @@ use e2e_tests::{ApiContainer, ApiContainerConfig};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 
-/// Generate a unique E2E test repository name with workflow context.
-///
-/// Format: `e2e-repo-roller-{context}-{timestamp}-{test-name}-{random}`
-///
-/// Where context is:
-/// - `pr{number}` for PR workflows
-/// - `main` for main branch workflows
-/// - `local` for local development
+/// Generate E2E test repository name using test_utils.
 fn generate_e2e_test_repo_name(test_name: &str) -> String {
-    use chrono::Utc;
-    use uuid::Uuid;
-    
-    // Extract workflow context from GitHub Actions environment
-    let context = if let Ok(github_ref) = std::env::var("GITHUB_REF") {
-        if github_ref.starts_with("refs/pull/") {
-            // Extract PR number from refs/pull/{number}/merge
-            github_ref
-                .split('/')
-                .nth(2)
-                .map(|pr| format!("pr{}", pr))
-                .unwrap_or_else(|| "local".to_string())
-        } else if github_ref.starts_with("refs/heads/") {
-            // Extract branch name - skip "refs/heads/" prefix (11 chars)
-            let branch = &github_ref[11..];
-            if branch == "main" || branch == "master" {
-                "main".to_string()
-            } else {
-                branch.replace('/', "-")
-            }
-        } else {
-            "local".to_string()
-        }
-    } else {
-        "local".to_string()
-    };
-    
-    let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
-    let random_suffix = Uuid::new_v4().simple().to_string()[..6].to_lowercase();
-    
-    format!(
-        "e2e-repo-roller-{}-{}-{}-{}",
-        context, timestamp, test_name, random_suffix
-    )
+    test_utils::generate_test_repo_name("e2e", test_name)
 }
 
 /// Helper to get GitHub installation token from environment.
@@ -398,11 +358,17 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     // - Verify repository settings match global defaults
 
     tracing::info!("✓ Created repository via E2E test: {}", repo_name);
-    tracing::warn!(
-        "⚠ Remember to clean up test repository: {}/{}",
-        org,
-        repo_name
-    );
+
+    // Cleanup (best effort - don't fail test if cleanup fails)
+    let config_for_cleanup = ApiContainerConfig::from_env()?;
+    e2e_tests::cleanup_test_repository(
+        &org,
+        &repo_name,
+        config_for_cleanup.github_app_id,
+        &config_for_cleanup.github_app_private_key,
+    )
+    .await
+    .ok();
 
     container.stop().await?;
     Ok(())

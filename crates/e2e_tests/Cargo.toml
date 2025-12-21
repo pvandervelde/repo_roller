@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 auth_handler = { path = "../auth_handler" }
 github_client = { path = "../github_client" }
+test_utils = { path = "../test_utils" }
 
 # Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util", "time"] }

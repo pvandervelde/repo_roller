@@ -1,0 +1,32 @@
+[package]
+name = "test_utils"
+edition = "2024"
+authors.workspace = true
+repository.workspace = true
+version.workspace = true
+license.workspace = true
+license-file.workspace = true
+publish = false
+
+[dependencies]
+# GitHub client for repository operations
+github_client = { path = "../github_client" }
+
+# Time utilities
+chrono.workspace = true
+
+# UUID generation
+uuid.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Async runtime
+tokio.workspace = true
+
+[dev-dependencies]
+# Serial test execution for environment variable tests
+serial_test = "3.2.0"
