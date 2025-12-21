@@ -13,6 +13,23 @@ use tracing::{debug, error, info, warn};
 // Re-export test_utils functions for backward compatibility
 pub use test_utils::{cleanup_test_repository, generate_test_repo_name, get_workflow_context};
 
+/// Check if a repository name matches the test repository naming patterns.
+///
+/// Returns true if the name starts with "test-repo-roller-" or "e2e-repo-roller-".
+///
+/// # Examples
+///
+/// ```
+/// use integration_tests::is_test_repository;
+///
+/// assert!(is_test_repository("test-repo-roller-pr123-auth"));
+/// assert!(is_test_repository("e2e-repo-roller-main-api"));
+/// assert!(!is_test_repository("regular-repo"));
+/// ```
+pub fn is_test_repository(repo_name: &str) -> bool {
+    repo_name.starts_with("test-repo-roller-") || repo_name.starts_with("e2e-repo-roller-")
+}
+
 /// Helper function to generate test repository names for integration tests.
 ///
 /// This is a convenience wrapper around test_utils::generate_test_repo_name
@@ -145,14 +162,50 @@ impl RepositoryCleanup {
 
     /// Find and delete orphaned test repositories.
     ///
-    /// This method searches for repositories matching the test naming pattern
-    /// that are older than the specified age and deletes them.
+    /// This method searches for repositories matching test naming patterns
+    /// (test-repo-roller-* and e2e-repo-roller-*) that are older than
+    /// the specified age and deletes them.
     pub async fn cleanup_orphaned_repositories(&self, max_age_hours: u64) -> Result<Vec<String>> {
-        info!(
-            org = self.test_org,
-            max_age_hours = max_age_hours,
-            "Searching for orphaned test repositories"
-        );
+        self.cleanup_repositories_internal(max_age_hours, None).await
+    }
+
+    /// Find and delete test repositories created by a specific PR.
+    ///
+    /// This method searches for repositories matching PR-specific naming patterns
+    /// (test-repo-roller-pr{number}-* and e2e-repo-roller-pr{number}-*)
+    /// and deletes them regardless of age.
+    ///
+    /// # Arguments
+    ///
+    /// * `pr_number` - The PR number to clean up repositories for
+    pub async fn cleanup_pr_repositories(&self, pr_number: u32) -> Result<Vec<String>> {
+        self.cleanup_repositories_internal(0, Some(pr_number)).await
+    }
+
+    /// Internal method to clean up repositories with optional PR filtering.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_age_hours` - Maximum age for repositories (ignored if pr_number is Some)
+    /// * `pr_number` - Optional PR number to filter by
+    async fn cleanup_repositories_internal(
+        &self,
+        max_age_hours: u64,
+        pr_number: Option<u32>,
+    ) -> Result<Vec<String>> {
+        if let Some(pr) = pr_number {
+            info!(
+                org = self.test_org,
+                pr_number = pr,
+                "Searching for test repositories from PR {}", pr
+            );
+        } else {
+            info!(
+                org = self.test_org,
+                max_age_hours = max_age_hours,
+                "Searching for orphaned test repositories"
+            );
+        }
 
         let mut deleted_repos = Vec::new();
         let cutoff_time = Utc::now() - chrono::Duration::hours(max_age_hours as i64);
@@ -162,14 +215,13 @@ impl RepositoryCleanup {
             .client
             .get_installation_token_for_org(&self.test_org)
             .await
-            .context("Failed to get installation token for orphan cleanup")?;
+            .context("Failed to get installation token for cleanup")?;
 
         // Create client with installation token
         let installation_client = github_client::create_token_client(&installation_token)
-            .context("Failed to create installation token client for orphan cleanup")?;
+            .context("Failed to create installation token client for cleanup")?;
 
         // List repositories in the organization with pagination
-        // GitHub API returns max 100 items per page by default (30 if not specified)
         let mut page = 1u32;
         let per_page = 100u8;
 
@@ -218,9 +270,37 @@ impl RepositoryCleanup {
                     for repo in repos.items {
                         let repo_name = repo.name;
 
-                        // Check if this is a test repository
-                        if repo_name.starts_with("test-repo-roller-") {
-                            // Parse creation time from repository
+                        // Check if this is a test repository (test-repo-roller-* or e2e-repo-roller-*)
+                        let is_test_repo = repo_name.starts_with("test-repo-roller-")
+                            || repo_name.starts_with("e2e-repo-roller-");
+
+                        if !is_test_repo {
+                            continue;
+                        }
+
+                        // If filtering by PR, check if this repo matches the PR pattern
+                        if let Some(pr) = pr_number {
+                            let pr_pattern = format!("-pr{}-", pr);
+                            if !repo_name.contains(&pr_pattern) {
+                                debug!(
+                                    repo_name = repo_name,
+                                    pr_number = pr,
+                                    "Skipping repository - not from PR {}", pr
+                                );
+                                continue;
+                            }
+
+                            info!(
+                                repo_name = repo_name,
+                                pr_number = pr,
+                                "Found PR {} repository, attempting deletion", pr
+                            );
+
+                            if self.delete_repository(&repo_name).await.is_ok() {
+                                deleted_repos.push(repo_name);
+                            }
+                        } else {
+                            // Age-based cleanup
                             let created_at = repo
                                 .created_at
                                 .unwrap_or_else(|| cutoff_time + chrono::Duration::hours(1));

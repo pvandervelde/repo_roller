@@ -27,10 +27,7 @@ pub fn get_workflow_context() -> String {
             if let Some(pr_num) = github_ref.split('/').nth(2) {
                 return format!("pr{}", pr_num);
             }
-        } else if github_ref.starts_with("refs/heads/") {
-            // Extract branch name from refs/heads/{branch}
-            // Skip "refs/heads/" prefix (11 characters)
-            let branch = &github_ref[11..];
+        } else if let Some(branch) = github_ref.strip_prefix("refs/heads/") {
             // Use 'main' for main/master branches
             if branch == "main" || branch == "master" {
                 return "main".to_string();
