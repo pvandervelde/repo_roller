@@ -25,7 +25,7 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("override-protection");
+    let repo_name = generate_test_repo_name("test", "override-protection");
 
     // Auto-cleanup on drop
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -123,7 +123,7 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("fixed-value");
+    let repo_name = generate_test_repo_name("test", "fixed-value");
 
     // Auto-cleanup on drop
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -213,7 +213,7 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("null-empty-values");
+    let repo_name = generate_test_repo_name("test", "null-empty-values");
 
     // Auto-cleanup on drop
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -302,7 +302,7 @@ async fn test_partial_field_overrides() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("partial-override");
+    let repo_name = generate_test_repo_name("test", "partial-override");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -395,7 +395,7 @@ async fn test_label_collection_merging() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("label-merge");
+    let repo_name = generate_test_repo_name("test", "label-merge");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -492,7 +492,7 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("webhook-accumulate");
+    let repo_name = generate_test_repo_name("test", "webhook-accumulate");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -570,7 +570,7 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("repo-type");
+    let repo_name = generate_test_repo_name("test", "repo-type");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -649,7 +649,7 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("hierarchy-complete");
+    let repo_name = generate_test_repo_name("test", "hierarchy-complete");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -727,7 +727,7 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("minimal-hierarchy");
+    let repo_name = generate_test_repo_name("test", "minimal-hierarchy");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -807,7 +807,7 @@ async fn test_conflicting_collection_items() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("conflict-items");
+    let repo_name = generate_test_repo_name("test", "conflict-items");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 

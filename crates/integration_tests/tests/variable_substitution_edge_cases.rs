@@ -34,7 +34,7 @@ async fn test_nested_variable_substitution() -> Result<()> {
     info!("Testing nested variable substitution");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("nested-vars");
+    let repo_name = generate_test_repo_name("test", "nested-variable-substitution");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -144,7 +144,7 @@ async fn test_missing_required_variable_error() -> Result<()> {
     info!("Testing missing required variable error");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("missing-var");
+    let repo_name = generate_test_repo_name("test", "missing-var");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -225,7 +225,7 @@ async fn test_very_long_variable_values() -> Result<()> {
     info!("Testing very long variable values");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("long-vars");
+    let repo_name = generate_test_repo_name("test", "long-vars");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -316,7 +316,7 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
     info!("Testing Handlebars syntax in variable values");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("hbs-syntax");
+    let repo_name = generate_test_repo_name("test", "hbs-syntax");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -401,7 +401,7 @@ async fn test_special_characters_in_variables() -> Result<()> {
     info!("Testing special characters in variable values");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("special-chars");
+    let repo_name = generate_test_repo_name("test", "special-chars");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -507,7 +507,7 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
     info!("Testing variable substitution in filenames");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("var-filenames");
+    let repo_name = generate_test_repo_name("test", "var-filenames");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(

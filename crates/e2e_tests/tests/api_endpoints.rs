@@ -361,10 +361,12 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
 
     // Cleanup (best effort - don't fail test if cleanup fails)
     let config_for_cleanup = ApiContainerConfig::from_env()?;
+    let app_id = config_for_cleanup.github_app_id.parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
     e2e_tests::cleanup_test_repository(
         &org,
         &repo_name,
-        config_for_cleanup.github_app_id,
+        app_id,
         &config_for_cleanup.github_app_private_key,
     )
     .await
