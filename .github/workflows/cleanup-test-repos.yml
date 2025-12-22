@@ -69,7 +69,7 @@ jobs:
                   RUST_LOG: info
               run: |
                   echo "🧹 Running scheduled cleanup (max age: 1 hour)..."
-                  cargo run --package integration_tests --example cleanup_orphans -- 1
+                  cargo run --package test_cleanup --bin cleanup-orphans -- 1
 
             - name: Run cleanup (manual)
               if: github.event_name == 'workflow_dispatch'
@@ -89,7 +89,7 @@ jobs:
                   fi
 
                   echo "🧹 Running manual cleanup (max age: $MAX_AGE hours)..."
-                  cargo run --package integration_tests --example cleanup_orphans -- "$MAX_AGE"
+                  cargo run --package test_cleanup --bin cleanup-orphans -- "$MAX_AGE"
 
             - name: Report cleanup results
               if: always()

@@ -1,0 +1,31 @@
+[package]
+name = "test_cleanup"
+edition = "2024"
+authors.workspace = true
+repository.workspace = true
+version.workspace = true
+license.workspace = true
+license-file.workspace = true
+publish = false
+
+description = "Test repository cleanup utilities for RepoRoller"
+
+[[bin]]
+name = "cleanup-orphans"
+path = "src/bin/cleanup_orphans.rs"
+
+[[bin]]
+name = "cleanup-pr"
+path = "src/bin/cleanup_pr.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+github_client = { path = "../github_client" }
+
+[dev-dependencies]
+serial_test = { workspace = true }

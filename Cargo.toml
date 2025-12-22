@@ -11,7 +11,9 @@ members = [
     "crates/repo_roller_mcp",
     "crates/repo_roller_azure_fn",
     "crates/integration_tests",
-    "crates/e2e_tests", "crates/test_utils",
+    "crates/e2e_tests",
+    "crates/test_utils",
+    "crates/test_cleanup",
 ]
 
 [workspace.package]
@@ -42,3 +44,4 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Testing dependencies
 hyper = "1.0"
+serial_test = "0.9"

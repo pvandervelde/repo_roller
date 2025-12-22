@@ -15,6 +15,7 @@ github_client = { path = "../github_client" }
 template_engine = { path = "../template_engine" }
 config_manager = { path = "../config_manager" }
 test_utils = { path = "../test_utils" }
+test_cleanup = { path = "../test_cleanup" }
 tokio = { version = "1", features = [
     "macros",
     "rt-multi-thread",

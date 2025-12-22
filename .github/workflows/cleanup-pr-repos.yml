@@ -1,0 +1,122 @@
+name: Cleanup PR Test Repositories
+
+on:
+    pull_request:
+        types: [closed]
+
+permissions:
+    contents: read
+    pull-requests: write
+
+jobs:
+    cleanup:
+        name: Clean up test repositories from closed PR
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust dependencies
+              uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2
+              with:
+                  key: cleanup-pr
+                  cache-on-failure: true
+
+            - name: Validate environment setup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+              run: |
+                  echo "Validating environment..."
+                  if [ -z "$GITHUB_APP_ID" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
+                    exit 1
+                  fi
+                  if [ -z "$GITHUB_APP_PRIVATE_KEY" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY secret not set"
+                    exit 1
+                  fi
+                  if [ -z "$TEST_ORG" ]; then
+                    echo "❌ INTEGRATION_TEST_ORG secret not set"
+                    exit 1
+                  fi
+                  echo "✅ All required secrets configured"
+                  echo "📋 Test Organization: $TEST_ORG"
+                  echo "📋 PR Number: ${{ github.event.pull_request.number }}"
+
+            - name: Run PR cleanup
+              id: cleanup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  RUST_LOG: info
+              run: |
+                  echo "🧹 Cleaning up test repositories from PR #${{ github.event.pull_request.number }}..."
+
+                  # Run cleanup and capture output
+                  output=$(cargo run --package test_cleanup --bin cleanup-pr -- ${{ github.event.pull_request.number }} 2>&1)
+                  echo "$output"
+
+                  # Extract deleted repository count
+                  deleted_count=$(echo "$output" | grep "Deleted.*repositories" | grep -oE '[0-9]+' || echo "0")
+                  echo "deleted_count=$deleted_count" >> $GITHUB_OUTPUT
+
+                  # Save full output for comment
+                  echo "cleanup_output<<EOF" >> $GITHUB_OUTPUT
+                  echo "$output" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: Comment on PR with cleanup results
+              if: always()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const prNumber = ${{ github.event.pull_request.number }};
+                      const deletedCount = '${{ steps.cleanup.outputs.deleted_count }}';
+                      const cleanupOutput = `${{ steps.cleanup.outputs.cleanup_output }}`;
+
+                      let comment = '## 🧹 Test Repository Cleanup\n\n';
+
+                      if (deletedCount === '0') {
+                        comment += '✅ No test repositories found for this PR.\n';
+                      } else {
+                        comment += `✅ Successfully cleaned up **${deletedCount}** test repositories created by this PR.\n\n`;
+                        comment += '<details>\n<summary>View cleanup details</summary>\n\n';
+                        comment += '```\n' + cleanupOutput + '\n```\n';
+                        comment += '</details>\n';
+                      }
+
+                      comment += '\n*This cleanup runs automatically when PRs are closed.*';
+
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: prNumber,
+                        body: comment
+                      });
+
+            - name: Report cleanup failure
+              if: failure()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const prNumber = ${{ github.event.pull_request.number }};
+
+                      const comment = '## ⚠️ Test Repository Cleanup Failed\n\n' +
+                        'The automatic cleanup of test repositories created by this PR encountered an error. ' +
+                        'The scheduled cleanup job will catch these repositories later.\n\n' +
+                        'See the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.\n\n' +
+                        '*This is not critical - orphaned repositories will be cleaned up by the scheduled job.*';
+
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: prNumber,
+                        body: comment
+                      });
