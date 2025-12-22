@@ -80,7 +80,8 @@ impl RepositoryCleanup {
     /// (test-repo-roller-* and e2e-repo-roller-*) that are older than
     /// the specified age and deletes them.
     pub async fn cleanup_orphaned_repositories(&self, max_age_hours: u64) -> Result<Vec<String>> {
-        self.cleanup_repositories_internal(max_age_hours, None).await
+        self.cleanup_repositories_internal(max_age_hours, None)
+            .await
     }
 
     /// Find and delete test repositories created by a specific PR.
@@ -111,7 +112,8 @@ impl RepositoryCleanup {
             info!(
                 org = self.test_org,
                 pr_number = pr,
-                "Searching for test repositories from PR {}", pr
+                "Searching for test repositories from PR {}",
+                pr
             );
         } else {
             info!(
@@ -196,7 +198,8 @@ impl RepositoryCleanup {
                                 debug!(
                                     repo_name = repo_name,
                                     pr_number = pr,
-                                    "Skipping repository - not from PR {}", pr
+                                    "Skipping repository - not from PR {}",
+                                    pr
                                 );
                                 continue;
                             }
@@ -204,7 +207,8 @@ impl RepositoryCleanup {
                             info!(
                                 repo_name = repo_name,
                                 pr_number = pr,
-                                "Found PR {} repository, attempting deletion", pr
+                                "Found PR {} repository, attempting deletion",
+                                pr
                             );
 
                             if self.delete_repository(&repo_name).await.is_ok() {

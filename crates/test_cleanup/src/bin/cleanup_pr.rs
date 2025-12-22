@@ -48,7 +48,10 @@ async fn main() -> anyhow::Result<()> {
     // Create cleanup instance
     let cleanup = RepositoryCleanup::new(github_client, config.test_org.clone());
 
-    println!("🔍 Searching for test repositories from PR #{}...", pr_number);
+    println!(
+        "🔍 Searching for test repositories from PR #{}...",
+        pr_number
+    );
     let deleted = cleanup.cleanup_pr_repositories(pr_number).await?;
 
     println!();
