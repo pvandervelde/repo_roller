@@ -148,7 +148,7 @@ foreach ($repo in $mismatchedRepos)
 
     try
     {
-        gh repo delete $fullName --yes 2>&1 | Out-Null
+        $errorOutput = gh repo delete $fullName --yes 2>&1
         if ($LASTEXITCODE -eq 0)
         {
             $deletedCount++
@@ -157,7 +157,7 @@ foreach ($repo in $mismatchedRepos)
         else
         {
             $failedCount++
-            Write-Host "      ✗ Failed" -ForegroundColor Red
+            Write-Host "      ✗ Failed: $errorOutput" -ForegroundColor Red
         }
     }
     catch
