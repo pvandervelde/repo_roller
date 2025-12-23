@@ -1,0 +1,173 @@
+name: Cleanup Misnamed Test Repositories
+
+on:
+    workflow_dispatch:
+        inputs:
+            max_age_days:
+                description: "Minimum age in days for test repositories to delete"
+                required: false
+                default: "1"
+                type: string
+            dry_run:
+                description: "Preview changes without deleting"
+                required: false
+                default: false
+                type: boolean
+
+permissions:
+    contents: read
+    issues: write # For creating issues on cleanup failures
+
+jobs:
+    cleanup:
+        name: Clean up misnamed test repositories
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust dependencies
+              uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2
+              with:
+                  key: cleanup-misnamed
+                  cache-on-failure: true
+
+            - name: Validate environment setup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+              run: |
+                  echo "🔍 Validating environment..."
+                  if [ -z "$GITHUB_APP_ID" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
+                    exit 1
+                  fi
+                  if [ -z "$GITHUB_APP_PRIVATE_KEY" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY secret not set"
+                    exit 1
+                  fi
+                  if [ -z "$TEST_ORG" ]; then
+                    echo "❌ INTEGRATION_TEST_ORG secret not set"
+                    exit 1
+                  fi
+                  echo "✅ All required secrets configured"
+                  echo "📋 Test Organization: $TEST_ORG"
+                  echo "📋 Max age: ${{ github.event.inputs.max_age_days }} days"
+                  echo "📋 Dry run: ${{ github.event.inputs.dry_run }}"
+
+            - name: Preview misnamed repositories (dry run)
+              if: github.event.inputs.dry_run == 'true'
+              id: preview
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  RUST_LOG: info
+              run: |
+                  echo "🔍 DRY RUN: Identifying misnamed repositories..."
+                  echo "   This will NOT delete anything"
+                  echo "   Max age: ${{ github.event.inputs.max_age_days }} days"
+                  echo ""
+
+                  # For dry run, we'll use the cleanup binary with age 0 to see all misnamed repos
+                  # Then filter by age in the summary
+                  output=$(cargo run --package test_cleanup --bin cleanup-misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1 || true)
+                  echo "$output"
+
+                  echo "preview_output<<EOF" >> $GITHUB_OUTPUT
+                  echo "$output" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: Run misnamed repository cleanup
+              if: github.event.inputs.dry_run != 'true'
+              id: cleanup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  RUST_LOG: info
+              run: |
+                  echo "🧹 Cleaning up misnamed test repositories..."
+                  echo "   Max age: ${{ github.event.inputs.max_age_days }} days"
+                  echo ""
+
+                  # Run cleanup and capture output
+                  output=$(cargo run --package test_cleanup --bin cleanup-misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1)
+                  echo "$output"
+
+                  # Extract deleted count for summary
+                  deleted_count=$(echo "$output" | grep "Deleted.*repositories" | grep -oE '[0-9]+' || echo "0")
+                  echo "deleted_count=$deleted_count" >> $GITHUB_OUTPUT
+
+                  # Save full output for summary
+                  echo "cleanup_output<<EOF" >> $GITHUB_OUTPUT
+                  echo "$output" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: Create summary (dry run)
+              if: github.event.inputs.dry_run == 'true' && always()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const previewOutput = process.env.PREVIEW_OUTPUT || '';
+                      const maxAgeDays = '${{ github.event.inputs.max_age_days }}';
+
+                      let summary = '## 🔍 Misnamed Repository Cleanup (Dry Run)\n\n';
+                      summary += `**Maximum age:** ${maxAgeDays} days\n\n`;
+                      summary += '⚠️ **DRY RUN MODE** - No repositories were deleted\n\n';
+
+                      if (previewOutput) {
+                        summary += '<details>\n<summary>View repositories that would be deleted</summary>\n\n';
+                        summary += '```\n' + previewOutput + '\n```\n';
+                        summary += '</details>\n';
+                      }
+
+                      summary += '\n*Run this workflow with dry_run=false to actually delete repositories.*';
+
+                      core.summary.addRaw(summary).write();
+              env:
+                  PREVIEW_OUTPUT: ${{ steps.preview.outputs.preview_output }}
+
+            - name: Create summary (actual cleanup)
+              if: github.event.inputs.dry_run != 'true' && always()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const deletedCount = '${{ steps.cleanup.outputs.deleted_count }}';
+                      const cleanupOutput = process.env.CLEANUP_OUTPUT || '';
+                      const maxAgeDays = '${{ github.event.inputs.max_age_days }}';
+
+                      let summary = '## 🧹 Misnamed Repository Cleanup\n\n';
+                      summary += `**Maximum age:** ${maxAgeDays} days\n\n`;
+
+                      if (deletedCount === '0') {
+                        summary += '✅ No misnamed test repositories found older than ' + maxAgeDays + ' days.\n';
+                      } else {
+                        summary += `✅ Successfully cleaned up **${deletedCount}** misnamed test repositories.\n\n`;
+                        if (cleanupOutput) {
+                          summary += '<details>\n<summary>View cleanup details</summary>\n\n';
+                          summary += '```\n' + cleanupOutput + '\n```\n';
+                          summary += '</details>\n';
+                        }
+                      }
+
+                      core.summary.addRaw(summary).write();
+              env:
+                  CLEANUP_OUTPUT: ${{ steps.cleanup.outputs.cleanup_output }}
+
+            - name: Report cleanup failure
+              if: failure()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const summary = '## ⚠️ Misnamed Repository Cleanup Failed\n\n' +
+                        'The cleanup of misnamed test repositories encountered an error.\n\n' +
+                        'See the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.\n\n' +
+                        '*You may need to manually review and clean up misnamed repositories.*';
+
+                      core.summary.addRaw(summary).write();
