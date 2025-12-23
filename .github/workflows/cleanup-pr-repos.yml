@@ -79,7 +79,7 @@ jobs:
                   script: |
                       const prNumber = ${{ github.event.pull_request.number }};
                       const deletedCount = '${{ steps.cleanup.outputs.deleted_count }}';
-                      const cleanupOutput = `${{ steps.cleanup.outputs.cleanup_output }}`;
+                      const cleanupOutput = process.env.CLEANUP_OUTPUT || '';
 
                       let comment = '## 🧹 Test Repository Cleanup\n\n';
 
@@ -87,9 +87,11 @@ jobs:
                         comment += '✅ No test repositories found for this PR.\n';
                       } else {
                         comment += `✅ Successfully cleaned up **${deletedCount}** test repositories created by this PR.\n\n`;
-                        comment += '<details>\n<summary>View cleanup details</summary>\n\n';
-                        comment += '```\n' + cleanupOutput + '\n```\n';
-                        comment += '</details>\n';
+                        if (cleanupOutput) {
+                          comment += '<details>\n<summary>View cleanup details</summary>\n\n';
+                          comment += '```\n' + cleanupOutput + '\n```\n';
+                          comment += '</details>\n';
+                        }
                       }
 
                       comment += '\n*This cleanup runs automatically when PRs are closed.*';
@@ -100,6 +102,8 @@ jobs:
                         issue_number: prNumber,
                         body: comment
                       });
+              env:
+                  CLEANUP_OUTPUT: ${{ steps.cleanup.outputs.cleanup_output }}
 
             - name: Report cleanup failure
               if: failure()
