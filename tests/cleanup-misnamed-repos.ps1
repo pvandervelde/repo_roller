@@ -51,7 +51,7 @@ if ($DryRun)
 
 # Get all repositories
 Write-Host "📋 Fetching repositories from organization: $Organization..." -ForegroundColor White
-$repos = gh repo list $Organization --limit 1000 --json name,createdAt,isTemplate | ConvertFrom-Json
+$repos = gh repo list $Organization --limit 1000 --json "name,createdAt,isTemplate" | ConvertFrom-Json
 
 if (-not $repos)
 {

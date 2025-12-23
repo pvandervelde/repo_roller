@@ -25,7 +25,7 @@ Write-Host "🔍 Analyzing repositories in organization: $Organization" -Foregro
 Write-Host ""
 
 # Get all repositories
-$repos = gh repo list $Organization --limit 1000 --json name, createdAt, updatedAt, isTemplate | ConvertFrom-Json
+$repos = gh repo list $Organization --limit 1000 --json "name,createdAt,updatedAt,isTemplate" | ConvertFrom-Json
 
 if (-not $repos)
 {
