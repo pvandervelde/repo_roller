@@ -66,6 +66,9 @@ Write-Host ""
 $mismatchedRepos = @()
 $cutoffDate = (Get-Date).AddDays(-$OlderThanDays)
 
+Write-Host "🔍 Analyzing repositories (cutoff date: $($cutoffDate.ToString('yyyy-MM-dd HH:mm:ss')))..." -ForegroundColor Gray
+Write-Host ""
+
 foreach ($repo in $repos)
 {
     $name = $repo.name
@@ -78,9 +81,11 @@ foreach ($repo in $repos)
     }
 
     # Identify misnamed test repos (but not correctly named or templates)
-    if ($name -match '^(template-|test-|integration-|e2e-|temp-|demo-)' -and
-        -not $name -match '^(test-repo-roller-|e2e-repo-roller-)' -and
-        -not $repo.isTemplate)
+    $isMisnamedPattern = $name -match '^(template-|test-|integration-|e2e-test-|e2e-|temp-|demo-)'
+    $isCorrectlyNamed = $name -match '^(test-repo-roller-|e2e-repo-roller-)'
+    $isTemplate = $repo.isTemplate
+
+    if ($isMisnamedPattern -and -not $isCorrectlyNamed -and -not $isTemplate)
     {
         $mismatchedRepos += $repo
     }
@@ -168,10 +173,10 @@ Write-Host "Cleanup complete!" -ForegroundColor Green
 Write-Host "  Deleted:   $deletedCount" -ForegroundColor Green
 Write-Host "  Failed:    $failedCount" -ForegroundColor $(if ($failedCount -gt 0)
     {
-        "Red" 
+        "Red"
     }
     else
     {
-        "Gray" 
+        "Gray"
     })
 Write-Host "═══════════════════════════════════════" -ForegroundColor Cyan
