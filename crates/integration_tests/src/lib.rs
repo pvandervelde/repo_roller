@@ -13,7 +13,7 @@ pub mod verification;
 
 // Re-export commonly used types for convenience
 pub use test_runner::{IntegrationTestRunner, TestResult, TestScenario};
-pub use utils::{RepositoryCleanup, TestConfig, TestRepository};
+pub use utils::{is_test_repository, RepositoryCleanup, TestConfig, TestRepository};
 pub use verification::{
     ConfigurationVerification, ExpectedBranchProtection, ExpectedConfiguration,
     ExpectedRepositorySettings,

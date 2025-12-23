@@ -21,11 +21,10 @@ pub use test_cleanup::RepositoryCleanup;
 /// # Examples
 ///
 /// ```
-/// use integration_tests::is_test_repository;
-///
-/// assert!(is_test_repository("test-repo-roller-pr123-auth"));
-/// assert!(is_test_repository("e2e-repo-roller-main-api"));
-/// assert!(!is_test_repository("regular-repo"));
+/// // Use the full module path in doctests
+/// assert!(integration_tests::is_test_repository("test-repo-roller-pr123-auth"));
+/// assert!(integration_tests::is_test_repository("e2e-repo-roller-main-api"));
+/// assert!(!integration_tests::is_test_repository("regular-repo"));
 /// ```
 pub fn is_test_repository(repo_name: &str) -> bool {
     test_cleanup::RepositoryCleanup::is_test_repository(repo_name)
