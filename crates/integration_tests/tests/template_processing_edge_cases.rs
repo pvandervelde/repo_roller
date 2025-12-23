@@ -33,7 +33,7 @@ async fn test_large_file_processing() -> Result<()> {
     info!("Testing large file processing");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("large-files");
+    let repo_name = generate_test_repo_name("test", "large-files");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -107,7 +107,7 @@ async fn test_binary_file_preservation() -> Result<()> {
     info!("Testing binary file preservation");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("binary-files");
+    let repo_name = generate_test_repo_name("test", "binary-files");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -172,7 +172,7 @@ async fn test_deep_directory_nesting() -> Result<()> {
     info!("Testing deep directory nesting");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("deep-nesting");
+    let repo_name = generate_test_repo_name("test", "deep-nesting");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -237,7 +237,7 @@ async fn test_many_files_template() -> Result<()> {
     info!("Testing template with many files");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("many-files");
+    let repo_name = generate_test_repo_name("test", "many-files");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -306,7 +306,7 @@ async fn test_unicode_filenames() -> Result<()> {
     info!("Testing Unicode filenames");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("unicode-files");
+    let repo_name = generate_test_repo_name("test", "unicode-files");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -371,7 +371,7 @@ async fn test_symlink_handling() -> Result<()> {
     info!("Testing symbolic link handling");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("symlinks");
+    let repo_name = generate_test_repo_name("test", "symlinks");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -436,7 +436,7 @@ async fn test_executable_permissions_preserved() -> Result<()> {
     info!("Testing executable permission preservation");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("executable-scripts");
+    let repo_name = generate_test_repo_name("test", "executable-scripts");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -500,7 +500,7 @@ async fn test_hidden_files_processing() -> Result<()> {
     info!("Testing hidden file processing");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("hidden-files");
+    let repo_name = generate_test_repo_name("test", "hidden-files");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -565,7 +565,7 @@ async fn test_empty_directory_handling() -> Result<()> {
     info!("Testing empty directory handling");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("empty-dirs");
+    let repo_name = generate_test_repo_name("test", "empty-dirs");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -629,7 +629,7 @@ async fn test_files_without_extensions() -> Result<()> {
     info!("Testing files without extensions");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("no-extensions");
+    let repo_name = generate_test_repo_name("test", "no-extensions");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     let auth_service = auth_handler::GitHubAuthService::new(

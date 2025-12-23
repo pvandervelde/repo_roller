@@ -28,7 +28,7 @@ async fn test_basic_repository_creation() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("basic-creation");
+    let repo_name = generate_test_repo_name("test", "basic-creation");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -95,7 +95,7 @@ async fn test_variable_substitution() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("var-substitution");
+    let repo_name = generate_test_repo_name("test", "var-substitution");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -194,7 +194,7 @@ async fn test_file_filtering() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("file-filtering");
+    let repo_name = generate_test_repo_name("test", "file-filtering");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -299,8 +299,8 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
     info!("Starting orphaned repository cleanup test");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("orphan-cleanup");
-    let test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
+    let repo_name = generate_test_repo_name("test", "orphan-cleanup");
+    let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(

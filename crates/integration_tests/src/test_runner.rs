@@ -263,7 +263,7 @@ impl IntegrationTestRunner {
         info!(scenario = ?scenario, "Starting test scenario");
 
         // Generate unique repository name
-        let repo_name = generate_test_repo_name(scenario.test_name());
+        let repo_name = generate_test_repo_name("test", scenario.test_name());
         let test_repo = TestRepository::new(repo_name.clone(), self.config.test_org.clone());
 
         let success = match self

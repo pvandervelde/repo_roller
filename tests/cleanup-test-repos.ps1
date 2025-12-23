@@ -37,7 +37,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ORG = "glitchgrove"
-$PREFIX = "test-repo-roller-"
+$TEST_PREFIXES = @("test-repo-roller-", "e2e-repo-roller-")
 
 Write-Host "RepoRoller Test Repository Cleanup" -ForegroundColor Magenta
 Write-Host "===================================" -ForegroundColor Magenta
@@ -75,8 +75,11 @@ Write-Host "🔍 Fetching repositories from $ORG organization..." -ForegroundCol
 # Fetch all repositories
 $repos = gh repo list $ORG --limit 300 --json name, createdAt | ConvertFrom-Json
 
-# Filter for test repositories
-$testRepos = $repos | Where-Object { $_.name -like "$PREFIX*" }
+# Filter for test repositories (both test-repo-roller-* and e2e-repo-roller-*)
+$testRepos = $repos | Where-Object {
+    $repoName = $_.name
+    $TEST_PREFIXES | Where-Object { $repoName.StartsWith($_) } | Select-Object -First 1
+}
 
 Write-Host "   Found $($testRepos.Count) test repositories total" -ForegroundColor Gray
 

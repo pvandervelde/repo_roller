@@ -19,7 +19,7 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("missing-metadata");
+    let repo_name = integration_tests::generate_test_repo_name("test", "missing-metadata");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -108,7 +108,7 @@ async fn test_malformed_global_toml_error() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("malformed-global");
+    let repo_name = integration_tests::generate_test_repo_name("test", "malformed-global");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -185,7 +185,7 @@ async fn test_missing_global_toml_file() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("missing-global-file");
+    let repo_name = integration_tests::generate_test_repo_name("test", "missing-global-file");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -254,7 +254,7 @@ async fn test_conflicting_team_configuration() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("conflicting-team");
+    let repo_name = integration_tests::generate_test_repo_name("test", "conflicting-team");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -328,7 +328,7 @@ async fn test_nonexistent_repository_type() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("nonexistent-type");
+    let repo_name = integration_tests::generate_test_repo_name("test", "nonexistent-type");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -406,7 +406,7 @@ async fn test_malformed_team_toml() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("malformed-team");
+    let repo_name = integration_tests::generate_test_repo_name("test", "malformed-team");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -478,7 +478,7 @@ async fn test_missing_team_file() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("missing-team");
+    let repo_name = integration_tests::generate_test_repo_name("test", "missing-team");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -556,7 +556,7 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("incomplete-structure");
+    let repo_name = integration_tests::generate_test_repo_name("test", "incomplete-structure");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());
@@ -625,7 +625,7 @@ async fn test_duplicate_label_definitions() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = repo_roller_core::OrganizationName::new(&config.test_org)?;
-    let repo_name = integration_tests::generate_test_repo_name("duplicate-labels");
+    let repo_name = integration_tests::generate_test_repo_name("test", "duplicate-labels");
 
     let _test_repo =
         integration_tests::TestRepository::new(repo_name.clone(), config.test_org.clone());

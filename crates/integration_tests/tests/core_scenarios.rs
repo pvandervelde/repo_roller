@@ -37,7 +37,7 @@ async fn test_basic_repository_creation() -> Result<()> {
     info!("Testing basic repository creation");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("basic");
+    let repo_name = generate_test_repo_name("test", "basic");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -110,7 +110,7 @@ async fn test_variable_substitution() -> Result<()> {
     info!("Testing variable substitution");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("variables");
+    let repo_name = generate_test_repo_name("test", "variables");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -214,7 +214,7 @@ async fn test_file_filtering() -> Result<()> {
     info!("Testing file filtering");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("filtering");
+    let repo_name = generate_test_repo_name("test", "filtering");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -294,7 +294,7 @@ async fn test_error_handling_invalid_template() -> Result<()> {
     info!("Testing error handling for invalid template");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("error-handling");
+    let repo_name = generate_test_repo_name("test", "error-handling");
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -343,7 +343,7 @@ async fn test_organization_settings() -> Result<()> {
     info!("Testing organization settings integration");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("org-settings");
+    let repo_name = generate_test_repo_name("test", "org-settings");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -431,7 +431,7 @@ async fn test_team_configuration() -> Result<()> {
     info!("Testing team-specific configuration");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("team-config");
+    let repo_name = generate_test_repo_name("test", "team-config");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -509,7 +509,7 @@ async fn test_repository_type_configuration() -> Result<()> {
     info!("Testing repository type configuration");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("repo-type");
+    let repo_name = generate_test_repo_name("test", "repo-type");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -590,7 +590,7 @@ async fn test_configuration_hierarchy() -> Result<()> {
     info!("Testing configuration hierarchy merging");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("config-hierarchy");
+    let repo_name = generate_test_repo_name("test", "config-hierarchy");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service

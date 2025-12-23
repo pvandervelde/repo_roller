@@ -28,6 +28,11 @@ use e2e_tests::{ApiContainer, ApiContainerConfig};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 
+/// Generate E2E test repository name using test_utils.
+fn generate_e2e_test_repo_name(test_name: &str) -> String {
+    test_utils::generate_test_repo_name("e2e", test_name)
+}
+
 /// Helper to get GitHub installation token from environment.
 ///
 /// Creates a proper GitHub App installation token using the app credentials.
@@ -290,7 +295,7 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
 
-    let repo_name = format!("e2e-test-global-{}", chrono::Utc::now().timestamp());
+    let repo_name = generate_e2e_test_repo_name("global");
     let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
 
     // List available templates first to help debug
@@ -353,11 +358,21 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
     // - Verify repository settings match global defaults
 
     tracing::info!("✓ Created repository via E2E test: {}", repo_name);
-    tracing::warn!(
-        "⚠ Remember to clean up test repository: {}/{}",
-        org,
-        repo_name
-    );
+
+    // Cleanup (best effort - don't fail test if cleanup fails)
+    let config_for_cleanup = ApiContainerConfig::from_env()?;
+    let app_id = config_for_cleanup
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    e2e_tests::cleanup_test_repository(
+        &org,
+        &repo_name,
+        app_id,
+        &config_for_cleanup.github_app_private_key,
+    )
+    .await
+    .ok();
 
     container.stop().await?;
     Ok(())

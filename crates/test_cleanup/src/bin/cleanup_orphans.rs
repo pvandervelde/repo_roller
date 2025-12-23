@@ -1,23 +1,23 @@
 //! Cleanup orphaned test repositories.
 //!
-//! This example program cleans up test repositories older than a specified age.
+//! This binary cleans up test repositories older than a specified age.
 //! It's designed to be run from GitHub Actions or manually for maintenance.
 //!
 //! Usage:
-//!   cargo run --package integration_tests --example cleanup_orphans -- <max_age_hours>
+//!   cleanup-orphans <max_age_hours>
 //!
 //! Environment variables required:
 //! - GITHUB_APP_ID: GitHub App ID for authentication
 //! - GITHUB_APP_PRIVATE_KEY: GitHub App private key
 //! - TEST_ORG: Organization name (e.g., "glitchgrove")
 
-use integration_tests::{utils, TestConfig};
 use std::env;
+use test_cleanup::{CleanupConfig, RepositoryCleanup};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize logging
-    utils::init_logging();
+    test_cleanup::init_logging();
 
     // Get max age from command line args, default to 1 hour
     let max_age_hours: u64 = env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(1);
@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     // Load configuration from environment
-    let config = TestConfig::from_env()?;
+    let config = CleanupConfig::from_env()?;
 
     println!("📋 Configuration:");
     println!("   GitHub App ID: {}", config.github_app_id);
@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     let github_client = github_client::GitHubClient::new(app_client);
 
     // Create cleanup instance
-    let cleanup = utils::RepositoryCleanup::new(github_client, config.test_org.clone());
+    let cleanup = RepositoryCleanup::new(github_client, config.test_org.clone());
 
     println!("🔍 Searching for orphaned test repositories...");
     let deleted = cleanup.cleanup_orphaned_repositories(max_age_hours).await?;

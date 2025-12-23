@@ -190,7 +190,7 @@ impl GitHubMockServer {
                 owner, repo, file_path
             )))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "name": file_path.split('/').last().unwrap_or(file_path),
+                "name": file_path.split('/').next_back().unwrap_or(file_path),
                 "path": file_path,
                 "sha": "abc123",
                 "size": content.len(),

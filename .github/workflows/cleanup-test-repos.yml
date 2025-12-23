@@ -2,23 +2,19 @@ name: Cleanup Test Repositories
 
 on:
     schedule:
-        # Run daily at 2 AM UTC
+        # Run daily at 2 AM UTC - catches any repos missed by PR cleanup
         - cron: "0 2 * * *"
     workflow_dispatch:
         inputs:
             max_age_hours:
                 description: "Maximum age in hours for test repositories to keep"
                 required: false
-                default: "1"
+                default: "24"
                 type: string
-            dry_run:
-                description: "Dry run mode (only list repos, do not delete)"
-                required: false
-                default: false
-                type: boolean
 
 permissions:
     contents: read
+    issues: write  # For creating issues on cleanup failures
 
 jobs:
     cleanup:
@@ -44,7 +40,7 @@ jobs:
                   GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
                   TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
               run: |
-                  echo "Validating environment..."
+                  echo "🔍 Validating environment..."
                   if [ -z "$GITHUB_APP_ID" ]; then
                     echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
                     exit 1
@@ -60,19 +56,36 @@ jobs:
                   echo "✅ All required secrets configured"
                   echo "📋 Test Organization: $TEST_ORG"
 
-            - name: Run cleanup (scheduled)
+            - name: Run scheduled cleanup (safety net)
               if: github.event_name == 'schedule'
+              id: scheduled_cleanup
               env:
                   GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
                   GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
                   TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
                   RUST_LOG: info
               run: |
-                  echo "🧹 Running scheduled cleanup (max age: 1 hour)..."
-                  cargo run --package integration_tests --example cleanup_orphans -- 1
+                  echo "🧹 Running scheduled cleanup (safety net for missed PRs)"
+                  echo "   Max age: 24 hours"
+                  echo "   This catches test repos that weren't cleaned up by PR workflows"
+                  echo ""
+                  
+                  # Run cleanup and capture output
+                  output=$(cargo run --package test_cleanup --bin cleanup-orphans -- 24 2>&1)
+                  echo "$output"
+                  
+                  # Extract deleted count for summary
+                  deleted_count=$(echo "$output" | grep "Deleted.*repositories" | grep -oE '[0-9]+' || echo "0")
+                  echo "deleted_count=$deleted_count" >> $GITHUB_OUTPUT
+                  
+                  # Save output for potential issue creation
+                  echo "cleanup_output<<EOF" >> $GITHUB_OUTPUT
+                  echo "$output" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
 
-            - name: Run cleanup (manual)
+            - name: Run manual cleanup
               if: github.event_name == 'workflow_dispatch'
+              id: manual_cleanup
               env:
                   GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
                   GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
@@ -80,19 +93,70 @@ jobs:
                   RUST_LOG: info
               run: |
                   MAX_AGE="${{ inputs.max_age_hours }}"
-                  DRY_RUN="${{ inputs.dry_run }}"
+                  
+                  echo "🧹 Running manual cleanup"
+                  echo "   Max age: $MAX_AGE hours"
+                  echo ""
+                  
+                  # Run cleanup and capture output
+                  output=$(cargo run --package test_cleanup --bin cleanup-orphans -- "$MAX_AGE" 2>&1)
+                  echo "$output"
+                  
+                  # Extract deleted count
+                  deleted_count=$(echo "$output" | grep "Deleted.*repositories" | grep -oE '[0-9]+' || echo "0")
+                  echo "deleted_count=$deleted_count" >> $GITHUB_OUTPUT
 
-                  if [ "$DRY_RUN" == "true" ]; then
-                    echo "⚠️  Dry run mode not supported in Rust cleanup utility"
-                    echo "   Run without dry_run flag to perform actual cleanup"
-                    exit 1
+            - name: Create summary
+              if: always() && (steps.scheduled_cleanup.outcome != 'skipped' || steps.manual_cleanup.outcome != 'skipped')
+              run: |
+                  echo "## 🧹 Test Repository Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  if [ "${{ github.event_name }}" == "schedule" ]; then
+                    deleted="${{ steps.scheduled_cleanup.outputs.deleted_count }}"
+                    echo "**Type**: Scheduled (Safety Net)" >> $GITHUB_STEP_SUMMARY
+                    echo "**Max Age**: 24 hours" >> $GITHUB_STEP_SUMMARY
+                  else
+                    deleted="${{ steps.manual_cleanup.outputs.deleted_count }}"
+                    echo "**Type**: Manual" >> $GITHUB_STEP_SUMMARY
+                    echo "**Max Age**: ${{ inputs.max_age_hours }} hours" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  echo "**Repositories Deleted**: $deleted" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  if [ "$deleted" == "0" ]; then
+                    echo "✅ No orphaned repositories found - cleanup is working well!" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "🧹 Cleaned up $deleted orphaned test repositories" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                    echo "> These repositories were likely from PRs that failed to clean up" >> $GITHUB_STEP_SUMMARY
+                    echo "> or from test runs that didn't complete. This is the safety net working as intended." >> $GITHUB_STEP_SUMMARY
                   fi
 
-                  echo "🧹 Running manual cleanup (max age: $MAX_AGE hours)..."
-                  cargo run --package integration_tests --example cleanup_orphans -- "$MAX_AGE"
-
-            - name: Report cleanup results
-              if: always()
-              run: |
-                  echo "Cleanup workflow completed"
-                  echo "Check logs above for details on deleted repositories"
+            - name: Alert on high orphan count
+              if: always() && steps.scheduled_cleanup.outputs.deleted_count > 10
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const deletedCount = ${{ steps.scheduled_cleanup.outputs.deleted_count }};
+                      
+                      // Create an issue to alert about high orphan count
+                      await github.rest.issues.create({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          title: `⚠️ High orphaned test repository count: ${deletedCount} repos cleaned`,
+                          body: `## Orphaned Test Repository Alert\n\n` +
+                              `The scheduled cleanup job found and deleted **${deletedCount}** orphaned test repositories.\n\n` +
+                              `This is unusually high and may indicate:\n` +
+                              `- PR cleanup workflow is failing\n` +
+                              `- Tests are crashing before cleanup can run\n` +
+                              `- Repository naming conventions have changed\n\n` +
+                              `### Action Required\n\n` +
+                              `1. Review recent PR cleanup workflow runs\n` +
+                              `2. Check test failure logs\n` +
+                              `3. Verify repository naming is correct\n\n` +
+                              `See the [cleanup workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.\n\n` +
+                              `*This issue was automatically created by the scheduled cleanup safety net.*`,
+                          labels: ['infrastructure', 'automated']
+                      });

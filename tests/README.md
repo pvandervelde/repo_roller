@@ -189,6 +189,27 @@ The integration tests expect these repositories to exist at:
 
 ## Maintenance
 
+### Test Repository Naming Convention
+
+All test repositories follow a standardized naming pattern:
+
+**Format**: `{prefix}-repo-roller-{context}-{timestamp}-{test-name}-{random}`
+
+- **Prefix**: `test` (integration tests) or `e2e` (end-to-end tests)
+- **Context**: Workflow environment
+  - `pr{number}` - Created during PR workflow (e.g., `pr123`)
+  - `main` - Created from main/master branch
+  - `local` - Created during local development
+  - `{branch-name}` - Created from feature branch
+- **Timestamp**: Unix timestamp for uniqueness
+- **Test name**: Descriptive test identifier
+- **Random**: Short random suffix
+
+**Examples**:
+- `test-repo-roller-pr456-basic-1703250123-a7f3`
+- `e2e-repo-roller-main-api-1703250456-b2e9`
+- `test-repo-roller-local-auth-1703250789-c4d1`
+
 ### Updating Templates
 
 1. Modify files in `tests/templates/{template-name}/`
@@ -197,20 +218,64 @@ The integration tests expect these repositories to exist at:
 
 ### Cleanup
 
-#### Automated Cleanup (Recommended)
+#### Automated Cleanup (Two-Tier System)
 
-A GitHub Actions workflow runs daily at 2 AM UTC to automatically clean up test repositories older than 1 hour:
+RepoRoller uses a two-tier cleanup system for test repositories:
 
-- **Scheduled**: `.github/workflows/cleanup-test-repos.yml` runs automatically
-- **Manual trigger**: Go to Actions → "Cleanup Test Repositories" → "Run workflow"
-  - Configure max age in hours (default: 1)
-  - Enable dry run mode to preview deletions
+##### 1. PR-Based Cleanup (Primary)
 
-The automated cleanup ensures the `glitchgrove` test organization stays clean without manual intervention.
+Runs automatically when a pull request is closed or merged:
+
+- **Trigger**: `.github/workflows/cleanup-pr-repos.yml` 
+- **Scope**: Only repositories created by that specific PR (matching `-pr{number}-` pattern)
+- **Timing**: Immediate (runs within minutes of PR closure)
+- **Reporting**: Posts comment to the closed PR with cleanup results
+- **Purpose**: Fast cleanup of PR-specific test artifacts
+
+**What happens**:
+1. PR closes (merged or not)
+2. Workflow identifies all test repos containing `-pr{number}-` in the name
+3. Deletes all matching repositories
+4. Comments on PR: "✅ Cleaned up X test repositories"
+
+##### 2. Scheduled Cleanup (Safety Net)
+
+Runs daily as a catch-all for any repositories missed by PR cleanup:
+
+- **Schedule**: Daily at 2 AM UTC (`.github/workflows/cleanup-test-repos.yml`)
+- **Scope**: All test repositories older than 24 hours
+- **Patterns**: Catches both `test-repo-roller-*` and `e2e-repo-roller-*`
+- **Alerting**: Creates an issue if more than 10 orphaned repos are found
+- **Purpose**: Safety net for failed PR cleanups, crashed tests, or local development repos
+
+**Manual trigger**: 
+- Go to Actions → "Cleanup Test Repositories" → "Run workflow"
+- Configure max age in hours (default: 24)
+
+**What it catches**:
+- Repositories from PRs where cleanup failed
+- Local development test repositories
+- Test runs that crashed before cleanup
+- Repositories from deleted branches
 
 #### Manual Cleanup
 
-Use the cleanup script for immediate cleanup:
+Use the cleanup utilities for immediate cleanup:
+
+**Rust cleanup utility** (recommended):
+
+```bash
+# Clean up all test repos older than 24 hours
+cargo run --package test_cleanup --bin cleanup-orphans -- 24
+
+# Clean up repos from specific PR
+cargo run --package test_cleanup --bin cleanup-pr -- 456
+
+# Quick cleanup (1 hour threshold)
+cargo run --package test_cleanup --bin cleanup-orphans -- 1
+```
+
+**PowerShell script**:
 
 ```powershell
 # Preview what will be deleted (dry run)
@@ -226,15 +291,52 @@ Use the cleanup script for immediate cleanup:
 ./tests/cleanup-test-repos.ps1 -MaxAgeHours 168 -Force
 ```
 
-Or use GitHub CLI directly:
+**GitHub CLI** (for template repositories):
 
 ```bash
-# Using GitHub CLI
+# Delete template repositories
 gh repo delete pvandervelde/test-basic --yes
 gh repo delete pvandervelde/test-variables --yes
 gh repo delete pvandervelde/test-filtering --yes
 gh repo delete pvandervelde/test-invalid --yes
 ```
+
+#### Monitoring and Troubleshooting
+
+**View Cleanup Status**:
+- PR cleanups: Check PR comments for "🧹 Test Repository Cleanup" messages
+- Scheduled cleanup: Actions → "Cleanup Test Repositories" → Latest run
+- Manual runs: Can be triggered anytime from Actions tab
+
+**High Orphan Count Alert**:
+
+If the scheduled cleanup finds more than 10 orphaned repositories, it automatically creates an issue with:
+- Number of repositories cleaned
+- Possible causes (PR cleanup failures, test crashes)
+- Investigation steps
+- Link to the cleanup run
+
+**Common Issues**:
+
+1. **PR cleanup didn't run**
+   - Check if PR had any CI runs
+   - Verify secrets are configured (INTEGRATION_TEST_GITHUB_APP_ID, etc.)
+   - Scheduled cleanup will catch these within 24 hours
+
+2. **Too many orphaned repos**
+   - Review recent PR cleanup workflow failures
+   - Check test logs for crashes before cleanup
+   - Verify repository naming follows convention
+
+3. **Local test repos accumulating**
+   - Run manual cleanup: `cargo run --package test_cleanup --bin cleanup-orphans -- 0`
+   - Or use PowerShell script with short max age
+
+**Best Practices**:
+- Monitor the daily cleanup summaries for trends
+- Investigate if cleanup consistently finds many repos
+- Ensure PR workflows complete successfully
+- Use appropriate test contexts (PR, local, etc.)
 
 ## Security Considerations
 
@@ -242,3 +344,5 @@ gh repo delete pvandervelde/test-invalid --yes
 - Template repositories are visible to all GitHub users
 - Consider using a dedicated test organization for isolation
 - Regularly review and update templates for security best practices
+- Test repository credentials are stored as GitHub Secrets
+- Cleanup uses GitHub App authentication for secure access

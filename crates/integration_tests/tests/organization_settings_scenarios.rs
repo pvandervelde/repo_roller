@@ -39,7 +39,7 @@ async fn test_organization_settings_with_global_defaults() -> Result<()> {
     info!("Testing organization settings with global defaults");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("org-settings");
+    let repo_name = generate_test_repo_name("test", "org-settings-global-defaults");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -132,7 +132,7 @@ async fn test_team_configuration_overrides() -> Result<()> {
     info!("Testing team-specific configuration overrides");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("team-config");
+    let repo_name = generate_test_repo_name("test", "team-configuration-overrides");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -225,7 +225,7 @@ async fn test_repository_type_configuration() -> Result<()> {
     info!("Testing repository type configuration");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("repo-type");
+    let repo_name = generate_test_repo_name("test", "repo-type");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -319,7 +319,7 @@ async fn test_configuration_hierarchy_merging() -> Result<()> {
     info!("Testing configuration hierarchy merging");
 
     let config = TestConfig::from_env()?;
-    let repo_name = generate_test_repo_name("config-hierarchy");
+    let repo_name = generate_test_repo_name("test", "config-hierarchy");
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
     // Create authentication service
@@ -436,7 +436,7 @@ async fn test_complete_organization_settings_workflow() -> Result<()> {
     for (repo_suffix, description) in scenarios {
         info!("Running scenario: {}", description);
 
-        let repo_name = generate_test_repo_name(repo_suffix);
+        let repo_name = generate_test_repo_name("test", repo_suffix);
         let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
         // Create authentication service

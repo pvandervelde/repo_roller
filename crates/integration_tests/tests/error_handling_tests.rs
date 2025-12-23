@@ -21,7 +21,7 @@ async fn test_metadata_repository_not_found() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("no-metadata");
+    let repo_name = generate_test_repo_name("test", "no-metadata");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -100,7 +100,7 @@ async fn test_template_repository_not_found() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("nonexistent-template");
+    let repo_name = generate_test_repo_name("test", "template-repository-not-found");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
@@ -172,7 +172,7 @@ async fn test_malformed_template_toml() -> Result<()> {
 
     let config = TestConfig::from_env()?;
     let org_name = OrganizationName::new(&config.test_org)?;
-    let repo_name = generate_test_repo_name("malformed-toml");
+    let repo_name = generate_test_repo_name("test", "malformed-template-toml");
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
