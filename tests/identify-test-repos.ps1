@@ -91,11 +91,11 @@ if ($regular.Count -gt 0 -and $regular.Count -le 10)
     $regular | Sort-Object name | ForEach-Object {
         $type = if ($_.isTemplate)
         {
-            "(template)" 
+            "(template)"
         }
         else
         {
-            "" 
+            ""
         }
         Write-Host "   - $($_.name) $type" -ForegroundColor Gray
     }
