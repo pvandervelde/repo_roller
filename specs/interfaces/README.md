@@ -27,6 +27,7 @@ Interface specifications serve as:
 ### External Integration Specifications
 
 - [**GitHub Integration**](github-interfaces.md) - GitHub API boundaries
+- [**GitHub Repository Search**](github-repository-search.md) - Repository search operations (Task 1.0)
 - [**Authentication Services**](authentication-interfaces.md) - Auth and authorization interfaces
 - [**External Systems Overview**](external-systems.md) - High-level system boundaries
 

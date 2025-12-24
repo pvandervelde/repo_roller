@@ -187,23 +187,28 @@ impl GitHubMetadataProvider {
     /// Discover repository using topic-based method.
     ///
     /// Searches for repositories in the organization with the specified topic.
+    /// Validates that exactly one repository is found - returns error if zero or multiple.
     async fn discover_by_topic(
         &self,
-        org: &str,
+        _org: &str,
         _topic: &str,
     ) -> ConfigurationResult<MetadataRepository> {
-        // TODO: Implement topic-based search
-        // For now, return an error indicating the feature is not yet implemented
-        // This will be implemented once we add search capabilities to GitHubClient
-
-        // Placeholder: In real implementation, we would:
-        // 1. Search repositories in org with the specified topic
+        // Use GitHubClient to search for repositories by topic
+        // Implementation will be added when search_repositories_by_topic is implemented
+        //
+        // Expected flow:
+        // 1. Call self.github_client.search_repositories_by_topic(org, topic)
         // 2. Validate exactly one match (error if 0 or multiple)
         // 3. Return MetadataRepository with TopicBased discovery method
+        //
+        // Error cases:
+        // - Zero matches: ConfigurationError::MetadataRepositoryNotFound
+        // - Multiple matches: ConfigurationError::AmbiguousMetadataRepository with list
+        // - API error: ConfigurationError::GitHubApiError
 
-        Err(ConfigurationError::MetadataRepositoryNotFound {
-            org: org.to_string(),
-        })
+        unimplemented!(
+            "Topic-based discovery requires search_repositories_by_topic in GitHubClient - see docs/spec/interfaces/github-repository-search.md"
+        )
     }
 }
 

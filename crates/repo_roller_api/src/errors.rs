@@ -448,6 +448,18 @@ fn convert_configuration_error(
             "MetadataRepositoryNotFound",
             format!("Metadata repository not found for organization '{}'", org),
         ),
+        ConfigurationError::AmbiguousMetadataRepository {
+            org,
+            topic,
+            repositories,
+        } => (
+            StatusCode::CONFLICT,
+            "AmbiguousMetadataRepository",
+            format!(
+                "Multiple metadata repositories found for organization '{}' with topic '{}': {:?}. Expected exactly one.",
+                org, topic, repositories
+            ),
+        ),
         ConfigurationError::FileNotFound { path } => (
             StatusCode::NOT_FOUND,
             "ConfigurationFileNotFound",
