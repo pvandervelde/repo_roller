@@ -74,14 +74,21 @@ jobs:
                   echo "   Max age: ${{ github.event.inputs.max_age_days }} days"
                   echo ""
 
-                  # For dry run, we'll use the cleanup binary with age 0 to see all misnamed repos
-                  # Then filter by age in the summary
-                  output=$(cargo run --package test_cleanup --bin cleanup-misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1 || true)
+                  # Run cleanup in preview mode
+                  set +e  # Temporarily disable exit on error to capture output
+                  output=$(cargo run --package test_cleanup --bin cleanup-misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1)
+                  exit_code=$?
+                  set -e  # Re-enable exit on error
+
                   echo "$output"
 
+                  # Save output for summary
                   echo "preview_output<<EOF" >> $GITHUB_OUTPUT
                   echo "$output" >> $GITHUB_OUTPUT
                   echo "EOF" >> $GITHUB_OUTPUT
+
+                  # Exit with the actual exit code
+                  exit $exit_code
 
             - name: Run misnamed repository cleanup
               if: github.event.inputs.dry_run != 'true'

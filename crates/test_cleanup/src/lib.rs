@@ -212,9 +212,16 @@ impl RepositoryCleanup {
                         }
 
                         // Age-based cleanup
-                        let created_at = repo
-                            .created_at
-                            .unwrap_or_else(|| cutoff_time + chrono::Duration::hours(1));
+                        let created_at = match repo.created_at {
+                            Some(timestamp) => timestamp,
+                            None => {
+                                warn!(
+                                    repo_name = repo_name,
+                                    "Repository has no creation timestamp, using epoch for age check"
+                                );
+                                chrono::DateTime::from_timestamp(0, 0).unwrap_or_else(|| Utc::now())
+                            }
+                        };
 
                         if created_at < cutoff_time {
                             info!(
@@ -379,9 +386,17 @@ impl RepositoryCleanup {
                             }
                         } else {
                             // Age-based cleanup
-                            let created_at = repo
-                                .created_at
-                                .unwrap_or_else(|| cutoff_time + chrono::Duration::hours(1));
+                            let created_at = match repo.created_at {
+                                Some(timestamp) => timestamp,
+                                None => {
+                                    warn!(
+                                        repo_name = repo_name,
+                                        "Repository has no creation timestamp, using epoch for age check"
+                                    );
+                                    chrono::DateTime::from_timestamp(0, 0)
+                                        .unwrap_or_else(|| Utc::now())
+                                }
+                            };
 
                             if created_at < cutoff_time {
                                 info!(
