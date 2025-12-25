@@ -190,25 +190,78 @@ impl GitHubMetadataProvider {
     /// Validates that exactly one repository is found - returns error if zero or multiple.
     async fn discover_by_topic(
         &self,
-        _org: &str,
-        _topic: &str,
+        org: &str,
+        topic: &str,
     ) -> ConfigurationResult<MetadataRepository> {
-        // Use GitHubClient to search for repositories by topic
-        // Implementation will be added when search_repositories_by_topic is implemented
-        //
-        // Expected flow:
-        // 1. Call self.github_client.search_repositories_by_topic(org, topic)
-        // 2. Validate exactly one match (error if 0 or multiple)
-        // 3. Return MetadataRepository with TopicBased discovery method
-        //
-        // Error cases:
-        // - Zero matches: ConfigurationError::MetadataRepositoryNotFound
-        // - Multiple matches: ConfigurationError::AmbiguousMetadataRepository with list
-        // - API error: ConfigurationError::GitHubApiError
+        debug!(org = org, topic = topic, "Discovering metadata repository by topic");
 
-        unimplemented!(
-            "Topic-based discovery requires search_repositories_by_topic in GitHubClient - see docs/spec/interfaces/github-repository-search.md"
-        )
+        // Search for repositories with the specified topic
+        let repos = self
+            .client
+            .search_repositories_by_topic(org, topic)
+            .await
+            .map_err(|e| {
+                warn!(
+                    org = org,
+                    topic = topic,
+                    error = %e,
+                    "Failed to search repositories by topic"
+                );
+                ConfigurationError::HierarchyResolutionFailed {
+                    reason: format!("GitHub API error searching for topic '{}': {}", topic, e),
+                }
+            })?;
+
+        // Validate exactly one match
+        match repos.len() {
+            0 => {
+                warn!(
+                    org = org,
+                    topic = topic,
+                    "No repositories found with topic"
+                );
+                Err(ConfigurationError::MetadataRepositoryNotFound {
+                    org: org.to_string(),
+                })
+            }
+            1 => {
+                let repo = &repos[0];
+                let repository_name = repo.name().to_string();
+                
+                debug!(
+                    org = org,
+                    topic = topic,
+                    repository = repository_name,
+                    "Found metadata repository via topic"
+                );
+
+                Ok(MetadataRepository {
+                    organization: org.to_string(),
+                    repository_name,
+                    discovery_method: DiscoveryMethod::TopicBased {
+                        topic: topic.to_string(),
+                    },
+                    last_updated: Utc::now(),
+                })
+            }
+            count => {
+                let repo_names: Vec<String> = repos.iter().map(|r| r.name().to_string()).collect();
+                
+                warn!(
+                    org = org,
+                    topic = topic,
+                    count = count,
+                    repositories = ?repo_names,
+                    "Multiple repositories found with topic"
+                );
+
+                Err(ConfigurationError::AmbiguousMetadataRepository {
+                    org: org.to_string(),
+                    topic: topic.to_string(),
+                    repositories: repo_names,
+                })
+            }
+        }
     }
 }
 
