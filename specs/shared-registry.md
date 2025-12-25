@@ -48,11 +48,14 @@ All domain primitives use newtype pattern for type safety.
 | `RepoRollerError` | `repo_roller_core/src/errors.rs` | Top-level error enum | [error-types.md](error-types.md#reporollererror) |
 | `ValidationError` | `repo_roller_core/src/errors.rs` | Input validation failures | [error-types.md](error-types.md#validationerror) |
 | `RepositoryError` | `repo_roller_core/src/errors.rs` | Repository operation errors | [error-types.md](error-types.md#repositoryerror) |
-| `ConfigurationError` | `config_manager/src/lib.rs` | Configuration errors | [error-types.md](error-types.md#configurationerror) |
+| `ConfigurationError` | `config_manager/src/errors.rs` | Configuration errors | [error-types.md](error-types.md#configurationerror) |
 | `TemplateError` | `template_engine/src/lib.rs` | Template processing errors | [error-types.md](error-types.md#templateerror) |
 | `AuthenticationError` | `auth_handler/src/lib.rs` | Auth/authz errors | [error-types.md](error-types.md#authenticationerror) |
-| `GitHubError` | `github_client/src/lib.rs` | GitHub API errors | [error-types.md](error-types.md#githuberror) |
+| `GitHubError` | `github_client/src/errors.rs` | GitHub API errors | [error-types.md](error-types.md#githuberror) |
 | `SystemError` | `repo_roller_core/src/errors.rs` | System/infrastructure errors | [error-types.md](error-types.md#systemerror) |
+
+**New Error Variants (Task 1.0)**:
+- `ConfigurationError::AmbiguousMetadataRepository` - Multiple metadata repos found with same topic
 
 ## Business Logic Interfaces
 
@@ -71,6 +74,7 @@ All domain primitives use newtype pattern for type safety.
 | `ConfigurationManager` | `config_manager/src/lib.rs` | Hierarchical config resolution | [configuration-interfaces.md](configuration-interfaces.md) |
 | `OrganizationConfigurationProvider` | `config_manager/src/lib.rs` | Org config access | [configuration-interfaces.md](configuration-interfaces.md) |
 | `ConfigurationPolicyValidator` | `config_manager/src/lib.rs` | Override policy enforcement | [configuration-interfaces.md](configuration-interfaces.md) |
+| `MetadataRepositoryProvider` | `config_manager/src/github_metadata_provider.rs` | Metadata repository discovery and access | [organization-repository-settings.md](../design/organization-repository-settings.md) |
 
 ### Template Domain
 
@@ -97,6 +101,9 @@ All domain primitives use newtype pattern for type safety.
 | `RepositoryProvider` | `github_client/src/lib.rs` | GitHub repo operations | [github-interfaces.md](github-interfaces.md) |
 | `RepositoryClient` (existing) | `github_client/src/lib.rs` | GitHub API client | Currently implemented |
 | `GitHubClient` | `github_client/src/lib.rs` | Concrete GitHub implementation | Currently implemented |
+
+**New Methods (Task 1.0)**:
+- `search_repositories_by_topic(org: &str, topic: &str)` - Search for repositories by topic within organization ([github-repository-search.md](interfaces/github-repository-search.md))
 
 ## HTTP API Types
 

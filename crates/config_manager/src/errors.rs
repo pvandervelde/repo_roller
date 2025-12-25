@@ -43,6 +43,13 @@ pub enum ConfigurationError {
     #[error("Metadata repository not found for organization: {org}")]
     MetadataRepositoryNotFound { org: String },
 
+    #[error("Multiple metadata repositories found for organization '{org}' with topic '{topic}': {repositories:?}. Expected exactly one.")]
+    AmbiguousMetadataRepository {
+        org: String,
+        topic: String,
+        repositories: Vec<String>,
+    },
+
     #[error("Configuration validation failed with {error_count} error(s)")]
     ValidationFailed {
         error_count: usize,

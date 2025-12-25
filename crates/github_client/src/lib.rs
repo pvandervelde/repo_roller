@@ -191,6 +191,78 @@ impl GitHubClient {
         }
     }
 
+    /// Searches for repositories in an organization that have a specific topic.
+    ///
+    /// This method constructs a GitHub search query to find repositories within
+    /// the specified organization that are tagged with the given topic. It uses
+    /// GitHub's repository search API with query syntax: `org:{org} topic:{topic}`
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization name to search within
+    /// * `topic` - The topic tag to search for
+    ///
+    /// # Returns
+    ///
+    /// A vector of `Repository` objects matching the search criteria.
+    /// Returns an empty vector if no repositories match.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::ApiError` - GitHub API request failed
+    /// * `Error::InvalidResponse` - Search response could not be parsed
+    ///
+    /// # Behavior
+    ///
+    /// 1. Constructs search query: `org:{org} topic:{topic}`
+    /// 2. Calls GitHub search API via octocrab
+    /// 3. Parses search results into `Repository` objects
+    /// 4. Returns all matching repositories (handles pagination automatically)
+    ///
+    /// # GitHub API Rate Limits
+    ///
+    /// This method counts against GitHub's search API rate limits:
+    /// - Authenticated: 30 requests per minute
+    /// - Unauthenticated: 10 requests per minute
+    ///
+    /// # Example Usage
+    ///
+    /// ```rust,no_run
+    /// use github_client::GitHubClient;
+    ///
+    /// # async fn example(client: &GitHubClient) -> Result<(), github_client::Error> {
+    /// // Find all repositories in "my-org" with topic "reporoller-metadata"
+    /// let repos = client.search_repositories_by_topic("my-org", "reporoller-metadata").await?;
+    ///
+    /// if repos.is_empty() {
+    ///     println!("No repositories found with this topic");
+    /// } else {
+    ///     for repo in repos {
+    ///         println!("Found: {}", repo.name());
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Integration with MetadataRepositoryProvider
+    ///
+    /// This method is used by `GitHubMetadataProvider::discover_by_topic()` to
+    /// implement topic-based metadata repository discovery. The metadata provider
+    /// validates that exactly one repository is found and returns appropriate
+    /// errors for 0 or multiple matches.
+    ///
+    /// See docs/spec/interfaces/github-repository-search.md for full contract
+    #[instrument(skip(self), fields(org = %org, topic = %topic))]
+    pub async fn search_repositories_by_topic(
+        &self,
+        org: &str,
+        topic: &str,
+    ) -> Result<Vec<models::Repository>, Error> {
+        let query = format!("org:{} topic:{}", org, topic);
+        self.search_repositories(&query).await
+    }
+
     /// Lists all installations for the authenticated GitHub App.
     ///
     /// This method retrieves all installations where the GitHub App is installed,

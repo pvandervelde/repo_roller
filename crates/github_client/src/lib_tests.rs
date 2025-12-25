@@ -721,3 +721,17 @@ async fn test_set_repository_custom_properties_repo_not_found() {
         "Setting custom properties on nonexistent repo should fail"
     );
 }
+
+// --- Tests for search_repositories_by_topic ---
+//
+// Note: search_repositories_by_topic() is a thin wrapper over search_repositories(),
+// constructing a formatted query string. Complex mocking of octocrab's search API
+// with GitHub App authentication is not worthwhile for such a simple function.
+//
+// Full integration tests against real GitHub API are in:
+// crates/integration_tests/tests/github_metadata_provider_test.rs
+//
+// The wrapper is tested by verifying:
+// 1. It compiles with correct signature
+// 2. Integration tests confirm it works against real GitHub
+// 3. The underlying search_repositories() is already production-tested
