@@ -193,7 +193,11 @@ impl GitHubMetadataProvider {
         org: &str,
         topic: &str,
     ) -> ConfigurationResult<MetadataRepository> {
-        debug!(org = org, topic = topic, "Discovering metadata repository by topic");
+        debug!(
+            org = org,
+            topic = topic,
+            "Discovering metadata repository by topic"
+        );
 
         // Search for repositories with the specified topic
         let repos = self
@@ -215,11 +219,7 @@ impl GitHubMetadataProvider {
         // Validate exactly one match
         match repos.len() {
             0 => {
-                warn!(
-                    org = org,
-                    topic = topic,
-                    "No repositories found with topic"
-                );
+                warn!(org = org, topic = topic, "No repositories found with topic");
                 Err(ConfigurationError::MetadataRepositoryNotFound {
                     org: org.to_string(),
                 })
@@ -227,7 +227,7 @@ impl GitHubMetadataProvider {
             1 => {
                 let repo = &repos[0];
                 let repository_name = repo.name().to_string();
-                
+
                 debug!(
                     org = org,
                     topic = topic,
@@ -246,7 +246,7 @@ impl GitHubMetadataProvider {
             }
             count => {
                 let repo_names: Vec<String> = repos.iter().map(|r| r.name().to_string()).collect();
-                
+
                 warn!(
                     org = org,
                     topic = topic,
