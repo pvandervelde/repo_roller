@@ -259,7 +259,8 @@ impl GitHubClient {
         org: &str,
         topic: &str,
     ) -> Result<Vec<models::Repository>, Error> {
-        unimplemented!("See docs/spec/interfaces/github-repository-search.md")
+        let query = format!("org:{} topic:{}", org, topic);
+        self.search_repositories(&query).await
     }
 
     /// Lists all installations for the authenticated GitHub App.
