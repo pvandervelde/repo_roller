@@ -238,7 +238,7 @@ impl GitHubClient {
     ///     println!("No repositories found with this topic");
     /// } else {
     ///     for repo in repos {
-    ///         println!("Found: {} - {}", repo.name, repo.html_url);
+    ///         println!("Found: {}", repo.name());
     ///     }
     /// }
     /// # Ok(())
