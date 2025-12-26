@@ -735,3 +735,295 @@ async fn test_set_repository_custom_properties_repo_not_found() {
 // 1. It compiles with correct signature
 // 2. Integration tests confirm it works against real GitHub
 // 3. The underlying search_repositories() is already production-tested
+
+// --- Tests for list_directory_contents ---
+
+/// Test listing directory contents with mixed file and directory entries.
+///
+/// Verifies that the GitHub Contents API response with multiple entries
+/// is correctly parsed into TreeEntry objects with proper type discrimination.
+#[tokio::test]
+async fn test_list_directory_contents_success_with_mixed_types() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let dir_path = "types";
+    let branch = "main";
+
+    // Mock GitHub Contents API response for directory with mixed types
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/contents/{dir_path}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "name": "library",
+                "path": "types/library",
+                "type": "dir",
+                "sha": "abc123",
+                "size": 0,
+                "url": "https://api.github.com/repos/test-org/test-repo/contents/types/library"
+            },
+            {
+                "name": "service",
+                "path": "types/service",
+                "type": "dir",
+                "sha": "def456",
+                "size": 0,
+                "url": "https://api.github.com/repos/test-org/test-repo/contents/types/service"
+            },
+            {
+                "name": "README.md",
+                "path": "types/README.md",
+                "type": "file",
+                "sha": "ghi789",
+                "size": 1234,
+                "download_url": "https://raw.githubusercontent.com/test-org/test-repo/main/types/README.md"
+            }
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .list_directory_contents(owner, repo, dir_path, branch)
+        .await;
+
+    assert!(result.is_ok(), "Should successfully list directory contents");
+    let entries = result.unwrap();
+
+    // Verify we got all 3 entries
+    assert_eq!(entries.len(), 3, "Should have 3 entries");
+
+    // Verify directory entries
+    let library_entry = entries.iter().find(|e| e.name == "library").unwrap();
+    assert_eq!(library_entry.entry_type, EntryType::Dir);
+    assert_eq!(library_entry.path, "types/library");
+    assert_eq!(library_entry.size, 0);
+
+    let service_entry = entries.iter().find(|e| e.name == "service").unwrap();
+    assert_eq!(service_entry.entry_type, EntryType::Dir);
+
+    // Verify file entry
+    let file_entry = entries.iter().find(|e| e.name == "README.md").unwrap();
+    assert_eq!(file_entry.entry_type, EntryType::File);
+    assert_eq!(file_entry.size, 1234);
+    assert!(file_entry.download_url.is_some());
+}
+
+/// Test listing an empty directory.
+///
+/// Verifies that an empty directory returns an empty vector (not an error).
+#[tokio::test]
+async fn test_list_directory_contents_empty_directory() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let dir_path = "empty-dir";
+    let branch = "main";
+
+    // Mock GitHub Contents API response for empty directory
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/contents/{dir_path}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .list_directory_contents(owner, repo, dir_path, branch)
+        .await;
+
+    assert!(result.is_ok(), "Empty directory should return Ok");
+    let entries = result.unwrap();
+    assert_eq!(entries.len(), 0, "Empty directory should have no entries");
+}
+
+/// Test listing a path that doesn't exist.
+///
+/// Verifies that a 404 response is mapped to Error::NotFound.
+#[tokio::test]
+async fn test_list_directory_contents_path_not_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let dir_path = "nonexistent";
+    let branch = "main";
+
+    // Mock GitHub Contents API 404 response
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/contents/{dir_path}")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .list_directory_contents(owner, repo, dir_path, branch)
+        .await;
+
+    assert!(result.is_err(), "Should return error for non-existent path");
+    assert!(
+        matches!(result.unwrap_err(), Error::NotFound),
+        "Should return NotFound error for 404 response"
+    );
+}
+
+/// Test listing a path that is a file, not a directory.
+///
+/// Verifies that when the path points to a file (GitHub returns an object instead
+/// of an array), we return Error::InvalidResponse.
+#[tokio::test]
+async fn test_list_directory_contents_path_is_file() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let file_path = "README.md";
+    let branch = "main";
+
+    // Mock GitHub Contents API response for a file (single object, not array)
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/contents/{file_path}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "name": "README.md",
+            "path": "README.md",
+            "type": "file",
+            "sha": "abc123",
+            "size": 1234,
+            "download_url": "https://raw.githubusercontent.com/test-org/test-repo/main/README.md",
+            "content": "SGVsbG8gV29ybGQ="
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .list_directory_contents(owner, repo, file_path, branch)
+        .await;
+
+    assert!(result.is_err(), "Should return error when path is a file");
+    assert!(
+        matches!(result.unwrap_err(), Error::InvalidResponse),
+        "Should return InvalidResponse when path is file, not directory"
+    );
+}
+
+/// Test authentication error (401 Unauthorized).
+///
+/// Verifies that authentication failures are mapped to Error::AuthError.
+#[tokio::test]
+async fn test_list_directory_contents_auth_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let dir_path = "types";
+    let branch = "main";
+
+    // Mock GitHub Contents API 401 response
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/contents/{dir_path}")))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "message": "Bad credentials",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .list_directory_contents(owner, repo, dir_path, branch)
+        .await;
+
+    assert!(result.is_err(), "Should return error for auth failure");
+    assert!(
+        matches!(result.unwrap_err(), Error::AuthError(_)),
+        "Should return AuthError for 401 response"
+    );
+}
+
+/// Test rate limit exceeded error.
+///
+/// Verifies that rate limit errors are detected and mapped to Error::RateLimitExceeded.
+#[tokio::test]
+async fn test_list_directory_contents_rate_limit() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let dir_path = "types";
+    let branch = "main";
+
+    // Mock GitHub Contents API 403 response with rate limit headers
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/contents/{dir_path}")))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .set_body_json(json!({
+                    "message": "API rate limit exceeded",
+                    "documentation_url": "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"
+                }))
+                .insert_header("X-RateLimit-Remaining", "0")
+                .insert_header("X-RateLimit-Reset", "1234567890"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .list_directory_contents(owner, repo, dir_path, branch)
+        .await;
+
+    assert!(result.is_err(), "Should return error for rate limit");
+    assert!(
+        matches!(result.unwrap_err(), Error::RateLimitExceeded),
+        "Should return RateLimitExceeded for 403 with rate limit"
+    );
+}

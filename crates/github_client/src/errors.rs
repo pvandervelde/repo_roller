@@ -92,6 +92,14 @@ pub enum Error {
     #[error("Invalid response format")]
     InvalidResponse,
 
+    /// The requested resource was not found.
+    ///
+    /// This error occurs when a GitHub API request returns a 404 status code,
+    /// indicating that the requested resource (repository, file, directory, etc.)
+    /// does not exist or is not accessible with the current authentication.
+    #[error("Resource not found")]
+    NotFound,
+
     /// GitHub API rate limit has been exceeded.
     ///
     /// This error occurs when the client has made too many requests in a given
