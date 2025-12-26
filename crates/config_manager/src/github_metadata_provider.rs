@@ -423,11 +423,19 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
         &self,
         _repo: &MetadataRepository,
     ) -> ConfigurationResult<Vec<String>> {
-        // TODO: Implement directory listing via GitHub API
-        // This requires using the GitHub tree API to list directory contents
-        // For now, return empty vector
-        // Full implementation will come when we have tree listing capability in GitHubClient
-        Ok(Vec::new())
+        // TODO: Implement using GitHubClient::list_directory_contents()
+        // See specs/interfaces/github-directory-listing.md for implementation details
+        //
+        // Implementation outline:
+        // 1. Call self.client.list_directory_contents(&repo.owner, &repo.name, "types", &repo.branch)
+        // 2. Filter entries to only include directories (EntryType::Dir)
+        // 3. Map to extract entry names
+        // 4. Return Vec<String> of repository type names
+        //
+        // Error handling:
+        // - Map GitHubError to ConfigurationError::MetadataFetchFailed
+        // - Log warning if no types found
+        unimplemented!("See specs/interfaces/github-directory-listing.md")
     }
 
     async fn validate_repository_structure(

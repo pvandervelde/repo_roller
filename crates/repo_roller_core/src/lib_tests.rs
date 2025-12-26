@@ -8,7 +8,8 @@ use config_manager::{
     TemplateMetadata,
 };
 use github_client::{
-    errors::Error as GitHubError, models, RepositoryClient, RepositorySettingsUpdate,
+    errors::Error as GitHubError, BranchProtection, Repository, RepositoryClient,
+    RepositorySettingsUpdate,
 };
 use std::sync::{Arc, Mutex};
 
@@ -144,8 +145,8 @@ impl ConfigurableMockRepoClient {
     fn create_successful_repository(
         &self,
         payload: &github_client::RepositoryCreatePayload,
-    ) -> models::Repository {
-        models::Repository::new(
+    ) -> github_client::Repository {
+        github_client::Repository::new(
             payload.name.clone(),
             format!("test-org/{}", payload.name),
             "MDEwOlJlcG9zaXRvcnkx".to_string(),
@@ -160,14 +161,14 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         &self,
         _owner: &str,
         payload: &github_client::RepositoryCreatePayload,
-    ) -> Result<models::Repository, GitHubError> {
+    ) -> Result<github_client::Repository, GitHubError> {
         Ok(self.create_successful_repository(payload))
     }
 
     async fn create_user_repository(
         &self,
         _payload: &github_client::RepositoryCreatePayload,
-    ) -> Result<models::Repository, GitHubError> {
+    ) -> Result<github_client::Repository, GitHubError> {
         Err(GitHubError::AuthError(
             "User repos not supported in test".to_string(),
         ))
@@ -178,7 +179,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         _owner: &str,
         _repo: &str,
         _settings: &RepositorySettingsUpdate,
-    ) -> Result<models::Repository, GitHubError> {
+    ) -> Result<github_client::Repository, GitHubError> {
         Err(GitHubError::AuthError(
             "Not implemented in test".to_string(),
         ))
@@ -187,7 +188,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
     async fn search_repositories(
         &self,
         _query: &str,
-    ) -> Result<Vec<models::Repository>, GitHubError> {
+    ) -> Result<Vec<github_client::Repository>, GitHubError> {
         Ok(vec![])
     }
 
@@ -265,7 +266,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         &self,
         _owner: &str,
         _repo: &str,
-    ) -> Result<github_client::models::Repository, GitHubError> {
+    ) -> Result<github_client::Repository, GitHubError> {
         // Not implemented in test mock - return error
         Err(GitHubError::AuthError(
             "Not implemented in test".to_string(),
@@ -277,7 +278,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         _owner: &str,
         _repo: &str,
         _branch: &str,
-    ) -> Result<Option<github_client::models::BranchProtection>, GitHubError> {
+    ) -> Result<Option<github_client::BranchProtection>, GitHubError> {
         // Not implemented in test mock - return None (no protection)
         Ok(None)
     }

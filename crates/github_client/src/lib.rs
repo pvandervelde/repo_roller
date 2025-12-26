@@ -14,7 +14,21 @@ use tracing::{debug, error, info, instrument};
 pub mod errors;
 pub use errors::Error;
 
-pub mod models;
+// Domain-specific modules
+pub mod installation;
+pub mod repository;
+pub mod user;
+pub mod label;
+pub mod branch_protection;
+pub mod contents;
+
+// Re-export types for convenient access
+pub use installation::{Account, Installation};
+pub use repository::{Organization, Repository};
+pub use user::User;
+pub use label::Label;
+pub use branch_protection::BranchProtection;
+pub use contents::{TreeEntry, EntryType};
 
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;
@@ -180,10 +194,10 @@ impl GitHubClient {
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<models::Repository, Error> {
+    ) -> Result<Repository, Error> {
         let result = self.client.repos(owner, repo).get().await;
         match result {
-            Ok(r) => Ok(models::Repository::from(r)),
+            Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 log_octocrab_error("Failed to get repository", e);
                 return Err(Error::InvalidResponse);
@@ -258,9 +272,96 @@ impl GitHubClient {
         &self,
         org: &str,
         topic: &str,
-    ) -> Result<Vec<models::Repository>, Error> {
+    ) -> Result<Vec<Repository>, Error> {
         let query = format!("org:{} topic:{}", org, topic);
         self.search_repositories(&query).await
+    }
+
+    /// Lists contents of a directory in a GitHub repository.
+    ///
+    /// Uses the GitHub Contents API to retrieve directory listings. Automatically
+    /// handles pagination for directories with more than 1000 entries.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user name)
+    /// * `repo` - Repository name
+    /// * `path` - Directory path to list (relative to repository root)
+    /// * `branch` - Branch/ref to query (e.g., "main", "master", "develop")
+    ///
+    /// # Returns
+    ///
+    /// `Vec<TreeEntry>` - Vector of directory entries with type information
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Path doesn't exist in repository
+    /// * `Error::InvalidResponse` - Path is a file, not a directory
+    /// * `Error::AuthError` - Authentication failure or insufficient permissions
+    /// * `Error::RateLimitExceeded` - GitHub API rate limit exceeded
+    /// * `Error::ApiError` - Other GitHub API errors
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # use github_client::EntryType;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let app_id = 123456;
+    /// #     let private_key = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+    /// #     let octocrab_client = create_app_client(app_id, private_key).await?;
+    /// #     let client = GitHubClient::new(octocrab_client);
+    ///
+    /// // List repository types from metadata repository
+    /// let entries = client
+    ///     .list_directory_contents("my-org", ".reporoller-test", "types", "main")
+    ///     .await?;
+    ///
+    /// // Filter to only directories
+    /// let types: Vec<String> = entries
+    ///     .iter()
+    ///     .filter(|e| matches!(e.entry_type, EntryType::Dir))
+    ///     .map(|e| e.name.clone())
+    ///     .collect();
+    ///
+    /// println!("Found repository types: {:?}", types);
+    /// #     Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # GitHub API Details
+    ///
+    /// - Endpoint: `GET /repos/{owner}/{repo}/contents/{path}?ref={branch}`
+    /// - Response: Array of content objects for directories, single object for files
+    /// - Pagination: Uses Link header for large directories (>1000 entries)
+    /// - Rate Limiting: Counts against authenticated rate limit (5000/hour)
+    ///
+    /// # Integration with GitHubMetadataProvider
+    ///
+    /// This method is used by `GitHubMetadataProvider::list_available_repository_types()`
+    /// to discover repository types from the metadata repository's `types/` directory.
+    /// The metadata provider filters results to only include directories.
+    ///
+    /// See specs/interfaces/github-directory-listing.md for full contract
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %path, branch = %branch))]
+    pub async fn list_directory_contents(
+        &self,
+        owner: &str,
+        repo: &str,
+        path: &str,
+        branch: &str,
+    ) -> Result<Vec<TreeEntry>, Error> {
+        info!(
+            owner = %owner,
+            repo = %repo,
+            path = %path,
+            branch = %branch,
+            "Listing directory contents"
+        );
+
+        // TODO: Implement using Octocrab's repos().get_content().path(path).r#ref(branch).send()
+        // See specs/interfaces/github-directory-listing.md for implementation requirements
+        unimplemented!("See specs/interfaces/github-directory-listing.md")
     }
 
     /// Lists all installations for the authenticated GitHub App.
@@ -297,7 +398,7 @@ impl GitHubClient {
     /// # }
     /// ```
     #[instrument(skip(self))]
-    pub async fn list_installations(&self) -> Result<Vec<models::Installation>, Error> {
+    pub async fn list_installations(&self) -> Result<Vec<Installation>, Error> {
         info!("Listing installations for GitHub App using JWT authentication");
 
         // Use direct REST API call instead of octocrab's high-level method
@@ -306,9 +407,9 @@ impl GitHubClient {
 
         match result {
             Ok(installations) => {
-                let converted_installations: Vec<models::Installation> = installations
+                let converted_installations: Vec<Installation> = installations
                     .into_iter()
-                    .map(models::Installation::from)
+                    .map(Installation::from)
                     .collect();
 
                 info!(
@@ -501,12 +602,12 @@ impl RepositoryClient for GitHubClient {
         &self,
         org_name: &str,
         payload: &RepositoryCreatePayload,
-    ) -> Result<models::Repository, Error> {
+    ) -> Result<Repository, Error> {
         let path = format!("/orgs/{org_name}/repos");
         let response: OctocrabResult<octocrab::models::Repository> =
             self.client.post(path, Some(payload)).await;
         match response {
-            Ok(r) => Ok(models::Repository::from(r)),
+            Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 log_octocrab_error("Failed to create repository for organisation", e);
                 return Err(Error::InvalidResponse);
@@ -525,12 +626,12 @@ impl RepositoryClient for GitHubClient {
     async fn create_user_repository(
         &self,
         payload: &RepositoryCreatePayload,
-    ) -> Result<models::Repository, Error> {
+    ) -> Result<Repository, Error> {
         let path = "/user/repos";
         let response: OctocrabResult<octocrab::models::Repository> =
             self.client.post(path, Some(payload)).await;
         match response {
-            Ok(r) => Ok(models::Repository::from(r)),
+            Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 log_octocrab_error("Failed to create repository for user", e);
                 return Err(Error::InvalidResponse);
@@ -555,13 +656,13 @@ impl RepositoryClient for GitHubClient {
         owner: &str,
         repo: &str,
         settings: &RepositorySettingsUpdate,
-    ) -> Result<models::Repository, Error> {
+    ) -> Result<Repository, Error> {
         let path = format!("/repos/{owner}/{repo}");
         // Use client.patch for updating repository settings via the REST API
         let response: OctocrabResult<octocrab::models::Repository> =
             self.client.patch(path, Some(settings)).await;
         match response {
-            Ok(r) => Ok(models::Repository::from(r)),
+            Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 log_octocrab_error("Failed to create repository for user", e);
                 return Err(Error::InvalidResponse);
@@ -664,7 +765,7 @@ impl RepositoryClient for GitHubClient {
         }
     }
 
-    async fn search_repositories(&self, query: &str) -> Result<Vec<models::Repository>, Error> {
+    async fn search_repositories(&self, query: &str) -> Result<Vec<Repository>, Error> {
         info!(query = query, "Searching for repositories");
 
         let search_result = self
@@ -679,11 +780,11 @@ impl RepositoryClient for GitHubClient {
                 Error::ApiError()
             })?;
 
-        // Convert octocrab repositories to our models::Repository using From trait
-        let repositories: Vec<models::Repository> = search_result
+        // Convert octocrab repositories to our Repository using From trait
+        let repositories: Vec<Repository> = search_result
             .items
             .into_iter()
-            .map(models::Repository::from)
+            .map(Repository::from)
             .collect();
 
         info!(
@@ -833,7 +934,7 @@ impl RepositoryClient for GitHubClient {
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<models::Repository, Error> {
+    ) -> Result<Repository, Error> {
         info!("Getting repository settings");
 
         let result = self.client.repos(owner, repo).get().await;
@@ -855,7 +956,7 @@ impl RepositoryClient for GitHubClient {
         owner: &str,
         repo: &str,
         branch: &str,
-    ) -> Result<Option<models::BranchProtection>, Error> {
+    ) -> Result<Option<BranchProtection>, Error> {
         info!(branch = branch, "Getting branch protection rules");
 
         // GitHub API endpoint: GET /repos/{owner}/{repo}/branches/{branch}/protection
@@ -885,7 +986,7 @@ impl RepositoryClient for GitHubClient {
                     .and_then(|reviews| reviews.get("dismiss_stale_reviews"))
                     .and_then(|v| v.as_bool());
 
-                Ok(Some(models::BranchProtection {
+                Ok(Some(BranchProtection {
                     required_approving_review_count: review_count,
                     require_code_owner_reviews: code_owner_reviews,
                     dismiss_stale_reviews: dismiss_stale,
@@ -1096,7 +1197,7 @@ pub trait RepositoryClient: Send + Sync {
         &self,
         owner: &str,
         payload: &RepositoryCreatePayload,
-    ) -> Result<models::Repository, Error>;
+    ) -> Result<Repository, Error>;
 
     /// Creates a new repository for the authenticated user.
     ///
@@ -1121,7 +1222,7 @@ pub trait RepositoryClient: Send + Sync {
     async fn create_user_repository(
         &self,
         payload: &RepositoryCreatePayload,
-    ) -> Result<models::Repository, Error>;
+    ) -> Result<Repository, Error>;
 
     /// Updates settings for a specific repository using the REST API directly.
     ///
@@ -1140,7 +1241,7 @@ pub trait RepositoryClient: Send + Sync {
         owner: &str,
         repo: &str,
         settings: &RepositorySettingsUpdate,
-    ) -> Result<models::Repository, Error>;
+    ) -> Result<Repository, Error>;
 
     /// Gets an installation access token for a specific organization.
     ///
@@ -1270,7 +1371,7 @@ pub trait RepositoryClient: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    async fn search_repositories(&self, query: &str) -> Result<Vec<models::Repository>, Error>;
+    async fn search_repositories(&self, query: &str) -> Result<Vec<Repository>, Error>;
 
     /// Gets custom properties for a repository.
     ///
@@ -1348,7 +1449,7 @@ pub trait RepositoryClient: Send + Sync {
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<models::Repository, Error>;
+    ) -> Result<Repository, Error>;
 
     /// Gets branch protection rules for a specific branch.
     ///
@@ -1370,7 +1471,7 @@ pub trait RepositoryClient: Send + Sync {
         owner: &str,
         repo: &str,
         branch: &str,
-    ) -> Result<Option<models::BranchProtection>, Error>;
+    ) -> Result<Option<BranchProtection>, Error>;
 
     /// Lists all files in a repository.
     ///

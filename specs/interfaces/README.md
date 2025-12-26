@@ -28,6 +28,7 @@ Interface specifications serve as:
 
 - [**GitHub Integration**](github-interfaces.md) - GitHub API boundaries
 - [**GitHub Repository Search**](github-repository-search.md) - Repository search operations (Task 1.0)
+- [**GitHub Directory Listing**](github-directory-listing.md) - Directory contents listing (Task 2.0)
 - [**Authentication Services**](authentication-interfaces.md) - Auth and authorization interfaces
 - [**External Systems Overview**](external-systems.md) - High-level system boundaries
 
@@ -37,7 +38,7 @@ Interface specifications serve as:
 - [**API Response Types**](api-response-types.md) - HTTP response models and serialization
 - [**API Error Handling**](api-error-handling.md) - Error mapping and HTTP status codes
 
-**Status**: ✅ 11 interface specifications complete (3 HTTP API specs added)
+**Status**: ✅ 12 interface specifications complete
 
 ## Architecture Overview
 

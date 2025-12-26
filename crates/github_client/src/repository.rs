@@ -1,91 +1,13 @@
-//! # Models
+//! Repository domain types.
 //!
-//! This module contains the data models used throughout the Merge Warden core.
-//!
-//! These models represent the core entities that Merge Warden works with, such as
-//! pull requests, comments, and labels. They are designed to be serializable and
-//! deserializable to facilitate integration with Git provider APIs.
+//! This module contains types representing GitHub repositories and organizations.
 
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 #[cfg(test)]
-#[path = "models_tests.rs"]
+#[path = "repository_tests.rs"]
 mod tests;
-
-/// Represents a GitHub account (user or organization).
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Account {
-    /// The unique ID of the account
-    pub id: u64,
-    /// The login name of the account
-    pub login: String,
-    /// The type of account (User or Organization)
-    #[serde(rename = "type")]
-    pub account_type: String,
-    /// The node ID for GraphQL operations
-    pub node_id: String,
-}
-
-// Remove the Account conversion since octocrab::models::Account might not be available
-// We'll construct Account directly in the Installation conversion above
-
-/// Represents a GitHub App installation.
-///
-/// This struct contains information about where a GitHub App is installed,
-/// such as an organization or user account.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Installation {
-    /// The unique ID of the installation
-    pub id: u64,
-    /// The account (user or organization) where the app is installed
-    pub account: Account,
-    /// Optional repository selection details
-    pub repository_selection: Option<String>,
-    /// The node ID for GraphQL operations
-    pub node_id: String,
-}
-
-impl From<octocrab::models::Installation> for Installation {
-    fn from(value: octocrab::models::Installation) -> Self {
-        let account_node_id = value.account.node_id.clone();
-        Self {
-            id: *value.id,
-            account: Account {
-                id: *value.account.id,
-                login: value.account.login,
-                account_type: value.account.r#type,
-                node_id: value.account.node_id,
-            },
-            repository_selection: value.repository_selection,
-            node_id: account_node_id, // Use account's node_id since installation doesn't have one
-        }
-    }
-}
-
-/// Represents a label on a pull request.
-///
-/// This struct contains the essential information about a label
-/// that is needed for categorization and filtering.
-///
-/// # Fields
-///
-/// * `name` - The name of the label
-///
-/// # Examples
-///
-/// ```
-/// use github_client::models::Label;
-///
-/// let label = Label {
-///     name: "bug".to_string(),
-/// };
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Label {
-    /// The name of the label
-    pub name: String,
-}
 
 /// Represents a GitHub organization.
 ///
@@ -95,7 +17,7 @@ pub struct Label {
 /// # Examples
 ///
 /// ```rust
-/// use github_client::models::Organization;
+/// use github_client::Organization;
 ///
 /// let org = Organization {
 ///     name: "my-organization".to_string(),
@@ -116,7 +38,7 @@ pub struct Organization {
 /// # Examples
 ///
 /// ```rust
-/// use github_client::models::Repository;
+/// use github_client::Repository;
 ///
 /// let repo = Repository::new(
 ///     "my-repo".to_string(),
@@ -269,56 +191,4 @@ impl From<octocrab::models::Repository> for Repository {
             has_discussions: None,
         }
     }
-}
-
-/// Represents a GitHub user account.
-///
-/// This struct contains basic information about a GitHub user, including
-/// their unique ID and login name. It's used throughout the API for
-/// representing repository owners, collaborators, and other user references.
-///
-/// # Examples
-///
-/// ```rust
-/// use github_client::models::User;
-///
-/// let user = User {
-///     id: 12345,
-///     login: "octocat".to_string(),
-/// };
-///
-/// println!("User: {} (ID: {})", user.login, user.id);
-/// ```
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct User {
-    /// The unique numeric ID of the user
-    pub id: u64,
-    /// The login name of the user
-    pub login: String,
-}
-
-/// Represents branch protection rules for a repository branch.
-///
-/// This struct contains the essential branch protection settings that can be
-/// verified during integration testing to ensure configuration was applied correctly.
-///
-/// # Examples
-///
-/// ```rust
-/// use github_client::models::BranchProtection;
-///
-/// let protection = BranchProtection {
-///     required_approving_review_count: Some(2),
-///     require_code_owner_reviews: Some(true),
-///     dismiss_stale_reviews: Some(true),
-/// };
-/// ```
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct BranchProtection {
-    /// Required number of approving reviews before merging
-    pub required_approving_review_count: Option<u32>,
-    /// Whether code owner reviews are required
-    pub require_code_owner_reviews: Option<bool>,
-    /// Whether stale reviews are dismissed when new commits are pushed
-    pub dismiss_stale_reviews: Option<bool>,
 }
