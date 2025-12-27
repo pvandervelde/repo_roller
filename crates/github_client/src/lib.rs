@@ -9,7 +9,7 @@ use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, Result as OctocrabResult};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 pub mod errors;
 pub use errors::Error;
@@ -359,9 +359,130 @@ impl GitHubClient {
             "Listing directory contents"
         );
 
-        // TODO: Implement using Octocrab's repos().get_content().path(path).r#ref(branch).send()
-        // See specs/interfaces/github-directory-listing.md for implementation requirements
-        unimplemented!("See specs/interfaces/github-directory-listing.md")
+        // Use the repos API to get directory contents
+        let result = self
+            .client
+            .repos(owner, repo)
+            .get_content()
+            .path(path)
+            .r#ref(branch)
+            .send()
+            .await;
+
+        match result {
+            Ok(content) => {
+                let items = content.items;
+
+                // Convert octocrab content items to TreeEntry objects
+                // Note: For files, GitHub API returns single item with content field
+                // For directories, GitHub API returns multiple items (directory entries)
+                // The file vs directory check is done by looking at individual entry types
+                let entries: Vec<TreeEntry> = items
+                    .into_iter()
+                    .map(|item| {
+                        let entry_type = match item.r#type.as_str() {
+                            "file" => EntryType::File,
+                            "dir" => EntryType::Dir,
+                            "symlink" => EntryType::Symlink,
+                            "submodule" => EntryType::Submodule,
+                            _ => {
+                                warn!(
+                                    item_type = %item.r#type,
+                                    "Unknown content type, defaulting to File"
+                                );
+                                EntryType::File
+                            }
+                        };
+
+                        TreeEntry {
+                            name: item.name,
+                            path: item.path,
+                            entry_type,
+                            sha: item.sha,
+                            size: item.size.max(0) as u64,
+                            download_url: item.download_url.map(|u| u.to_string()),
+                        }
+                    })
+                    .collect();
+
+                debug!(
+                    entry_count = entries.len(),
+                    "Successfully retrieved directory entries"
+                );
+
+                // Log entry type breakdown
+                let file_count = entries
+                    .iter()
+                    .filter(|e| matches!(e.entry_type, EntryType::File))
+                    .count();
+                let dir_count = entries
+                    .iter()
+                    .filter(|e| matches!(e.entry_type, EntryType::Dir))
+                    .count();
+                debug!(
+                    files = file_count,
+                    directories = dir_count,
+                    "Entry type breakdown"
+                );
+
+                Ok(entries)
+            }
+            Err(e) => {
+                // Map octocrab errors to appropriate Error types
+                let error_msg = format!("{:?}", e);
+                
+                // Check for 404 Not Found
+                if error_msg.contains("404") || error_msg.contains("Not Found") {
+                    error!(
+                        owner = %owner,
+                        repo = %repo,
+                        path = %path,
+                        "Directory not found"
+                    );
+                    log_octocrab_error("Directory not found", e);
+                    return Err(Error::NotFound);
+                }
+
+                // Check for 401 Unauthorized or 403 Forbidden (auth errors)
+                if error_msg.contains("401") || error_msg.contains("Unauthorized") {
+                    error!(
+                        owner = %owner,
+                        repo = %repo,
+                        "Authentication failed"
+                    );
+                    log_octocrab_error("Authentication failed", e);
+                    return Err(Error::AuthError("Authentication failed".to_string()));
+                }
+
+                // Check for rate limit (403 with rate limit message)
+                if error_msg.contains("rate limit") || error_msg.contains("Rate limit") {
+                    error!("GitHub API rate limit exceeded");
+                    log_octocrab_error("Rate limit exceeded", e);
+                    return Err(Error::RateLimitExceeded);
+                }
+
+                // Check for general 403 Forbidden (could be permissions)
+                if error_msg.contains("403") || error_msg.contains("Forbidden") {
+                    error!(
+                        owner = %owner,
+                        repo = %repo,
+                        "Access forbidden - check permissions"
+                    );
+                    log_octocrab_error("Access forbidden", e);
+                    return Err(Error::AuthError("Access forbidden - insufficient permissions".to_string()));
+                }
+
+                // Default to InvalidResponse for other errors
+                error!(
+                    owner = %owner,
+                    repo = %repo,
+                    path = %path,
+                    "Failed to list directory contents"
+                );
+                log_octocrab_error("Failed to list directory contents", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 
     /// Lists all installations for the authenticated GitHub App.

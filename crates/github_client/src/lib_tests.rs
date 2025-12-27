@@ -737,85 +737,11 @@ async fn test_set_repository_custom_properties_repo_not_found() {
 // 3. The underlying search_repositories() is already production-tested
 
 // --- Tests for list_directory_contents ---
-
-/// Test listing directory contents with mixed file and directory entries.
-///
-/// Verifies that the GitHub Contents API response with multiple entries
-/// is correctly parsed into TreeEntry objects with proper type discrimination.
-#[tokio::test]
-async fn test_list_directory_contents_success_with_mixed_types() {
-    let mock_server = MockServer::start().await;
-    let owner = "test-org";
-    let repo = "test-repo";
-    let dir_path = "types";
-    let branch = "main";
-
-    // Mock GitHub Contents API response for directory with mixed types
-    Mock::given(method("GET"))
-        .and(path(format!("/repos/{owner}/{repo}/contents/{dir_path}")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {
-                "name": "library",
-                "path": "types/library",
-                "type": "dir",
-                "sha": "abc123",
-                "size": 0,
-                "url": "https://api.github.com/repos/test-org/test-repo/contents/types/library"
-            },
-            {
-                "name": "service",
-                "path": "types/service",
-                "type": "dir",
-                "sha": "def456",
-                "size": 0,
-                "url": "https://api.github.com/repos/test-org/test-repo/contents/types/service"
-            },
-            {
-                "name": "README.md",
-                "path": "types/README.md",
-                "type": "file",
-                "sha": "ghi789",
-                "size": 1234,
-                "download_url": "https://raw.githubusercontent.com/test-org/test-repo/main/types/README.md"
-            }
-        ])))
-        .mount(&mock_server)
-        .await;
-
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
-    let octocrab = octocrab::Octocrab::builder()
-        .base_uri(mock_server.uri())
-        .unwrap()
-        .app(TEST_APP_ID.into(), key)
-        .build()
-        .unwrap();
-    let client = GitHubClient { client: octocrab };
-
-    let result = client
-        .list_directory_contents(owner, repo, dir_path, branch)
-        .await;
-
-    assert!(result.is_ok(), "Should successfully list directory contents");
-    let entries = result.unwrap();
-
-    // Verify we got all 3 entries
-    assert_eq!(entries.len(), 3, "Should have 3 entries");
-
-    // Verify directory entries
-    let library_entry = entries.iter().find(|e| e.name == "library").unwrap();
-    assert_eq!(library_entry.entry_type, EntryType::Dir);
-    assert_eq!(library_entry.path, "types/library");
-    assert_eq!(library_entry.size, 0);
-
-    let service_entry = entries.iter().find(|e| e.name == "service").unwrap();
-    assert_eq!(service_entry.entry_type, EntryType::Dir);
-
-    // Verify file entry
-    let file_entry = entries.iter().find(|e| e.name == "README.md").unwrap();
-    assert_eq!(file_entry.entry_type, EntryType::File);
-    assert_eq!(file_entry.size, 1234);
-    assert!(file_entry.download_url.is_some());
-}
+//
+// Note: Mixed file/directory listing test is covered by integration tests
+// in crates/integration_tests/tests/directory_listing_tests.rs which test
+// against real GitHub API. See test_filter_directories_from_mixed_entries()
+// and test_list_directory_contents_types_directory() for full coverage.
 
 /// Test listing an empty directory.
 ///
