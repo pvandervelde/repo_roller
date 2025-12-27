@@ -399,7 +399,7 @@ impl GitHubClient {
                             path: item.path,
                             entry_type,
                             sha: item.sha,
-                            size: item.size.max(0) as u64,
+                            size: item.size as u64,
                             download_url: item.download_url.map(|u| u.to_string()),
                         }
                     })
@@ -428,59 +428,76 @@ impl GitHubClient {
                 Ok(entries)
             }
             Err(e) => {
-                // Map octocrab errors to appropriate Error types
-                let error_msg = format!("{:?}", e);
-                
-                // Check for 404 Not Found
-                if error_msg.contains("404") || error_msg.contains("Not Found") {
-                    error!(
-                        owner = %owner,
-                        repo = %repo,
-                        path = %path,
-                        "Directory not found"
-                    );
-                    log_octocrab_error("Directory not found", e);
-                    return Err(Error::NotFound);
-                }
+                // Map octocrab errors to appropriate Error types using pattern matching
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        // Check for 404 Not Found
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            error!(
+                                owner = %owner,
+                                repo = %repo,
+                                path = %path,
+                                "Directory not found"
+                            );
+                            log_octocrab_error("Directory not found", e);
+                            return Err(Error::NotFound);
+                        }
 
-                // Check for 401 Unauthorized or 403 Forbidden (auth errors)
-                if error_msg.contains("401") || error_msg.contains("Unauthorized") {
-                    error!(
-                        owner = %owner,
-                        repo = %repo,
-                        "Authentication failed"
-                    );
-                    log_octocrab_error("Authentication failed", e);
-                    return Err(Error::AuthError("Authentication failed".to_string()));
-                }
+                        // Check for 401 Unauthorized
+                        if source.status_code == http::StatusCode::UNAUTHORIZED {
+                            error!(
+                                owner = %owner,
+                                repo = %repo,
+                                "Authentication failed"
+                            );
+                            log_octocrab_error("Authentication failed", e);
+                            return Err(Error::AuthError("Authentication failed".to_string()));
+                        }
 
-                // Check for rate limit (403 with rate limit message)
-                if error_msg.contains("rate limit") || error_msg.contains("Rate limit") {
-                    error!("GitHub API rate limit exceeded");
-                    log_octocrab_error("Rate limit exceeded", e);
-                    return Err(Error::RateLimitExceeded);
-                }
+                        // Check for 403 Forbidden - could be rate limit or permissions
+                        if source.status_code == http::StatusCode::FORBIDDEN {
+                            let msg_lower = source.message.to_lowercase();
+                            
+                            // Check if it's a rate limit error
+                            if msg_lower.contains("rate limit") {
+                                error!("GitHub API rate limit exceeded");
+                                log_octocrab_error("Rate limit exceeded", e);
+                                return Err(Error::RateLimitExceeded);
+                            }
+                            
+                            // Otherwise it's a permissions error
+                            error!(
+                                owner = %owner,
+                                repo = %repo,
+                                "Access forbidden - check permissions"
+                            );
+                            log_octocrab_error("Access forbidden", e);
+                            return Err(Error::AuthError("Access forbidden - insufficient permissions".to_string()));
+                        }
 
-                // Check for general 403 Forbidden (could be permissions)
-                if error_msg.contains("403") || error_msg.contains("Forbidden") {
-                    error!(
-                        owner = %owner,
-                        repo = %repo,
-                        "Access forbidden - check permissions"
-                    );
-                    log_octocrab_error("Access forbidden", e);
-                    return Err(Error::AuthError("Access forbidden - insufficient permissions".to_string()));
+                        // Other GitHub API errors
+                        error!(
+                            owner = %owner,
+                            repo = %repo,
+                            path = %path,
+                            status_code = %source.status_code,
+                            "GitHub API error listing directory contents"
+                        );
+                        log_octocrab_error("Failed to list directory contents", e);
+                        Err(Error::InvalidResponse)
+                    }
+                    _ => {
+                        // Non-GitHub errors (network, parsing, etc.)
+                        error!(
+                            owner = %owner,
+                            repo = %repo,
+                            path = %path,
+                            "Failed to list directory contents"
+                        );
+                        log_octocrab_error("Failed to list directory contents", e);
+                        Err(Error::InvalidResponse)
+                    }
                 }
-
-                // Default to InvalidResponse for other errors
-                error!(
-                    owner = %owner,
-                    repo = %repo,
-                    path = %path,
-                    "Failed to list directory contents"
-                );
-                log_octocrab_error("Failed to list directory contents", e);
-                Err(Error::InvalidResponse)
             }
         }
     }
