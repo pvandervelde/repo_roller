@@ -16,6 +16,7 @@ pub mod repository_type_config;
 pub mod settings;
 pub mod team_config;
 pub mod template_config;
+pub mod template_loader;
 
 // Metadata repository provider
 pub mod github_metadata_provider;
@@ -58,6 +59,7 @@ pub use team_config::TeamConfig;
 pub use template_config::{
     RepositoryTypePolicy, RepositoryTypeSpec, TemplateConfig, TemplateMetadata, TemplateVariable,
 };
+pub use template_loader::{CacheStatistics, TemplateLoader, TemplateRepository};
 pub use validator::{
     ConfigurationValidator, ValidationError, ValidationErrorType, ValidationResult,
     ValidationWarning,

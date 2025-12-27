@@ -503,6 +503,19 @@ fn convert_configuration_error(
             "ConfigurationHierarchyFailed",
             format!("Configuration hierarchy resolution failed: {}", reason),
         ),
+        ConfigurationError::TemplateNotFound { org, template } => (
+            StatusCode::NOT_FOUND,
+            "TemplateNotFound",
+            format!("Template repository not found: {}/{}", org, template),
+        ),
+        ConfigurationError::TemplateConfigurationMissing { org, template } => (
+            StatusCode::NOT_FOUND,
+            "TemplateConfigurationMissing",
+            format!(
+                "Template configuration file missing in {}/{}: expected .reporoller/template.toml",
+                org, template
+            ),
+        ),
     };
 
     (

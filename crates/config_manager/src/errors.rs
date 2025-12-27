@@ -50,6 +50,12 @@ pub enum ConfigurationError {
         repositories: Vec<String>,
     },
 
+    #[error("Template repository not found: {org}/{template}")]
+    TemplateNotFound { org: String, template: String },
+
+    #[error("Template configuration file missing in {org}/{template}: expected .reporoller/template.toml")]
+    TemplateConfigurationMissing { org: String, template: String },
+
     #[error("Configuration validation failed with {error_count} error(s)")]
     ValidationFailed {
         error_count: usize,
