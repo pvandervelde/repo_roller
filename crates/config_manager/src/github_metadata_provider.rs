@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use github_client::{GitHubClient, RepositoryClient};
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 // Reference the tests module in the separate file
 #[cfg(test)]
@@ -421,13 +421,58 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
 
     async fn list_available_repository_types(
         &self,
-        _repo: &MetadataRepository,
+        repo: &MetadataRepository,
     ) -> ConfigurationResult<Vec<String>> {
-        // TODO: Implement directory listing via GitHub API
-        // This requires using the GitHub tree API to list directory contents
-        // For now, return empty vector
-        // Full implementation will come when we have tree listing capability in GitHubClient
-        Ok(Vec::new())
+        info!(
+            org = %repo.organization,
+            repo = %repo.repository_name,
+            "Listing available repository types from metadata repository"
+        );
+
+        // Call GitHubClient to list directory contents
+        // Use "main" as default branch (same as other file operations in this codebase)
+        let entries = self
+            .client
+            .list_directory_contents(&repo.organization, &repo.repository_name, "types", "main")
+            .await
+            .map_err(|e| {
+                error!(
+                    org = %repo.organization,
+                    repo = %repo.repository_name,
+                    error = ?e,
+                    "Failed to list types directory"
+                );
+                ConfigurationError::FileAccessError {
+                    path: format!("{}/{}/types", repo.organization, repo.repository_name),
+                    reason: format!("Failed to list repository types: {}", e),
+                }
+            })?;
+
+        // Filter to only directories (ignore any files in types/ directory)
+        let types: Vec<String> = entries
+            .into_iter()
+            .filter(|e| matches!(e.entry_type, github_client::EntryType::Dir))
+            .map(|e| e.name)
+            .collect();
+
+        // Log warning if no types found
+        if types.is_empty() {
+            warn!(
+                org = %repo.organization,
+                repo = %repo.repository_name,
+                "No repository types found in types/ directory"
+            );
+        } else {
+            info!(
+                org = %repo.organization,
+                repo = %repo.repository_name,
+                type_count = types.len(),
+                types = ?types,
+                "Successfully discovered repository types"
+            );
+        }
+
+        Ok(types)
     }
 
     async fn validate_repository_structure(

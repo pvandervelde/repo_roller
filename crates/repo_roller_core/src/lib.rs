@@ -317,7 +317,7 @@ async fn create_github_repository(
     request: &RepositoryCreationRequest,
     merged_config: &config_manager::MergedConfiguration,
     installation_repo_client: &GitHubClient,
-) -> RepoRollerResult<github_client::models::Repository> {
+) -> RepoRollerResult<github_client::Repository> {
     let payload = RepositoryCreatePayload {
         name: request.name.as_ref().to_string(),
         has_issues: merged_config.repository.issues.as_ref().map(|v| v.value),

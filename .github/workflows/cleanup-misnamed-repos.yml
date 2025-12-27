@@ -76,7 +76,7 @@ jobs:
 
                   # Run cleanup in preview mode
                   set +e  # Temporarily disable exit on error to capture output
-                  output=$(cargo run --package test_cleanup --bin cleanup-misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1)
+                  output=$(cargo run --package test_cleanup --bin cleanup_misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1)
                   exit_code=$?
                   set -e  # Re-enable exit on error
 
@@ -104,7 +104,7 @@ jobs:
                   echo ""
 
                   # Run cleanup and capture output
-                  output=$(cargo run --package test_cleanup --bin cleanup-misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1)
+                  output=$(cargo run --package test_cleanup --bin cleanup_misnamed -- ${{ github.event.inputs.max_age_days }} 2>&1)
                   echo "$output"
 
                   # Extract deleted count for summary

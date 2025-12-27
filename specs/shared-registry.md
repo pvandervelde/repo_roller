@@ -105,6 +105,13 @@ All domain primitives use newtype pattern for type safety.
 **New Methods (Task 1.0)**:
 - `search_repositories_by_topic(org: &str, topic: &str)` - Search for repositories by topic within organization ([github-repository-search.md](interfaces/github-repository-search.md))
 
+**New Methods (Task 2.0)**:
+- `list_directory_contents(owner: &str, repo: &str, path: &str, branch: &str)` - List contents of repository directory ([github-directory-listing.md](interfaces/github-directory-listing.md))
+
+**New Types (Task 2.0)**:
+- `TreeEntry` - Directory entry with type information (`github_client/src/models.rs`)
+- `EntryType` - Enum for file/dir/symlink/submodule (`github_client/src/models.rs`)
+
 ## HTTP API Types
 
 **Note**: HTTP API types are distinct from domain types and exist only in the `repo_roller_api` crate.
