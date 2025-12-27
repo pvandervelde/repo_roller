@@ -66,17 +66,11 @@ async fn test_list_directory_contents_types_directory() -> Result<()> {
     // Verify entry structure
     for entry in &entries {
         assert!(!entry.name.is_empty(), "Entry name should not be empty");
-        assert!(
-            !entry.path.is_empty(),
-            "Entry path should not be empty"
-        );
+        assert!(!entry.path.is_empty(), "Entry path should not be empty");
         assert!(!entry.sha.is_empty(), "Entry SHA should not be empty");
 
         if matches!(entry.entry_type, EntryType::Dir) {
-            assert_eq!(
-                entry.size, 0,
-                "Directory entries should have size 0"
-            );
+            assert_eq!(entry.size, 0, "Directory entries should have size 0");
             assert!(
                 entry.download_url.is_none(),
                 "Directory entries should not have download URL"
@@ -194,10 +188,7 @@ async fn test_list_available_repository_types() -> Result<()> {
             !repo_type.contains('\\'),
             "Repository type should not contain backslashes"
         );
-        assert!(
-            !repo_type.is_empty(),
-            "Repository type should not be empty"
-        );
+        assert!(!repo_type.is_empty(), "Repository type should not be empty");
     }
 
     info!("✓ All repository types are valid directory names");
@@ -262,8 +253,7 @@ async fn test_filter_directories_from_mixed_entries() -> Result<()> {
 
     info!(
         "✓ Filtered to {} directories and {} files",
-        dir_count,
-        file_count
+        dir_count, file_count
     );
 
     // Verify filtering works correctly - collect directories

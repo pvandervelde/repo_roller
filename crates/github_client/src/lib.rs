@@ -15,20 +15,20 @@ pub mod errors;
 pub use errors::Error;
 
 // Domain-specific modules
-pub mod installation;
-pub mod repository;
-pub mod user;
-pub mod label;
 pub mod branch_protection;
 pub mod contents;
+pub mod installation;
+pub mod label;
+pub mod repository;
+pub mod user;
 
 // Re-export types for convenient access
+pub use branch_protection::BranchProtection;
+pub use contents::{EntryType, TreeEntry};
 pub use installation::{Account, Installation};
+pub use label::Label;
 pub use repository::{Organization, Repository};
 pub use user::User;
-pub use label::Label;
-pub use branch_protection::BranchProtection;
-pub use contents::{TreeEntry, EntryType};
 
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;
@@ -190,11 +190,7 @@ impl GitHubClient {
     /// # Errors
     /// Returns an `Error::Octocrab` if the API call fails.
     #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
-    pub async fn get_repository(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Repository, Error> {
+    pub async fn get_repository(&self, owner: &str, repo: &str) -> Result<Repository, Error> {
         let result = self.client.repos(owner, repo).get().await;
         match result {
             Ok(r) => Ok(Repository::from(r)),
@@ -457,14 +453,14 @@ impl GitHubClient {
                         // Check for 403 Forbidden - could be rate limit or permissions
                         if source.status_code == http::StatusCode::FORBIDDEN {
                             let msg_lower = source.message.to_lowercase();
-                            
+
                             // Check if it's a rate limit error
                             if msg_lower.contains("rate limit") {
                                 error!("GitHub API rate limit exceeded");
                                 log_octocrab_error("Rate limit exceeded", e);
                                 return Err(Error::RateLimitExceeded);
                             }
-                            
+
                             // Otherwise it's a permissions error
                             error!(
                                 owner = %owner,
@@ -472,7 +468,9 @@ impl GitHubClient {
                                 "Access forbidden - check permissions"
                             );
                             log_octocrab_error("Access forbidden", e);
-                            return Err(Error::AuthError("Access forbidden - insufficient permissions".to_string()));
+                            return Err(Error::AuthError(
+                                "Access forbidden - insufficient permissions".to_string(),
+                            ));
                         }
 
                         // Other GitHub API errors
@@ -545,10 +543,8 @@ impl GitHubClient {
 
         match result {
             Ok(installations) => {
-                let converted_installations: Vec<Installation> = installations
-                    .into_iter()
-                    .map(Installation::from)
-                    .collect();
+                let converted_installations: Vec<Installation> =
+                    installations.into_iter().map(Installation::from).collect();
 
                 info!(
                     count = converted_installations.len(),
@@ -1068,11 +1064,7 @@ impl RepositoryClient for GitHubClient {
         }
     }
 
-    async fn get_repository_settings(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Repository, Error> {
+    async fn get_repository_settings(&self, owner: &str, repo: &str) -> Result<Repository, Error> {
         info!("Getting repository settings");
 
         let result = self.client.repos(owner, repo).get().await;
@@ -1583,11 +1575,7 @@ pub trait RepositoryClient: Send + Sync {
     /// # Errors
     ///
     /// Returns `Error::InvalidResponse` if the API call fails.
-    async fn get_repository_settings(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Repository, Error>;
+    async fn get_repository_settings(&self, owner: &str, repo: &str) -> Result<Repository, Error>;
 
     /// Gets branch protection rules for a specific branch.
     ///
