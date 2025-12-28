@@ -49,6 +49,7 @@ use crate::{ConfigurationResult, TemplateConfig};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use tracing::{debug, info};
 
 // Reference the tests module in the separate file
 #[cfg(test)]
@@ -241,8 +242,12 @@ impl TemplateLoader {
     /// let loader = TemplateLoader::new(github_repo);
     /// # }
     /// ```
-    pub fn new(_repository: Arc<dyn TemplateRepository>) -> Self {
-        unimplemented!("See specs/interfaces/template-loading.md")
+    pub fn new(repository: Arc<dyn TemplateRepository>) -> Self {
+        Self {
+            repository,
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(CacheStatistics::default())),
+        }
     }
 
     /// Load template configuration with caching.
@@ -290,10 +295,60 @@ impl TemplateLoader {
     /// ```
     pub async fn load_template_configuration(
         &self,
-        _org: &str,
-        _template_name: &str,
+        org: &str,
+        template_name: &str,
     ) -> ConfigurationResult<TemplateConfig> {
-        unimplemented!("See specs/interfaces/template-loading.md")
+        let cache_key = TemplateCacheKey::new(org, template_name);
+
+        // Check cache first (read lock)
+        {
+            let cache = self.cache.read().unwrap();
+            if let Some(cached_config) = cache.get(&cache_key) {
+                debug!(
+                    "Template configuration cache hit: {}/{}",
+                    org, template_name
+                );
+
+                // Update statistics
+                let mut stats = self.stats.write().unwrap();
+                stats.total_requests += 1;
+                stats.cache_hits += 1;
+
+                return Ok(cached_config.clone());
+            }
+        }
+
+        // Cache miss - load from repository
+        debug!(
+            "Template configuration cache miss: {}/{}",
+            org, template_name
+        );
+
+        // Update miss statistics
+        {
+            let mut stats = self.stats.write().unwrap();
+            stats.total_requests += 1;
+            stats.cache_misses += 1;
+        }
+
+        // Load from repository (outside any locks)
+        let config = self
+            .repository
+            .load_template_config(org, template_name)
+            .await?;
+
+        // Store in cache (write lock)
+        {
+            let mut cache = self.cache.write().unwrap();
+            cache.insert(cache_key, config.clone());
+
+            // Update entry count
+            let mut stats = self.stats.write().unwrap();
+            stats.cached_entries = cache.len();
+        }
+
+        info!("Template configuration cached: {}/{}", org, template_name);
+        Ok(config)
     }
 
     /// Invalidate cached template configuration.
@@ -328,8 +383,19 @@ impl TemplateLoader {
     /// let fresh = loader.load_template_configuration("myorg", "rust-service").await;
     /// # }
     /// ```
-    pub fn invalidate_cache(&self, _org: &str, _template_name: &str) -> bool {
-        unimplemented!("See specs/interfaces/template-loading.md")
+    pub fn invalidate_cache(&self, org: &str, template_name: &str) -> bool {
+        let cache_key = TemplateCacheKey::new(org, template_name);
+
+        let mut cache = self.cache.write().unwrap();
+        let was_present = cache.remove(&cache_key).is_some();
+
+        if was_present {
+            let mut stats = self.stats.write().unwrap();
+            stats.cached_entries = cache.len();
+            debug!("Invalidated cache entry: {}/{}", org, template_name);
+        }
+
+        was_present
     }
 
     /// Clear all cached template configurations.
@@ -347,7 +413,13 @@ impl TemplateLoader {
     /// # }
     /// ```
     pub fn clear_cache(&self) {
-        unimplemented!("See specs/interfaces/template-loading.md")
+        let mut cache = self.cache.write().unwrap();
+        cache.clear();
+
+        let mut stats = self.stats.write().unwrap();
+        stats.cached_entries = 0;
+
+        info!("All template cache entries cleared");
     }
 
     /// Get cache statistics for monitoring.
@@ -368,7 +440,8 @@ impl TemplateLoader {
     /// # }
     /// ```
     pub fn cache_statistics(&self) -> CacheStatistics {
-        unimplemented!("See specs/interfaces/template-loading.md")
+        let stats = self.stats.read().unwrap();
+        *stats
     }
 
     /// Check if a template exists and is accessible.
@@ -402,10 +475,11 @@ impl TemplateLoader {
     /// ```
     pub async fn template_exists(
         &self,
-        _org: &str,
-        _template_name: &str,
+        org: &str,
+        template_name: &str,
     ) -> ConfigurationResult<bool> {
-        unimplemented!("See specs/interfaces/template-loading.md")
+        // Delegate to repository (no caching for existence checks)
+        self.repository.template_exists(org, template_name).await
     }
 }
 
