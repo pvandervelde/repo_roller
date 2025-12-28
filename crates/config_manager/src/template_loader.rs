@@ -22,11 +22,12 @@
 //!
 //! ```no_run
 //! use config_manager::{TemplateLoader, GitHubTemplateRepository};
+//! use github_client::GitHubClient;
 //! use std::sync::Arc;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(github_client: Arc<GitHubClient>) -> Result<(), Box<dyn std::error::Error>> {
 //! // Create loader with GitHub backend
-//! let github_repo = Arc::new(GitHubTemplateRepository::new(/* github_client */));
+//! let github_repo = Arc::new(GitHubTemplateRepository::new(github_client));
 //! let loader = TemplateLoader::new(github_repo);
 //!
 //! // Load template (first time: GitHub API call)
@@ -183,10 +184,11 @@ pub trait TemplateRepository: Send + Sync {
 ///
 /// ```no_run
 /// use config_manager::{TemplateLoader, GitHubTemplateRepository};
+/// use github_client::GitHubClient;
 /// use std::sync::Arc;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let github_repo = Arc::new(GitHubTemplateRepository::new(/* ... */));
+/// # async fn example(github_client: Arc<GitHubClient>) -> Result<(), Box<dyn std::error::Error>> {
+/// let github_repo = Arc::new(GitHubTemplateRepository::new(github_client));
 /// let loader = TemplateLoader::new(github_repo);
 ///
 /// let config = loader
@@ -235,10 +237,11 @@ impl TemplateLoader {
     ///
     /// ```no_run
     /// use config_manager::{TemplateLoader, GitHubTemplateRepository};
+    /// use github_client::GitHubClient;
     /// use std::sync::Arc;
     ///
-    /// # fn example() {
-    /// let github_repo = Arc::new(GitHubTemplateRepository::new(/* ... */));
+    /// # fn example(github_client: Arc<GitHubClient>) {
+    /// let github_repo = Arc::new(GitHubTemplateRepository::new(github_client));
     /// let loader = TemplateLoader::new(github_repo);
     /// # }
     /// ```

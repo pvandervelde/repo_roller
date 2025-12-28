@@ -140,7 +140,7 @@ pub(crate) async fn resolve_organization_configuration(
             reason: format!("Failed to create metadata provider client: {}", e),
         })
     })?;
-    let metadata_repo_client = GitHubClient::new(metadata_client);
+    let metadata_repo_client = GitHubClient::new(metadata_client.clone());
 
     let metadata_provider_config = MetadataProviderConfig::explicit(metadata_repository_name);
     let metadata_provider = Arc::new(GitHubMetadataProvider::new(
@@ -148,7 +148,15 @@ pub(crate) async fn resolve_organization_configuration(
         metadata_provider_config,
     ));
 
-    let settings_manager = OrganizationSettingsManager::new(metadata_provider);
+    // Create template loader for template configuration resolution
+    // Template loader needs Arc<GitHubClient> so create a separate client instance
+    let template_client = GitHubClient::new(metadata_client);
+    let template_repo = Arc::new(config_manager::GitHubTemplateRepository::new(Arc::new(
+        template_client,
+    )));
+    let template_loader = Arc::new(config_manager::TemplateLoader::new(template_repo));
+
+    let settings_manager = OrganizationSettingsManager::new(metadata_provider, template_loader);
 
     let config_context = ConfigurationContext::new(organization, template_name);
 
