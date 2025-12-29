@@ -57,6 +57,10 @@ All domain primitives use newtype pattern for type safety.
 **New Error Variants (Task 1.0)**:
 - `ConfigurationError::AmbiguousMetadataRepository` - Multiple metadata repos found with same topic
 
+**New Error Variants (Task 3.0)**:
+- `ConfigurationError::TemplateNotFound` - Template repository not found or not accessible
+- `ConfigurationError::TemplateConfigurationMissing` - Template repository exists but missing `.reporoller/template.toml`
+
 ## Business Logic Interfaces
 
 ### Repository Domain
@@ -75,6 +79,8 @@ All domain primitives use newtype pattern for type safety.
 | `OrganizationConfigurationProvider` | `config_manager/src/lib.rs` | Org config access | [configuration-interfaces.md](configuration-interfaces.md) |
 | `ConfigurationPolicyValidator` | `config_manager/src/lib.rs` | Override policy enforcement | [configuration-interfaces.md](configuration-interfaces.md) |
 | `MetadataRepositoryProvider` | `config_manager/src/github_metadata_provider.rs` | Metadata repository discovery and access | [organization-repository-settings.md](../design/organization-repository-settings.md) |
+| `TemplateRepository` | `config_manager/src/template_loader.rs` | Template configuration access abstraction | [template-loading.md](interfaces/template-loading.md) |
+| `TemplateLoader` | `config_manager/src/template_loader.rs` | Template config loading with caching | [template-loading.md](interfaces/template-loading.md) |
 
 ### Template Domain
 
@@ -157,8 +163,9 @@ All domain primitives use newtype pattern for type safety.
 
 | Type | Location | Purpose | Spec Reference |
 |------|----------|---------|----------------|
-| `TemplateConfig` | `config_manager/src/lib.rs` | Template configuration | [configuration-interfaces.md](configuration-interfaces.md) |
-| `RepositorySettings` | `config_manager/src/lib.rs` | Repository settings | [configuration-interfaces.md](configuration-interfaces.md) |
+| `TemplateConfig` | `config_manager/src/template_config.rs` | Template configuration | [template-loading.md](interfaces/template-loading.md) |
+| `RepositorySettings` | `config_manager/src/settings/repository.rs` | Repository settings | [configuration-interfaces.md](configuration-interfaces.md) |
+| `CacheStatistics` | `config_manager/src/template_loader.rs` | Template cache metrics | [template-loading.md](interfaces/template-loading.md) |
 | `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](template-interfaces.md) |
 
 ## Patterns and Conventions

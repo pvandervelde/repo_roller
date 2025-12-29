@@ -7,10 +7,7 @@ use config_manager::{
     ConfigurationResult, MetadataRepository, MetadataRepositoryProvider, TemplateConfig,
     TemplateMetadata,
 };
-use github_client::{
-    errors::Error as GitHubError, BranchProtection, Repository, RepositoryClient,
-    RepositorySettingsUpdate,
-};
+use github_client::{errors::Error as GitHubError, RepositoryClient, RepositorySettingsUpdate};
 use std::sync::{Arc, Mutex};
 
 // --- MOCK STRUCTS (ALPHABETICALLY ORDERED) ---

@@ -99,6 +99,9 @@ pub struct OrganizationSettingsManager {
     ///
     /// Created internally as BasicConfigurationValidator is stateless.
     validator: Arc<BasicConfigurationValidator>,
+
+    /// Template loader for loading template configurations.
+    template_loader: Arc<crate::TemplateLoader>,
 }
 
 impl OrganizationSettingsManager {
@@ -107,12 +110,14 @@ impl OrganizationSettingsManager {
     /// # Arguments
     ///
     /// * `metadata_provider` - Provider for configuration discovery and loading
+    /// * `template_loader` - Loader for template configurations
     ///
     /// # Examples
     ///
     /// ```rust,ignore
     /// use config_manager::{
-    ///     OrganizationSettingsManager, GitHubMetadataProvider, MetadataProviderConfig
+    ///     OrganizationSettingsManager, GitHubMetadataProvider, MetadataProviderConfig,
+    ///     TemplateLoader, GitHubTemplateRepository
     /// };
     /// use std::sync::Arc;
     ///
@@ -120,19 +125,29 @@ impl OrganizationSettingsManager {
     /// let provider_config = MetadataProviderConfig::explicit("repo-config");
     /// let metadata_provider = GitHubMetadataProvider::new(
     ///     "my-org",
-    ///     Arc::new(github_client), // Your GitHub client
+    ///     Arc::new(github_client.clone()), // Your GitHub client
     ///     provider_config,
     /// );
     ///
-    /// let manager = OrganizationSettingsManager::new(Arc::new(metadata_provider));
+    /// let template_repo = Arc::new(GitHubTemplateRepository::new(Arc::new(github_client)));
+    /// let template_loader = Arc::new(TemplateLoader::new(template_repo));
+    ///
+    /// let manager = OrganizationSettingsManager::new(
+    ///     Arc::new(metadata_provider),
+    ///     template_loader,
+    /// );
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(metadata_provider: Arc<dyn MetadataRepositoryProvider>) -> Self {
+    pub fn new(
+        metadata_provider: Arc<dyn MetadataRepositoryProvider>,
+        template_loader: Arc<crate::TemplateLoader>,
+    ) -> Self {
         Self {
             metadata_provider,
             merger: Arc::new(ConfigurationMerger::new()),
             validator: Arc::new(BasicConfigurationValidator::new()),
+            template_loader,
         }
     }
 
@@ -293,27 +308,27 @@ impl OrganizationSettingsManager {
             None
         };
 
-        // Step 5: Create minimal template configuration
-        // TODO: Load actual template configuration from template repository
-        // For now, create a minimal template config to enable testing
-        debug!("Creating minimal template configuration");
-        let template_config = crate::template_config::TemplateConfig {
-            template: crate::template_config::TemplateMetadata {
-                name: context.template().to_string(),
-                description: format!("Template: {}", context.template()),
-                author: "System".to_string(),
-                tags: vec![],
-            },
-            repository_type: None,
-            variables: None,
-            repository: None,
-            pull_requests: None,
-            branch_protection: None,
-            labels: None,
-            webhooks: None,
-            environments: None,
-            github_apps: None,
-        };
+        // Step 5: Load template configuration from template repository
+        debug!("Loading template configuration: {}", context.template());
+        let template_config = self
+            .template_loader
+            .load_template_configuration(context.organization(), context.template())
+            .await
+            .map_err(|e| {
+                warn!("Failed to load template configuration: {}", e);
+                e
+            })?;
+
+        if let Some(ref repo_type) = template_config.repository_type {
+            info!(
+                "Template specifies repository type: {} (policy: {:?})",
+                repo_type.repository_type, repo_type.policy
+            );
+        }
+
+        if let Some(ref variables) = template_config.variables {
+            info!("Template defines {} variables", variables.len());
+        }
 
         // Step 6: Merge all configurations using ConfigurationMerger
         debug!("Merging configurations");
@@ -399,6 +414,7 @@ impl std::fmt::Debug for OrganizationSettingsManager {
             .field("metadata_provider", &"Arc<dyn MetadataRepositoryProvider>")
             .field("merger", &self.merger)
             .field("validator", &self.validator)
+            .field("template_loader", &self.template_loader)
             .finish()
     }
 }

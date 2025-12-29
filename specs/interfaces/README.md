@@ -23,6 +23,7 @@ Interface specifications serve as:
 - [**Repository Domain**](repository-domain.md) - Repository creation orchestration logic
 - [**Configuration Domain**](configuration-interfaces.md) - Template and settings management
 - [**Template Processing**](template-interfaces.md) - Template fetching and variable substitution
+- [**Template Loading**](template-loading.md) - Template configuration loading with caching (Task 3.0)
 
 ### External Integration Specifications
 
@@ -38,7 +39,7 @@ Interface specifications serve as:
 - [**API Response Types**](api-response-types.md) - HTTP response models and serialization
 - [**API Error Handling**](api-error-handling.md) - Error mapping and HTTP status codes
 
-**Status**: ✅ 12 interface specifications complete
+**Status**: ✅ 13 interface specifications complete
 
 ## Architecture Overview
 

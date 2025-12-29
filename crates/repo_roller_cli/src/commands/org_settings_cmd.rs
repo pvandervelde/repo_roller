@@ -310,6 +310,70 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
     Ok(Arc::new(provider) as Arc<dyn MetadataRepositoryProvider>)
 }
 
+/// Create an organization settings manager with metadata provider and template loader.
+///
+/// This helper function creates both the metadata provider and template loader,
+/// then initializes the OrganizationSettingsManager with both dependencies.
+async fn create_settings_manager() -> Result<OrganizationSettingsManager, Error> {
+    // Load application config to get metadata repository name
+    let config_path = get_config_path(None);
+    let app_config = AppConfig::load(&config_path).unwrap_or_else(|_| AppConfig::default());
+
+    // Load GitHub App credentials from keyring
+    let app_id_entry = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_ID)
+        .map_err(|e| Error::Auth(format!("Failed to access keyring for app ID: {}", e)))?;
+    let app_id_str = app_id_entry
+        .get_password()
+        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}", e)))?;
+    let app_id: u64 = app_id_str
+        .parse()
+        .map_err(|e| Error::Auth(format!("Invalid app ID format: {}", e)))?;
+
+    let key_path_entry = Entry::new(KEY_RING_SERVICE_NAME, KEY_RING_APP_PRIVATE_KEY_PATH)
+        .map_err(|e| Error::Auth(format!("Failed to access keyring for key path: {}", e)))?;
+    let key_path = key_path_entry
+        .get_password()
+        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}", e)))?;
+
+    // Read private key file
+    let private_key = std::fs::read_to_string(&key_path).map_err(|e| {
+        Error::Auth(format!(
+            "Failed to read private key from {}: {}",
+            key_path, e
+        ))
+    })?;
+
+    // Create authenticated GitHub client
+    let octocrab = github_client::create_app_client(app_id, &private_key)
+        .await
+        .map_err(|e| Error::Auth(format!("Failed to create GitHub App client: {}", e)))?;
+
+    // Create metadata provider
+    let metadata_repo_name = if app_config.organization.metadata_repository_name.is_empty() {
+        DEFAULT_METADATA_REPOSITORY_NAME
+    } else {
+        &app_config.organization.metadata_repository_name
+    };
+
+    let github_client = GitHubClient::new(octocrab.clone());
+    let provider_config = MetadataProviderConfig::explicit(metadata_repo_name);
+    let metadata_provider = GitHubMetadataProvider::new(github_client, provider_config);
+    let provider_arc = Arc::new(metadata_provider) as Arc<dyn MetadataRepositoryProvider>;
+
+    // Create template loader
+    let template_client = GitHubClient::new(octocrab);
+    let template_repo = Arc::new(config_manager::GitHubTemplateRepository::new(Arc::new(
+        template_client,
+    )));
+    let template_loader = Arc::new(config_manager::TemplateLoader::new(template_repo));
+
+    // Create and return settings manager
+    Ok(OrganizationSettingsManager::new(
+        provider_arc,
+        template_loader,
+    ))
+}
+
 /// Formats output as JSON or pretty-printed text.
 ///
 /// # Arguments
@@ -474,11 +538,8 @@ async fn show_merged(
         format = format
     );
 
-    // Create authenticated metadata provider
-    let provider = create_metadata_provider().await?;
-
-    // Create organization settings manager
-    let manager = OrganizationSettingsManager::new(provider);
+    // Create organization settings manager with metadata provider and template loader
+    let manager = create_settings_manager().await?;
 
     // Create configuration context
     let mut context = ConfigurationContext::new(org, template);
@@ -728,11 +789,8 @@ async fn test_merge(
         format = format
     );
 
-    // Create authenticated metadata provider
-    let provider = create_metadata_provider().await?;
-
-    // Create organization settings manager
-    let manager = OrganizationSettingsManager::new(provider);
+    // Create organization settings manager with metadata provider and template loader
+    let manager = create_settings_manager().await?;
 
     // Create configuration context
     let mut context = ConfigurationContext::new(org, template);

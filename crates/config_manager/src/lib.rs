@@ -16,6 +16,10 @@ pub mod repository_type_config;
 pub mod settings;
 pub mod team_config;
 pub mod template_config;
+pub mod template_loader;
+
+// GitHub template repository infrastructure
+pub mod github_template_repository;
 
 // Metadata repository provider
 pub mod github_metadata_provider;
@@ -44,6 +48,7 @@ mod integration_tests;
 pub use configuration_context::ConfigurationContext;
 pub use errors::{ConfigurationError, ConfigurationResult};
 pub use github_metadata_provider::{GitHubMetadataProvider, MetadataProviderConfig};
+pub use github_template_repository::GitHubTemplateRepository;
 pub use global_defaults::GlobalDefaults;
 pub use merged_config::{ConfigurationSource, ConfigurationSourceTrace, MergedConfiguration};
 pub use merger::ConfigurationMerger;
@@ -58,6 +63,7 @@ pub use team_config::TeamConfig;
 pub use template_config::{
     RepositoryTypePolicy, RepositoryTypeSpec, TemplateConfig, TemplateMetadata, TemplateVariable,
 };
+pub use template_loader::{CacheStatistics, TemplateLoader, TemplateRepository};
 pub use validator::{
     ConfigurationValidator, ValidationError, ValidationErrorType, ValidationResult,
     ValidationWarning,

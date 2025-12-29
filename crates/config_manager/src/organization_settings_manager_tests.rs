@@ -4,9 +4,54 @@ use super::*;
 use crate::{
     errors::ConfigurationError, global_defaults::GlobalDefaults,
     metadata_provider::MetadataRepository, repository_type_config::RepositoryTypeConfig,
-    team_config::TeamConfig,
+    team_config::TeamConfig, template_config::TemplateConfig, TemplateRepository,
 };
 use async_trait::async_trait;
+
+// ============================================================================
+// Mock TemplateRepository for Testing
+// ============================================================================
+
+/// Mock template repository for testing.
+#[derive(Debug, Clone)]
+struct MockTemplateRepository;
+
+#[async_trait]
+impl TemplateRepository for MockTemplateRepository {
+    async fn load_template_config(
+        &self,
+        _org: &str,
+        template_name: &str,
+    ) -> ConfigurationResult<TemplateConfig> {
+        // Return a minimal template config
+        Ok(TemplateConfig {
+            template: crate::template_config::TemplateMetadata {
+                name: template_name.to_string(),
+                description: format!("Test template: {}", template_name),
+                author: "Test Author".to_string(),
+                tags: vec![],
+            },
+            repository_type: None,
+            variables: None,
+            repository: None,
+            pull_requests: None,
+            branch_protection: None,
+            labels: None,
+            webhooks: None,
+            environments: None,
+            github_apps: None,
+        })
+    }
+
+    async fn template_exists(&self, _org: &str, _template_name: &str) -> ConfigurationResult<bool> {
+        Ok(true)
+    }
+}
+
+/// Create a test template loader.
+fn create_test_template_loader() -> Arc<crate::TemplateLoader> {
+    Arc::new(crate::TemplateLoader::new(Arc::new(MockTemplateRepository)))
+}
 
 // ============================================================================
 // Mock MetadataRepositoryProvider for Testing
@@ -118,7 +163,8 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
 #[test]
 fn test_manager_creation_with_valid_provider() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let template_loader = create_test_template_loader();
+    let manager = OrganizationSettingsManager::new(provider, template_loader);
 
     // Manager should be created successfully
     assert!(
@@ -131,7 +177,7 @@ fn test_manager_creation_with_valid_provider() {
 #[test]
 fn test_manager_stores_metadata_provider() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider.clone());
+    let manager = OrganizationSettingsManager::new(provider.clone(), create_test_template_loader());
 
     // Manager should store the provider reference
     assert!(
@@ -147,7 +193,7 @@ fn test_manager_stores_metadata_provider() {
 #[test]
 fn test_manager_creates_internal_merger() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     // Merger should be created
     assert!(
@@ -160,7 +206,7 @@ fn test_manager_creates_internal_merger() {
 #[test]
 fn test_manager_is_cloneable() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     // Clone should work
     let cloned = manager.clone();
@@ -175,7 +221,7 @@ fn test_manager_is_cloneable() {
 #[test]
 fn test_manager_implements_debug() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let debug_str = format!("{:?}", manager);
 
@@ -198,8 +244,10 @@ fn test_manager_implements_debug() {
 fn test_multiple_managers_can_share_provider() {
     let provider = Arc::new(MockMetadataProvider::new());
 
-    let manager1 = OrganizationSettingsManager::new(provider.clone());
-    let manager2 = OrganizationSettingsManager::new(provider.clone());
+    let manager1 =
+        OrganizationSettingsManager::new(provider.clone(), create_test_template_loader());
+    let manager2 =
+        OrganizationSettingsManager::new(provider.clone(), create_test_template_loader());
 
     // Both managers should share the same provider
     assert!(
@@ -221,7 +269,7 @@ fn test_multiple_managers_can_share_provider() {
 #[tokio::test]
 async fn test_resolve_configuration_with_global_defaults_only() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context = crate::ConfigurationContext::new("test-org", "rust-service");
 
@@ -250,7 +298,7 @@ async fn test_resolve_configuration_with_global_defaults_only() {
 #[tokio::test]
 async fn test_resolve_configuration_with_team() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context =
         crate::ConfigurationContext::new("test-org", "rust-service").with_team("backend-team");
@@ -273,7 +321,7 @@ async fn test_resolve_configuration_with_team() {
 #[tokio::test]
 async fn test_resolve_configuration_with_repository_type() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context = crate::ConfigurationContext::new("test-org", "rust-service")
         .with_repository_type("library");
@@ -296,7 +344,7 @@ async fn test_resolve_configuration_with_repository_type() {
 #[tokio::test]
 async fn test_resolve_configuration_with_team_and_repository_type() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context = crate::ConfigurationContext::new("test-org", "rust-service")
         .with_team("backend-team")
@@ -320,7 +368,7 @@ async fn test_resolve_configuration_with_team_and_repository_type() {
 #[tokio::test]
 async fn test_resolve_configuration_fails_when_metadata_repository_not_found() {
     let provider = Arc::new(MockMetadataProvider::with_failure());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context = crate::ConfigurationContext::new("test-org", "rust-service");
 
@@ -348,7 +396,7 @@ async fn test_resolve_configuration_fails_when_metadata_repository_not_found() {
 #[tokio::test]
 async fn test_resolve_configuration_tracks_configuration_sources() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context =
         crate::ConfigurationContext::new("test-org", "rust-service").with_team("backend-team");
@@ -373,7 +421,7 @@ async fn test_resolve_configuration_tracks_configuration_sources() {
 #[tokio::test]
 async fn test_resolve_configuration_is_consistent() {
     let provider = Arc::new(MockMetadataProvider::new());
-    let manager = OrganizationSettingsManager::new(provider);
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
 
     let context = crate::ConfigurationContext::new("test-org", "rust-service");
 
