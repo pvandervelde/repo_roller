@@ -219,7 +219,7 @@ impl RepositoryCleanup {
                                     repo_name = repo_name,
                                     "Repository has no creation timestamp, using epoch for age check"
                                 );
-                                chrono::DateTime::from_timestamp(0, 0).unwrap_or_else(|| Utc::now())
+                                chrono::DateTime::from_timestamp(0, 0).unwrap_or_else(Utc::now)
                             }
                         };
 
@@ -394,7 +394,7 @@ impl RepositoryCleanup {
                                         "Repository has no creation timestamp, using epoch for age check"
                                     );
                                     chrono::DateTime::from_timestamp(0, 0)
-                                        .unwrap_or_else(|| Utc::now())
+                                        .unwrap_or_else(Utc::now)
                                 }
                             };
 

@@ -69,15 +69,22 @@ async fn create_settings_manager(
     let octocrab = github_client::create_token_client(&auth.token)
         .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
 
-    let github_client = GitHubClient::new(octocrab);
+    let github_client = GitHubClient::new(octocrab.clone());
 
     // Create metadata provider
     let provider_config = MetadataProviderConfig::explicit(&state.metadata_repository_name);
     let metadata_provider = GitHubMetadataProvider::new(github_client, provider_config);
     let provider_arc = Arc::new(metadata_provider) as Arc<dyn MetadataRepositoryProvider>;
 
+    // Create template loader for template configuration resolution
+    let template_client = GitHubClient::new(octocrab);
+    let template_repo = Arc::new(config_manager::GitHubTemplateRepository::new(Arc::new(
+        template_client,
+    )));
+    let template_loader = Arc::new(config_manager::TemplateLoader::new(template_repo));
+
     // Create settings manager
-    let manager = OrganizationSettingsManager::new(provider_arc.clone());
+    let manager = OrganizationSettingsManager::new(provider_arc.clone(), template_loader);
 
     Ok((manager, provider_arc))
 }
