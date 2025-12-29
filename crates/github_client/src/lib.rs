@@ -195,15 +195,19 @@ impl GitHubClient {
         match result {
             Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
-                // Check if it's a 404 Not Found error
-                let error_msg = e.to_string();
-                if error_msg.contains("404") || error_msg.contains("Not Found") {
-                    debug!("Repository not found: {}/{}", owner, repo);
-                    return Err(Error::NotFound);
+                // Pattern match on octocrab error to check status code
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            debug!("Repository not found: {}/{}", owner, repo);
+                            return Err(Error::NotFound);
+                        }
+                    }
+                    _ => {}
                 }
-                
+
                 log_octocrab_error("Failed to get repository", e);
-                return Err(Error::InvalidResponse);
+                Err(Error::InvalidResponse)
             }
         }
     }
