@@ -195,6 +195,13 @@ impl GitHubClient {
         match result {
             Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
+                // Check if it's a 404 Not Found error
+                let error_msg = e.to_string();
+                if error_msg.contains("404") || error_msg.contains("Not Found") {
+                    debug!("Repository not found: {}/{}", owner, repo);
+                    return Err(Error::NotFound);
+                }
+                
                 log_octocrab_error("Failed to get repository", e);
                 return Err(Error::InvalidResponse);
             }

@@ -139,23 +139,21 @@ impl TemplateRepository for GitHubTemplateRepository {
                 debug!("Template exists: {}/{}", org, template_name);
                 Ok(true)
             }
-            Err(e) => {
-                let error_msg = e.to_string();
+            Err(github_client::Error::NotFound) => {
                 // 404 means doesn't exist (return false, not error)
-                if error_msg.contains("404") || error_msg.contains("Not Found") {
-                    debug!("Template not found: {}/{}", org, template_name);
-                    Ok(false)
-                } else {
-                    // Other errors are actual failures
-                    warn!(
-                        "Failed to check template existence: {}/{} - {}",
-                        org, template_name, e
-                    );
-                    Err(ConfigurationError::FileAccessError {
-                        path: format!("{}/{}", org, template_name),
-                        reason: e.to_string(),
-                    })
-                }
+                debug!("Template not found: {}/{}", org, template_name);
+                Ok(false)
+            }
+            Err(e) => {
+                // Other errors are actual failures
+                warn!(
+                    "Failed to check template existence: {}/{} - {}",
+                    org, template_name, e
+                );
+                Err(ConfigurationError::FileAccessError {
+                    path: format!("{}/{}", org, template_name),
+                    reason: e.to_string(),
+                })
             }
         }
     }
