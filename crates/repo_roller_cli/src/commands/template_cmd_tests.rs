@@ -379,3 +379,103 @@ async fn test_list_templates_with_load_error_skips_template() {
     assert_eq!(templates[0].name, "template1");
     assert_eq!(templates[1].name, "template3");
 }
+
+// ============================================================================
+// get_template_info() Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_template_info_success() {
+    let config = create_minimal_template_config("rust-library");
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("rust-library".to_string(), config),
+    );
+
+    let result = get_template_info("test-org", "rust-library", provider).await;
+
+    assert!(result.is_ok());
+    let info = result.unwrap();
+    assert_eq!(info.name, "rust-library");
+    assert_eq!(info.description, "rust-library template");
+    assert_eq!(info.author, "Test Author");
+}
+
+#[tokio::test]
+async fn test_get_template_info_full_config() {
+    let config = create_full_template_config("rust-service");
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("rust-service".to_string(), config),
+    );
+
+    let result = get_template_info("test-org", "rust-service", provider).await;
+
+    assert!(result.is_ok());
+    let info = result.unwrap();
+    assert_eq!(info.name, "rust-service");
+    assert_eq!(info.tags, vec!["rust", "service"]);
+    assert!(info.repository_type.is_some());
+    assert_eq!(info.variables.len(), 2);
+    assert_eq!(info.configuration_sections, 1);
+}
+
+#[tokio::test]
+async fn test_get_template_info_template_not_found() {
+    let provider = Arc::new(MockMetadataProvider::new());
+
+    let result = get_template_info("test-org", "nonexistent", provider).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("Template not found") || msg.contains("TemplateNotFound"));
+        }
+        _ => panic!("Expected Config error, got {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_get_template_info_configuration_missing() {
+    let provider = Arc::new(MockMetadataProvider::new().with_template_error(
+        "incomplete-template".to_string(),
+        ConfigurationError::TemplateConfigurationMissing {
+            org: "test-org".to_string(),
+            template: "incomplete-template".to_string(),
+        },
+    ));
+
+    let result = get_template_info("test-org", "incomplete-template", provider).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        Error::Config(msg) => {
+            assert!(
+                msg.contains("configuration missing")
+                    || msg.contains("TemplateConfigurationMissing")
+            );
+        }
+        _ => panic!("Expected Config error, got {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_get_template_info_parse_error() {
+    let provider = Arc::new(MockMetadataProvider::new().with_template_error(
+        "invalid-template".to_string(),
+        ConfigurationError::ParseError {
+            reason: "invalid TOML syntax in .reporoller/template.toml".to_string(),
+        },
+    ));
+
+    let result = get_template_info("test-org", "invalid-template", provider).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("Parse") || msg.contains("invalid"));
+        }
+        _ => panic!("Expected Config error, got {:?}", err),
+    }
+}
