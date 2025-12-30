@@ -305,6 +305,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 /// Returns CLI-friendly `TemplateInfo` representation.
 ///
 /// See: specs/interfaces/cli-template-operations.md
+#[allow(dead_code)] // Used in tests
 fn template_config_to_info(config: TemplateConfig) -> TemplateInfo {
     // Count non-None configuration sections
     let mut config_sections = 0;
@@ -359,6 +360,7 @@ fn template_config_to_info(config: TemplateConfig) -> TemplateInfo {
 }
 
 /// Convert business domain `TemplateVariable` to CLI `TemplateVariableInfo`.
+#[allow(dead_code)] // Used in tests
 fn template_variable_to_info(name: String, var: TemplateVariable) -> TemplateVariableInfo {
     TemplateVariableInfo {
         name,
@@ -396,22 +398,53 @@ fn template_variable_to_info(name: String, var: TemplateVariable) -> TemplateVar
 /// * `Error::GitHub` - GitHub API errors during template discovery
 ///
 /// See: specs/interfaces/cli-template-operations.md
+#[allow(dead_code)] // Used in tests and future CLI commands
 pub async fn list_templates(
     org: &str,
-    _provider: Arc<dyn MetadataRepositoryProvider>,
+    provider: Arc<dyn MetadataRepositoryProvider>,
 ) -> Result<Vec<TemplateInfo>, Error> {
     debug!("Listing templates for organization: {}", org);
 
-    // TODO: Implement template listing (Task 4.1)
-    // Steps:
-    // 1. Call provider.list_templates(org)
-    // 2. For each template name, call provider.load_template_configuration(org, name)
-    // 3. Convert each TemplateConfig to TemplateInfo using template_config_to_info()
-    // 4. Collect and return
+    // Get list of template names from provider
+    let template_names = provider
+        .list_templates(org)
+        .await
+        .map_err(|e| Error::Config(format!("Failed to list templates: {}", e)))?;
 
-    unimplemented!(
-        "Template listing not implemented - see specs/interfaces/cli-template-operations.md"
-    )
+    debug!(
+        "Found {} template(s) for organization {}",
+        template_names.len(),
+        org
+    );
+
+    // Load configuration for each template and convert to TemplateInfo
+    let mut templates = Vec::new();
+    for name in template_names {
+        match provider.load_template_configuration(org, &name).await {
+            Ok(config) => {
+                debug!("Successfully loaded configuration for template: {}", name);
+                let info = template_config_to_info(config);
+                templates.push(info);
+            }
+            Err(e) => {
+                // Log warning and skip templates that fail to load
+                // This allows listing to continue even if some templates have issues
+                tracing::warn!(
+                    "Skipping template '{}' due to configuration error: {}",
+                    name,
+                    e
+                );
+            }
+        }
+    }
+
+    debug!(
+        "Successfully processed {} template(s) for organization {}",
+        templates.len(),
+        org
+    );
+
+    Ok(templates)
 }
 
 /// Get detailed information about a specific template.

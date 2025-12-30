@@ -47,6 +47,7 @@ impl MockMetadataProvider {
         self
     }
 
+    #[allow(dead_code)] // Will be used for validation tests in task 4.3
     fn with_available_types(mut self, types: Vec<String>) -> Self {
         self.available_types = types;
         self
@@ -244,7 +245,7 @@ fn test_template_config_to_info_full() {
     assert!(project_var.is_some());
     let project_var = project_var.unwrap();
     assert_eq!(project_var.description, Some("Project name".to_string()));
-    assert_eq!(project_var.required, true);
+    assert!(project_var.required);
     assert_eq!(project_var.default_value, None);
     assert_eq!(project_var.example, Some("my-project".to_string()));
 
