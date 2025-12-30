@@ -17,8 +17,8 @@
 
 use clap::Subcommand;
 use config_manager::{
-    GitHubMetadataProvider, MetadataProviderConfig, MetadataRepositoryProvider, TemplateConfig,
-    TemplateVariable,
+    ConfigurationError, GitHubMetadataProvider, MetadataProviderConfig,
+    MetadataRepositoryProvider, TemplateConfig, TemplateVariable,
 };
 use github_client::GitHubClient;
 use keyring::Entry;
@@ -468,22 +468,46 @@ pub async fn list_templates(
 /// * `Error::GitHub` - GitHub API errors
 ///
 /// See: specs/interfaces/cli-template-operations.md
+#[allow(dead_code)] // Used in tests and future CLI commands
 pub async fn get_template_info(
     org: &str,
     template_name: &str,
-    _provider: Arc<dyn MetadataRepositoryProvider>,
+    provider: Arc<dyn MetadataRepositoryProvider>,
 ) -> Result<TemplateInfo, Error> {
-    debug!("Getting template info for {}/{} ", org, template_name);
+    debug!("Getting template info for {}/{}", org, template_name);
 
-    // TODO: Implement template info retrieval (Task 4.3)
-    // Steps:
-    // 1. Call provider.load_template_configuration(org, template_name)
-    // 2. Convert TemplateConfig to TemplateInfo using template_config_to_info()
-    // 3. Return result
+    // Load template configuration from provider
+    let config = provider
+        .load_template_configuration(org, template_name)
+        .await
+        .map_err(|e| match e {
+            ConfigurationError::TemplateNotFound { .. } => {
+                Error::Config(format!("Template '{}' not found in organization '{}'", template_name, org))
+            }
+            ConfigurationError::TemplateConfigurationMissing { .. } => {
+                Error::Config(format!(
+                    "Template '{}' exists but is missing .reporoller/template.toml configuration file",
+                    template_name
+                ))
+            }
+            ConfigurationError::ParseError { reason } => {
+                Error::Config(format!(
+                    "Failed to parse template configuration for '{}': {}",
+                    template_name, reason
+                ))
+            }
+            _ => Error::Config(format!(
+                "Failed to load template '{}': {}",
+                template_name, e
+            )),
+        })?;
 
-    unimplemented!(
-        "Template info retrieval not implemented - see specs/interfaces/cli-template-operations.md"
-    )
+    debug!("Successfully loaded configuration for template: {}", template_name);
+
+    // Convert to CLI-friendly format
+    let info = template_config_to_info(config);
+
+    Ok(info)
 }
 
 /// Validate a template's structure and configuration.
