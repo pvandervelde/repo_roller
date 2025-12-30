@@ -430,7 +430,9 @@ async fn test_get_template_info_template_not_found() {
         Error::Config(msg) => {
             // Accept either the formatted message or the original error text
             assert!(
-                msg.contains("Template") || msg.contains("not found") || msg.contains("'nonexistent'"),
+                msg.contains("Template")
+                    || msg.contains("not found")
+                    || msg.contains("'nonexistent'"),
                 "Expected template not found error, got: {}",
                 msg
             );
@@ -457,7 +459,9 @@ async fn test_get_template_info_configuration_missing() {
         Error::Config(msg) => {
             // Accept either the formatted message or the original error text
             assert!(
-                msg.contains("configuration") || msg.contains("missing") || msg.contains(".reporoller/template.toml"),
+                msg.contains("configuration")
+                    || msg.contains("missing")
+                    || msg.contains(".reporoller/template.toml"),
                 "Expected configuration missing error, got: {}",
                 msg
             );
@@ -485,4 +489,274 @@ async fn test_get_template_info_parse_error() {
         }
         _ => panic!("Expected Config error, got {:?}", err),
     }
+}
+
+// ============================================================================
+// validate_template() Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_validate_template_success_minimal() {
+    let config = create_minimal_template_config("valid-template");
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("valid-template".to_string(), config),
+    );
+
+    let result = validate_template("test-org", "valid-template", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert_eq!(validation.template_name, "valid-template");
+    assert!(validation.valid);
+    assert_eq!(validation.issues.len(), 0);
+}
+
+#[tokio::test]
+async fn test_validate_template_success_full() {
+    let config = create_full_template_config("full-template");
+    let provider = Arc::new(
+        MockMetadataProvider::new()
+            .with_template_config("full-template".to_string(), config)
+            .with_available_types(vec!["service".to_string()]),
+    );
+
+    let result = validate_template("test-org", "full-template", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert_eq!(validation.template_name, "full-template");
+    assert!(validation.valid);
+    assert_eq!(validation.issues.len(), 0);
+}
+
+#[tokio::test]
+async fn test_validate_template_empty_description_warning() {
+    let mut config = create_minimal_template_config("warning-template");
+    config.template.description = "".to_string();
+
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("warning-template".to_string(), config),
+    );
+
+    let result = validate_template("test-org", "warning-template", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    // Empty description should be a warning, not an error
+    assert!(validation.valid);
+    assert!(validation.warnings.len() > 0);
+    assert!(validation
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("description")));
+}
+
+#[tokio::test]
+async fn test_validate_template_no_tags_warning() {
+    let config = create_minimal_template_config("no-tags");
+    // minimal config already has no tags
+
+    let provider =
+        Arc::new(MockMetadataProvider::new().with_template_config("no-tags".to_string(), config));
+
+    let result = validate_template("test-org", "no-tags", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(validation.valid);
+    assert!(validation.warnings.len() > 0);
+    assert!(validation
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("tags") || w.message.contains("categorization")));
+}
+
+#[tokio::test]
+async fn test_validate_template_no_variables_warning() {
+    let config = create_minimal_template_config("no-vars");
+    // minimal config has no variables
+
+    let provider =
+        Arc::new(MockMetadataProvider::new().with_template_config("no-vars".to_string(), config));
+
+    let result = validate_template("test-org", "no-vars", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(validation.valid);
+    assert!(validation.warnings.len() > 0);
+    assert!(validation
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("variable")));
+}
+
+#[tokio::test]
+async fn test_validate_template_invalid_variable_name() {
+    let mut config = create_minimal_template_config("invalid-vars");
+    let mut variables = HashMap::new();
+    variables.insert(
+        "invalid name".to_string(), // Space in name - invalid
+        TemplateVariable {
+            description: "Invalid variable name".to_string(),
+            required: Some(true),
+            default: None,
+            example: None,
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+        },
+    );
+    config.variables = Some(variables);
+
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("invalid-vars".to_string(), config),
+    );
+
+    let result = validate_template("test-org", "invalid-vars", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(!validation.valid); // Should be invalid
+    assert!(validation.issues.len() > 0);
+    assert!(validation
+        .issues
+        .iter()
+        .any(|i| i.message.contains("variable name") || i.message.contains("identifier")));
+}
+
+#[tokio::test]
+async fn test_validate_template_required_variable_with_default() {
+    let mut config = create_minimal_template_config("contradictory-vars");
+    let mut variables = HashMap::new();
+    variables.insert(
+        "project_name".to_string(),
+        TemplateVariable {
+            description: "Project name".to_string(),
+            required: Some(true),
+            default: Some("default-value".to_string()), // Contradiction!
+            example: None,
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+        },
+    );
+    config.variables = Some(variables);
+
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("contradictory-vars".to_string(), config),
+    );
+
+    let result = validate_template("test-org", "contradictory-vars", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(!validation.valid);
+    assert!(validation.issues.len() > 0);
+    assert!(validation
+        .issues
+        .iter()
+        .any(|i| i.message.contains("required") && i.message.contains("default")));
+}
+
+#[tokio::test]
+async fn test_validate_template_required_variable_without_example_warning() {
+    let mut config = create_minimal_template_config("no-example");
+    let mut variables = HashMap::new();
+    variables.insert(
+        "service_name".to_string(),
+        TemplateVariable {
+            description: "Service name".to_string(),
+            required: Some(true),
+            default: None,
+            example: None, // No example - warning
+            pattern: None,
+            min_length: None,
+            max_length: None,
+            options: None,
+        },
+    );
+    config.variables = Some(variables);
+
+    let provider = Arc::new(
+        MockMetadataProvider::new().with_template_config("no-example".to_string(), config),
+    );
+
+    let result = validate_template("test-org", "no-example", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(validation.valid);
+    assert!(validation.warnings.len() > 0);
+    assert!(validation
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("example")));
+}
+
+#[tokio::test]
+async fn test_validate_template_invalid_repository_type() {
+    let mut config = create_minimal_template_config("invalid-type");
+    config.repository_type = Some(config_manager::RepositoryTypeSpec {
+        repository_type: "nonexistent-type".to_string(),
+        policy: config_manager::RepositoryTypePolicy::Fixed,
+    });
+
+    let provider = Arc::new(
+        MockMetadataProvider::new()
+            .with_template_config("invalid-type".to_string(), config)
+            .with_available_types(vec!["library".to_string(), "service".to_string()]),
+    );
+
+    let result = validate_template("test-org", "invalid-type", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(!validation.valid);
+    assert!(validation.issues.len() > 0);
+    assert!(validation
+        .issues
+        .iter()
+        .any(|i| i.message.contains("repository type") || i.message.contains("nonexistent-type")));
+}
+
+#[tokio::test]
+async fn test_validate_template_not_found() {
+    let provider = Arc::new(MockMetadataProvider::new());
+
+    let result = validate_template("test-org", "missing", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(!validation.valid);
+    assert_eq!(validation.template_name, "missing");
+    assert!(validation.issues.len() > 0);
+    assert!(validation
+        .issues
+        .iter()
+        .any(|i| i.message.contains("not found") || i.message.contains("Template")));
+}
+
+#[tokio::test]
+async fn test_validate_template_configuration_missing() {
+    let provider = Arc::new(MockMetadataProvider::new().with_template_error(
+        "incomplete".to_string(),
+        ConfigurationError::TemplateConfigurationMissing {
+            org: "test-org".to_string(),
+            template: "incomplete".to_string(),
+        },
+    ));
+
+    let result = validate_template("test-org", "incomplete", provider).await;
+
+    assert!(result.is_ok());
+    let validation = result.unwrap();
+    assert!(!validation.valid);
+    assert!(validation.issues.len() > 0);
+    assert!(validation
+        .issues
+        .iter()
+        .any(|i| i.message.contains("configuration") || i.message.contains("template.toml")));
 }
