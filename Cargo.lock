@@ -1653,6 +1653,7 @@ dependencies = [
  "config_manager",
  "github_client",
  "regex",
+ "repo_roller_cli",
  "repo_roller_core",
  "reqwest",
  "serde",
