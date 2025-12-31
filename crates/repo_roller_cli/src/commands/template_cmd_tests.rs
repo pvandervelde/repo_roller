@@ -794,7 +794,7 @@ fn test_format_template_info_json() {
         configuration_sections: 3,
     };
 
-    let result = format_output(&info, "json");
+    let result = format_template_info(&info, "json");
     assert!(result.is_ok());
     let json_str = result.unwrap();
     
@@ -827,7 +827,7 @@ fn test_format_template_info_pretty() {
         configuration_sections: 3,
     };
 
-    let result = format_output(&info, "pretty");
+    let result = format_template_info(&info, "pretty");
     assert!(result.is_ok());
     let output = result.unwrap();
     
@@ -853,7 +853,7 @@ fn test_format_validation_result_json() {
         }],
     };
 
-    let result = format_output(&result_data, "json");
+    let result = format_validation_result(&result_data, "json");
     assert!(result.is_ok());
     let json_str = result.unwrap();
     
@@ -884,7 +884,7 @@ fn test_format_validation_result_with_errors_pretty() {
         warnings: vec![],
     };
 
-    let result = format_output(&result_data, "pretty");
+    let result = format_validation_result(&result_data, "pretty");
     assert!(result.is_ok());
     let output = result.unwrap();
     
@@ -913,7 +913,7 @@ fn test_format_validation_result_with_warnings_pretty() {
         ],
     };
 
-    let result = format_output(&result_data, "pretty");
+    let result = format_validation_result(&result_data, "pretty");
     assert!(result.is_ok());
     let output = result.unwrap();
     
@@ -935,7 +935,7 @@ fn test_format_output_invalid_format() {
         configuration_sections: 0,
     };
 
-    let result = format_output(&info, "invalid");
+    let result = format_template_info(&info, "invalid");
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(matches!(err, Error::InvalidArguments(_)));

@@ -16,9 +16,10 @@
 //! ```
 
 use clap::Subcommand;
+use colored::Colorize;
 use config_manager::{
-    ConfigurationError, GitHubMetadataProvider, MetadataProviderConfig,
-    MetadataRepositoryProvider, TemplateConfig, TemplateVariable,
+    ConfigurationError, GitHubMetadataProvider, MetadataProviderConfig, MetadataRepositoryProvider,
+    TemplateConfig, TemplateVariable,
 };
 use github_client::GitHubClient;
 use keyring::Entry;
@@ -481,28 +482,28 @@ pub async fn get_template_info(
         .load_template_configuration(org, template_name)
         .await
         .map_err(|e| match e {
-            ConfigurationError::TemplateNotFound { .. } => {
-                Error::Config(format!("Template '{}' not found in organization '{}'", template_name, org))
-            }
-            ConfigurationError::TemplateConfigurationMissing { .. } => {
-                Error::Config(format!(
-                    "Template '{}' exists but is missing .reporoller/template.toml configuration file",
-                    template_name
-                ))
-            }
-            ConfigurationError::ParseError { reason } => {
-                Error::Config(format!(
-                    "Failed to parse template configuration for '{}': {}",
-                    template_name, reason
-                ))
-            }
+            ConfigurationError::TemplateNotFound { .. } => Error::Config(format!(
+                "Template '{}' not found in organization '{}'",
+                template_name, org
+            )),
+            ConfigurationError::TemplateConfigurationMissing { .. } => Error::Config(format!(
+                "Template '{}' exists but is missing .reporoller/template.toml configuration file",
+                template_name
+            )),
+            ConfigurationError::ParseError { reason } => Error::Config(format!(
+                "Failed to parse template configuration for '{}': {}",
+                template_name, reason
+            )),
             _ => Error::Config(format!(
                 "Failed to load template '{}': {}",
                 template_name, e
             )),
         })?;
 
-    debug!("Successfully loaded configuration for template: {}", template_name);
+    debug!(
+        "Successfully loaded configuration for template: {}",
+        template_name
+    );
 
     // Convert to CLI-friendly format
     let info = template_config_to_info(config);
@@ -551,7 +552,10 @@ pub async fn validate_template(
     let mut warnings = Vec::new();
 
     // Try to load template configuration
-    let config = match provider.load_template_configuration(org, template_name).await {
+    let config = match provider
+        .load_template_configuration(org, template_name)
+        .await
+    {
         Ok(cfg) => cfg,
         Err(e) => {
             // Template loading failed - return validation result with error
@@ -559,12 +563,16 @@ pub async fn validate_template(
                 ConfigurationError::TemplateNotFound { .. } => ValidationIssue {
                     severity: "error".to_string(),
                     location: "template".to_string(),
-                    message: format!("Template '{}' not found in organization '{}'", template_name, org),
+                    message: format!(
+                        "Template '{}' not found in organization '{}'",
+                        template_name, org
+                    ),
                 },
                 ConfigurationError::TemplateConfigurationMissing { .. } => ValidationIssue {
                     severity: "error".to_string(),
                     location: ".reporoller/template.toml".to_string(),
-                    message: "Template configuration file (.reporoller/template.toml) is missing".to_string(),
+                    message: "Template configuration file (.reporoller/template.toml) is missing"
+                        .to_string(),
                 },
                 ConfigurationError::ParseError { reason } => ValidationIssue {
                     severity: "error".to_string(),
@@ -657,10 +665,7 @@ pub async fn validate_template(
             if var_def.required.unwrap_or(false) && var_def.example.is_none() {
                 warnings.push(ValidationWarning {
                     category: "best_practice".to_string(),
-                    message: format!(
-                        "Required variable '{}' has no example value",
-                        var_name
-                    ),
+                    message: format!("Required variable '{}' has no example value", var_name),
                 });
             }
         }
@@ -678,7 +683,10 @@ pub async fn validate_template(
         // If it fails, we'll note it as a warning rather than an error
         match provider.discover_metadata_repository(org).await {
             Ok(metadata_repo) => {
-                match provider.list_available_repository_types(&metadata_repo).await {
+                match provider
+                    .list_available_repository_types(&metadata_repo)
+                    .await
+                {
                     Ok(available_types) => {
                         if !available_types.contains(&repo_type_spec.repository_type) {
                             issues.push(ValidationIssue {
@@ -706,7 +714,10 @@ pub async fn validate_template(
             Err(e) => {
                 warnings.push(ValidationWarning {
                     category: "validation_incomplete".to_string(),
-                    message: format!("Could not discover metadata repository to verify repository type: {}", e),
+                    message: format!(
+                        "Could not discover metadata repository to verify repository type: {}",
+                        e
+                    ),
                 });
             }
         }
@@ -726,20 +737,170 @@ pub async fn validate_template(
 // Helper Functions
 // ============================================================================
 
-/// Helper function to format output as JSON or pretty-printed debug format.
-fn format_output<T: serde::Serialize + std::fmt::Debug>(
-    data: &T,
-    format: &str,
-) -> Result<String, Error> {
+/// Format TemplateInfo for display.
+fn format_template_info(info: &TemplateInfo, format: &str) -> Result<String, Error> {
     match format {
-        "json" => serde_json::to_string_pretty(data)
+        "json" => serde_json::to_string_pretty(info)
             .map_err(|e| Error::Config(format!("Failed to serialize to JSON: {}", e))),
-        "pretty" => Ok(format!("{:#?}", data)),
+        "pretty" => Ok(format_template_info_pretty(info)),
         _ => Err(Error::InvalidArguments(format!(
             "Invalid format: '{}'. Use 'json' or 'pretty'.",
             format
         ))),
     }
+}
+
+/// Format TemplateValidationResult for display.
+fn format_validation_result(
+    result: &TemplateValidationResult,
+    format: &str,
+) -> Result<String, Error> {
+    match format {
+        "json" => serde_json::to_string_pretty(result)
+            .map_err(|e| Error::Config(format!("Failed to serialize to JSON: {}", e))),
+        "pretty" => Ok(format_validation_result_pretty(result)),
+        _ => Err(Error::InvalidArguments(format!(
+            "Invalid format: '{}'. Use 'json' or 'pretty'.",
+            format
+        ))),
+    }
+}
+
+/// Format TemplateInfo in pretty/human-readable format.
+fn format_template_info_pretty(info: &TemplateInfo) -> String {
+    let mut output = String::new();
+
+    // Header
+    output.push_str(&format!("\n{}\n\n", info.name.bold().bright_cyan()));
+
+    // Description
+    output.push_str(&format!("{}: {}\n", "Description".bold(), info.description));
+    output.push_str(&format!("{}: {}\n", "Author".bold(), info.author));
+
+    // Tags
+    if !info.tags.is_empty() {
+        let tags_str = info
+            .tags
+            .iter()
+            .map(|t| t.blue().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        output.push_str(&format!("{}: {}\n", "Tags".bold(), tags_str));
+    } else {
+        output.push_str(&format!("{}: {}\n", "Tags".bold(), "(none)".dimmed()));
+    }
+
+    // Repository Type
+    if let Some(ref rt) = info.repository_type {
+        output.push_str(&format!(
+            "{}: {} ({})\n",
+            "Repository Type".bold(),
+            rt.type_name.green(),
+            rt.policy
+        ));
+    }
+
+    // Variables
+    output.push_str(&format!("\n{}\n", "Variables:".bold()));
+    if info.variables.is_empty() {
+        output.push_str(&format!("  {}\n", "(none defined)".dimmed()));
+    } else {
+        for var in &info.variables {
+            let req_marker = if var.required {
+                "[required]".red().to_string()
+            } else {
+                "[optional]".dimmed().to_string()
+            };
+
+            output.push_str(&format!("  {} {}\n", "✓".green(), var.name.bold()));
+
+            if let Some(ref desc) = var.description {
+                output.push_str(&format!("    {}\n", desc));
+            }
+
+            output.push_str(&format!("    {}\n", req_marker));
+
+            if let Some(ref default) = var.default_value {
+                output.push_str(&format!("    {}: {}\n", "Default".dimmed(), default));
+            }
+
+            if let Some(ref example) = var.example {
+                output.push_str(&format!("    {}: {}\n", "Example".dimmed(), example));
+            }
+
+            output.push('\n');
+        }
+    }
+
+    // Configuration sections
+    output.push_str(&format!(
+        "{}: {} sections defined\n",
+        "Configuration".bold(),
+        info.configuration_sections
+    ));
+
+    output
+}
+
+/// Format TemplateValidationResult in pretty/human-readable format.
+fn format_validation_result_pretty(result: &TemplateValidationResult) -> String {
+    let mut output = String::new();
+
+    // Header
+    output.push_str(&format!(
+        "\n{} {}\n\n",
+        "Validating template:".bold(),
+        result.template_name.bright_cyan()
+    ));
+
+    // Overall status
+    if result.valid {
+        output.push_str(&format!("{}\n\n", "✓ Template is VALID".green().bold()));
+    } else {
+        output.push_str(&format!(
+            "{}\n\n",
+            "✗ Template validation FAILED".red().bold()
+        ));
+    }
+
+    // Issues
+    if !result.issues.is_empty() {
+        output.push_str(&format!("{}:\n", "Issues".red().bold()));
+        for issue in &result.issues {
+            let marker = if issue.severity == "error" {
+                "✗".red()
+            } else {
+                "⚠".yellow()
+            };
+            output.push_str(&format!(
+                "  {} {}: {}\n",
+                marker,
+                issue.location.dimmed(),
+                issue.message
+            ));
+        }
+        output.push('\n');
+    }
+
+    // Warnings
+    if !result.warnings.is_empty() {
+        output.push_str(&format!(
+            "{} ({}):\n",
+            "Warnings".yellow().bold(),
+            result.warnings.len()
+        ));
+        for warning in &result.warnings {
+            output.push_str(&format!(
+                "  {} {}: {}\n",
+                "⚠".yellow(),
+                warning.category.dimmed(),
+                warning.message
+            ));
+        }
+        output.push('\n');
+    }
+
+    output
 }
 
 /// Gets detailed information about a template.
@@ -765,7 +926,7 @@ async fn template_info(org: &str, template: &str, format: &str) -> Result<(), Er
     let info = get_template_info(org, template, provider).await?;
 
     // Format and display output
-    let output = format_output(&info, format)?;
+    let output = format_template_info(&info, format)?;
     println!("{}", output);
 
     Ok(())
@@ -794,7 +955,7 @@ async fn template_validate(org: &str, template: &str, format: &str) -> Result<()
     let result = validate_template(org, template, provider).await?;
 
     // Format and display output
-    let output = format_output(&result, format)?;
+    let output = format_validation_result(&result, format)?;
     println!("{}", output);
 
     // Return error if validation failed
