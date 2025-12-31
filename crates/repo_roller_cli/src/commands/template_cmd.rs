@@ -248,7 +248,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 
     let app_id_str = app_id_entry
         .get_password()
-        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}. Run 'repo-roller auth setup' to configure GitHub App credentials.", e)))?;
 
     let app_id: u64 = app_id_str
         .parse()
@@ -260,7 +260,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 
     let key_path = key_path_entry
         .get_password()
-        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}. Run 'repo-roller auth setup' to configure GitHub App credentials.", e)))?;
 
     // Read private key file
     let private_key = std::fs::read_to_string(&key_path).map_err(|e| {
@@ -273,7 +273,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
     // Create authenticated GitHub client
     let octocrab = github_client::create_app_client(app_id, &private_key)
         .await
-        .map_err(|e| Error::Auth(format!("Failed to create GitHub App client: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to create GitHub App client: {}. Verify your GitHub App credentials with 'repo-roller auth setup'.", e)))?;
 
     let github_client = GitHubClient::new(octocrab);
 
