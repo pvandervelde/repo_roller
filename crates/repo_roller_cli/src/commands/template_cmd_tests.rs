@@ -940,3 +940,73 @@ fn test_format_output_invalid_format() {
     let err = result.unwrap_err();
     assert!(matches!(err, Error::InvalidArguments(_)));
 }
+// ============================================================================
+// Error Message Enhancement Tests
+// ============================================================================
+
+/// Test that template not found errors include helpful suggestions.
+#[tokio::test]
+async fn test_error_template_not_found_includes_suggestions() {
+    let provider = Arc::new(MockMetadataProvider::new().with_template_error(
+        "nonexistent".to_string(),
+        ConfigurationError::TemplateNotFound {
+            org: "test-org".to_string(),
+            template: "nonexistent".to_string(),
+        },
+    ));
+
+    let result = get_template_info("test-org", "nonexistent", provider).await;
+
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    
+    // Error should mention the template name and org
+    assert!(err_msg.contains("nonexistent"));
+    assert!(err_msg.contains("test-org"));
+    // Should be a Config error
+    assert!(err_msg.contains("Configuration error"));
+}
+
+/// Test that parse errors include details about the issue.
+#[tokio::test]
+async fn test_error_parse_includes_details() {
+    let provider = Arc::new(MockMetadataProvider::new().with_template_error(
+        "malformed".to_string(),
+        ConfigurationError::ParseError {
+            reason: "missing field 
+ame at line 5".to_string(),
+        },
+    ));
+
+    let result = get_template_info("test-org", "malformed", provider).await;
+
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    
+    // Should include parse error details
+    assert!(err_msg.contains("Failed to parse") || err_msg.contains("parse"));
+    assert!(err_msg.contains("malformed"));
+    // Should include the specific reason
+    assert!(err_msg.contains("missing field") || err_msg.contains("line 5"));
+}
+
+/// Test that missing configuration file errors are clear.
+#[tokio::test]
+async fn test_error_missing_configuration_file_clear() {
+    let provider = Arc::new(MockMetadataProvider::new().with_template_error(
+        "no-config".to_string(),
+        ConfigurationError::TemplateConfigurationMissing {
+            org: "test-org".to_string(),
+            template: "no-config".to_string(),
+        },
+    ));
+
+    let result = get_template_info("test-org", "no-config", provider).await;
+
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    
+    // Should mention the missing configuration file
+    assert!(err_msg.contains(".reporoller/template.toml") || err_msg.contains("configuration file"));
+    assert!(err_msg.contains("missing") || err_msg.contains("exists but"));
+}
