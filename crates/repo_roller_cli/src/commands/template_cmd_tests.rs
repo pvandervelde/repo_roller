@@ -631,7 +631,9 @@ async fn test_validate_template_invalid_variable_name() {
     assert!(validation
         .issues
         .iter()
-        .any(|i| i.message.contains("Variable") && i.message.contains("invalid") && i.message.contains("characters")));
+        .any(|i| i.message.contains("Variable")
+            && i.message.contains("invalid")
+            && i.message.contains("characters")));
 }
 
 #[tokio::test]
@@ -797,7 +799,7 @@ fn test_format_template_info_json() {
     let result = format_template_info(&info, "json");
     assert!(result.is_ok());
     let json_str = result.unwrap();
-    
+
     // Verify it's valid JSON
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed["name"], "rust-library");
@@ -830,7 +832,7 @@ fn test_format_template_info_pretty() {
     let result = format_template_info(&info, "pretty");
     assert!(result.is_ok());
     let output = result.unwrap();
-    
+
     // Verify key information is present
     assert!(output.contains("rust-library"));
     assert!(output.contains("Platform Team"));
@@ -856,7 +858,7 @@ fn test_format_validation_result_json() {
     let result = format_validation_result(&result_data, "json");
     assert!(result.is_ok());
     let json_str = result.unwrap();
-    
+
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed["valid"], true);
     assert_eq!(parsed["template_name"], "test-template");
@@ -887,7 +889,7 @@ fn test_format_validation_result_with_errors_pretty() {
     let result = format_validation_result(&result_data, "pretty");
     assert!(result.is_ok());
     let output = result.unwrap();
-    
+
     // Verify issues are displayed
     assert!(output.contains("invalid-template"));
     assert!(output.contains("name") || output.contains("field"));
@@ -916,7 +918,7 @@ fn test_format_validation_result_with_warnings_pretty() {
     let result = format_validation_result(&result_data, "pretty");
     assert!(result.is_ok());
     let output = result.unwrap();
-    
+
     // Verify warnings are displayed
     assert!(output.contains("warning-template"));
     assert!(output.contains("description") || output.contains("variables"));
@@ -959,7 +961,7 @@ async fn test_error_template_not_found_includes_suggestions() {
 
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    
+
     // Error should mention the template name and org
     assert!(err_msg.contains("nonexistent"));
     assert!(err_msg.contains("test-org"));
@@ -973,8 +975,7 @@ async fn test_error_parse_includes_details() {
     let provider = Arc::new(MockMetadataProvider::new().with_template_error(
         "malformed".to_string(),
         ConfigurationError::ParseError {
-            reason: "missing field 
-ame at line 5".to_string(),
+            reason: "missing field name at line 5".to_string(),
         },
     ));
 
@@ -982,7 +983,7 @@ ame at line 5".to_string(),
 
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    
+
     // Should include parse error details
     assert!(err_msg.contains("Failed to parse") || err_msg.contains("parse"));
     assert!(err_msg.contains("malformed"));
@@ -1005,8 +1006,10 @@ async fn test_error_missing_configuration_file_clear() {
 
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    
+
     // Should mention the missing configuration file
-    assert!(err_msg.contains(".reporoller/template.toml") || err_msg.contains("configuration file"));
+    assert!(
+        err_msg.contains(".reporoller/template.toml") || err_msg.contains("configuration file")
+    );
     assert!(err_msg.contains("missing") || err_msg.contains("exists but"));
 }
