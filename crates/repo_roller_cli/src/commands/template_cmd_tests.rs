@@ -768,3 +768,175 @@ async fn test_validate_template_configuration_missing() {
         .iter()
         .any(|i| i.message.contains("configuration") || i.message.contains("template.toml")));
 }
+// ============================================================================
+// Output Formatting Tests
+// ============================================================================
+
+/// Test formatting TemplateInfo as JSON.
+#[test]
+fn test_format_template_info_json() {
+    let info = TemplateInfo {
+        name: "rust-library".to_string(),
+        description: "A Rust library template".to_string(),
+        author: "Platform Team".to_string(),
+        tags: vec!["rust".to_string(), "library".to_string()],
+        repository_type: Some(RepositoryTypeInfo {
+            type_name: "library".to_string(),
+            policy: "fixed".to_string(),
+        }),
+        variables: vec![TemplateVariableInfo {
+            name: "project_name".to_string(),
+            description: Some("Project name".to_string()),
+            required: true,
+            default_value: None,
+            example: Some("my-lib".to_string()),
+        }],
+        configuration_sections: 3,
+    };
+
+    let result = format_output(&info, "json");
+    assert!(result.is_ok());
+    let json_str = result.unwrap();
+    
+    // Verify it's valid JSON
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    assert_eq!(parsed["name"], "rust-library");
+    assert_eq!(parsed["author"], "Platform Team");
+    assert!(json_str.contains("rust-library"));
+}
+
+/// Test formatting TemplateInfo as pretty output.
+#[test]
+fn test_format_template_info_pretty() {
+    let info = TemplateInfo {
+        name: "rust-library".to_string(),
+        description: "A Rust library template".to_string(),
+        author: "Platform Team".to_string(),
+        tags: vec!["rust".to_string(), "library".to_string()],
+        repository_type: Some(RepositoryTypeInfo {
+            type_name: "library".to_string(),
+            policy: "fixed".to_string(),
+        }),
+        variables: vec![TemplateVariableInfo {
+            name: "project_name".to_string(),
+            description: Some("Project name".to_string()),
+            required: true,
+            default_value: None,
+            example: Some("my-lib".to_string()),
+        }],
+        configuration_sections: 3,
+    };
+
+    let result = format_output(&info, "pretty");
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    
+    // Verify key information is present
+    assert!(output.contains("rust-library"));
+    assert!(output.contains("Platform Team"));
+    assert!(output.contains("A Rust library template"));
+    assert!(output.contains("rust"));
+    assert!(output.contains("library"));
+    assert!(output.contains("project_name"));
+}
+
+/// Test formatting ValidationResult as JSON.
+#[test]
+fn test_format_validation_result_json() {
+    let result_data = TemplateValidationResult {
+        template_name: "test-template".to_string(),
+        valid: true,
+        issues: vec![],
+        warnings: vec![ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "Consider adding more tags".to_string(),
+        }],
+    };
+
+    let result = format_output(&result_data, "json");
+    assert!(result.is_ok());
+    let json_str = result.unwrap();
+    
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    assert_eq!(parsed["valid"], true);
+    assert_eq!(parsed["template_name"], "test-template");
+    assert_eq!(parsed["warnings"].as_array().unwrap().len(), 1);
+}
+
+/// Test formatting ValidationResult with errors as pretty output.
+#[test]
+fn test_format_validation_result_with_errors_pretty() {
+    let result_data = TemplateValidationResult {
+        template_name: "invalid-template".to_string(),
+        valid: false,
+        issues: vec![
+            ValidationIssue {
+                severity: "error".to_string(),
+                location: "template.toml".to_string(),
+                message: "Missing required field 'name'".to_string(),
+            },
+            ValidationIssue {
+                severity: "error".to_string(),
+                location: "variables.service_name".to_string(),
+                message: "Invalid variable name format".to_string(),
+            },
+        ],
+        warnings: vec![],
+    };
+
+    let result = format_output(&result_data, "pretty");
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    
+    // Verify issues are displayed
+    assert!(output.contains("invalid-template"));
+    assert!(output.contains("name") || output.contains("field"));
+    assert!(output.contains("variable") || output.contains("service_name"));
+}
+
+/// Test formatting ValidationResult with warnings as pretty output.
+#[test]
+fn test_format_validation_result_with_warnings_pretty() {
+    let result_data = TemplateValidationResult {
+        template_name: "warning-template".to_string(),
+        valid: true,
+        issues: vec![],
+        warnings: vec![
+            ValidationWarning {
+                category: "best_practice".to_string(),
+                message: "No description provided".to_string(),
+            },
+            ValidationWarning {
+                category: "completeness".to_string(),
+                message: "No variables defined".to_string(),
+            },
+        ],
+    };
+
+    let result = format_output(&result_data, "pretty");
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    
+    // Verify warnings are displayed
+    assert!(output.contains("warning-template"));
+    assert!(output.contains("description") || output.contains("variables"));
+}
+
+/// Test invalid format string returns error.
+#[test]
+fn test_format_output_invalid_format() {
+    let info = TemplateInfo {
+        name: "test".to_string(),
+        description: "Test".to_string(),
+        author: "Author".to_string(),
+        tags: vec![],
+        repository_type: None,
+        variables: vec![],
+        configuration_sections: 0,
+    };
+
+    let result = format_output(&info, "invalid");
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, Error::InvalidArguments(_)));
+}
