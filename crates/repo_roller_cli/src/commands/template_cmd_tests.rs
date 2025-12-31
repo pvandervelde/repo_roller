@@ -4,6 +4,7 @@
 
 use super::*;
 use async_trait::async_trait;
+use chrono::Utc;
 use config_manager::{
     settings::{BranchProtectionSettings, PullRequestSettings, RepositorySettings},
     ConfigurationError, ConfigurationResult, GlobalDefaults, LabelConfig, MetadataRepository,
@@ -58,9 +59,16 @@ impl MockMetadataProvider {
 impl MetadataRepositoryProvider for MockMetadataProvider {
     async fn discover_metadata_repository(
         &self,
-        _org: &str,
+        org: &str,
     ) -> ConfigurationResult<MetadataRepository> {
-        unimplemented!("Not needed for these tests")
+        Ok(MetadataRepository {
+            organization: org.to_string(),
+            repository_name: ".reporoller-test".to_string(),
+            discovery_method: config_manager::DiscoveryMethod::ConfigurationBased {
+                repository_name: ".reporoller-test".to_string(),
+            },
+            last_updated: Utc::now(),
+        })
     }
 
     async fn load_global_defaults(
@@ -623,7 +631,7 @@ async fn test_validate_template_invalid_variable_name() {
     assert!(validation
         .issues
         .iter()
-        .any(|i| i.message.contains("variable name") || i.message.contains("identifier")));
+        .any(|i| i.message.contains("Variable") && i.message.contains("invalid") && i.message.contains("characters")));
 }
 
 #[tokio::test]

@@ -539,25 +539,187 @@ pub async fn get_template_info(
 /// not as function errors.
 ///
 /// See: specs/interfaces/cli-template-operations.md
+#[allow(dead_code)] // Used in tests and future CLI commands
 pub async fn validate_template(
     org: &str,
     template_name: &str,
-    _provider: Arc<dyn MetadataRepositoryProvider>,
+    provider: Arc<dyn MetadataRepositoryProvider>,
 ) -> Result<TemplateValidationResult, Error> {
     debug!("Validating template {}/{}", org, template_name);
 
-    // TODO: Implement template validation (Task 4.2)
-    // Steps:
-    // 1. Try to load template configuration
-    // 2. Check for required fields (template.name, description, author)
-    // 3. Validate variable definitions
-    // 4. Verify repository type exists (if specified)
-    // 5. Check for best practice warnings
-    // 6. Return validation result
+    let mut issues = Vec::new();
+    let mut warnings = Vec::new();
 
-    unimplemented!(
-        "Template validation not implemented - see specs/interfaces/cli-template-operations.md"
-    )
+    // Try to load template configuration
+    let config = match provider.load_template_configuration(org, template_name).await {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            // Template loading failed - return validation result with error
+            let issue = match e {
+                ConfigurationError::TemplateNotFound { .. } => ValidationIssue {
+                    severity: "error".to_string(),
+                    location: "template".to_string(),
+                    message: format!("Template '{}' not found in organization '{}'", template_name, org),
+                },
+                ConfigurationError::TemplateConfigurationMissing { .. } => ValidationIssue {
+                    severity: "error".to_string(),
+                    location: ".reporoller/template.toml".to_string(),
+                    message: "Template configuration file (.reporoller/template.toml) is missing".to_string(),
+                },
+                ConfigurationError::ParseError { reason } => ValidationIssue {
+                    severity: "error".to_string(),
+                    location: ".reporoller/template.toml".to_string(),
+                    message: format!("Failed to parse template configuration: {}", reason),
+                },
+                _ => ValidationIssue {
+                    severity: "error".to_string(),
+                    location: "template".to_string(),
+                    message: format!("Failed to load template: {}", e),
+                },
+            };
+            issues.push(issue);
+
+            return Ok(TemplateValidationResult {
+                template_name: template_name.to_string(),
+                valid: false,
+                issues,
+                warnings,
+            });
+        }
+    };
+
+    // Validate template metadata
+    if config.template.name.is_empty() {
+        issues.push(ValidationIssue {
+            severity: "error".to_string(),
+            location: "template.name".to_string(),
+            message: "Template name cannot be empty".to_string(),
+        });
+    }
+
+    if config.template.description.is_empty() {
+        warnings.push(ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "Template description is empty or missing".to_string(),
+        });
+    }
+
+    if config.template.author.is_empty() {
+        issues.push(ValidationIssue {
+            severity: "error".to_string(),
+            location: "template.author".to_string(),
+            message: "Template author cannot be empty".to_string(),
+        });
+    }
+
+    if config.template.tags.is_empty() {
+        warnings.push(ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "No tags defined for template categorization".to_string(),
+        });
+    }
+
+    // Validate variables
+    if let Some(ref variables) = config.variables {
+        if variables.is_empty() {
+            warnings.push(ValidationWarning {
+                category: "best_practice".to_string(),
+                message: "No variables defined - template is not customizable".to_string(),
+            });
+        }
+
+        for (var_name, var_def) in variables {
+            // Validate variable name (alphanumeric + underscore only)
+            if !var_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                issues.push(ValidationIssue {
+                    severity: "error".to_string(),
+                    location: format!("variables.{}", var_name),
+                    message: format!(
+                        "Variable name '{}' contains invalid characters. Only alphanumeric and underscore allowed.",
+                        var_name
+                    ),
+                });
+            }
+
+            // Check for contradiction: required + default
+            if var_def.required.unwrap_or(false) && var_def.default.is_some() {
+                issues.push(ValidationIssue {
+                    severity: "error".to_string(),
+                    location: format!("variables.{}", var_name),
+                    message: format!(
+                        "Variable '{}' is marked as required but has a default value (contradiction)",
+                        var_name
+                    ),
+                });
+            }
+
+            // Warn about required variables without examples
+            if var_def.required.unwrap_or(false) && var_def.example.is_none() {
+                warnings.push(ValidationWarning {
+                    category: "best_practice".to_string(),
+                    message: format!(
+                        "Required variable '{}' has no example value",
+                        var_name
+                    ),
+                });
+            }
+        }
+    } else {
+        warnings.push(ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "No variables defined - template is not customizable".to_string(),
+        });
+    }
+
+    // Validate repository type if specified
+    if let Some(ref repo_type_spec) = config.repository_type {
+        // We need to discover the metadata repository to check available types
+        // For now, we'll try to get available types if possible
+        // If it fails, we'll note it as a warning rather than an error
+        match provider.discover_metadata_repository(org).await {
+            Ok(metadata_repo) => {
+                match provider.list_available_repository_types(&metadata_repo).await {
+                    Ok(available_types) => {
+                        if !available_types.contains(&repo_type_spec.repository_type) {
+                            issues.push(ValidationIssue {
+                                severity: "error".to_string(),
+                                location: "repository_type.type".to_string(),
+                                message: format!(
+                                    "Repository type '{}' does not exist in organization. Available types: {}",
+                                    repo_type_spec.repository_type,
+                                    available_types.join(", ")
+                                ),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        warnings.push(ValidationWarning {
+                            category: "validation_incomplete".to_string(),
+                            message: format!(
+                                "Could not verify repository type '{}': {}",
+                                repo_type_spec.repository_type, e
+                            ),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                warnings.push(ValidationWarning {
+                    category: "validation_incomplete".to_string(),
+                    message: format!("Could not discover metadata repository to verify repository type: {}", e),
+                });
+            }
+        }
+    }
+
+    let valid = issues.is_empty();
+
+    Ok(TemplateValidationResult {
+        template_name: template_name.to_string(),
+        valid,
+        issues,
+        warnings,
+    })
 }
 
 // ============================================================================
