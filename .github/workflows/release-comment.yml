@@ -1,0 +1,229 @@
+name: Release Version Override
+
+on:
+    issue_comment:
+        types: [created]
+
+permissions:
+    contents: write
+    pull-requests: write
+    issues: read
+
+jobs:
+    handle-version-override:
+        name: Handle version override command
+        # Only run on PR comments
+        if: github.event.issue.pull_request != null
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check if comment is version override command
+              id: check_command
+              run: |
+                  COMMENT="${{ github.event.comment.body }}"
+
+                  if [[ "${COMMENT}" =~ ^/release[[:space:]]+(major|minor|patch)[[:space:]]*$ ]]; then
+                    VERSION_TYPE=$(echo "${COMMENT}" | sed -n 's|^/release[[:space:]]\+\(major\|minor\|patch\)[[:space:]]*$|\1|p')
+                    echo "Valid version override command detected: ${VERSION_TYPE}"
+                    echo "is_command=true" >> $GITHUB_OUTPUT
+                    echo "version_type=${VERSION_TYPE}" >> $GITHUB_OUTPUT
+                  else
+                    echo "Not a version override command"
+                    echo "is_command=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Check if PR has release label
+              if: steps.check_command.outputs.is_command == 'true'
+              id: check_pr
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  PR_NUMBER="${{ github.event.issue.number }}"
+
+                  # Get PR labels
+                  LABELS=$(gh pr view "${PR_NUMBER}" --json labels --jq '.labels[].name')
+
+                  if echo "${LABELS}" | grep -q "^release$"; then
+                    echo "PR has release label"
+                    echo "is_release_pr=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "PR does not have release label"
+                    echo "is_release_pr=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Check commenter permissions
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true'
+              id: check_permissions
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  COMMENTER="${{ github.event.comment.user.login }}"
+
+                  # Check if user has write permission or higher
+                  PERMISSION=$(gh api repos/${{ github.repository }}/collaborators/${COMMENTER}/permission --jq '.permission')
+
+                  if [[ "${PERMISSION}" == "admin" || "${PERMISSION}" == "write" ]]; then
+                    echo "User ${COMMENTER} has ${PERMISSION} permission"
+                    echo "has_permission=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "User ${COMMENTER} has ${PERMISSION} permission (insufficient)"
+                    echo "has_permission=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Add reaction to indicate processing
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true' && steps.check_permissions.outputs.has_permission == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  COMMENT_ID="${{ github.event.comment.id }}"
+
+                  # Add eyes reaction to show we're processing
+                  gh api \
+                    --method POST \
+                    -H "Accept: application/vnd.github+json" \
+                    repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions \
+                    -f content='eyes'
+
+            - name: Checkout code
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true' && steps.check_permissions.outputs.has_permission == 'true'
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+              with:
+                  fetch-depth: 0
+
+            - name: Get current version
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true' && steps.check_permissions.outputs.has_permission == 'true'
+              id: get_version
+              run: |
+                  # Get version from Cargo.toml
+                  CURRENT_VERSION=$(grep "^version = " Cargo.toml | head -n 1 | sed 's/version = "\(.*\)"/\1/')
+                  echo "Current version in PR: ${CURRENT_VERSION}"
+                  echo "CURRENT_VERSION=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+
+            - name: Validate version override
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true' && steps.check_permissions.outputs.has_permission == 'true'
+              id: validate
+              run: |
+                  VERSION_TYPE="${{ steps.check_command.outputs.version_type }}"
+                  CURRENT="${{ steps.get_version.outputs.CURRENT_VERSION }}"
+
+                  # Parse current version
+                  IFS='.' read -r MAJOR MINOR PATCH <<< "${CURRENT}"
+
+                  # Get latest tag to compare
+                  if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+                    LATEST_TAG=$(git describe --tags --abbrev=0)
+                    IFS='.' read -r TAG_MAJOR TAG_MINOR TAG_PATCH <<< "${LATEST_TAG}"
+                  else
+                    TAG_MAJOR=0
+                    TAG_MINOR=0
+                    TAG_PATCH=0
+                  fi
+
+                  # Check if override is valid
+                  case "${VERSION_TYPE}" in
+                    major)
+                      # MAJOR bump is always valid if it increases the major version
+                      NEW_MAJOR=$((MAJOR + 1))
+                      if [ ${NEW_MAJOR} -gt ${TAG_MAJOR} ]; then
+                        echo "is_valid=true" >> $GITHUB_OUTPUT
+                        echo "reason=Valid MAJOR version bump" >> $GITHUB_OUTPUT
+                      else
+                        echo "is_valid=false" >> $GITHUB_OUTPUT
+                        echo "reason=MAJOR version would not increase (current: ${MAJOR}, tag: ${TAG_MAJOR})" >> $GITHUB_OUTPUT
+                      fi
+                      ;;
+                    minor)
+                      # MINOR bump is valid if major is same and minor increases
+                      if [ ${MAJOR} -eq ${TAG_MAJOR} ] && [ $((MINOR + 1)) -gt ${TAG_MINOR} ]; then
+                        echo "is_valid=true" >> $GITHUB_OUTPUT
+                        echo "reason=Valid MINOR version bump" >> $GITHUB_OUTPUT
+                      elif [ ${MAJOR} -gt ${TAG_MAJOR} ]; then
+                        echo "is_valid=false" >> $GITHUB_OUTPUT
+                        echo "reason=Cannot downgrade from MAJOR to MINOR (current suggests MAJOR bump)" >> $GITHUB_OUTPUT
+                      else
+                        echo "is_valid=false" >> $GITHUB_OUTPUT
+                        echo "reason=MINOR version would not increase sufficiently" >> $GITHUB_OUTPUT
+                      fi
+                      ;;
+                    patch)
+                      # PATCH bump is valid only if major and minor are same
+                      if [ ${MAJOR} -eq ${TAG_MAJOR} ] && [ ${MINOR} -eq ${TAG_MINOR} ]; then
+                        echo "is_valid=true" >> $GITHUB_OUTPUT
+                        echo "reason=Valid PATCH version bump" >> $GITHUB_OUTPUT
+                      else
+                        echo "is_valid=false" >> $GITHUB_OUTPUT
+                        echo "reason=Cannot downgrade to PATCH when MAJOR or MINOR should increase" >> $GITHUB_OUTPUT
+                      fi
+                      ;;
+                  esac
+
+            - name: Trigger release PR workflow with override
+              if: steps.validate.outputs.is_valid == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION_TYPE="${{ steps.check_command.outputs.version_type }}"
+
+                  # Trigger the release-pr workflow with version override
+                  gh workflow run release-pr.yml \
+                    -f version_override="${VERSION_TYPE}"
+
+                  echo "Triggered release PR workflow with ${VERSION_TYPE} override"
+
+            - name: Add success reaction and comment
+              if: steps.validate.outputs.is_valid == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  COMMENT_ID="${{ github.event.comment.id }}"
+                  PR_NUMBER="${{ github.event.issue.number }}"
+                  VERSION_TYPE="${{ steps.check_command.outputs.version_type }}"
+
+                  # Add thumbs up reaction
+                  gh api \
+                    --method POST \
+                    -H "Accept: application/vnd.github+json" \
+                    repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions \
+                    -f content='+1'
+
+                  # Add comment
+                  gh pr comment "${PR_NUMBER}" \
+                    --body "✅ Version override to **${VERSION_TYPE}** accepted. Release PR workflow has been triggered and will update this PR shortly."
+
+            - name: Add failure reaction and comment for invalid override
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true' && steps.check_permissions.outputs.has_permission == 'true' && steps.validate.outputs.is_valid == 'false'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  COMMENT_ID="${{ github.event.comment.id }}"
+                  PR_NUMBER="${{ github.event.issue.number }}"
+                  REASON="${{ steps.validate.outputs.reason }}"
+
+                  # Add thumbs down reaction
+                  gh api \
+                    --method POST \
+                    -H "Accept: application/vnd.github+json" \
+                    repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions \
+                    -f content='-1'
+
+                  # Add comment explaining why
+                  gh pr comment "${PR_NUMBER}" \
+                    --body "❌ Version override request denied: ${REASON}\n\nPlease review the current version and semantic versioning rules."
+
+            - name: Comment on insufficient permissions
+              if: steps.check_command.outputs.is_command == 'true' && steps.check_pr.outputs.is_release_pr == 'true' && steps.check_permissions.outputs.has_permission == 'false'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  COMMENT_ID="${{ github.event.comment.id }}"
+                  PR_NUMBER="${{ github.event.issue.number }}"
+
+                  # Add confused reaction
+                  gh api \
+                    --method POST \
+                    -H "Accept: application/vnd.github+json" \
+                    repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions \
+                    -f content='confused'
+
+                  # Add comment
+                  gh pr comment "${PR_NUMBER}" \
+                    --body "❌ You don't have permission to override release versions. Only users with write access or higher can use this command."

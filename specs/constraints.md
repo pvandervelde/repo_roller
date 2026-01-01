@@ -425,4 +425,107 @@ impl TryFrom<CreateRepositoryHttpRequest> for RepositoryCreationRequest {
 - Distributed tracing for request flow
 - Health check endpoints for monitoring systems
 
+## Release Management Constraints
+
+### Versioning Requirements
+
+**Constraint**: All version changes must follow semantic versioning (semver 2.0).
+
+**Version Rules**:
+
+- **MAJOR** version: Breaking changes (incompatible API changes)
+- **MINOR** version: New features (backward-compatible additions)
+- **PATCH** version: Bug fixes (backward-compatible fixes)
+- Pre-release versions: `0.x.x` before first stable release
+
+**Enforcement**:
+
+- Automated version calculation from conventional commits
+- Manual overrides must justify version choice
+- Pre-1.0 releases signal API instability
+
+### Commit Message Requirements
+
+**Constraint**: All commits to master must follow conventional commits format.
+
+**Format**:
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer with BREAKING CHANGE]
+```
+
+**Required Types**:
+
+- `feat`: New feature (triggers MINOR version)
+- `fix`: Bug fix (triggers PATCH version)
+- `docs`: Documentation changes
+- `style`: Code style/formatting
+- `refactor`: Code refactoring
+- `perf`: Performance improvements
+- `test`: Test additions/changes
+- `build`: Build system changes
+- `ci`: CI/CD changes
+- `chore`: Maintenance tasks
+
+**Breaking Changes**:
+
+- Mark with `!` after type/scope: `feat!:` or `feat(api)!:`
+- Or include `BREAKING CHANGE:` in footer
+- Triggers MAJOR version bump
+
+**Enforcement**:
+
+- PR title must follow format (enforced by CI)
+- Squash merge recommended for clean history
+- Changelog generated from commit messages
+
+### Release Artifact Requirements
+
+**Constraint**: All releases must include verified, reproducible artifacts.
+
+**Required Artifacts**:
+
+- **Container Image**: `ghcr.io/pvandervelde/repo_roller_api:v{version}`
+- **CLI Binaries**: Linux, Windows, macOS (x86_64)
+- **Checksums**: SHA256 for all downloadable artifacts
+- **Release Notes**: Auto-generated changelog from commits
+
+**Artifact Properties**:
+
+- Built in GitHub Actions (reproducible builds)
+- Tagged with exact version and `latest` (if stable)
+- Vulnerability scanned before publication
+- Size optimized (stripped binaries, multi-stage Docker)
+
+### Release Process Requirements
+
+**Constraint**: Release process must be automated and auditable.
+
+**Automated Steps**:
+
+1. Version calculation from conventional commits
+2. Changelog generation from commit history
+3. Release PR creation/update
+4. Artifact building and publishing after PR merge
+5. GitHub release creation with notes
+
+**Manual Steps** (minimal):
+
+- Release PR review and approval
+- Optional version override via comment
+- Emergency rollback if critical issues
+
+**Audit Trail**:
+
+- All releases tracked as Git tags
+- Release PRs provide diff and changelog
+- Artifact publishing logged
+- Release metrics tracked
+
+See [specs/interfaces/release-automation.md](./interfaces/release-automation.md) for complete release automation specification.
+
 These constraints provide the framework within which all RepoRoller components must be implemented. They ensure architectural consistency, system reliability, and maintainability while supporting the complex requirements of the repository automation domain.

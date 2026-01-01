@@ -43,7 +43,11 @@ Interface specifications serve as:
 
 - [**CLI Template Operations**](cli-template-operations.md) - Template listing, info, and validation for CLI (Task 4.0)
 
-**Status**: ✅ 14 interface specifications complete
+### Infrastructure Specifications
+
+- [**Release Automation**](release-automation.md) - Automated release management, versioning, and artifact publishing (Task 4a.0)
+
+**Status**: ✅ 15 interface specifications complete
 
 ## Architecture Overview
 
