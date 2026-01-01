@@ -11,7 +11,9 @@ version.workspace = true
 [dependencies]
 async-trait.workspace = true
 auth_handler = { path = "../auth_handler" }
+chrono.workspace = true
 clap = { version = "4.5.4", features = ["derive"] }
+colored = "2.1"
 config_manager = { path = "../config_manager" }
 github_client = { path = "../github_client" }
 keyring = { version = "3.6.2", features = [

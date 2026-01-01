@@ -196,14 +196,11 @@ impl GitHubClient {
             Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 // Pattern match on octocrab error to check status code
-                match &e {
-                    octocrab::Error::GitHub { source, .. } => {
-                        if source.status_code == http::StatusCode::NOT_FOUND {
-                            debug!("Repository not found: {}/{}", owner, repo);
-                            return Err(Error::NotFound);
-                        }
+                if let octocrab::Error::GitHub { source, .. } = &e {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        debug!("Repository not found: {}/{}", owner, repo);
+                        return Err(Error::NotFound);
                     }
-                    _ => {}
                 }
 
                 log_octocrab_error("Failed to get repository", e);

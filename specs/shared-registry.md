@@ -55,9 +55,11 @@ All domain primitives use newtype pattern for type safety.
 | `SystemError` | `repo_roller_core/src/errors.rs` | System/infrastructure errors | [error-types.md](error-types.md#systemerror) |
 
 **New Error Variants (Task 1.0)**:
+
 - `ConfigurationError::AmbiguousMetadataRepository` - Multiple metadata repos found with same topic
 
 **New Error Variants (Task 3.0)**:
+
 - `ConfigurationError::TemplateNotFound` - Template repository not found or not accessible
 - `ConfigurationError::TemplateConfigurationMissing` - Template repository exists but missing `.reporoller/template.toml`
 
@@ -109,12 +111,15 @@ All domain primitives use newtype pattern for type safety.
 | `GitHubClient` | `github_client/src/lib.rs` | Concrete GitHub implementation | Currently implemented |
 
 **New Methods (Task 1.0)**:
+
 - `search_repositories_by_topic(org: &str, topic: &str)` - Search for repositories by topic within organization ([github-repository-search.md](interfaces/github-repository-search.md))
 
 **New Methods (Task 2.0)**:
+
 - `list_directory_contents(owner: &str, repo: &str, path: &str, branch: &str)` - List contents of repository directory ([github-directory-listing.md](interfaces/github-directory-listing.md))
 
 **New Types (Task 2.0)**:
+
 - `TreeEntry` - Directory entry with type information (`github_client/src/models.rs`)
 - `EntryType` - Enum for file/dir/symlink/submodule (`github_client/src/models.rs`)
 
@@ -148,6 +153,29 @@ All domain primitives use newtype pattern for type safety.
 ### Domain Request Objects
 
 | Type | Location | Purpose | Contains |
+|------|----------|---------|----------|
+
+## CLI-Specific Types
+
+**Note**: CLI types are distinct from domain and HTTP API types, existing only in `repo_roller_cli`.
+
+### Template Display Types
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `TemplateInfo` | `repo_roller_cli/src/commands/template_cmd.rs` | CLI-friendly template information | [cli-template-operations.md](interfaces/cli-template-operations.md) |
+| `RepositoryTypeInfo` | `repo_roller_cli/src/commands/template_cmd.rs` | CLI repository type display | [cli-template-operations.md](interfaces/cli-template-operations.md) |
+| `TemplateVariableInfo` | `repo_roller_cli/src/commands/template_cmd.rs` | CLI variable display | [cli-template-operations.md](interfaces/cli-template-operations.md) |
+
+### Validation Types
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `TemplateValidationResult` | `repo_roller_cli/src/commands/template_cmd.rs` | Template validation result | [cli-template-operations.md](interfaces/cli-template-operations.md) |
+| `ValidationIssue` | `repo_roller_cli/src/commands/template_cmd.rs` | Individual validation issue | [cli-template-operations.md](interfaces/cli-template-operations.md) |
+| `ValidationWarning` | `repo_roller_cli/src/commands/template_cmd.rs` | Validation warning | [cli-template-operations.md](interfaces/cli-template-operations.md) |
+
+**Translation Pattern**: Domain `TemplateConfig` types converted to CLI `TemplateInfo` at CLI boundary.
 |------|----------|---------|----------|
 | `RepositoryCreationRequest` | `repo_roller_core/src/repository.rs` | Domain repo creation input | Name, owner, template, variables (branded types) |
 | `TemplateProcessingRequest` | `template_engine/src/lib.rs` | Template processing input | Variables, configs |

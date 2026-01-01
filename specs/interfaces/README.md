@@ -39,7 +39,11 @@ Interface specifications serve as:
 - [**API Response Types**](api-response-types.md) - HTTP response models and serialization
 - [**API Error Handling**](api-error-handling.md) - Error mapping and HTTP status codes
 
-**Status**: ✅ 13 interface specifications complete
+### CLI Specifications
+
+- [**CLI Template Operations**](cli-template-operations.md) - Template listing, info, and validation for CLI (Task 4.0)
+
+**Status**: ✅ 14 interface specifications complete
 
 ## Architecture Overview
 
