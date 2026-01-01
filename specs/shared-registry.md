@@ -399,11 +399,35 @@ When refactoring existing code to use new types:
 3. `TemplateEngine` - Template processing boundary
 4. `UserAuthenticationService` - Authentication boundary
 
+## Infrastructure Components
+
+### CI/CD Automation
+
+| Component | Location | Purpose | Spec Reference |
+|-----------|----------|---------|----------------|
+| Release PR Workflow | `.github/workflows/release-pr.yml` | Auto-create/update release PRs | [release-automation.md](interfaces/release-automation.md#release-pr-management-workflow) |
+| Release Publish Workflow | `.github/workflows/release-publish.yml` | Publish releases and artifacts | [release-automation.md](interfaces/release-automation.md#release-publication-workflow) |
+| Version Comment Handler | `.github/workflows/release-comment.yml` | Handle version override comments | [release-automation.md](interfaces/release-automation.md#version-comment-handler-workflow) |
+
+**Version Conventions**:
+
+- Semantic versioning (semver 2.0)
+- Conventional commits for version calculation
+- Pre-1.0 versions signal API instability
+
+**Artifact Publishing**:
+
+- Container image: `ghcr.io/pvandervelde/repo_roller_api:v{version}`
+- CLI binaries: Linux, Windows, macOS (x86_64)
+- GitHub Releases with changelog
+
+**See**: [constraints.md](constraints.md#release-management-constraints) for release management rules
+
 ---
 
-**Last Updated**: 2025-10-10
+**Last Updated**: 2026-01-01
 **Maintainer**: Interface Designer
-**Status**: Initial version with existing code cataloged and new interfaces specified
+**Status**: Updated with release automation infrastructure
 
 **Next Actions**:
 
