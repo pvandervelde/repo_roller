@@ -1,0 +1,331 @@
+name: Release Publish
+
+on:
+    pull_request:
+        types: [closed]
+        branches:
+            - master
+
+permissions:
+    contents: write
+    packages: write
+
+jobs:
+    publish-release:
+        name: Publish release artifacts
+        # Only run if PR was merged and has release label
+        if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+              with:
+                  fetch-depth: 0
+
+            - name: Extract version from Cargo.toml
+              id: extract_version
+              run: |
+                  VERSION=$(grep "^version = " Cargo.toml | head -n 1 | sed 's/version = "\(.*\)"/\1/')
+                  echo "Extracted version: ${VERSION}"
+                  echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+                  # Determine if this is a prerelease (0.x.x or contains -alpha, -beta, -rc)
+                  if [[ "${VERSION}" =~ ^0\. ]] || [[ "${VERSION}" =~ -(alpha|beta|rc) ]]; then
+                    echo "This is a prerelease version"
+                    echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "This is a stable release"
+                    echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Create GitHub Release
+              id: create_release
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION="${{ steps.extract_version.outputs.VERSION }}"
+                  TAG="v${VERSION}"
+
+                  # Extract changelog from PR body
+                  PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body --jq '.body')
+
+                  # Create release notes file
+                  echo "${PR_BODY}" > release_notes.md
+
+                  # Create release
+                  if [ "${{ steps.extract_version.outputs.IS_PRERELEASE }}" = "true" ]; then
+                    gh release create "${TAG}" \
+                      --title "Release ${TAG}" \
+                      --notes-file release_notes.md \
+                      --prerelease
+                  else
+                    gh release create "${TAG}" \
+                      --title "Release ${TAG}" \
+                      --notes-file release_notes.md
+                  fi
+
+                  echo "Created release ${TAG}"
+                  echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+
+            - name: Set up Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3
+
+            - name: Log in to GitHub Container Registry
+              uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push container image
+              id: build_container
+              run: |
+                  VERSION="${{ steps.extract_version.outputs.VERSION }}"
+                  TAG="v${VERSION}"
+                  IS_PRERELEASE="${{ steps.extract_version.outputs.IS_PRERELEASE }}"
+
+                  IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/repo_roller_api"
+
+                  echo "Building container image ${IMAGE_NAME}:${TAG}"
+
+                  # Build and push with version tag
+                  docker buildx build \
+                    --platform linux/amd64 \
+                    --file crates/repo_roller_api/Dockerfile \
+                    --tag "${IMAGE_NAME}:${TAG}" \
+                    --label "org.opencontainers.image.version=${VERSION}" \
+                    --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+                    --label "org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+                    --push \
+                    .
+
+                  echo "Pushed ${IMAGE_NAME}:${TAG}"
+
+                  # Also tag as latest if this is a stable release
+                  if [ "${IS_PRERELEASE}" = "false" ]; then
+                    echo "Tagging as latest"
+                    docker buildx build \
+                      --platform linux/amd64 \
+                      --file crates/repo_roller_api/Dockerfile \
+                      --tag "${IMAGE_NAME}:latest" \
+                      --push \
+                      .
+                    echo "Pushed ${IMAGE_NAME}:latest"
+                  fi
+
+                  echo "Container image published successfully"
+
+            - name: Build CLI binaries
+              id: build_binaries
+              run: |
+                  VERSION="${{ steps.extract_version.outputs.VERSION }}"
+
+                  # Build for Linux
+                  echo "Building for Linux (x86_64-unknown-linux-gnu)"
+                  cargo build --release --package repo_roller_cli --target x86_64-unknown-linux-gnu || echo "Linux build failed"
+
+                  # Build for Windows
+                  echo "Building for Windows (x86_64-pc-windows-gnu)"
+                  rustup target add x86_64-pc-windows-gnu
+                  cargo build --release --package repo_roller_cli --target x86_64-pc-windows-gnu || echo "Windows build failed"
+
+                  # macOS requires macOS runner, skip for now
+                  echo "macOS build requires macOS runner (skipped)"
+
+                  # Check which builds succeeded
+                  if [ -f "target/x86_64-unknown-linux-gnu/release/repo_roller_cli" ]; then
+                    echo "linux_built=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "linux_built=false" >> $GITHUB_OUTPUT
+                  fi
+
+                  if [ -f "target/x86_64-pc-windows-gnu/release/repo_roller_cli.exe" ]; then
+                    echo "windows_built=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "windows_built=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Package Linux binary
+              if: steps.build_binaries.outputs.linux_built == 'true'
+              run: |
+                  VERSION="${{ steps.extract_version.outputs.VERSION }}"
+                  ARCHIVE_NAME="repo-roller-v${VERSION}-x86_64-linux.tar.gz"
+
+                  # Create archive
+                  mkdir -p dist
+                  cp target/x86_64-unknown-linux-gnu/release/repo_roller_cli dist/repo-roller
+                  cp README.md LICENSE dist/
+
+                  cd dist
+                  tar czf "../${ARCHIVE_NAME}" repo-roller README.md LICENSE
+                  cd ..
+
+                  # Generate checksum
+                  sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+
+                  echo "Created ${ARCHIVE_NAME}"
+
+            - name: Package Windows binary
+              if: steps.build_binaries.outputs.windows_built == 'true'
+              run: |
+                  VERSION="${{ steps.extract_version.outputs.VERSION }}"
+                  ARCHIVE_NAME="repo-roller-v${VERSION}-x86_64-windows.zip"
+
+                  # Create archive
+                  mkdir -p dist-windows
+                  cp target/x86_64-pc-windows-gnu/release/repo_roller_cli.exe dist-windows/repo-roller.exe
+                  cp README.md LICENSE dist-windows/
+
+                  cd dist-windows
+                  zip -r "../${ARCHIVE_NAME}" repo-roller.exe README.md LICENSE
+                  cd ..
+
+                  # Generate checksum
+                  sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+
+                  echo "Created ${ARCHIVE_NAME}"
+
+            - name: Upload release assets
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  TAG="${{ steps.create_release.outputs.TAG }}"
+
+                  # Upload Linux binary if available
+                  if [ -f repo-roller-v*.tar.gz ]; then
+                    for file in repo-roller-v*.tar.gz*; do
+                      echo "Uploading ${file}"
+                      gh release upload "${TAG}" "${file}" --clobber
+                    done
+                  fi
+
+                  # Upload Windows binary if available
+                  if [ -f repo-roller-v*.zip ]; then
+                    for file in repo-roller-v*.zip*; do
+                      echo "Uploading ${file}"
+                      gh release upload "${TAG}" "${file}" --clobber
+                    done
+                  fi
+
+                  echo "Release assets uploaded"
+
+            - name: Update release notes with installation instructions
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  TAG="${{ steps.create_release.outputs.TAG }}"
+                  VERSION="${{ steps.extract_version.outputs.VERSION }}"
+                  IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/repo_roller_api"
+
+                  # Get current release notes
+                  CURRENT_NOTES=$(gh release view "${TAG}" --json body --jq '.body')
+
+                  # Append installation instructions
+                  cat > updated_notes.md <<EOF
+                  ${CURRENT_NOTES}
+
+                  ---
+
+                  ## Installation
+
+                  ### Container Image
+
+                  \`\`\`bash
+                  docker pull ${IMAGE_NAME}:${TAG}
+                  # Or for latest stable:
+                  docker pull ${IMAGE_NAME}:latest
+                  \`\`\`
+
+                  ### CLI Binaries
+
+                  EOF
+
+                  # Add Linux instructions if binary was built
+                  if [ -f repo-roller-v${VERSION}-x86_64-linux.tar.gz ]; then
+                    cat >> updated_notes.md <<EOF
+                  **Linux (x86_64):**
+                  \`\`\`bash
+                  curl -L https://github.com/${{ github.repository }}/releases/download/${TAG}/repo-roller-v${VERSION}-x86_64-linux.tar.gz | tar xz
+                  sudo mv repo-roller /usr/local/bin/
+                  \`\`\`
+
+                  EOF
+                  fi
+
+                  # Add Windows instructions if binary was built
+                  if [ -f repo-roller-v${VERSION}-x86_64-windows.zip ]; then
+                    cat >> updated_notes.md <<EOF
+                  **Windows (x86_64):**
+                  \`\`\`powershell
+                  Invoke-WebRequest -Uri https://github.com/${{ github.repository }}/releases/download/${TAG}/repo-roller-v${VERSION}-x86_64-windows.zip -OutFile repo-roller.zip
+                  Expand-Archive repo-roller.zip
+                  Move-Item repo-roller\\repo-roller.exe C:\\Windows\\System32\\
+                  \`\`\`
+
+                  EOF
+                  fi
+
+                  cat >> updated_notes.md <<EOF
+                  ### Verify Installation
+
+                  \`\`\`bash
+                  repo-roller --version
+                  \`\`\`
+
+                  **Checksums:** Download .sha256 files to verify binary integrity.
+                  EOF
+
+                  # Update release notes
+                  gh release edit "${TAG}" --notes-file updated_notes.md
+
+            - name: Handle container build failure
+              if: failure() && steps.build_container.conclusion == 'failure'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  TAG="${{ steps.create_release.outputs.TAG }}"
+
+                  echo "Container build failed - rolling back release"
+
+                  # Delete the release
+                  gh release delete "${TAG}" --yes || true
+
+                  # Delete the tag
+                  git push origin --delete "${TAG}" || true
+
+                  # Create issue for failure
+                  gh issue create \
+                    --title "Release ${TAG} failed: Container build error" \
+                    --body "The release publication workflow failed during container build. Please investigate and retry manually." \
+                    --label "release" \
+                    --label "bug"
+
+                  exit 1
+
+            - name: Report binary build failures
+              if: steps.build_binaries.outputs.linux_built == 'false' || steps.build_binaries.outputs.windows_built == 'false'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  TAG="${{ steps.create_release.outputs.TAG }}"
+
+                  FAILED=""
+                  if [ "${{ steps.build_binaries.outputs.linux_built }}" = "false" ]; then
+                    FAILED="${FAILED}- Linux (x86_64-unknown-linux-gnu)\n"
+                  fi
+                  if [ "${{ steps.build_binaries.outputs.windows_built }}" = "false" ]; then
+                    FAILED="${FAILED}- Windows (x86_64-pc-windows-gnu)\n"
+                  fi
+
+                  if [ -n "${FAILED}" ]; then
+                    gh issue create \
+                      --title "Release ${TAG}: Some binary builds failed" \
+                      --body "The following binary builds failed during release:\n\n${FAILED}\n\nContainer image was published successfully. Binary builds can be completed manually." \
+                      --label "release" \
+                      --label "build-failure"
+                  fi
