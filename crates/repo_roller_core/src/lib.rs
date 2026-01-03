@@ -129,6 +129,9 @@ pub mod github;
 /// Authentication domain types (UserId, SessionId)
 pub mod authentication;
 
+/// Repository visibility types and resolution
+pub mod visibility;
+
 // Re-export commonly used types
 pub use authentication::{SessionId, UserId};
 pub use github::{GitHubToken, InstallationId};
@@ -137,6 +140,11 @@ pub use request::{
     RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
 };
 pub use template::TemplateName;
+pub use visibility::{
+    DecisionSource, GitHubEnvironmentDetector, PlanLimitations, PolicyConstraint,
+    RepositoryVisibility, VisibilityDecision, VisibilityError, VisibilityPolicy,
+    VisibilityPolicyProvider, VisibilityRequest, VisibilityResolver,
+};
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};

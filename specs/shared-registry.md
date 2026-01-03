@@ -26,6 +26,15 @@ All domain primitives use newtype pattern for type safety.
 | `GitHubToken` | `repo_roller_core/src/github.rs` | Secure token wrapper | [shared-types.md](interfaces/shared-types.md#githubtoken) |
 | `Timestamp` | `repo_roller_core/src/lib.rs` | UTC timestamp wrapper | [shared-types.md](interfaces/shared-types.md#timestamp) |
 
+### Enum Types
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `RepositoryVisibility` | `repo_roller_core/src/visibility.rs` | Repository visibility level (Public, Private, Internal) | [repository-visibility.md](interfaces/repository-visibility.md#repositoryvisibility) |
+| `VisibilityPolicy` | `repo_roller_core/src/visibility.rs` | Organization visibility policy (Required, Restricted, Unrestricted) | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicy) |
+| `PolicyConstraint` | `repo_roller_core/src/visibility.rs` | Applied visibility constraints | [repository-visibility.md](interfaces/repository-visibility.md#policyconstraint) |
+| `DecisionSource` | `repo_roller_core/src/visibility.rs` | Source of visibility decision | [repository-visibility.md](interfaces/repository-visibility.md#decisionsource) |
+
 **Note**: Types organized by business domain, not in a generic `types.rs` file.
 
 ### Result Types
@@ -99,6 +108,18 @@ All domain primitives use newtype pattern for type safety.
 | `UserAuthenticationService` | `auth_handler/src/lib.rs` | User authentication | [authentication-interfaces.md](authentication-interfaces.md) |
 | `OrganizationPermissionService` | `auth_handler/src/lib.rs` | Permission resolution | [authentication-interfaces.md](authentication-interfaces.md) |
 | `AuthenticationContext` | `auth_handler/src/lib.rs` | Auth context carrier | [authentication-interfaces.md](authentication-interfaces.md) |
+
+### Visibility Domain (Task 5.0)
+
+| Interface | Location | Purpose | Spec Reference |
+|-----------|----------|---------|----------------|
+| `VisibilityResolver` | `repo_roller_core/src/visibility.rs` | Visibility decision orchestration | [repository-visibility.md](interfaces/repository-visibility.md#visibilityresolver) |
+| `VisibilityPolicyProvider` | `repo_roller_core/src/visibility.rs` | Organization policy access | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicyprovider) |
+| `GitHubEnvironmentDetector` | `repo_roller_core/src/visibility.rs` | GitHub environment detection | [repository-visibility.md](interfaces/repository-visibility.md#githubenvironmentdetector) |
+| `VisibilityDecision` | `repo_roller_core/src/visibility.rs` | Resolved visibility with audit trail | [repository-visibility.md](interfaces/repository-visibility.md#visibilitydecision) |
+| `VisibilityRequest` | `repo_roller_core/src/visibility.rs` | Visibility resolution input | [repository-visibility.md](interfaces/repository-visibility.md#visibilityrequest) |
+| `PlanLimitations` | `repo_roller_core/src/visibility.rs` | GitHub plan constraints | [repository-visibility.md](interfaces/repository-visibility.md#planlimitations) |
+| `VisibilityError` | `repo_roller_core/src/visibility.rs` | Visibility-specific errors | [repository-visibility.md](interfaces/repository-visibility.md#error-types) |
 
 ## External Integration Interfaces
 
