@@ -14,6 +14,26 @@
 //!
 //! All decisions are validated against GitHub platform constraints (Enterprise, plan limits).
 //!
+//! # Type Organization
+//!
+//! **Policy types** (defined in config_manager, re-exported here):
+//! - `RepositoryVisibility` - Public/Private/Internal enum
+//! - `VisibilityPolicy` - Required/Restricted/Unrestricted policies
+//! - `PolicyConstraint` - Constraint tracking
+//! - `VisibilityError` - Error types
+//! - `VisibilityPolicyProvider` - Policy provider trait
+//!
+//! **Resolution types** (defined in this module):
+//! - `DecisionSource` - Hierarchy level that made decision
+//! - `VisibilityDecision` - Resolution result with audit trail
+//! - `VisibilityRequest` - Input to resolution
+//! - `PlanLimitations` - GitHub plan constraints
+//! - `GitHubEnvironmentDetector` - Environment detection trait
+//! - `VisibilityResolver` - Orchestrator implementation
+//!
+//! This split avoids circular dependencies. See specs/interfaces/repository-visibility.md
+//! for complete architectural rationale.
+//!
 //! # Examples
 //!
 //! ```rust,no_run
@@ -40,162 +60,20 @@
 //! GENERATED FROM: specs/interfaces/repository-visibility.md
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::OrganizationName;
 
+// Re-export policy types from config_manager to avoid circular dependency
+// This follows the existing pattern with ConfigurationError
+pub use config_manager::{
+    PolicyConstraint, RepositoryVisibility, VisibilityError, VisibilityPolicy,
+    VisibilityPolicyProvider,
+};
+
 #[cfg(test)]
 #[path = "visibility_tests.rs"]
 mod tests;
-
-/// Repository visibility level.
-///
-/// Represents the three visibility options available in GitHub.
-/// Internal visibility is only available in GitHub Enterprise environments.
-///
-/// # Examples
-///
-/// ```rust
-/// use repo_roller_core::RepositoryVisibility;
-///
-/// let public = RepositoryVisibility::Public;
-/// let private = RepositoryVisibility::Private;
-/// let internal = RepositoryVisibility::Internal;
-/// ```
-///
-/// See: specs/interfaces/repository-visibility.md#repositoryvisibility
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RepositoryVisibility {
-    /// Visible to all GitHub users
-    Public,
-
-    /// Visible only to repository collaborators
-    Private,
-
-    /// Visible to all organization/enterprise members (GitHub Enterprise only)
-    Internal,
-}
-
-impl RepositoryVisibility {
-    /// Convert visibility to string representation.
-    ///
-    /// # Returns
-    ///
-    /// "public", "private", or "internal"
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Public => "public",
-            Self::Private => "private",
-            Self::Internal => "internal",
-        }
-    }
-
-    /// Convert visibility to boolean for GitHub API.
-    ///
-    /// Used when creating repositories via GitHub API which uses
-    /// the `private` boolean field.
-    ///
-    /// # Returns
-    ///
-    /// `true` for Private/Internal, `false` for Public
-    pub fn is_private(&self) -> bool {
-        match self {
-            Self::Public => false,
-            Self::Private | Self::Internal => true,
-        }
-    }
-}
-
-/// Organization-level visibility policy.
-///
-/// Defines how repository visibility is controlled at the organization level.
-/// Policies can require specific visibility, restrict certain options, or allow
-/// unrestricted choice.
-///
-/// # Examples
-///
-/// ```rust
-/// use repo_roller_core::{VisibilityPolicy, RepositoryVisibility};
-///
-/// // Require all repositories to be private
-/// let required = VisibilityPolicy::Required(RepositoryVisibility::Private);
-///
-/// // Prohibit public repositories
-/// let restricted = VisibilityPolicy::Restricted(vec![RepositoryVisibility::Public]);
-///
-/// // Allow any visibility
-/// let unrestricted = VisibilityPolicy::Unrestricted;
-/// ```
-///
-/// See: specs/interfaces/repository-visibility.md#visibilitypolicy
-#[derive(Debug, Clone, PartialEq)]
-pub enum VisibilityPolicy {
-    /// Forces a specific visibility for all repositories
-    Required(RepositoryVisibility),
-
-    /// Prohibits specific visibility options (others are allowed)
-    Restricted(Vec<RepositoryVisibility>),
-
-    /// Allows any visibility choice
-    Unrestricted,
-}
-
-impl VisibilityPolicy {
-    /// Check if a visibility is allowed by this policy.
-    ///
-    /// # Arguments
-    ///
-    /// * `visibility` - Visibility to check
-    ///
-    /// # Returns
-    ///
-    /// `true` if the visibility is allowed, `false` otherwise
-    pub fn allows(&self, visibility: RepositoryVisibility) -> bool {
-        match self {
-            Self::Required(required) => *required == visibility,
-            Self::Restricted(prohibited) => !prohibited.contains(&visibility),
-            Self::Unrestricted => true,
-        }
-    }
-
-    /// Get the required visibility if this is a Required policy.
-    ///
-    /// # Returns
-    ///
-    /// `Some(visibility)` if Required policy, `None` otherwise
-    pub fn required_visibility(&self) -> Option<RepositoryVisibility> {
-        match self {
-            Self::Required(visibility) => Some(*visibility),
-            _ => None,
-        }
-    }
-}
-
-/// Constraint that was applied during visibility resolution.
-///
-/// Documents which constraints influenced the visibility decision
-/// for audit and troubleshooting purposes.
-///
-/// See: specs/interfaces/repository-visibility.md#policyconstraint
-#[derive(Debug, Clone, PartialEq)]
-pub enum PolicyConstraint {
-    /// Organization requires specific visibility
-    OrganizationRequired,
-
-    /// Organization restricts certain visibilities
-    OrganizationRestricted,
-
-    /// Requires GitHub Enterprise
-    RequiresEnterprise,
-
-    /// Requires paid GitHub plan
-    RequiresPaidPlan,
-
-    /// User lacks permission for requested visibility
-    InsufficientPermissions,
-}
 
 /// Source of the visibility decision.
 ///
@@ -283,43 +161,6 @@ pub struct PlanLimitations {
 
     /// Whether this is a GitHub Enterprise environment
     pub is_enterprise: bool,
-}
-
-/// Provides organization visibility policies.
-///
-/// Implementations fetch and cache organization-level visibility policies
-/// from the configuration system.
-///
-/// See: specs/interfaces/repository-visibility.md#visibilitypolicyprovider
-#[async_trait]
-pub trait VisibilityPolicyProvider: Send + Sync {
-    /// Get the visibility policy for an organization.
-    ///
-    /// # Arguments
-    ///
-    /// * `organization` - Organization name
-    ///
-    /// # Returns
-    ///
-    /// Organization's visibility policy
-    ///
-    /// # Errors
-    ///
-    /// * `VisibilityError::PolicyNotFound` - Organization has no policy configured
-    /// * `VisibilityError::ConfigurationError` - Policy configuration is invalid
-    async fn get_policy(
-        &self,
-        organization: &OrganizationName,
-    ) -> Result<VisibilityPolicy, VisibilityError>;
-
-    /// Invalidate cached policy for an organization.
-    ///
-    /// Forces the next `get_policy` call to fetch fresh policy data.
-    ///
-    /// # Arguments
-    ///
-    /// * `organization` - Organization name
-    async fn invalidate_cache(&self, organization: &OrganizationName);
 }
 
 /// Detects GitHub environment capabilities and limitations.
@@ -474,41 +315,4 @@ impl VisibilityResolver {
     ) -> Result<VisibilityDecision, VisibilityError> {
         unimplemented!("See specs/interfaces/repository-visibility.md")
     }
-}
-
-/// Errors that can occur during visibility resolution.
-///
-/// Provides detailed context for visibility-related failures.
-///
-/// See: specs/interfaces/repository-visibility.md#error-types
-#[derive(Debug, thiserror::Error)]
-pub enum VisibilityError {
-    /// Organization policy not found
-    #[error("No visibility policy configured for organization: {organization}")]
-    PolicyNotFound { organization: String },
-
-    /// Requested visibility violates organization policy
-    #[error("Visibility {requested:?} violates organization policy: {policy}")]
-    PolicyViolation {
-        requested: RepositoryVisibility,
-        policy: String,
-    },
-
-    /// Requested visibility not available on GitHub plan
-    #[error("Visibility {requested:?} not available: {reason}")]
-    GitHubConstraint {
-        requested: RepositoryVisibility,
-        reason: String,
-    },
-
-    /// Configuration error
-    #[error("Visibility configuration error: {message}")]
-    ConfigurationError { message: String },
-
-    /// GitHub API error during visibility resolution
-    #[error("GitHub API error: {source}")]
-    GitHubApiError {
-        #[from]
-        source: github_client::Error,
-    },
 }

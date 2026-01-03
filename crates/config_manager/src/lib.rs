@@ -40,6 +40,10 @@ pub mod repository_type_validator;
 pub mod basic_validator;
 pub mod validator;
 
+// Visibility types and policy provider
+pub mod visibility;
+pub mod visibility_policy_provider;
+
 // Integration tests
 #[cfg(test)]
 mod integration_tests;
@@ -68,6 +72,11 @@ pub use validator::{
     ConfigurationValidator, ValidationError, ValidationErrorType, ValidationResult,
     ValidationWarning,
 };
+pub use visibility::{
+    PolicyConstraint, RepositoryVisibility, VisibilityError, VisibilityPolicy,
+    VisibilityPolicyProvider,
+};
+pub use visibility_policy_provider::ConfigBasedPolicyProvider;
 
 // Re-export BasicConfigurationValidator for convenience
 pub use basic_validator::BasicConfigurationValidator;
