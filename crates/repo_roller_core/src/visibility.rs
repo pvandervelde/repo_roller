@@ -71,10 +71,12 @@ pub use config_manager::{
     VisibilityPolicyProvider,
 };
 
-// TODO: Uncomment when VisibilityResolver is implemented
-// #[cfg(test)]
-// #[path = "visibility_tests.rs"]
-// mod tests;
+// Re-export environment detection from github_client
+pub use github_client::{GitHubEnvironmentDetector, PlanLimitations};
+
+#[cfg(test)]
+#[path = "visibility_tests.rs"]
+mod tests;
 
 /// Source of the visibility decision.
 ///
@@ -141,70 +143,6 @@ pub struct VisibilityRequest {
 
     /// Template's default visibility (optional)
     pub template_default: Option<RepositoryVisibility>,
-}
-
-/// GitHub plan limitations affecting visibility.
-///
-/// Contains information about what visibility options are available
-/// based on the organization's GitHub plan and environment.
-///
-/// See: specs/interfaces/repository-visibility.md#planlimitations
-#[derive(Debug, Clone)]
-pub struct PlanLimitations {
-    /// Whether private repositories are supported
-    pub supports_private_repos: bool,
-
-    /// Whether internal repositories are supported (Enterprise only)
-    pub supports_internal_repos: bool,
-
-    /// Maximum number of private repositories (None = unlimited)
-    pub private_repo_limit: Option<u32>,
-
-    /// Whether this is a GitHub Enterprise environment
-    pub is_enterprise: bool,
-}
-
-/// Detects GitHub environment capabilities and limitations.
-///
-/// Implementations interact with GitHub APIs to determine what visibility
-/// options are available based on the organization's plan and environment.
-///
-/// See: specs/interfaces/repository-visibility.md#githubenvironmentdetector
-#[async_trait]
-pub trait GitHubEnvironmentDetector: Send + Sync {
-    /// Get plan limitations for an organization.
-    ///
-    /// # Arguments
-    ///
-    /// * `organization` - Organization name
-    ///
-    /// # Returns
-    ///
-    /// Plan limitations affecting visibility options
-    ///
-    /// # Errors
-    ///
-    /// * `VisibilityError::GitHubApiError` - GitHub API request failed
-    async fn get_plan_limitations(
-        &self,
-        organization: &OrganizationName,
-    ) -> Result<PlanLimitations, VisibilityError>;
-
-    /// Check if organization is in GitHub Enterprise environment.
-    ///
-    /// # Arguments
-    ///
-    /// * `organization` - Organization name
-    ///
-    /// # Returns
-    ///
-    /// `true` if organization is in GitHub Enterprise
-    ///
-    /// # Errors
-    ///
-    /// * `VisibilityError::GitHubApiError` - GitHub API request failed
-    async fn is_enterprise(&self, organization: &OrganizationName)
-        -> Result<bool, VisibilityError>;
 }
 
 /// Resolves repository visibility based on policies and preferences.
