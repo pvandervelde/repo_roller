@@ -59,7 +59,6 @@
 //! See specs/interfaces/repository-visibility.md for complete interface specification.
 //! GENERATED FROM: specs/interfaces/repository-visibility.md
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::OrganizationName;
@@ -250,8 +249,107 @@ impl VisibilityResolver {
     /// See: specs/interfaces/repository-visibility.md#visibilityresolver
     pub async fn resolve_visibility(
         &self,
-        _request: VisibilityRequest,
+        request: VisibilityRequest,
     ) -> Result<VisibilityDecision, VisibilityError> {
-        unimplemented!("See specs/interfaces/repository-visibility.md")
+        let mut constraints = Vec::new();
+        
+        // Step 1: Load organization policy
+        let policy = self.policy_provider.get_policy(request.organization.as_str()).await?;
+        
+        // Step 2: Check if policy requires specific visibility
+        if let Some(required) = policy.required_visibility() {
+            constraints.push(PolicyConstraint::OrganizationRequired);
+            
+            // Validate against GitHub constraints before returning
+            let limitations = self.environment_detector
+                .get_plan_limitations(request.organization.as_str())
+                .await
+                .map_err(|e| VisibilityError::GitHubApiError(e.to_string()))?;
+            
+            self.validate_github_constraints(required, &limitations, &mut constraints)?;
+            
+            return Ok(VisibilityDecision {
+                visibility: required,
+                source: DecisionSource::OrganizationPolicy,
+                constraints_applied: constraints,
+            });
+        }
+        
+        // Step 3: Determine visibility based on hierarchy
+        let (visibility, source) = if let Some(user_pref) = request.user_preference {
+            // Validate user preference against policy
+            if !policy.allows(user_pref) {
+                return Err(VisibilityError::PolicyViolation {
+                    requested: user_pref,
+                    policy: format!("{:?}", policy),
+                });
+            }
+            (user_pref, DecisionSource::UserPreference)
+        } else if let Some(template_default) = request.template_default {
+            // Validate template default against policy
+            if !policy.allows(template_default) {
+                return Err(VisibilityError::PolicyViolation {
+                    requested: template_default,
+                    policy: format!("{:?}", policy),
+                });
+            }
+            (template_default, DecisionSource::TemplateDefault)
+        } else {
+            // Use system default (Private)
+            (RepositoryVisibility::Private, DecisionSource::SystemDefault)
+        };
+        
+        // Track policy constraint if applicable
+        if matches!(policy, VisibilityPolicy::Restricted(_)) {
+            constraints.push(PolicyConstraint::OrganizationRestricted);
+        }
+        
+        // Step 4: Validate against GitHub platform constraints
+        let limitations = self.environment_detector
+            .get_plan_limitations(request.organization.as_str())
+            .await
+            .map_err(|e| VisibilityError::GitHubApiError(e.to_string()))?;
+        
+        self.validate_github_constraints(visibility, &limitations, &mut constraints)?;
+        
+        Ok(VisibilityDecision {
+            visibility,
+            source,
+            constraints_applied: constraints,
+        })
+    }
+    
+    /// Validate visibility against GitHub platform constraints.
+    fn validate_github_constraints(
+        &self,
+        visibility: RepositoryVisibility,
+        limitations: &PlanLimitations,
+        constraints: &mut Vec<PolicyConstraint>,
+    ) -> Result<(), VisibilityError> {
+        match visibility {
+            RepositoryVisibility::Internal => {
+                if !limitations.supports_internal_repos {
+                    return Err(VisibilityError::GitHubConstraint {
+                        requested: visibility,
+                        reason: "Internal visibility requires GitHub Enterprise".to_string(),
+                    });
+                }
+                constraints.push(PolicyConstraint::RequiresEnterprise);
+            }
+            RepositoryVisibility::Private => {
+                if !limitations.supports_private_repos {
+                    return Err(VisibilityError::GitHubConstraint {
+                        requested: visibility,
+                        reason: "Private repositories require a paid GitHub plan".to_string(),
+                    });
+                }
+                // Note: All current GitHub plans support private repos, so this shouldn't fail
+            }
+            RepositoryVisibility::Public => {
+                // Public is always available
+            }
+        }
+        
+        Ok(())
     }
 }
