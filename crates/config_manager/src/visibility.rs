@@ -230,6 +230,13 @@ pub enum VisibilityError {
     /// GitHub API error during visibility resolution
     #[error("GitHub API error: {0}")]
     GitHubApiError(String),
+
+    /// Failed to detect GitHub environment
+    #[error("Failed to detect environment for organization {organization}: {reason}")]
+    EnvironmentDetectionFailed {
+        organization: String,
+        reason: String,
+    },
 }
 
 /// Provider for organization visibility policies.

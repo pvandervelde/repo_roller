@@ -17,6 +17,8 @@ pub use errors::Error;
 // Domain-specific modules
 pub mod branch_protection;
 pub mod contents;
+pub mod environment;
+pub mod environment_detector;
 pub mod installation;
 pub mod label;
 pub mod repository;
@@ -25,6 +27,8 @@ pub mod user;
 // Re-export types for convenient access
 pub use branch_protection::BranchProtection;
 pub use contents::{EntryType, TreeEntry};
+pub use environment::{GitHubEnvironmentDetector, PlanLimitations};
+pub use environment_detector::GitHubApiEnvironmentDetector;
 pub use installation::{Account, Installation};
 pub use label::Label;
 pub use repository::{Organization, Repository};

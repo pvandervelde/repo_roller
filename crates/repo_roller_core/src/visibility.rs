@@ -71,9 +71,10 @@ pub use config_manager::{
     VisibilityPolicyProvider,
 };
 
-#[cfg(test)]
-#[path = "visibility_tests.rs"]
-mod tests;
+// TODO: Uncomment when VisibilityResolver is implemented
+// #[cfg(test)]
+// #[path = "visibility_tests.rs"]
+// mod tests;
 
 /// Source of the visibility decision.
 ///

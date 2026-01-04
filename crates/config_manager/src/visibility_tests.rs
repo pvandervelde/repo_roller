@@ -133,4 +133,14 @@ fn test_visibility_error_display() {
         reason: "Requires GitHub Enterprise".to_string(),
     };
     assert!(error.to_string().contains("not available"));
+
+    let error = VisibilityError::EnvironmentDetectionFailed {
+        organization: "test-org".to_string(),
+        reason: "API error".to_string(),
+    };
+    assert!(error
+        .to_string()
+        .contains("Failed to detect environment for organization"));
+    assert!(error.to_string().contains("test-org"));
+    assert!(error.to_string().contains("API error"));
 }
