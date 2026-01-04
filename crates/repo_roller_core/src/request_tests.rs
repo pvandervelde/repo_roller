@@ -20,6 +20,7 @@ fn test_repository_creation_request_creation() {
         owner: owner.clone(),
         template: template.clone(),
         variables: variables.clone(),
+        visibility: None,
     };
 
     assert_eq!(request.name, name);
@@ -40,6 +41,7 @@ fn test_repository_creation_request_with_variables() {
         owner: OrganizationName::new("my-org").unwrap(),
         template: TemplateName::new("rust-library").unwrap(),
         variables: variables.clone(),
+        visibility: None,
     };
 
     assert_eq!(request.variables.len(), 2);
@@ -55,6 +57,7 @@ fn test_repository_creation_request_clone() {
         owner: OrganizationName::new("my-org").unwrap(),
         template: TemplateName::new("rust-library").unwrap(),
         variables: HashMap::new(),
+        visibility: None,
     };
 
     let cloned = request.clone();
@@ -73,6 +76,7 @@ fn test_repository_creation_request_debug() {
         owner: OrganizationName::new("my-org").unwrap(),
         template: TemplateName::new("rust-library").unwrap(),
         variables: HashMap::new(),
+        visibility: None,
     };
 
     let debug_output = format!("{:?}", request);
@@ -96,6 +100,7 @@ fn test_repository_creation_request_type_safety() {
         owner,    // OrganizationName
         template, // TemplateName
         variables: HashMap::new(),
+        visibility: None,
     };
 
     // Verify we can access the values
@@ -112,6 +117,7 @@ fn test_repository_creation_request_empty_variables() {
         owner: OrganizationName::new("my-org").unwrap(),
         template: TemplateName::new("rust-library").unwrap(),
         variables: HashMap::new(),
+        visibility: None,
     };
 
     assert!(request.variables.is_empty());
@@ -135,6 +141,7 @@ fn test_repository_creation_request_validates_names() {
         owner: OrganizationName::new("valid-org").unwrap(),
         template: TemplateName::new("valid-template").unwrap(),
         variables: HashMap::new(),
+        visibility: None,
     };
 
     assert_eq!(request.name.as_str(), "valid-repo");
