@@ -53,6 +53,34 @@ This document defines the architectural rules, constraints, and policies that mu
 
 **Constraint**: Dependency flow must follow clean separation principles.
 
+**Pragmatic Exception for Infrastructure-Defined Types**:
+
+In some cases, types that are conceptually part of business configuration are defined in infrastructure crates to avoid circular dependencies. This follows the existing pattern established with `ConfigurationError`.
+
+**Example**: `repo_roller_core` re-exports types from infrastructure crates:
+```rust
+// crates/repo_roller_core/src/errors.rs:134
+pub use config_manager::{ConfigurationError, ConfigurationResult};
+
+// crates/repo_roller_core/src/lib.rs (for visibility types)
+pub use config_manager::{
+    RepositoryVisibility, VisibilityPolicy, PolicyConstraint, VisibilityPolicyProvider
+};
+```
+
+**When This Pattern Applies**:
+- Infrastructure crate defines configuration-related types and traits
+- Core business logic needs to reference these types
+- Circular dependency would result from defining types in core
+- Types are re-exported from core for convenience
+
+**Documentation Requirement**:
+- Document this pattern in specification files
+- Explain architectural rationale in comments
+- Update shared-registry.md to show both definition and re-export locations
+
+See [repository-visibility.md](interfaces/repository-visibility.md#circular-dependency-resolution) for detailed example.
+
 ### HTTP API Boundary Rules
 
 **Constraint**: HTTP API types must never leak into business logic.

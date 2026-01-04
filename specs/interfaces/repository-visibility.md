@@ -1,26 +1,64 @@
 # Repository Visibility Interface
 
-**Architectural Layer**: Core Domain
-**Module Path**: `crates/repo_roller_core/src/visibility.rs`
+**Architectural Layers**: 
+- **Configuration Management** (`config_manager`): Policy definitions and provider interface
+- **Core Domain** (`repo_roller_core`): Resolution orchestration logic
+- **GitHub Integration** (`github_client`): Environment detection
+
+**Module Paths**: 
+- `crates/config_manager/src/visibility.rs` (policy types and provider trait)
+- `crates/repo_roller_core/src/visibility.rs` (resolution logic)
+- `crates/github_client/src/environment.rs` (environment detection)
+
 **Responsibilities** (from RDD):
 
-- Knows: Visibility policies, resolution hierarchy, GitHub constraints
-- Does: Resolves visibility based on policies, validates against constraints
+- **config_manager** Knows: Visibility policy definitions, organization-specific rules
+- **repo_roller_core** Does: Resolves visibility using hierarchical policy system
+- **github_client** Knows: GitHub environment capabilities (Enterprise vs standard)
 
 ## Overview
 
 The repository visibility interface defines the types, traits, and contracts for managing repository visibility decisions during repository creation. It implements a hierarchical policy system that balances organizational security requirements, user preferences, template defaults, and GitHub platform constraints.
 
+**Architectural Split**: The visibility domain is split across three crates to avoid circular dependencies:
+
+1. **`config_manager`** (Infrastructure - Configuration)
+   - Policy type definitions (`VisibilityPolicy`, `RepositoryVisibility`)
+   - Policy provider trait (`VisibilityPolicyProvider`)
+   - Configuration-based policy implementation
+   - Location: `crates/config_manager/src/visibility.rs`
+
+2. **`repo_roller_core`** (Core Domain - Business Logic)
+   - Resolution orchestration (`VisibilityResolver`)
+   - Request/decision types (`VisibilityRequest`, `VisibilityDecision`)
+   - Resolution hierarchy and validation logic
+   - Re-exports policy types from `config_manager` for convenience
+   - Location: `crates/repo_roller_core/src/visibility.rs`
+
+3. **`github_client`** (Infrastructure - GitHub Integration)
+   - Environment detection trait (`GitHubEnvironmentDetector`)
+   - Plan limitations detection
+   - Enterprise environment detection
+   - Location: `crates/github_client/src/environment.rs`
+
+This separation mirrors the existing pattern where `repo_roller_core` re-exports `ConfigurationError` from `config_manager` (see `crates/repo_roller_core/src/errors.rs:134`).
+
 ## Dependencies
 
-- Types: `RepositoryVisibility`, `VisibilityPolicy`, `VisibilityDecision` (this document)
-- External: `OrganizationName` from `repository-domain.md`
-- Traits: `VisibilityPolicyProvider`, `GitHubEnvironmentDetector` (this document)
+- Policy Types: `RepositoryVisibility`, `VisibilityPolicy`, `PolicyConstraint` (defined in `config_manager/src/visibility.rs`)
+- Resolution Types: `VisibilityDecision`, `VisibilityRequest`, `DecisionSource` (defined in `repo_roller_core/src/visibility.rs`)
+- Domain Types: `OrganizationName` from `repository-domain.md`
+- Traits: `VisibilityPolicyProvider` (in `config_manager`), `GitHubEnvironmentDetector` (in `github_client`)
 - Shared: Standard Rust types (`String`, `Vec`, etc.)
 
-## Core Types
+## Core Types (config_manager)
+
+These types are defined in `crates/config_manager/src/visibility.rs` and re-exported by `repo_roller_core` for convenience.
 
 ### RepositoryVisibility
+
+**Module**: `config_manager/src/visibility.rs`
+**Re-exported**: `repo_roller_core::RepositoryVisibility`
 
 ```rust
 /// Repository visibility level.
@@ -74,6 +112,9 @@ pub enum RepositoryVisibility {
 
 ### VisibilityPolicy
 
+**Module**: `config_manager/src/visibility.rs`
+**Re-exported**: `repo_roller_core::VisibilityPolicy`
+
 ```rust
 /// Organization-level visibility policy.
 ///
@@ -125,6 +166,9 @@ pub enum VisibilityPolicy {
 
 ### PolicyConstraint
 
+**Module**: `config_manager/src/visibility.rs`
+**Re-exported**: `repo_roller_core::PolicyConstraint`
+
 ```rust
 /// Constraint that was applied during visibility resolution.
 ///
@@ -157,7 +201,13 @@ pub enum PolicyConstraint {
 
 ---
 
+## Resolution Types (repo_roller_core)
+
+These types are defined in `crates/repo_roller_core/src/visibility.rs` for business logic operations.
+
 ### DecisionSource
+
+**Module**: `repo_roller_core/src/visibility.rs`
 
 ```rust
 /// Source of the visibility decision.
@@ -189,6 +239,8 @@ pub enum DecisionSource {
 ---
 
 ### VisibilityDecision
+
+**Module**: `repo_roller_core/src/visibility.rs`
 
 ```rust
 /// Result of visibility resolution.
@@ -230,6 +282,8 @@ pub struct VisibilityDecision {
 
 ### VisibilityRequest
 
+**Module**: `repo_roller_core/src/visibility.rs`
+
 ```rust
 /// Input to the visibility resolution process.
 ///
@@ -267,6 +321,8 @@ let request = VisibilityRequest {
 
 ### PlanLimitations
 
+**Module**: `github_client/src/environment.rs`
+
 ```rust
 /// GitHub plan limitations affecting visibility.
 ///
@@ -299,6 +355,10 @@ pub struct PlanLimitations {
 ## Trait Definitions
 
 ### VisibilityPolicyProvider
+
+**Module**: `config_manager/src/visibility.rs`
+**Re-exported**: `repo_roller_core::VisibilityPolicyProvider`
+**Implementation**: `config_manager/src/visibility_policy_provider.rs`
 
 ```rust
 /// Provides organization visibility policies.
@@ -365,6 +425,9 @@ match policy {
 
 ### GitHubEnvironmentDetector
 
+**Module**: `github_client/src/environment.rs`
+**Implementation**: `github_client/src/environment_detector.rs`
+
 ```rust
 /// Detects GitHub environment capabilities and limitations.
 ///
@@ -429,6 +492,8 @@ if limitations.supports_internal_repos {
 ---
 
 ## VisibilityResolver Component
+
+**Module**: `repo_roller_core/src/visibility.rs`
 
 ### Interface
 
@@ -534,10 +599,14 @@ impl VisibilityResolver {
 
 ## Error Types
 
+**Module**: `config_manager/src/visibility.rs` (policy-related errors)
+**Module**: `repo_roller_core/src/visibility.rs` (resolution-related errors)
+
 ```rust
 /// Errors that can occur during visibility resolution.
 ///
 /// Provides detailed context for visibility-related failures.
+/// Defined in config_manager and re-exported by repo_roller_core.
 #[derive(Debug, thiserror::Error)]
 pub enum VisibilityError {
     /// Organization policy not found
@@ -774,6 +843,35 @@ Test file: `crates/integration_tests/tests/repository_visibility_tests.rs`
 ---
 
 ## Implementation Notes
+
+### Circular Dependency Resolution
+
+**Architectural Decision**: Policy types are defined in `config_manager` to avoid circular dependencies.
+
+**Context**: The original design placed all visibility types in `repo_roller_core`, but this created a circular dependency:
+- `repo_roller_core` depends on `config_manager` (re-exports `ConfigurationError`)
+- `config_manager` would need to depend on `repo_roller_core` (to implement `VisibilityPolicyProvider`)
+
+**Solution**: Split the visibility domain across crates following the existing `ConfigurationError` pattern:
+- **Policy definitions** (`RepositoryVisibility`, `VisibilityPolicy`, `VisibilityPolicyProvider`) → `config_manager`
+- **Resolution logic** (`VisibilityResolver`, `VisibilityDecision`, `VisibilityRequest`) → `repo_roller_core`
+- **Environment detection** (`GitHubEnvironmentDetector`, `PlanLimitations`) → `github_client`
+
+**Precedent**: This follows the existing pattern where `repo_roller_core` re-exports types from infrastructure crates:
+```rust
+// crates/repo_roller_core/src/errors.rs:134
+pub use config_manager::{ConfigurationError, ConfigurationResult};
+```
+
+**Trade-off**: Policy types are not in the "pure" core domain, but this pragmatic approach:
+- ✅ Avoids circular dependencies
+- ✅ Maintains consistency with existing patterns
+- ✅ Keeps configuration concerns in the configuration crate
+- ✅ Enables rapid implementation without architectural refactoring
+
+See: `.llm/task-5.1-circular-dependency-blocker.md` for complete analysis.
+
+### General Implementation Notes
 
 1. **System Default**: Private is the safest default visibility
 2. **Cache Duration**: Policies cached for 5 minutes, environment for 1 hour

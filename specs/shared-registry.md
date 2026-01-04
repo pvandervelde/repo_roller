@@ -28,14 +28,15 @@ All domain primitives use newtype pattern for type safety.
 
 ### Enum Types
 
-| Type | Location | Purpose | Spec Reference |
-|------|----------|---------|----------------|
-| `RepositoryVisibility` | `repo_roller_core/src/visibility.rs` | Repository visibility level (Public, Private, Internal) | [repository-visibility.md](interfaces/repository-visibility.md#repositoryvisibility) |
-| `VisibilityPolicy` | `repo_roller_core/src/visibility.rs` | Organization visibility policy (Required, Restricted, Unrestricted) | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicy) |
-| `PolicyConstraint` | `repo_roller_core/src/visibility.rs` | Applied visibility constraints | [repository-visibility.md](interfaces/repository-visibility.md#policyconstraint) |
-| `DecisionSource` | `repo_roller_core/src/visibility.rs` | Source of visibility decision | [repository-visibility.md](interfaces/repository-visibility.md#decisionsource) |
+| Type | Location | Re-exported From | Purpose | Spec Reference |
+|------|----------|------------------|---------|----------------|
+| `RepositoryVisibility` | `config_manager/src/visibility.rs` | `repo_roller_core::RepositoryVisibility` | Repository visibility level (Public, Private, Internal) | [repository-visibility.md](interfaces/repository-visibility.md#repositoryvisibility) |
+| `VisibilityPolicy` | `config_manager/src/visibility.rs` | `repo_roller_core::VisibilityPolicy` | Organization visibility policy (Required, Restricted, Unrestricted) | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicy) |
+| `PolicyConstraint` | `config_manager/src/visibility.rs` | `repo_roller_core::PolicyConstraint` | Applied visibility constraints | [repository-visibility.md](interfaces/repository-visibility.md#policyconstraint) |
+| `DecisionSource` | `repo_roller_core/src/visibility.rs` | - | Source of visibility decision | [repository-visibility.md](interfaces/repository-visibility.md#decisionsource) |
+| `PlanLimitations` | `github_client/src/environment.rs` | - | GitHub plan limitations for visibility | [repository-visibility.md](interfaces/repository-visibility.md#planlimitations) |
 
-**Note**: Types organized by business domain, not in a generic `types.rs` file.
+**Note**: Policy types defined in `config_manager` to avoid circular dependencies. See [repository-visibility.md](interfaces/repository-visibility.md#circular-dependency-resolution) for architectural rationale.
 
 ### Result Types
 
@@ -114,12 +115,16 @@ All domain primitives use newtype pattern for type safety.
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
 | `VisibilityResolver` | `repo_roller_core/src/visibility.rs` | Visibility decision orchestration | [repository-visibility.md](interfaces/repository-visibility.md#visibilityresolver) |
-| `VisibilityPolicyProvider` | `repo_roller_core/src/visibility.rs` | Organization policy access | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicyprovider) |
-| `GitHubEnvironmentDetector` | `repo_roller_core/src/visibility.rs` | GitHub environment detection | [repository-visibility.md](interfaces/repository-visibility.md#githubenvironmentdetector) |
+| `VisibilityPolicyProvider` | `config_manager/src/visibility.rs` | Organization policy access (trait) | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicyprovider) |
+| `ConfigBasedPolicyProvider` | `config_manager/src/visibility_policy_provider.rs` | Config-based policy implementation | [repository-visibility.md](interfaces/repository-visibility.md#visibilitypolicyprovider) |
+| `GitHubEnvironmentDetector` | `github_client/src/environment.rs` | GitHub environment detection (trait) | [repository-visibility.md](interfaces/repository-visibility.md#githubenvironmentdetector) |
+| `GitHubApiEnvironmentDetector` | `github_client/src/environment_detector.rs` | GitHub API-based environment detection | [repository-visibility.md](interfaces/repository-visibility.md#githubenvironmentdetector) |
 | `VisibilityDecision` | `repo_roller_core/src/visibility.rs` | Resolved visibility with audit trail | [repository-visibility.md](interfaces/repository-visibility.md#visibilitydecision) |
 | `VisibilityRequest` | `repo_roller_core/src/visibility.rs` | Visibility resolution input | [repository-visibility.md](interfaces/repository-visibility.md#visibilityrequest) |
-| `PlanLimitations` | `repo_roller_core/src/visibility.rs` | GitHub plan constraints | [repository-visibility.md](interfaces/repository-visibility.md#planlimitations) |
-| `VisibilityError` | `repo_roller_core/src/visibility.rs` | Visibility-specific errors | [repository-visibility.md](interfaces/repository-visibility.md#error-types) |
+| `PlanLimitations` | `github_client/src/environment.rs` | GitHub plan constraints | [repository-visibility.md](interfaces/repository-visibility.md#planlimitations) |
+| `VisibilityError` | `config_manager/src/visibility.rs` | Visibility-specific errors | [repository-visibility.md](interfaces/repository-visibility.md#error-types) |
+
+**Architecture Note**: Policy types in `config_manager` to avoid circular dependencies with `repo_roller_core`. See [circular dependency resolution](interfaces/repository-visibility.md#circular-dependency-resolution).
 
 ## External Integration Interfaces
 
