@@ -139,14 +139,11 @@ struct MockVisibilityPolicyProvider;
 
 #[async_trait]
 impl VisibilityPolicyProvider for MockVisibilityPolicyProvider {
-    async fn get_policy(
-        &self,
-        _organization: &OrganizationName,
-    ) -> Result<VisibilityPolicy, VisibilityError> {
+    async fn get_policy(&self, _organization: &str) -> Result<VisibilityPolicy, VisibilityError> {
         Ok(VisibilityPolicy::Unrestricted)
     }
 
-    async fn invalidate_cache(&self, _organization: &OrganizationName) {
+    async fn invalidate_cache(&self, _organization: &str) {
         // No-op for mock
     }
 }
@@ -160,8 +157,8 @@ struct MockEnvironmentDetector;
 impl GitHubEnvironmentDetector for MockEnvironmentDetector {
     async fn get_plan_limitations(
         &self,
-        _organization: &OrganizationName,
-    ) -> Result<PlanLimitations, VisibilityError> {
+        _organization: &str,
+    ) -> Result<PlanLimitations, github_client::Error> {
         Ok(PlanLimitations {
             supports_private_repos: true,
             supports_internal_repos: false,
@@ -170,10 +167,7 @@ impl GitHubEnvironmentDetector for MockEnvironmentDetector {
         })
     }
 
-    async fn is_enterprise(
-        &self,
-        _organization: &OrganizationName,
-    ) -> Result<bool, VisibilityError> {
+    async fn is_enterprise(&self, _organization: &str) -> Result<bool, github_client::Error> {
         Ok(false)
     }
 }
@@ -540,7 +534,18 @@ async fn test_create_repository_error_handling() {
     let metadata_provider = MockMetadataProvider::empty(); // No templates - will cause error
     let auth_service = MockAuthService;
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
+    let environment_detector = Arc::new(MockEnvironmentDetector);
+
+    let result = create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller",
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await;
 
     // Should return an error
     assert!(result.is_err());

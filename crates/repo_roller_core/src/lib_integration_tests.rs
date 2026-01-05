@@ -2,8 +2,7 @@
 
 use super::*;
 use crate::visibility::{
-    DecisionSource, GitHubEnvironmentDetector, PlanLimitations, VisibilityDecision,
-    VisibilityPolicy, VisibilityPolicyProvider, VisibilityRequest,
+    GitHubEnvironmentDetector, PlanLimitations, VisibilityPolicy, VisibilityPolicyProvider,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -38,19 +37,19 @@ impl MockPolicyProvider {
 impl VisibilityPolicyProvider for MockPolicyProvider {
     async fn get_policy(
         &self,
-        organization: &OrganizationName,
+        organization: &str,
     ) -> Result<VisibilityPolicy, crate::visibility::VisibilityError> {
         self.policies
             .lock()
             .unwrap()
-            .get(organization.as_ref())
+            .get(organization)
             .cloned()
             .ok_or(crate::visibility::VisibilityError::PolicyNotFound {
-                organization: organization.as_ref().to_string(),
+                organization: organization.to_string(),
             })
     }
 
-    async fn invalidate_cache(&self, _organization: &OrganizationName) {
+    async fn invalidate_cache(&self, _organization: &str) {
         // No-op for mock
     }
 }
@@ -88,15 +87,12 @@ impl MockEnvironmentDetector {
 impl GitHubEnvironmentDetector for MockEnvironmentDetector {
     async fn get_plan_limitations(
         &self,
-        _organization: &OrganizationName,
-    ) -> Result<PlanLimitations, crate::visibility::VisibilityError> {
+        _organization: &str,
+    ) -> Result<PlanLimitations, github_client::Error> {
         Ok(self.limitations.clone())
     }
 
-    async fn is_enterprise(
-        &self,
-        _organization: &OrganizationName,
-    ) -> Result<bool, crate::visibility::VisibilityError> {
+    async fn is_enterprise(&self, _organization: &str) -> Result<bool, github_client::Error> {
         Ok(self.limitations.is_enterprise)
     }
 }
