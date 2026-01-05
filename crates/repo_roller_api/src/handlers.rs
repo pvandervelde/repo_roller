@@ -122,27 +122,37 @@ pub async fn create_repository(
     let domain_request = http_create_repository_request_to_domain(request.clone())?;
 
     // Create GitHub client for template operations
-    let github_client = github_client::create_token_client(&auth.token)
-        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    let github_octocrab = std::sync::Arc::new(github_client::create_token_client(&auth.token)
+        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?);
+    let github_client = github_client::GitHubClient::new(github_octocrab.as_ref().clone());
 
     // Create metadata provider for template discovery and loading
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+    let metadata_provider = std::sync::Arc::new(config_manager::GitHubMetadataProvider::new(
         github_client,
         config_manager::MetadataProviderConfig::explicit(&state.metadata_repository_name),
-    );
+    ));
 
     // Create authentication service that returns the installation token we already have
     // The auth middleware has already validated this token with GitHub
     let token = auth.token.clone();
     let auth_service = TokenAuthService::new(token);
 
+    // Create visibility providers
+    let visibility_policy_provider = std::sync::Arc::new(
+        config_manager::ConfigBasedPolicyProvider::new(metadata_provider.clone())
+    );
+    let environment_detector = std::sync::Arc::new(
+        github_client::GitHubApiEnvironmentDetector::new(github_octocrab)
+    );
+
     // Call domain service to create repository
     let result = repo_roller_core::create_repository(
         domain_request,
-        &metadata_provider,
+        metadata_provider.as_ref(),
         &auth_service,
         &state.metadata_repository_name,
+        visibility_policy_provider,
+        environment_detector,
     )
     .await?; // ApiError::from(RepoRollerError) converts automatically
 

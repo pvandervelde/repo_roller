@@ -9,6 +9,10 @@ use config_manager::{
 };
 use github_client::{errors::Error as GitHubError, RepositoryClient, RepositorySettingsUpdate};
 use std::sync::{Arc, Mutex};
+use visibility::{
+    GitHubEnvironmentDetector, PlanLimitations, VisibilityError, VisibilityPolicy,
+    VisibilityPolicyProvider,
+};
 
 // --- MOCK STRUCTS (ALPHABETICALLY ORDERED) ---
 
@@ -125,6 +129,52 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
 
     async fn list_templates(&self, _org: &str) -> ConfigurationResult<Vec<String>> {
         unimplemented!("Not used in these tests")
+    }
+}
+
+/// Mock visibility policy provider
+///
+/// Returns unrestricted policy for all organizations
+struct MockVisibilityPolicyProvider;
+
+#[async_trait]
+impl VisibilityPolicyProvider for MockVisibilityPolicyProvider {
+    async fn get_policy(
+        &self,
+        _organization: &OrganizationName,
+    ) -> Result<VisibilityPolicy, VisibilityError> {
+        Ok(VisibilityPolicy::Unrestricted)
+    }
+
+    async fn invalidate_cache(&self, _organization: &OrganizationName) {
+        // No-op for mock
+    }
+}
+
+/// Mock environment detector
+///
+/// Returns paid plan (supports private repos) by default
+struct MockEnvironmentDetector;
+
+#[async_trait]
+impl GitHubEnvironmentDetector for MockEnvironmentDetector {
+    async fn get_plan_limitations(
+        &self,
+        _organization: &OrganizationName,
+    ) -> Result<PlanLimitations, VisibilityError> {
+        Ok(PlanLimitations {
+            supports_private_repos: true,
+            supports_internal_repos: false,
+            private_repo_limit: None,
+            is_enterprise: false,
+        })
+    }
+
+    async fn is_enterprise(
+        &self,
+        _organization: &OrganizationName,
+    ) -> Result<bool, VisibilityError> {
+        Ok(false)
     }
 }
 
@@ -450,8 +500,18 @@ async fn test_create_repository_type_conversion() {
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);
     let auth_service = MockAuthService;
+    let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
+    let environment_detector = Arc::new(MockEnvironmentDetector);
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller",
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await;
 
     // Should fail during authentication with mock service
     assert!(result.is_err());
@@ -507,8 +567,17 @@ async fn test_create_repository_preserves_variables() {
     // Function signature accepts the request - type checking works
     let metadata_provider = MockMetadataProvider::empty();
     let auth_service = MockAuthService;
-    let _result =
-        create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
+    let environment_detector = Arc::new(MockEnvironmentDetector);
+    let _result = create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller",
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await;
 }
 
 /// Verify that branded types prevent type confusion.
@@ -541,8 +610,18 @@ async fn test_create_repository_result_type() {
 
     let metadata_provider = MockMetadataProvider::empty();
     let auth_service = MockAuthService;
+    let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
+    let environment_detector = Arc::new(MockEnvironmentDetector);
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        &metadata_provider,
+        &auth_service,
+        ".reporoller",
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await;
 
     // Verify the result type is RepoRollerResult<RepositoryCreationResult>
     match result {

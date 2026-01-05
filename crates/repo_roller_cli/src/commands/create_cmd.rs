@@ -189,27 +189,39 @@ pub async fn create_repository(
         })?;
 
     // Create GitHub client for metadata provider
-    let github_client = github_client::create_token_client(&installation_token).map_err(|e| {
-        repo_roller_core::RepoRollerError::System(repo_roller_core::SystemError::Internal {
-            reason: format!("Failed to create GitHub client: {}", e),
-        })
-    })?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    let github_octocrab = std::sync::Arc::new(
+        github_client::create_token_client(&installation_token).map_err(|e| {
+            repo_roller_core::RepoRollerError::System(repo_roller_core::SystemError::Internal {
+                reason: format!("Failed to create GitHub client: {}", e),
+            })
+        })?,
+    );
+    let github_client = github_client::GitHubClient::new(github_octocrab.as_ref().clone());
 
     // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+    let metadata_provider = std::sync::Arc::new(config_manager::GitHubMetadataProvider::new(
         github_client,
         config_manager::MetadataProviderConfig::explicit(
             &config.organization.metadata_repository_name,
         ),
+    ));
+
+    // Create visibility providers
+    let visibility_policy_provider = std::sync::Arc::new(
+        config_manager::ConfigBasedPolicyProvider::new(metadata_provider.clone()),
+    );
+    let environment_detector = std::sync::Arc::new(
+        github_client::GitHubApiEnvironmentDetector::new(github_octocrab),
     );
 
     // Use the new function with dependency injection
     repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        metadata_provider.as_ref(),
         &auth_service,
         &config.organization.metadata_repository_name,
+        visibility_policy_provider,
+        environment_detector,
     )
     .await
 }
