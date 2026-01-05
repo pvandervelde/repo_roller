@@ -5,12 +5,13 @@
 
 use super::*;
 use crate::{
-    ConfigurationError, ConfigurationResult, DiscoveryMethod, GlobalDefaults, MetadataRepository,
-    MetadataRepositoryProvider, RepositoryTypeConfig, RepositoryVisibility, TeamConfig,
-    TemplateConfig,
+    ConfigurationError, ConfigurationResult, DiscoveryMethod, GlobalDefaults, LabelConfig,
+    MetadataRepository, MetadataRepositoryProvider, RepositoryTypeConfig, RepositoryVisibility,
+    TeamConfig, TemplateConfig,
 };
 use async_trait::async_trait;
 use chrono::Utc;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Mock metadata repository provider for testing policy provider.
@@ -38,12 +39,17 @@ impl MockMetadataProvider {
         required: Option<&str>,
         restricted: Option<Vec<&str>>,
     ) -> Self {
-        use crate::settings::RepositorySettings;
-        use crate::OverridableValue;
-
         // Create mock global defaults with visibility policy
-        let mut defaults = GlobalDefaults {
-            repository: RepositorySettings::default(),
+        let defaults = GlobalDefaults {
+            repository: Some(Default::default()),
+            pull_requests: None,
+            branch_protection: None,
+            actions: None,
+            push: None,
+            webhooks: None,
+            custom_properties: None,
+            environments: None,
+            github_apps: None,
         };
 
         // TODO: Add visibility policy fields to GlobalDefaults
@@ -67,7 +73,7 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
     ) -> ConfigurationResult<MetadataRepository> {
         if self.should_fail {
             return Err(ConfigurationError::MetadataRepositoryNotFound {
-                organization: "test-org".to_string(),
+                org: "test-org".to_string(),
             });
         }
         Ok(MetadataRepository {
@@ -128,9 +134,23 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
 
     async fn list_available_repository_types(
         &self,
-        _org: &str,
+        _repo: &MetadataRepository,
     ) -> ConfigurationResult<Vec<String>> {
         Ok(vec![])
+    }
+
+    async fn load_standard_labels(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<HashMap<String, LabelConfig>> {
+        Ok(HashMap::new())
+    }
+
+    async fn validate_repository_structure(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<()> {
+        Ok(())
     }
 }
 
@@ -312,9 +332,8 @@ async fn test_configuration_load_error() {
     let provider = MockMetadataProvider::new().with_failure();
 
     let policy_provider = ConfigBasedPolicyProvider::new(Arc::new(provider));
-    let org = OrganizationName::new("test-org").unwrap();
 
-    let result = policy_provider.get_policy(&org).await;
+    let result = policy_provider.get_policy("test-org").await;
 
     assert!(result.is_err());
     // Error should indicate configuration issue

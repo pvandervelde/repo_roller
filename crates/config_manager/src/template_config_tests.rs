@@ -460,6 +460,7 @@ fn test_serialize_round_trip() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        default_visibility: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");

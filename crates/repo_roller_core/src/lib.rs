@@ -83,11 +83,6 @@
 //! # }
 //! ```
 //!
-//! ## Architecture
-//!
-//! The crate follows a dependency injection pattern for testability:
-//! - Configuration-driven template processing via [`template_engine`]
-//!
 //! ## Error Handling
 //!
 //! All operations return [`RepoRollerResult<T>`] which provides structured error
@@ -456,7 +451,7 @@ async fn create_github_repository(
 ///     MetadataProviderConfig::explicit(".reporoller")
 /// );
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
-/// 
+///
 /// let result = create_repository(
 ///     request,
 ///     &metadata_provider,
@@ -542,17 +537,18 @@ pub async fn create_repository(
     info!("Template '{}' loaded successfully", request.template);
 
     // Step 4.5: Resolve repository visibility
-    info!("Resolving repository visibility for organization '{}'", request.owner);
+    info!(
+        "Resolving repository visibility for organization '{}'",
+        request.owner
+    );
     let visibility_request = visibility::VisibilityRequest {
         organization: request.owner.clone(),
         user_preference: request.visibility,
-        template_default: None, // TODO: Task 5.7 - Add default_visibility to TemplateConfig
+        template_default: template.default_visibility,
     };
 
-    let visibility_resolver = visibility::VisibilityResolver::new(
-        visibility_policy_provider,
-        environment_detector,
-    );
+    let visibility_resolver =
+        visibility::VisibilityResolver::new(visibility_policy_provider, environment_detector);
 
     let visibility_decision = visibility_resolver
         .resolve_visibility(visibility_request)
@@ -572,10 +568,7 @@ pub async fn create_repository(
                 visibility::VisibilityError::GitHubConstraint { requested, reason } => {
                     RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
                         field: "visibility".to_string(),
-                        reason: format!(
-                            "Visibility {:?} not available: {}",
-                            requested, reason
-                        ),
+                        reason: format!("Visibility {:?} not available: {}", requested, reason),
                     })
                 }
                 visibility::VisibilityError::PolicyNotFound { organization } => {
@@ -599,14 +592,15 @@ pub async fn create_repository(
                         reason: message,
                     })
                 }
-                visibility::VisibilityError::EnvironmentDetectionFailed { organization, reason } => {
-                    RepoRollerError::GitHub(GitHubError::NetworkError {
-                        reason: format!(
-                            "Failed to detect GitHub environment for organization '{}': {}",
-                            organization, reason
-                        ),
-                    })
-                }
+                visibility::VisibilityError::EnvironmentDetectionFailed {
+                    organization,
+                    reason,
+                } => RepoRollerError::GitHub(GitHubError::NetworkError {
+                    reason: format!(
+                        "Failed to detect GitHub environment for organization '{}': {}",
+                        organization, reason
+                    ),
+                }),
                 visibility::VisibilityError::GitHubApiError(source) => {
                     RepoRollerError::GitHub(GitHubError::NetworkError {
                         reason: format!("Failed to detect GitHub environment: {}", source),
