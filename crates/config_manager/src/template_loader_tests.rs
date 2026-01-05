@@ -80,6 +80,7 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         webhooks: None,
         environments: None,
         github_apps: None,
+        default_visibility: None,
     }
 }
 
