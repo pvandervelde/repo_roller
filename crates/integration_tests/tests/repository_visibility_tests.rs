@@ -1,24 +1,75 @@
 //! Repository visibility integration tests.
 //!
-//! These tests specifically target the repository visibility bug identified
-//! in the test coverage analysis: created repositories are always public
-//! regardless of configuration.
+//! These tests verify that repository visibility is correctly resolved and applied
+//! during repository creation, testing against real GitHub infrastructure (glitchgrove).
 //!
-//! NOTE: These tests are commented out pending fix for visibility bug.
-//! See separate work item for visibility implementation.
+//! Tests cover:
+//! - Explicit visibility preferences (Private, Public)
+//! - Visibility resolution with different policies
+//! - Verification of actual GitHub repository visibility after creation
+//!
+//! Note: Internal visibility requires GitHub Enterprise and is not tested here.
 
-// Commented out pending visibility bug fix
-/*
 use anyhow::Result;
-use integration_tests::{
-    utils::{IntegrationTestRunner, TestConfig},
-    verification::verify_repository_settings,
+use auth_handler::{GitHubAuthService, UserAuthenticationService};
+use config_manager::{
+    ConfigBasedPolicyProvider, GitHubMetadataProvider, MetadataProviderConfig, RepositoryVisibility,
 };
+use github_client::{create_token_client, GitHubApiEnvironmentDetector, GitHubClient};
+use integration_tests::{RepositoryCleanup, TestConfig};
 use repo_roller_core::{
-    OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, RepositoryVisibility,
+    create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
     TemplateName,
 };
+use std::sync::Arc;
 use tracing::info;
+
+/// Initialize logging for tests.
+fn init_test_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .with_test_writer()
+        .try_init();
+}
+
+/// Create test dependencies (auth service, metadata provider, visibility providers).
+async fn create_test_dependencies(
+    config: &TestConfig,
+) -> Result<(
+    GitHubAuthService,
+    Arc<GitHubMetadataProvider>,
+    Arc<ConfigBasedPolicyProvider>,
+    Arc<GitHubApiEnvironmentDetector>,
+)> {
+    let auth_service =
+        GitHubAuthService::new(config.github_app_id, config.github_app_private_key.clone());
+
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
+
+    let octocrab = Arc::new(create_token_client(&installation_token)?);
+    let github_client = GitHubClient::new(octocrab.as_ref().clone());
+
+    let metadata_provider = Arc::new(GitHubMetadataProvider::new(
+        github_client,
+        MetadataProviderConfig::explicit(".reporoller"),
+    ));
+
+    let visibility_policy_provider =
+        Arc::new(ConfigBasedPolicyProvider::new(metadata_provider.clone()));
+    let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
+
+    Ok((
+        auth_service,
+        metadata_provider,
+        visibility_policy_provider,
+        environment_detector,
+    ))
+}
 
 /// Test creating a private repository explicitly.
 ///
@@ -26,13 +77,14 @@ use tracing::info;
 /// the created repository is actually private on GitHub.
 #[tokio::test]
 async fn test_create_private_repository_explicit() -> Result<()> {
+    init_test_logging();
     info!("Testing explicit private repository creation");
 
     let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
+    let (auth_service, metadata_provider, policy_provider, env_detector) =
+        create_test_dependencies(&config).await?;
 
-    let repo_name =
-        RepositoryName::new(&format!("test-private-explicit-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(&format!("test-private-{}", uuid::Uuid::new_v4()))?;
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
@@ -43,27 +95,44 @@ async fn test_create_private_repository_explicit() -> Result<()> {
     .build();
 
     // Execute repository creation
-    let result = runner.run(request).await?;
+    let result = create_repository(
+        request,
+        metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        policy_provider,
+        env_detector,
+    )
+    .await?;
 
-    assert!(
-        result.success,
-        "Repository creation should succeed: {:?}",
-        result.errors
+    info!(
+        "✓ Repository created: {} (ID: {})",
+        result.repository_url, result.repository_id
     );
 
     // Verify repository was created with correct visibility
-    let github_client = runner.github_client().await?;
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
+    let octocrab = create_token_client(&installation_token)?;
+    let github_client = GitHubClient::new(octocrab);
+
     let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
+        .get_repository(&config.test_org, repo_name.as_ref())
         .await?;
 
     assert!(
-        repository.private,
-        "❌ BUG CONFIRMED: Repository should be private but is public"
+        repository.is_private(),
+        "Repository should be private but is public"
     );
 
     // Cleanup
-    runner.cleanup().await?;
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup =
+        RepositoryCleanup::new(GitHubClient::new(cleanup_client), config.test_org.clone());
+    cleanup.delete_repository(repo_name.as_ref()).await.ok();
 
     info!("✓ Private repository creation test passed");
     Ok(())
@@ -75,12 +144,14 @@ async fn test_create_private_repository_explicit() -> Result<()> {
 /// the created repository is actually public on GitHub.
 #[tokio::test]
 async fn test_create_public_repository_explicit() -> Result<()> {
+    init_test_logging();
     info!("Testing explicit public repository creation");
 
     let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
+    let (auth_service, metadata_provider, policy_provider, env_detector) =
+        create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-public-explicit-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(&format!("test-public-{}", uuid::Uuid::new_v4()))?;
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
@@ -91,351 +162,220 @@ async fn test_create_public_repository_explicit() -> Result<()> {
     .build();
 
     // Execute repository creation
-    let result = runner.run(request).await?;
+    let result = create_repository(
+        request,
+        metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        policy_provider,
+        env_detector,
+    )
+    .await?;
 
-    assert!(
-        result.success,
-        "Repository creation should succeed: {:?}",
-        result.errors
+    info!(
+        "✓ Repository created: {} (ID: {})",
+        result.repository_url, result.repository_id
     );
 
     // Verify repository was created with correct visibility
-    let github_client = runner.github_client().await?;
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
+    let octocrab = create_token_client(&installation_token)?;
+    let github_client = GitHubClient::new(octocrab);
+
     let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
+        .get_repository(&config.test_org, repo_name.as_ref())
         .await?;
 
     assert!(
-        !repository.private,
+        !repository.is_private(),
         "Repository should be public (private=false)"
     );
 
     // Cleanup
-    runner.cleanup().await?;
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup =
+        RepositoryCleanup::new(GitHubClient::new(cleanup_client), config.test_org.clone());
+    cleanup.delete_repository(repo_name.as_ref()).await.ok();
 
     info!("✓ Public repository creation test passed");
     Ok(())
 }
 
-/// Test creating an internal repository explicitly.
+/// Test creating repository without explicit visibility (uses system default).
 ///
-/// Verifies that when visibility is set to Internal,
-/// the created repository is actually internal on GitHub.
-/// (Internal = visible to all enterprise members)
+/// Verifies that when no visibility is specified, the system default (Private)
+/// is applied.
 #[tokio::test]
-async fn test_create_internal_repository_explicit() -> Result<()> {
-    info!("Testing explicit internal repository creation");
+async fn test_create_repository_default_visibility() -> Result<()> {
+    init_test_logging();
+    info!("Testing repository creation with default visibility");
 
     let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
+    let (auth_service, metadata_provider, policy_provider, env_detector) =
+        create_test_dependencies(&config).await?;
 
-    let repo_name =
-        RepositoryName::new(&format!("test-internal-explicit-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(&format!("test-default-{}", uuid::Uuid::new_v4()))?;
 
+    // Don't specify visibility - should use system default (Private)
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-basic")?,
     )
-    .with_visibility(RepositoryVisibility::Internal)
     .build();
 
     // Execute repository creation
-    let result = runner.run(request).await?;
-
-    assert!(
-        result.success,
-        "Repository creation should succeed: {:?}",
-        result.errors
-    );
-
-    // Verify repository was created with correct visibility
-    let github_client = runner.github_client().await?;
-    let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
-        .await?;
-
-    // Internal visibility is represented by visibility="internal" in GitHub API
-    // TODO: Verify github_client::Repository has visibility field
-    // Expected: repository.visibility == "internal"
-
-    info!("⚠ Internal visibility verification needs Repository.visibility field");
-    info!("✓ Internal repository creation request passed");
-
-    // Cleanup
-    runner.cleanup().await?;
-
-    Ok(())
-}
-
-/// Test repository visibility from template configuration.
-///
-/// Verifies that when no explicit visibility is set,
-/// the template's configured visibility is used.
-#[tokio::test]
-async fn test_repository_visibility_from_template() -> Result<()> {
-    info!("Testing repository visibility from template configuration");
-
-    let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
-
-    let repo_name = RepositoryName::new(&format!(
-        "test-visibility-template-{}",
-        uuid::Uuid::new_v4()
-    ))?;
-
-    // Don't specify visibility - should use template default
-    let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-private")?, // Template configured as private
+    let result = create_repository(
+        request,
+        metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        policy_provider,
+        env_detector,
     )
-    .build();
+    .await?;
 
-    // Execute repository creation
-    let result = runner.run(request).await?;
-
-    assert!(
-        result.success,
-        "Repository creation should succeed: {:?}",
-        result.errors
-    );
-
-    // Verify repository inherited template's private visibility
-    let github_client = runner.github_client().await?;
-    let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
-        .await?;
-
-    assert!(
-        repository.private,
-        "Repository should inherit private visibility from template"
-    );
-
-    // Cleanup
-    runner.cleanup().await?;
-
-    info!("✓ Template visibility inheritance test passed");
-    Ok(())
-}
-
-/// Test repository visibility from organization configuration.
-///
-/// Verifies that when no explicit visibility is set and template
-/// doesn't specify visibility, the organization default is used.
-#[tokio::test]
-async fn test_repository_visibility_from_organization() -> Result<()> {
-    info!("Testing repository visibility from organization configuration");
-
-    let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
-
-    let repo_name = RepositoryName::new(&format!("test-visibility-org-{}", uuid::Uuid::new_v4()))?;
-
-    // Use template without visibility setting
-    // Should fall back to organization default from .reporoller-test
-    let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?, // No visibility configured
-    )
-    .build();
-
-    // Execute repository creation
-    let result = runner.run(request).await?;
-
-    assert!(
-        result.success,
-        "Repository creation should succeed: {:?}",
-        result.errors
-    );
-
-    // Verify repository used organization default visibility
-    let github_client = runner.github_client().await?;
-    let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
-        .await?;
-
-    // TODO: Need to know what the organization default visibility is
-    // This test should verify against that configuration value
     info!(
-        "Repository visibility: {}",
-        if repository.private {
-            "private"
-        } else {
-            "public"
-        }
+        "✓ Repository created: {} (ID: {})",
+        result.repository_url, result.repository_id
     );
 
-    // Cleanup
-    runner.cleanup().await?;
+    // Verify repository defaults to private
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
+        .await?;
+    let octocrab = create_token_client(&installation_token)?;
+    let github_client = GitHubClient::new(octocrab);
 
-    info!("⚠ Organization visibility test needs org configuration verification");
-    Ok(())
-}
-
-/// Test explicit visibility overrides template.
-///
-/// Verifies that explicit visibility in the request
-/// takes precedence over template configuration.
-#[tokio::test]
-async fn test_explicit_visibility_overrides_template() -> Result<()> {
-    info!("Testing explicit visibility overrides template");
-
-    let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
-
-    let repo_name = RepositoryName::new(&format!(
-        "test-visibility-override-{}",
-        uuid::Uuid::new_v4()
-    ))?;
-
-    // Template is private, but we explicitly request public
-    let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-private")?, // Template = private
-    )
-    .with_visibility(RepositoryVisibility::Public) // Request = public
-    .build();
-
-    // Execute repository creation
-    let result = runner.run(request).await?;
-
-    assert!(
-        result.success,
-        "Repository creation should succeed: {:?}",
-        result.errors
-    );
-
-    // Verify repository is public (explicit request overrides template)
-    let github_client = runner.github_client().await?;
     let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
+        .get_repository(&config.test_org, repo_name.as_ref())
         .await?;
 
     assert!(
-        !repository.private,
-        "Explicit public visibility should override template's private setting"
+        repository.is_private(),
+        "Repository should default to private when no visibility specified"
     );
 
     // Cleanup
-    runner.cleanup().await?;
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup =
+        RepositoryCleanup::new(GitHubClient::new(cleanup_client), config.test_org.clone());
+    cleanup.delete_repository(repo_name.as_ref()).await.ok();
 
-    info!("✓ Visibility override test passed");
+    info!("✓ Default visibility test passed");
     Ok(())
 }
 
-/// Test visibility configuration hierarchy.
+/// Test concurrent repository creation with different visibilities.
 ///
-/// Verifies the complete precedence chain:
-/// Request > Template > Organization > Default
+/// Verifies that visibility resolution is thread-safe and handles
+/// concurrent operations correctly.
 #[tokio::test]
-async fn test_visibility_configuration_hierarchy() -> Result<()> {
-    info!("Testing visibility configuration hierarchy");
-
-    // TODO: This comprehensive test would:
-    // 1. Create repo with all levels specified → verify request wins
-    // 2. Create repo with template + org → verify template wins
-    // 3. Create repo with org only → verify org wins
-    // 4. Create repo with nothing → verify system default wins
-    //
-    // This requires:
-    // - Multiple template repositories with different visibilities
-    // - Organization metadata with visibility configured
-    // - Understanding of system default
-
-    info!("⚠ Visibility hierarchy test needs comprehensive test setup");
-    Ok(())
-}
-
-/// Test changing repository visibility after creation.
-///
-/// Verifies that visibility can be updated after repository exists.
-/// (This would be a future feature for repository updates)
-#[tokio::test]
-async fn test_update_repository_visibility() -> Result<()> {
-    info!("Testing repository visibility updates");
-
-    // TODO: This test requires:
-    // 1. Creating a public repository
-    // 2. Updating it to private
-    // 3. Verifying visibility changed
-    // 4. Updating back to public
-    // 5. Verifying visibility changed again
-    //
-    // This is a future feature - repository updates not yet implemented
-
-    info!("⚠ Visibility update test blocked on update API implementation");
-    Ok(())
-}
-
-/// Test visibility with empty repository.
-///
-/// Verifies that visibility is correctly set even when
-/// repository is created empty (no initial commit from template).
-#[tokio::test]
-async fn test_visibility_with_empty_repository() -> Result<()> {
-    info!("Testing visibility with empty repository");
+async fn test_concurrent_visibility_resolution() -> Result<()> {
+    init_test_logging();
+    info!("Testing concurrent visibility resolution");
 
     let config = TestConfig::from_env()?;
-    let runner = IntegrationTestRunner::new().await?;
+    let (auth_service, metadata_provider, policy_provider, env_detector) =
+        create_test_dependencies(&config).await?;
 
-    let repo_name =
-        RepositoryName::new(&format!("test-visibility-empty-{}", uuid::Uuid::new_v4()))?;
+    // Create 3 repositories concurrently with different visibilities
+    let repo_name_1 = RepositoryName::new(&format!("test-concurrent-1-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_2 = RepositoryName::new(&format!("test-concurrent-2-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_3 = RepositoryName::new(&format!("test-concurrent-3-{}", uuid::Uuid::new_v4()))?;
 
-    // Create empty private repository (no template)
-    let request = RepositoryCreationRequestBuilder::new(
-        repo_name.clone(),
+    let request_1 = RepositoryCreationRequestBuilder::new(
+        repo_name_1.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-empty")?, // Empty template
+        TemplateName::new("template-test-basic")?,
     )
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
-    // Execute repository creation
-    let result = runner.run(request).await?;
+    let request_2 = RepositoryCreationRequestBuilder::new(
+        repo_name_2.clone(),
+        OrganizationName::new(&config.test_org)?,
+        TemplateName::new("template-test-basic")?,
+    )
+    .with_visibility(RepositoryVisibility::Public)
+    .build();
 
-    assert!(
-        result.success,
-        "Empty repository creation should succeed: {:?}",
-        result.errors
-    );
+    let request_3 = RepositoryCreationRequestBuilder::new(
+        repo_name_3.clone(),
+        OrganizationName::new(&config.test_org)?,
+        TemplateName::new("template-test-basic")?,
+    )
+    .build(); // No visibility (defaults to Private)
 
-    // Verify repository is private
-    let github_client = runner.github_client().await?;
-    let repository = github_client
-        .get_repository(&config.test_org, repo_name.as_str())
+    // Execute all three concurrently
+    let (_result_1, _result_2, _result_3) = tokio::try_join!(
+        create_repository(
+            request_1,
+            metadata_provider.as_ref(),
+            &auth_service,
+            ".reporoller",
+            policy_provider.clone(),
+            env_detector.clone(),
+        ),
+        create_repository(
+            request_2,
+            metadata_provider.as_ref(),
+            &auth_service,
+            ".reporoller",
+            policy_provider.clone(),
+            env_detector.clone(),
+        ),
+        create_repository(
+            request_3,
+            metadata_provider.as_ref(),
+            &auth_service,
+            ".reporoller",
+            policy_provider,
+            env_detector,
+        ),
+    )?;
+
+    info!("✓ All three repositories created concurrently");
+
+    // Verify visibilities
+    let installation_token = auth_service
+        .get_installation_token_for_org(&config.test_org)
         .await?;
+    let octocrab = create_token_client(&installation_token)?;
+    let github_client = GitHubClient::new(octocrab);
 
+    let (repo_1, repo_2, repo_3) = tokio::try_join!(
+        github_client.get_repository(&config.test_org, repo_name_1.as_ref()),
+        github_client.get_repository(&config.test_org, repo_name_2.as_ref()),
+        github_client.get_repository(&config.test_org, repo_name_3.as_ref()),
+    )?;
+
+    assert!(repo_1.is_private(), "Repository 1 should be private");
+    assert!(!repo_2.is_private(), "Repository 2 should be public");
     assert!(
-        repository.private,
-        "Empty repository should be private as requested"
+        repo_3.is_private(),
+        "Repository 3 should be private (default)"
     );
 
-    // Cleanup
-    runner.cleanup().await?;
+    // Cleanup all three
+    let cleanup_client =
+        github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
+            .await?;
+    let cleanup =
+        RepositoryCleanup::new(GitHubClient::new(cleanup_client), config.test_org.clone());
+    tokio::try_join!(
+        async { cleanup.delete_repository(repo_name_1.as_ref()).await },
+        async { cleanup.delete_repository(repo_name_2.as_ref()).await },
+        async { cleanup.delete_repository(repo_name_3.as_ref()).await },
+    )
+    .ok();
 
-    info!("✓ Empty repository visibility test passed");
+    info!("✓ Concurrent visibility resolution test passed");
     Ok(())
 }
-
-/// Test visibility validation for organization restrictions.
-///
-/// Verifies that if organization policy doesn't allow public repositories,
-/// attempts to create public repos fail with clear error.
-#[tokio::test]
-async fn test_visibility_organization_policy_enforcement() -> Result<()> {
-    info!("Testing organization visibility policy enforcement");
-
-    // TODO: This test requires:
-    // 1. Organization configured to disallow public repositories
-    // 2. Attempting to create public repository
-    // 3. Verifying creation fails
-    // 4. Verifying error message explains policy restriction
-    // 5. Suggesting to use private/internal instead
-
-    info!("⚠ Visibility policy test needs org with restrictions configured");
-    Ok(())
-}
-*/

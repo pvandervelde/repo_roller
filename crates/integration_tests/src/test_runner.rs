@@ -377,27 +377,38 @@ impl IntegrationTestRunner {
             .await
             .context("Failed to get installation token")?;
 
-        let github_client = github_client::create_token_client(&installation_token)
-            .context("Failed to create GitHub client")?;
-        let github_client = github_client::GitHubClient::new(github_client);
+        let octocrab = std::sync::Arc::new(
+            github_client::create_token_client(&installation_token)
+                .context("Failed to create GitHub client")?,
+        );
+        let github_client = github_client::GitHubClient::new(octocrab.as_ref().clone());
 
         // Step 4: Create metadata provider
         info!(scenario = ?scenario, "Creating metadata provider");
         let metadata_repo_name = scenario.metadata_repository().unwrap_or(".reporoller");
-        let metadata_provider = config_manager::GitHubMetadataProvider::new(
+        let metadata_provider = std::sync::Arc::new(config_manager::GitHubMetadataProvider::new(
             github_client,
             config_manager::MetadataProviderConfig::explicit(metadata_repo_name),
-        );
+        ));
         details.config_loaded = true;
+
+        // Create visibility providers
+        let visibility_policy_provider = std::sync::Arc::new(
+            config_manager::ConfigBasedPolicyProvider::new(metadata_provider.clone()),
+        );
+        let environment_detector =
+            std::sync::Arc::new(github_client::GitHubApiEnvironmentDetector::new(octocrab));
 
         // Step 5: Call the repository creation function
         info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
 
         let result = create_repository(
             request,
-            &metadata_provider,
+            metadata_provider.as_ref(),
             &auth_service,
             metadata_repo_name,
+            visibility_policy_provider,
+            environment_detector,
         )
         .await;
 
