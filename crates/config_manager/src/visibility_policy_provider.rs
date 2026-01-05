@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use crate::{
-    visibility::{VisibilityError, VisibilityPolicy, VisibilityPolicyProvider},
+    visibility::{RepositoryVisibility, VisibilityError, VisibilityPolicy, VisibilityPolicyProvider},
     GlobalDefaults, MetadataRepositoryProvider,
 };
 
@@ -157,20 +157,70 @@ impl ConfigBasedPolicyProvider {
     ///
     /// # Returns
     ///
-    /// Parsed visibility policy (currently always Unrestricted)
+    /// Parse visibility policy from global defaults.
     ///
-    /// # Future Implementation
+    /// Parsed visibility policy from the repository_visibility configuration
     ///
-    /// Will parse the following TOML structure:
+    /// # TOML Structure
+    ///
     /// ```toml
     /// [repository_visibility]
     /// enforcement_level = "restricted"  # or "required" or "unrestricted"
     /// required_visibility = "private"   # only when enforcement_level = "required"
     /// restricted_visibilities = ["public"]  # only when enforcement_level = "restricted"
     /// ```
-    fn parse_policy(&self, _defaults: &GlobalDefaults) -> VisibilityPolicy {
-        // TODO: Parse [repository_visibility] section from defaults when field is added to GlobalDefaults
-        // For now, return Unrestricted as safe default
-        VisibilityPolicy::Unrestricted
+    fn parse_policy(&self, defaults: &GlobalDefaults) -> VisibilityPolicy {
+        let Some(config) = &defaults.repository_visibility else {
+            // No configuration specified - default to unrestricted
+            return VisibilityPolicy::Unrestricted;
+        };
+
+        match config.enforcement_level.to_lowercase().as_str() {
+            "required" => {
+                // Parse required visibility
+                if let Some(ref visibility_str) = config.required_visibility {
+                    match visibility_str.to_lowercase().as_str() {
+                        "private" => VisibilityPolicy::Required(RepositoryVisibility::Private),
+                        "public" => VisibilityPolicy::Required(RepositoryVisibility::Public),
+                        "internal" => VisibilityPolicy::Required(RepositoryVisibility::Internal),
+                        _ => {
+                            // Invalid visibility - default to unrestricted
+                            VisibilityPolicy::Unrestricted
+                        }
+                    }
+                } else {
+                    // Required level but no visibility specified - default to unrestricted
+                    VisibilityPolicy::Unrestricted
+                }
+            }
+            "restricted" => {
+                // Parse restricted visibilities
+                if let Some(ref prohibited) = config.restricted_visibilities {
+                    let parsed: Vec<RepositoryVisibility> = prohibited
+                        .iter()
+                        .filter_map(|s| match s.to_lowercase().as_str() {
+                            "private" => Some(RepositoryVisibility::Private),
+                            "public" => Some(RepositoryVisibility::Public),
+                            "internal" => Some(RepositoryVisibility::Internal),
+                            _ => None, // Skip invalid values
+                        })
+                        .collect();
+
+                    if parsed.is_empty() {
+                        // No valid prohibited visibilities - default to unrestricted
+                        VisibilityPolicy::Unrestricted
+                    } else {
+                        VisibilityPolicy::Restricted(parsed)
+                    }
+                } else {
+                    // Restricted level but no visibilities specified - default to unrestricted
+                    VisibilityPolicy::Unrestricted
+                }
+            }
+            "unrestricted" | _ => {
+                // Unrestricted or unrecognized - default to unrestricted
+                VisibilityPolicy::Unrestricted
+            }
+        }
     }
 }

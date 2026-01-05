@@ -245,6 +245,7 @@ mod mock_provider {
                 github_apps: None,
                 environments: None,
                 custom_properties: None,
+                repository_visibility: None,
             })
         }
 

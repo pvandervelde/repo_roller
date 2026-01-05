@@ -27,8 +27,22 @@ struct MockMetadataProvider {
 
 impl MockMetadataProvider {
     fn new() -> Self {
+        // Create default global defaults with no visibility policy
+        let defaults = GlobalDefaults {
+            repository: Some(Default::default()),
+            pull_requests: None,
+            branch_protection: None,
+            actions: None,
+            push: None,
+            webhooks: None,
+            custom_properties: None,
+            environments: None,
+            github_apps: None,
+            repository_visibility: None, // No policy = unrestricted
+        };
+
         Self {
-            config_data: None,
+            config_data: Some(defaults),
             should_fail: false,
         }
     }
@@ -39,6 +53,8 @@ impl MockMetadataProvider {
         required: Option<&str>,
         restricted: Option<Vec<&str>>,
     ) -> Self {
+        use crate::visibility::VisibilityPolicyConfig;
+
         // Create mock global defaults with visibility policy
         let defaults = GlobalDefaults {
             repository: Some(Default::default()),
@@ -50,11 +66,13 @@ impl MockMetadataProvider {
             custom_properties: None,
             environments: None,
             github_apps: None,
+            repository_visibility: Some(VisibilityPolicyConfig {
+                enforcement_level: enforcement_level.to_string(),
+                required_visibility: required.map(|s| s.to_string()),
+                restricted_visibilities: restricted
+                    .map(|v| v.iter().map(|s| s.to_string()).collect()),
+            }),
         };
-
-        // NOTE: When visibility policy fields are added to GlobalDefaults,
-        // this mock should populate them. For now, parse_policy() returns
-        // Unrestricted as a safe default.
 
         self.config_data = Some(defaults);
         self

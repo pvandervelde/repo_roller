@@ -74,7 +74,7 @@ pub use validator::{
 };
 pub use visibility::{
     PolicyConstraint, RepositoryVisibility, VisibilityError, VisibilityPolicy,
-    VisibilityPolicyProvider,
+    VisibilityPolicyConfig, VisibilityPolicyProvider,
 };
 pub use visibility_policy_provider::ConfigBasedPolicyProvider;
 

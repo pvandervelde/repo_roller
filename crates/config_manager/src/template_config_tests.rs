@@ -524,12 +524,13 @@ fn test_debug_format() {
 #[test]
 fn test_template_config_with_private_visibility() {
     let toml = r#"
+        default_visibility = "private"
+        
         [template]
         name = "private-service-template"
         description = "Internal service template"
         author = "Platform Team"
         tags = ["service", "private"]
-        default_visibility = "private"
     "#;
 
     let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
@@ -545,12 +546,13 @@ fn test_template_config_with_private_visibility() {
 #[test]
 fn test_template_config_with_public_visibility() {
     let toml = r#"
+        default_visibility = "public"
+        
         [template]
         name = "public-docs-template"
         description = "Public documentation template"
         author = "Docs Team"
         tags = ["docs", "public"]
-        default_visibility = "public"
     "#;
 
     let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
@@ -566,12 +568,13 @@ fn test_template_config_with_public_visibility() {
 #[test]
 fn test_template_config_with_internal_visibility() {
     let toml = r#"
+        default_visibility = "internal"
+        
         [template]
         name = "internal-team-template"
         description = "Internal team collaboration template"
         author = "Team Lead"
         tags = ["internal", "collaboration"]
-        default_visibility = "internal"
     "#;
 
     let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
@@ -606,12 +609,13 @@ fn test_template_config_without_visibility() {
 #[test]
 fn test_template_config_with_invalid_visibility() {
     let toml = r#"
+        default_visibility = "restricted"
+        
         [template]
         name = "invalid-visibility-template"
         description = "Template with invalid visibility"
         author = "Test"
         tags = []
-        default_visibility = "restricted"
     "#;
 
     let result: Result<TemplateConfig, _> = toml::from_str(toml);
@@ -703,12 +707,13 @@ fn test_template_config_none_visibility_not_serialized() {
 #[test]
 fn test_complete_template_with_visibility() {
     let toml = r#"
+        default_visibility = "private"
+        
         [template]
         name = "rust-service"
         description = "Rust microservice template"
         author = "Platform Team"
         tags = ["rust", "service"]
-        default_visibility = "private"
 
         [repository_type]
         type = "service"

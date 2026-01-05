@@ -295,3 +295,65 @@ pub trait VisibilityPolicyProvider: Send + Sync {
     /// * `organization` - Organization name (as &str)
     async fn invalidate_cache(&self, organization: &str);
 }
+
+/// Repository visibility policy configuration.
+///
+/// Configures how repository visibility is controlled at the organization level.
+/// This structure is used in GlobalDefaults to define organization-wide visibility policies.
+///
+/// # TOML Format
+///
+/// ```toml
+/// [repository_visibility]
+/// enforcement_level = "restricted"
+/// restricted_visibilities = ["public"]
+/// ```
+///
+/// Or for required visibility:
+///
+/// ```toml
+/// [repository_visibility]
+/// enforcement_level = "required"
+/// required_visibility = "private"
+/// ```
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::{VisibilityPolicyConfig, RepositoryVisibility};
+///
+/// // Prohibit public repositories
+/// let config = VisibilityPolicyConfig {
+///     enforcement_level: "restricted".to_string(),
+///     required_visibility: None,
+///     restricted_visibilities: Some(vec!["public".to_string()]),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VisibilityPolicyConfig {
+    /// Enforcement level: "required", "restricted", or "unrestricted"
+    #[serde(default = "default_enforcement_level")]
+    pub enforcement_level: String,
+
+    /// Required visibility when enforcement_level is "required"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_visibility: Option<String>,
+
+    /// Prohibited visibilities when enforcement_level is "restricted"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restricted_visibilities: Option<Vec<String>>,
+}
+
+fn default_enforcement_level() -> String {
+    "unrestricted".to_string()
+}
+
+impl Default for VisibilityPolicyConfig {
+    fn default() -> Self {
+        Self {
+            enforcement_level: default_enforcement_level(),
+            required_visibility: None,
+            restricted_visibilities: None,
+        }
+    }
+}
