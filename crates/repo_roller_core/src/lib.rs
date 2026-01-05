@@ -39,7 +39,10 @@
 //! use auth_handler::GitHubAuthService;
 //! use github_client::GitHubClient;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(
+//! #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
+//! #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a type-safe repository creation request
 //! let request = RepositoryCreationRequestBuilder::new(
 //!     RepositoryName::new("my-new-project")?,
@@ -64,7 +67,9 @@
 //!     request,
 //!     &metadata_provider,
 //!     &auth_service,
-//!     ".reporoller" // Metadata repository name
+//!     ".reporoller", // Metadata repository name
+//!     visibility_policy_provider,
+//!     environment_detector,
 //! ).await {
 //!     Ok(result) => {
 //!         println!("Repository created successfully:");
@@ -130,6 +135,34 @@ pub mod github;
 pub mod authentication;
 
 /// Repository visibility types and resolution
+///
+/// This module provides types and logic for determining repository visibility
+/// based on hierarchical policies and GitHub environment constraints.
+///
+/// # Example
+///
+/// ```no_run
+/// use repo_roller_core::{VisibilityResolver, VisibilityRequest, OrganizationName};
+/// use config_manager::RepositoryVisibility;
+/// use std::sync::Arc;
+///
+/// # async fn example(
+/// #     policy_provider: Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
+/// let resolver = VisibilityResolver::new(policy_provider, environment_detector);
+///
+/// let request = VisibilityRequest {
+///     organization: OrganizationName::new("my-org")?,
+///     user_preference: Some(RepositoryVisibility::Private),
+///     template_default: None,
+/// };
+///
+/// let decision = resolver.resolve_visibility(request).await?;
+/// println!("Visibility: {:?}", decision.visibility);
+/// # Ok(())
+/// # }
+/// ```
 pub mod visibility;
 
 // Re-export commonly used types
@@ -140,6 +173,7 @@ pub use request::{
     RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
 };
 pub use template::TemplateName;
+// Re-exported from visibility module - see module docs for examples
 pub use visibility::{
     DecisionSource, GitHubEnvironmentDetector, PlanLimitations, PolicyConstraint,
     RepositoryVisibility, VisibilityDecision, VisibilityError, VisibilityPolicy,
@@ -241,7 +275,10 @@ mod integration_tests;
 /// use auth_handler::{GitHubAuthService, UserAuthenticationService};
 /// use github_client;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(
+/// #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-service")?,
 ///     OrganizationName::new("my-org")?,
@@ -260,7 +297,7 @@ mod integration_tests;
 ///     MetadataProviderConfig::explicit(".reporoller")
 /// );
 ///
-/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller").await {
+/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller", visibility_policy_provider, environment_detector).await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
@@ -402,7 +439,10 @@ async fn create_github_repository(
 /// use auth_handler::GitHubAuthService;
 /// use github_client::GitHubClient;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(
+/// #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-repo")?,
 ///     OrganizationName::new("my-org")?,
@@ -417,20 +457,13 @@ async fn create_github_repository(
 /// );
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
 /// 
-/// // Visibility dependencies
-/// use std::sync::Arc;
-/// use config_manager::ConfigBasedPolicyProvider;
-/// use github_client::GitHubApiEnvironmentDetector;
-/// let policy_provider = Arc::new(ConfigBasedPolicyProvider::new(Arc::new(metadata_provider.clone())));
-/// let env_detector = Arc::new(GitHubApiEnvironmentDetector::new(Arc::new(GitHubClient::new(github_client.clone()))));
-/// 
 /// let result = create_repository(
 ///     request,
 ///     &metadata_provider,
 ///     &auth_service,
 ///     ".reporoller",
-///     policy_provider,
-///     env_detector,
+///     visibility_policy_provider,
+///     environment_detector,
 /// ).await?;
 /// println!("Created repository: {}", result.repository_url);
 /// # Ok(())

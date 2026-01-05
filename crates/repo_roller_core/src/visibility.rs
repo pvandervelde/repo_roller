@@ -38,10 +38,15 @@
 //!
 //! ```rust,no_run
 //! use repo_roller_core::{
-//!     VisibilityResolver, VisibilityRequest, RepositoryVisibility, OrganizationName
+//!     VisibilityResolver, VisibilityRequest, OrganizationName
 //! };
+//! use config_manager::RepositoryVisibility;
+//! use std::sync::Arc;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(
+//! #     policy_provider: Arc<dyn config_manager::VisibilityPolicyProvider>,
+//! #     environment_detector: Arc<dyn github_client::GitHubEnvironmentDetector>
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! let resolver = VisibilityResolver::new(policy_provider, environment_detector);
 //!
 //! let request = VisibilityRequest {
@@ -152,9 +157,15 @@ pub struct VisibilityRequest {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use repo_roller_core::{VisibilityResolver, VisibilityRequest, RepositoryVisibility, OrganizationName};
+/// use repo_roller_core::{VisibilityResolver, VisibilityRequest, OrganizationName};
+/// use config_manager::{RepositoryVisibility, ConfigBasedPolicyProvider};
+/// use github_client::GitHubApiEnvironmentDetector;
+/// use std::sync::Arc;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(
+/// #     policy_provider: Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
 /// let resolver = VisibilityResolver::new(policy_provider, environment_detector);
 ///
 /// let request = VisibilityRequest {
