@@ -263,29 +263,33 @@ impl VisibilityResolver {
         request: VisibilityRequest,
     ) -> Result<VisibilityDecision, VisibilityError> {
         let mut constraints = Vec::new();
-        
+
         // Step 1: Load organization policy
-        let policy = self.policy_provider.get_policy(request.organization.as_str()).await?;
-        
+        let policy = self
+            .policy_provider
+            .get_policy(request.organization.as_str())
+            .await?;
+
         // Step 2: Check if policy requires specific visibility
         if let Some(required) = policy.required_visibility() {
             constraints.push(PolicyConstraint::OrganizationRequired);
-            
+
             // Validate against GitHub constraints before returning
-            let limitations = self.environment_detector
+            let limitations = self
+                .environment_detector
                 .get_plan_limitations(request.organization.as_str())
                 .await
                 .map_err(|e| VisibilityError::GitHubApiError(e.to_string()))?;
-            
+
             self.validate_github_constraints(required, &limitations, &mut constraints)?;
-            
+
             return Ok(VisibilityDecision {
                 visibility: required,
                 source: DecisionSource::OrganizationPolicy,
                 constraints_applied: constraints,
             });
         }
-        
+
         // Step 3: Determine visibility based on hierarchy
         let (visibility, source) = if let Some(user_pref) = request.user_preference {
             // Validate user preference against policy
@@ -309,27 +313,28 @@ impl VisibilityResolver {
             // Use system default (Private)
             (RepositoryVisibility::Private, DecisionSource::SystemDefault)
         };
-        
+
         // Track policy constraint if applicable
         if matches!(policy, VisibilityPolicy::Restricted(_)) {
             constraints.push(PolicyConstraint::OrganizationRestricted);
         }
-        
+
         // Step 4: Validate against GitHub platform constraints
-        let limitations = self.environment_detector
+        let limitations = self
+            .environment_detector
             .get_plan_limitations(request.organization.as_str())
             .await
             .map_err(|e| VisibilityError::GitHubApiError(e.to_string()))?;
-        
+
         self.validate_github_constraints(visibility, &limitations, &mut constraints)?;
-        
+
         Ok(VisibilityDecision {
             visibility,
             source,
             constraints_applied: constraints,
         })
     }
-    
+
     /// Validate visibility against GitHub platform constraints.
     fn validate_github_constraints(
         &self,
@@ -360,7 +365,7 @@ impl VisibilityResolver {
                 // Public is always available
             }
         }
-        
+
         Ok(())
     }
 }

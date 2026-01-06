@@ -122,8 +122,10 @@ pub async fn create_repository(
     let domain_request = http_create_repository_request_to_domain(request.clone())?;
 
     // Create GitHub client for template operations
-    let github_octocrab = std::sync::Arc::new(github_client::create_token_client(&auth.token)
-        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?);
+    let github_octocrab = std::sync::Arc::new(
+        github_client::create_token_client(&auth.token)
+            .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?,
+    );
     let github_client = github_client::GitHubClient::new(github_octocrab.as_ref().clone());
 
     // Create metadata provider for template discovery and loading
@@ -139,10 +141,10 @@ pub async fn create_repository(
 
     // Create visibility providers
     let visibility_policy_provider = std::sync::Arc::new(
-        config_manager::ConfigBasedPolicyProvider::new(metadata_provider.clone())
+        config_manager::ConfigBasedPolicyProvider::new(metadata_provider.clone()),
     );
     let environment_detector = std::sync::Arc::new(
-        github_client::GitHubApiEnvironmentDetector::new(github_octocrab)
+        github_client::GitHubApiEnvironmentDetector::new(github_octocrab),
     );
 
     // Call domain service to create repository
