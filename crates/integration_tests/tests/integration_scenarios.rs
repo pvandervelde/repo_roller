@@ -10,7 +10,7 @@ use github_client::RepositoryClient;
 use integration_tests::{
     generate_test_repo_name,
     test_runner::IntegrationTestRunner,
-    verification::{verify_labels, ExpectedConfiguration, ExpectedRepositorySettings},
+    verification::{verify_labels, ExpectedConfiguration, ExpectedRepositorySettings, create_visibility_providers},
     TestConfig, TestRepository,
 };
 use repo_roller_core::{

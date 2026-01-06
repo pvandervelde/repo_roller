@@ -5,10 +5,13 @@
 
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
+use config_manager::{ConfigBasedPolicyProvider, GitHubMetadataProvider, MetadataProviderConfig};
+use github_client::{create_token_client, GitHubApiEnvironmentDetector, GitHubClient};
 use integration_tests::{generate_test_repo_name, TestConfig, TestRepository};
 use repo_roller_core::{
     OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,
 };
+use std::sync::Arc;
 use tracing::info;
 
 /// Test metadata repository not found error handling.
@@ -36,14 +39,19 @@ async fn test_metadata_repository_not_found() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    let octocrab = Arc::new(create_token_client(&installation_token)?);
+    let github_client = GitHubClient::new(octocrab.as_ref().clone());
 
     // Create metadata provider with non-existent repository name
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+    let metadata_provider = Arc::new(GitHubMetadataProvider::new(
         github_client,
-        config_manager::MetadataProviderConfig::explicit(".definitely-does-not-exist"),
-    );
+        MetadataProviderConfig::explicit(".definitely-does-not-exist"),
+    ));
+
+    // Create visibility providers
+    let visibility_policy_provider =
+        Arc::new(ConfigBasedPolicyProvider::new(metadata_provider.clone()));
+    let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
 
     // Try to create repository with bogus metadata repo
     let request = RepositoryCreationRequestBuilder::new(
@@ -58,6 +66,8 @@ async fn test_metadata_repository_not_found() -> Result<()> {
         &metadata_provider,
         &auth_service,
         ".definitely-does-not-exist",
+        visibility_policy_provider,
+        environment_detector,
     )
     .await;
 
@@ -122,21 +132,28 @@ async fn test_template_repository_not_found() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    let octocrab = Arc::new(create_token_client(&installation_token)?);
+    let github_client = GitHubClient::new(octocrab.as_ref().clone());
 
     // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+    let metadata_provider = Arc::new(GitHubMetadataProvider::new(
         github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+        MetadataProviderConfig::explicit(".reporoller-test"),
+    ));
+
+    // Create visibility providers
+    let visibility_policy_provider =
+        Arc::new(ConfigBasedPolicyProvider::new(metadata_provider.clone()));
+    let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
 
     // Attempt to create repository with non-existent template
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        visibility_policy_provider,
+        environment_detector,
     )
     .await;
 
@@ -187,14 +204,19 @@ async fn test_malformed_template_toml() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    let octocrab = Arc::new(create_token_client(&installation_token)?);
+    let github_client = GitHubClient::new(octocrab.as_ref().clone());
 
     // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
+    let metadata_provider = Arc::new(GitHubMetadataProvider::new(
         github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+        MetadataProviderConfig::explicit(".reporoller-test"),
+    ));
+
+    // Create visibility providers
+    let visibility_policy_provider =
+        Arc::new(ConfigBasedPolicyProvider::new(metadata_provider.clone()));
+    let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
 
     // Try to use template-test-invalid which has malformed template.toml
     let request = RepositoryCreationRequestBuilder::new(
@@ -206,9 +228,11 @@ async fn test_malformed_template_toml() -> Result<()> {
 
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        visibility_policy_provider,
+        environment_detector,
     )
     .await;
 

@@ -6,7 +6,7 @@
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
 use github_client::RepositoryClient;
-use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
+use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository, create_visibility_providers};
 use repo_roller_core::{
     OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,
 };
@@ -145,14 +145,8 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+    // Create visibility providers
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -236,14 +230,8 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+    // Create visibility providers
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(

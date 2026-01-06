@@ -46,13 +46,9 @@ async fn test_nested_variable_substitution() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Template-nested-variables requires all standard variables plus nested ones
     let mut variables = HashMap::new();
@@ -88,7 +84,15 @@ async fn test_nested_variable_substitution() -> Result<()> {
     .variables(variables)
     .build();
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
     assert!(result.is_ok(), "Repository creation should succeed");
 
     let verification_client = github_client::create_token_client(&installation_token)?;
@@ -156,13 +160,9 @@ async fn test_missing_required_variable_error() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Create request without providing required variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -173,7 +173,15 @@ async fn test_missing_required_variable_error() -> Result<()> {
     // Intentionally not providing variables
     .build();
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
 
     // TODO: Once variable validation is implemented, this should fail with error indicating missing variable
     // For now, verify basic behavior
@@ -237,13 +245,9 @@ async fn test_very_long_variable_values() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Create 10,000 character string
     let long_value = "a".repeat(10_000);
@@ -272,7 +276,15 @@ async fn test_very_long_variable_values() -> Result<()> {
     .build();
 
     let start_time = std::time::Instant::now();
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
     let elapsed = start_time.elapsed();
 
     assert!(
@@ -328,13 +340,9 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Variable value contains Handlebars syntax
     // Note: Must provide all required variables for template-test-variables
@@ -360,7 +368,15 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
     .variables(variables)
     .build();
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
     assert!(
         result.is_ok(),
         "Repository creation should succeed with Handlebars syntax in values"
@@ -413,13 +429,9 @@ async fn test_special_characters_in_variables() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Must provide all required variables for template-test-variables
     let mut variables = HashMap::new();
@@ -450,7 +462,15 @@ async fn test_special_characters_in_variables() -> Result<()> {
     .variables(variables)
     .build();
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
     assert!(
         result.is_ok(),
         "Repository creation should succeed with special characters"
@@ -519,13 +539,9 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     let mut variables = HashMap::new();
     variables.insert("project_name".to_string(), "MyProject".to_string());
@@ -538,7 +554,15 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
     .variables(variables)
     .build();
 
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
     assert!(
         result.is_ok(),
         "Repository creation should succeed with variable paths"
