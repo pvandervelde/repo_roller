@@ -1,0 +1,40 @@
+# Global Defaults for Test Organization
+#
+# This file defines organization-wide default settings for all repositories.
+# Settings marked with override_allowed=false are enforced and cannot be changed.
+
+# Repository visibility policy
+#
+# Controls what visibility options are allowed when creating repositories.
+# Options:
+#   - enforcement_level: "required", "restricted", or "unrestricted"
+#   - required_visibility: Required when enforcement_level = "required"
+#   - restricted_visibilities: Prohibited visibilities when enforcement_level = "restricted"
+[repository_visibility]
+enforcement_level = "unrestricted" # Default: allow all visibilities
+
+# Repository feature settings
+[repository]
+has_issues = { value = true, override_allowed = true }
+has_projects = { value = false, override_allowed = true }
+has_discussions = { value = true, override_allowed = true }
+has_wiki = { value = false, override_allowed = true }
+allow_merge_commit = { value = true, override_allowed = true }
+allow_squash_merge = { value = true, override_allowed = true }
+allow_rebase_merge = { value = true, override_allowed = true }
+delete_branch_on_merge = { value = true, override_allowed = true }
+
+# Security settings (fixed - cannot be overridden)
+security_advisories = { value = true, override_allowed = false }
+vulnerability_reporting = { value = true, override_allowed = false }
+
+# Pull request settings
+[pull_requests]
+require_code_owner_reviews = { value = false, override_allowed = true }
+required_approving_review_count = { value = 1, override_allowed = true }
+require_conversation_resolution = { value = true, override_allowed = false }
+
+# Branch protection
+[branch_protection]
+require_pull_request_reviews = { value = true, override_allowed = false }
+enforce_admins = { value = false, override_allowed = true }

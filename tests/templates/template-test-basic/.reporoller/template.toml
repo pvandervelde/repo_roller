@@ -1,3 +1,5 @@
+default_visibility = "private"
+
 [template]
 name = "template-test-basic"
 description = "Basic test template for RepoRoller integration tests"

@@ -1,0 +1,22 @@
+# Global Defaults with Restricted Visibility Policy
+#
+# This metadata repository tests the "restricted" visibility policy,
+# which prohibits specific visibility options.
+
+# Repository visibility policy - Prohibit public repositories
+[repository_visibility]
+enforcement_level = "restricted"
+restricted_visibilities = ["public"]
+
+# Repository feature settings
+[repository]
+has_issues = { value = true, override_allowed = true }
+has_projects = { value = false, override_allowed = true }
+has_wiki = { value = false, override_allowed = true }
+security_advisories = { value = true, override_allowed = false }
+vulnerability_reporting = { value = true, override_allowed = false }
+
+# Pull request settings
+[pull_requests]
+required_approving_review_count = { value = 1, override_allowed = true }
+require_conversation_resolution = { value = true, override_allowed = false }
