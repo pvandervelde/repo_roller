@@ -491,10 +491,11 @@ impl GitHubClient {
                             repo = %repo,
                             path = %path,
                             status_code = %source.status_code,
+                            message = %source.message,
                             "GitHub API error listing directory contents"
                         );
                         log_octocrab_error("Failed to list directory contents", e);
-                        Err(Error::InvalidResponse)
+                        Err(Error::ApiError())
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
@@ -502,7 +503,8 @@ impl GitHubClient {
                             owner = %owner,
                             repo = %repo,
                             path = %path,
-                            "Failed to list directory contents"
+                            error = %e,
+                            "Non-GitHub error listing directory contents (parsing, network, etc.)"
                         );
                         log_octocrab_error("Failed to list directory contents", e);
                         Err(Error::InvalidResponse)
@@ -687,14 +689,46 @@ impl GitHubClient {
                 Err(Error::InvalidResponse)
             }
             Err(e) => {
-                error!(
-                    owner = owner,
-                    repo = repo,
-                    path = path,
-                    "Failed to get file content"
-                );
-                log_octocrab_error("Failed to get file content", e);
-                Err(Error::InvalidResponse)
+                // Map octocrab errors to appropriate Error types
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        // Check for 404 Not Found
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            error!(
+                                owner = owner,
+                                repo = repo,
+                                path = path,
+                                "File not found"
+                            );
+                            log_octocrab_error("File not found", e);
+                            return Err(Error::NotFound);
+                        }
+
+                        // Other GitHub API errors
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            path = path,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error getting file content"
+                        );
+                        log_octocrab_error("Failed to get file content", e);
+                        Err(Error::ApiError())
+                    }
+                    _ => {
+                        // Non-GitHub errors (network, parsing, etc.)
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            path = path,
+                            error = %e,
+                            "Non-GitHub error getting file content (parsing, network, etc.)"
+                        );
+                        log_octocrab_error("Failed to get file content", e);
+                        Err(Error::InvalidResponse)
+                    }
+                }
             }
         }
     }
