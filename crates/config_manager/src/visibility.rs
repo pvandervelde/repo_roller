@@ -228,8 +228,8 @@ pub enum VisibilityError {
     ConfigurationError { message: String },
 
     /// GitHub API error during visibility resolution
-    #[error("GitHub API error: {0}")]
-    GitHubApiError(String),
+    #[error("GitHub API error")]
+    GitHubApiError(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// Failed to detect GitHub environment
     #[error("Failed to detect environment for organization {organization}: {reason}")]

@@ -50,7 +50,7 @@ function Update-MetadataRepo
     }
 
     # Clone or update
-    $tempDir = Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName())
+    $tempDir = Join-Path $env:TEMP (New-Guid).ToString()
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
     try

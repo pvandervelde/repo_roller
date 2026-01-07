@@ -55,8 +55,9 @@ async fn test_organization_settings_with_global_defaults() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -146,8 +147,9 @@ async fn test_team_configuration_overrides() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request - Note: team parameter not yet supported in API
     // This test currently creates repository with basic template
@@ -237,8 +239,9 @@ async fn test_repository_type_configuration() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request - Note: repository_type parameter not yet supported in API
     // This test currently creates repository with basic template
@@ -329,8 +332,9 @@ async fn test_configuration_hierarchy_merging() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request - Note: team and repository_type parameters not yet supported
     // This test currently creates repository with basic template
@@ -444,8 +448,9 @@ async fn test_complete_organization_settings_workflow() -> Result<()> {
 
         // Create visibility providers
 
-
-        let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+        let providers =
+            integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+                .await?;
 
         // Build request
         let request = RepositoryCreationRequestBuilder::new(
@@ -457,13 +462,13 @@ async fn test_complete_organization_settings_workflow() -> Result<()> {
 
         // Create repository
         let result = create_repository(
-        request,
-        providers.metadata_provider.as_ref(),
-        &auth_service,
-        ".reporoller-test",
-        providers.visibility_policy_provider.clone(),
-        providers.environment_detector.clone(),
-    )
+            request,
+            providers.metadata_provider.as_ref(),
+            &auth_service,
+            ".reporoller-test",
+            providers.visibility_policy_provider.clone(),
+            providers.environment_detector.clone(),
+        )
         .await;
 
         // Check result

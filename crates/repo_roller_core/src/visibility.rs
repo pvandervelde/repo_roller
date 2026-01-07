@@ -279,9 +279,9 @@ impl VisibilityResolver {
                 .environment_detector
                 .get_plan_limitations(request.organization.as_str())
                 .await
-                .map_err(|e| VisibilityError::GitHubApiError(e.to_string()))?;
+                .map_err(|e| VisibilityError::GitHubApiError(Box::new(e)))?;
 
-            self.validate_github_constraints(required, &limitations, &mut constraints)?;
+            self.validate_github_constraints(required, &limitations, &mut constraints)?;;
 
             return Ok(VisibilityDecision {
                 visibility: required,
@@ -324,7 +324,7 @@ impl VisibilityResolver {
             .environment_detector
             .get_plan_limitations(request.organization.as_str())
             .await
-            .map_err(|e| VisibilityError::GitHubApiError(e.to_string()))?;
+            .map_err(|e| VisibilityError::GitHubApiError(Box::new(e)))?;
 
         self.validate_github_constraints(visibility, &limitations, &mut constraints)?;
 

@@ -36,7 +36,11 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".definitely-does-not-exist-metadata-repo").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".definitely-does-not-exist-metadata-repo",
+    )
+    .await?;
 
     // Build request for basic template
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -120,8 +124,11 @@ async fn test_malformed_global_toml_error() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-invalid-global").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".reporoller-test-invalid-global",
+    )
+    .await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -195,8 +202,11 @@ async fn test_missing_global_toml_file() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-missing-global").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".reporoller-test-missing-global",
+    )
+    .await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -262,8 +272,11 @@ async fn test_conflicting_team_configuration() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-conflicting").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".reporoller-test-conflicting",
+    )
+    .await?;
 
     // Build request
     // Note: When team parameter is added, use: .team("conflicting")
@@ -334,8 +347,9 @@ async fn test_nonexistent_repository_type() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with nonexistent repository type
     // Note: Currently repo_roller_core doesn't support repository_type in the builder
@@ -410,8 +424,11 @@ async fn test_malformed_team_toml() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-invalid-team").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".reporoller-test-invalid-team",
+    )
+    .await?;
 
     // Build request
     // Note: When team parameter is added, use: .team("invalid-syntax")
@@ -480,8 +497,9 @@ async fn test_missing_team_file() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with nonexistent team
     // Note: Currently repo_roller_core doesn't support team parameter in the builder
@@ -556,8 +574,11 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-incomplete").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".reporoller-test-incomplete",
+    )
+    .await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -623,8 +644,11 @@ async fn test_duplicate_label_definitions() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-duplicates").await?;
+    let providers = integration_tests::create_visibility_providers(
+        &installation_token,
+        ".reporoller-test-duplicates",
+    )
+    .await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(

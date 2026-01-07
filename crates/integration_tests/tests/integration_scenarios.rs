@@ -45,8 +45,9 @@ async fn test_basic_repository_creation() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -110,8 +111,9 @@ async fn test_variable_substitution() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with variables for template-test-variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -207,8 +209,9 @@ async fn test_file_filtering() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request for template-test-filtering
     let request = RepositoryCreationRequestBuilder::new(

@@ -50,7 +50,9 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
     // Create GitHub client with installation token
     // Create visibility providers
 
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build repository creation request
     let request = RepositoryCreationRequestBuilder::new(
@@ -143,7 +145,9 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -230,7 +234,9 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -307,8 +313,9 @@ async fn test_partial_field_overrides() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // TODO: Backend team configuration will be applied via metadata repository hierarchy
     // Currently RepositoryCreationRequestBuilder doesn't have .team() method
@@ -399,8 +406,9 @@ async fn test_label_collection_merging() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // TODO: Team configuration will be applied via metadata repository hierarchy
     // Request with backend team's custom labels merged from global
@@ -495,8 +503,9 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
@@ -572,8 +581,9 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // TODO: Repository type configuration will be applied via metadata repository hierarchy
     // Currently RepositoryCreationRequestBuilder doesn't have .repository_type() method
@@ -650,8 +660,9 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Request with all hierarchy levels: Global, Repository Type (library), Team (backend), Template
     let request = RepositoryCreationRequestBuilder::new(
@@ -727,8 +738,9 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Request with minimal configuration - no team, no explicit repository type
     // Only Global and Template levels in hierarchy
@@ -806,8 +818,9 @@ async fn test_conflicting_collection_items() -> Result<()> {
 
     // Create visibility providers
 
-
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Use backend team which has labels.toml
     // Both global and team may have overlapping labels (e.g., "bug")
