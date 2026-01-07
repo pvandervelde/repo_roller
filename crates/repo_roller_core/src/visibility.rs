@@ -281,7 +281,7 @@ impl VisibilityResolver {
                 .await
                 .map_err(|e| VisibilityError::GitHubApiError(Box::new(e)))?;
 
-            self.validate_github_constraints(required, &limitations, &mut constraints)?;;
+            self.validate_github_constraints(required, &limitations, &mut constraints)?;
 
             return Ok(VisibilityDecision {
                 visibility: required,
