@@ -10,7 +10,7 @@ use github_client::RepositoryClient;
 use integration_tests::{
     generate_test_repo_name,
     test_runner::IntegrationTestRunner,
-    verification::{verify_labels, ExpectedConfiguration, ExpectedRepositorySettings, create_visibility_providers},
+    verification::{verify_labels, ExpectedConfiguration, ExpectedRepositorySettings},
     TestConfig, TestRepository,
 };
 use repo_roller_core::{
@@ -43,14 +43,10 @@ async fn test_basic_repository_creation() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    // Create visibility providers
 
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -63,9 +59,11 @@ async fn test_basic_repository_creation() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await?;
 
@@ -110,14 +108,10 @@ async fn test_variable_substitution() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    // Create visibility providers
 
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request with variables for template-test-variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -140,9 +134,11 @@ async fn test_variable_substitution() -> Result<()> {
     .build(); // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await?;
 
@@ -209,14 +205,10 @@ async fn test_file_filtering() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
+    // Create visibility providers
 
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request for template-test-filtering
     let request = RepositoryCreationRequestBuilder::new(
@@ -229,9 +221,11 @@ async fn test_file_filtering() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await?;
 

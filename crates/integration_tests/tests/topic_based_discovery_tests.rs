@@ -242,7 +242,9 @@ async fn test_end_to_end_creation_with_topic_discovery() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request for basic template
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(

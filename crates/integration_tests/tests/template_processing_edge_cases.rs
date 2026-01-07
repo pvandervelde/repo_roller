@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
-use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository, create_visibility_providers};
+use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
 use repo_roller_core::{
     create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
     TemplateName,

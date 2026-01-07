@@ -130,7 +130,8 @@ async fn test_variable_substitution() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request with variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -236,7 +237,8 @@ async fn test_file_filtering() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request with filtering variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -317,7 +319,8 @@ async fn test_error_handling_invalid_template() -> Result<()> {
         .await?;
 
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request with non-existent template
     let request = RepositoryCreationRequestBuilder::new(
@@ -454,11 +457,10 @@ async fn test_team_configuration() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with team specification
     let request = RepositoryCreationRequestBuilder::new(
@@ -531,11 +533,10 @@ async fn test_repository_type_configuration() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with repository type
     let request = RepositoryCreationRequestBuilder::new(
@@ -611,11 +612,10 @@ async fn test_configuration_hierarchy() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
     // Create visibility providers
-    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request that will test hierarchy merging
     let request = RepositoryCreationRequestBuilder::new(

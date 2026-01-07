@@ -63,7 +63,7 @@ async fn test_metadata_repository_not_found() -> Result<()> {
 
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        metadata_provider.as_ref(),
         &auth_service,
         ".definitely-does-not-exist",
         visibility_policy_provider,

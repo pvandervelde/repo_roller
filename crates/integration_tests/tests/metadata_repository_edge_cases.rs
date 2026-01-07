@@ -35,16 +35,8 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
-
-    // Create metadata provider with non-existent repository name
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(
-            ".definitely-does-not-exist-metadata-repo",
-        ),
-    );
+    // Create visibility providers
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".definitely-does-not-exist-metadata-repo").await?;
 
     // Build request for basic template
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -57,9 +49,11 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
     // Execute repository creation - should succeed using template-only config
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".definitely-does-not-exist-metadata-repo",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -124,14 +118,10 @@ async fn test_malformed_global_toml_error() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider pointing to repo with invalid TOML
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test-invalid-global"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-invalid-global").await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -144,9 +134,11 @@ async fn test_malformed_global_toml_error() -> Result<()> {
     // Execute repository creation - should fail due to invalid TOML
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test-invalid-global",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -201,14 +193,10 @@ async fn test_missing_global_toml_file() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider pointing to repo without global defaults
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test-missing-global"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-missing-global").await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -221,9 +209,11 @@ async fn test_missing_global_toml_file() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test-missing-global",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -270,14 +260,10 @@ async fn test_conflicting_team_configuration() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider pointing to repo with conflicting config
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test-conflicting"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-conflicting").await?;
 
     // Build request
     // Note: When team parameter is added, use: .team("conflicting")
@@ -291,9 +277,11 @@ async fn test_conflicting_team_configuration() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test-conflicting",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -344,14 +332,10 @@ async fn test_nonexistent_repository_type() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request with nonexistent repository type
     // Note: Currently repo_roller_core doesn't support repository_type in the builder
@@ -366,9 +350,11 @@ async fn test_nonexistent_repository_type() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -422,14 +408,10 @@ async fn test_malformed_team_toml() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider pointing to repo with invalid team TOML
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test-invalid-team"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-invalid-team").await?;
 
     // Build request
     // Note: When team parameter is added, use: .team("invalid-syntax")
@@ -443,9 +425,11 @@ async fn test_malformed_team_toml() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test-invalid-team",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -494,14 +478,10 @@ async fn test_missing_team_file() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test").await?;
 
     // Build request with nonexistent team
     // Note: Currently repo_roller_core doesn't support team parameter in the builder
@@ -516,9 +496,11 @@ async fn test_missing_team_file() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -572,14 +554,10 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider pointing to repo with incomplete structure
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test-incomplete"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-incomplete").await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -592,9 +570,11 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test-incomplete",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -641,14 +621,10 @@ async fn test_duplicate_label_definitions() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
+    // Create visibility providers
 
-    // Create metadata provider pointing to repo with duplicate labels
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test-duplicates"),
-    );
+
+    let providers = integration_tests::create_visibility_providers(&installation_token, ".reporoller-test-duplicates").await?;
 
     // Build request
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -661,9 +637,11 @@ async fn test_duplicate_label_definitions() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test-duplicates",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
