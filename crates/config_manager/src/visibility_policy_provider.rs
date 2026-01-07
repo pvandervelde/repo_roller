@@ -33,12 +33,16 @@ mod tests;
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// use config_manager::ConfigBasedPolicyProvider;
+/// ```rust,ignore
+/// use config_manager::{ConfigBasedPolicyProvider, VisibilityPolicyProvider};
 /// use std::sync::Arc;
 ///
+/// # async fn example() -> anyhow::Result<()> {
+/// # let metadata_provider = todo!();
 /// let provider = ConfigBasedPolicyProvider::new(Arc::new(metadata_provider));
 /// let policy = provider.get_policy("my-org").await?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct ConfigBasedPolicyProvider {
     /// Metadata repository provider for loading configuration

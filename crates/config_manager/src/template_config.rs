@@ -187,11 +187,13 @@ pub struct TemplateConfig {
     /// use config_manager::{TemplateConfig, RepositoryVisibility};
     ///
     /// let toml = r#"
+    ///     default_visibility = "public"
+    ///     
     ///     [template]
     ///     name = "public-docs-template"
     ///     description = "Public documentation template"
     ///     author = "Docs Team"
-    ///     default_visibility = "public"
+    ///     tags = []
     /// "#;
     ///
     /// let config: TemplateConfig = toml::from_str(toml).expect("Parse failed");
