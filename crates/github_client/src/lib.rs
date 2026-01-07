@@ -147,7 +147,10 @@ impl GitHubClient {
                     org_name = org_name,
                     "No installation found for organization - this means the GitHub App is not installed on this organization"
                 );
-                Error::InvalidResponse
+                Error::AuthError(format!(
+                    "GitHub App not installed on organization '{}'",
+                    org_name
+                ))
             })?;
 
         info!(
@@ -170,10 +173,14 @@ impl GitHubClient {
                 error!(
                     org_name = org_name,
                     installation_id = installation.id,
+                    error = %e,
                     "Failed to get installation token from GitHub API"
                 );
                 log_octocrab_error("Failed to get installation token", e);
-                Error::InvalidResponse
+                Error::AuthError(format!(
+                    "Failed to get installation token for organization '{}'",
+                    org_name
+                ))
             })?;
 
         info!(
@@ -200,15 +207,33 @@ impl GitHubClient {
             Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 // Pattern match on octocrab error to check status code
-                if let octocrab::Error::GitHub { source, .. } = &e {
-                    if source.status_code == http::StatusCode::NOT_FOUND {
-                        debug!("Repository not found: {}/{}", owner, repo);
-                        return Err(Error::NotFound);
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            debug!("Repository not found: {}/{}", owner, repo);
+                            return Err(Error::NotFound);
+                        }
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error getting repository"
+                        );
+                        log_octocrab_error("Failed to get repository", e);
+                        Err(Error::ApiError())
+                    }
+                    _ => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            error = %e,
+                            "Non-GitHub error getting repository (parsing, network, etc.)"
+                        );
+                        log_octocrab_error("Failed to get repository", e);
+                        Err(Error::InvalidResponse)
                     }
                 }
-
-                log_octocrab_error("Failed to get repository", e);
-                Err(Error::InvalidResponse)
             }
         }
     }
