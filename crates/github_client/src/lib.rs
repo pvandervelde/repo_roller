@@ -694,12 +694,7 @@ impl GitHubClient {
                     octocrab::Error::GitHub { source, .. } => {
                         // Check for 404 Not Found
                         if source.status_code == http::StatusCode::NOT_FOUND {
-                            error!(
-                                owner = owner,
-                                repo = repo,
-                                path = path,
-                                "File not found"
-                            );
+                            error!(owner = owner, repo = repo, path = path, "File not found");
                             log_octocrab_error("File not found", e);
                             return Err(Error::NotFound);
                         }
