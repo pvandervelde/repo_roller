@@ -1085,12 +1085,38 @@ impl RepositoryClient for GitHubClient {
                 Ok(label_names)
             }
             Err(e) => {
-                eprintln!(
-                    "DIAGNOSTIC: Error listing labels for {}/{}: error={}",
-                    owner, repo, e
-                );
-                log_octocrab_error("Failed to list repository labels", e);
-                Err(Error::InvalidResponse)
+                // Match on the error type to provide detailed diagnostics
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        eprintln!(
+                            "DIAGNOSTIC: GitHub API error listing labels for {}/{}: status={}, message={}",
+                            owner, repo, source.status_code, source.message
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing repository labels"
+                        );
+                        log_octocrab_error("Failed to list repository labels", e);
+                        Err(Error::ApiError())
+                    }
+                    _ => {
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error listing labels for {}/{}: error={}",
+                            owner, repo, e
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            error = %e,
+                            "Non-GitHub error listing repository labels"
+                        );
+                        log_octocrab_error("Failed to list repository labels", e);
+                        Err(Error::InvalidResponse)
+                    }
+                }
             }
         }
     }
