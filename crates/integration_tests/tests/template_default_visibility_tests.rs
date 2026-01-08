@@ -160,7 +160,7 @@ async fn test_template_default_public_visibility() -> Result<()> {
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?, // Has default_visibility = "public"
     )
-    .with_variables(variables)
+    .variables(variables)
     .build(); // No .with_visibility() call
 
     let result = create_repository(
