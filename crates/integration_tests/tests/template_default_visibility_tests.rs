@@ -152,11 +152,15 @@ async fn test_template_default_public_visibility() -> Result<()> {
     let repo_name = RepositoryName::new(&format!("test-tmpl-pub-{}", uuid::Uuid::new_v4()))?;
 
     // Create repository without specifying visibility - should use template default (public)
+    let mut variables = std::collections::HashMap::new();
+    variables.insert("project_name".to_string(), repo_name.as_ref().to_string());
+
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
         TemplateName::new("template-test-variables")?, // Has default_visibility = "public"
     )
+    .with_variables(variables)
     .build(); // No .with_visibility() call
 
     let result = create_repository(
