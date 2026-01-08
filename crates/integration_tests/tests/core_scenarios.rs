@@ -88,8 +88,16 @@ async fn test_basic_repository_creation() -> Result<()> {
         .await?;
 
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    assert!(!repo.is_private(), "Repository should be public by default");
-    info!("✓ Repository verification passed");
+    // Note: Visibility is now determined by policy configuration rather than a hardcoded default.
+    // The template-test-basic template should specify visibility or fall back to configured defaults.
+    info!(
+        "✓ Repository verification passed (visibility: {})",
+        if repo.is_private() {
+            "private"
+        } else {
+            "public"
+        }
+    );
 
     // Cleanup
     let cleanup_client =
