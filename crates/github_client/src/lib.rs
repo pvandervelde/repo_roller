@@ -1085,6 +1085,10 @@ impl RepositoryClient for GitHubClient {
                 Ok(label_names)
             }
             Err(e) => {
+                eprintln!(
+                    "DIAGNOSTIC: Error listing labels for {}/{}: error={}",
+                    owner, repo, e
+                );
                 log_octocrab_error("Failed to list repository labels", e);
                 Err(Error::InvalidResponse)
             }
