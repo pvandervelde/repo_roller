@@ -511,6 +511,8 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
+                        eprintln!("DIAGNOSTIC: GitHub API error listing directory {} in {}/{}: status={}, message={}",
+                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = %owner,
                             repo = %repo,
@@ -524,6 +526,10 @@ impl GitHubClient {
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error listing directory {} in {}/{}: error={}",
+                            path, owner, repo, e
+                        );
                         error!(
                             owner = %owner,
                             repo = %repo,
@@ -725,6 +731,8 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
+                        eprintln!("DIAGNOSTIC: GitHub API error getting file {} in {}/{}: status={}, message={}",
+                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = owner,
                             repo = repo,
@@ -738,6 +746,10 @@ impl GitHubClient {
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error getting file {} in {}/{}: error={}",
+                            path, owner, repo, e
+                        );
                         error!(
                             owner = owner,
                             repo = repo,
