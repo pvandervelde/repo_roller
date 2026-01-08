@@ -154,6 +154,7 @@ async fn test_template_default_public_visibility() -> Result<()> {
     // Create repository without specifying visibility - should use template default (public)
     let mut variables = std::collections::HashMap::new();
     variables.insert("project_name".to_string(), repo_name.as_ref().to_string());
+    variables.insert("version".to_string(), "0.1.0".to_string());
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
