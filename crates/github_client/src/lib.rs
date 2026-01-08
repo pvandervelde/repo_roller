@@ -224,6 +224,10 @@ impl GitHubClient {
                         Err(Error::ApiError())
                     }
                     _ => {
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error getting repository {}/{}: error={}",
+                            owner, repo, e
+                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -925,6 +929,10 @@ impl RepositoryClient for GitHubClient {
                 Ok(default_branch)
             }
             Err(e) => {
+                eprintln!(
+                    "DIAGNOSTIC: Error getting org {} default branch: error={}",
+                    org_name, e
+                );
                 error!(
                     org_name = org_name,
                     "Failed to get organization information: {}", e
@@ -1023,6 +1031,10 @@ impl RepositoryClient for GitHubClient {
             Ok(response) => {
                 // Parse the response array of {property_name, value} objects
                 let properties = response.as_array().ok_or_else(|| {
+                    eprintln!(
+                        "DIAGNOSTIC: Custom properties response is not an array for {}/{}",
+                        owner, repo
+                    );
                     error!("Custom properties response is not an array");
                     Error::InvalidResponse
                 })?;
@@ -1044,6 +1056,10 @@ impl RepositoryClient for GitHubClient {
                 Ok(property_map)
             }
             Err(e) => {
+                eprintln!(
+                    "DIAGNOSTIC: Error getting custom properties for {}/{}: error={}",
+                    owner, repo, e
+                );
                 log_octocrab_error("Failed to get custom properties", e);
                 Err(Error::InvalidResponse)
             }
@@ -1130,11 +1146,19 @@ impl RepositoryClient for GitHubClient {
                             Ok(())
                         }
                         Err(update_e) => {
+                            eprintln!(
+                                "DIAGNOSTIC: Error updating label {} in {}/{}: error={}",
+                                name, owner, repo, update_e
+                            );
                             log_octocrab_error("Failed to update existing label", update_e);
                             Err(Error::InvalidResponse)
                         }
                     }
                 } else {
+                    eprintln!(
+                        "DIAGNOSTIC: Error creating label {} in {}/{}: error={}",
+                        name, owner, repo, e
+                    );
                     log_octocrab_error("Failed to create label", e);
                     Err(Error::InvalidResponse)
                 }
