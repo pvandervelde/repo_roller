@@ -1,7 +1,6 @@
 //! Tests for multiple missing variables error reporting.
 
 use crate::*;
-use serde_json::json;
 
 #[test]
 fn test_extract_variables_from_template() {
