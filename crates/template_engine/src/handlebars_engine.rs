@@ -332,6 +332,22 @@ pub enum HandlebarsError {
         reason: String,
     },
 
+    /// Multiple required variables are missing.
+    ///
+    /// This error occurs when attempting to render a template with multiple
+    /// missing required variables. It provides a comprehensive list of all
+    /// missing variables to help users fix all issues at once.
+    ///
+    /// # Examples
+    ///
+    /// - Template requires `{{author_name}}`, `{{author_email}}`, and `{{license}}` but none provided
+    /// - Partial variable set provided but several still missing
+    #[error("Multiple required variables are missing: {}", .missing_variables.join(", "))]
+    MissingVariables {
+        /// List of all variables that are missing
+        missing_variables: Vec<String>,
+    },
+
     /// Helper registration or execution failed.
     ///
     /// This error occurs when custom Handlebars helpers cannot be registered
@@ -757,6 +773,141 @@ impl HandlebarsTemplateEngine {
         Ok(())
     }
 
+    /// Extracts all variable references from a template string.
+    ///
+    /// This method scans the template for all Handlebars variable references
+    /// (e.g., `{{variable_name}}`, `{{object.property}}`) and returns a list
+    /// of unique variable names. It's useful for validating that all required
+    /// variables are provided before attempting to render.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - The template string to scan
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<String>` containing all unique variable names found in the template.
+    /// For nested properties like `{{author.name}}`, only the root variable (`author`)
+    /// is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use template_engine::HandlebarsTemplateEngine;
+    ///
+    /// let engine = HandlebarsTemplateEngine::new()?;
+    /// let template = "Hello {{name}}, your email is {{author.email}} and license is {{license}}";
+    /// let variables = engine.extract_variables(template);
+    /// assert_eq!(variables, vec!["name", "author", "license"]);
+    /// # Ok::<(), template_engine::HandlebarsError>(())
+    /// ```
+    pub fn extract_variables(&self, template: &str) -> Vec<String> {
+        use std::collections::HashSet;
+        
+        let mut variables = HashSet::new();
+        
+        // Match all Handlebars expressions {{ ... }}
+        let expression_re = regex::Regex::new(r"\{\{(.*?)\}\}")
+            .expect("Invalid regex");
+        
+        // Match identifiers within an expression
+        let identifier_re = regex::Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]*")
+            .expect("Invalid regex");
+        
+        for expr_cap in expression_re.captures_iter(template) {
+            if let Some(expr) = expr_cap.get(1) {
+                let expr_str = expr.as_str().trim();
+                
+                // Skip comments
+                if expr_str.starts_with('!') {
+                    continue;
+                }
+                
+                // Find all identifiers in this expression
+                for ident_match in identifier_re.find_iter(expr_str) {
+                    let ident = ident_match.as_str();
+                    
+                    // Skip Handlebars keywords, built-in helpers, and our custom helpers
+                    if !["this", "each", "if", "unless", "with", "lookup", "log", "else",
+                         "snake_case", "kebab_case", "upper_case", "lower_case", "capitalize",
+                         "default", "timestamp"].contains(&ident) {
+                        variables.insert(ident.to_string());
+                    }
+                }
+            }
+        }
+        
+        let mut result: Vec<String> = variables.into_iter().collect();
+        result.sort();
+        result
+    }
+
+    /// Validates that all variables referenced in a template are provided in the context.
+    ///
+    /// This method scans the template for variable references and checks if all required
+    /// variables are present in the provided context. If any variables are missing, it
+    /// returns an error listing ALL missing variables at once, rather than failing on
+    /// the first missing variable.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - The template string to validate
+    /// * `context` - Template context containing available variables
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all required variables are present, or an error listing all missing variables.
+    ///
+    /// # Errors
+    ///
+    /// - `HandlebarsError::MissingVariables`: One or more required variables are missing
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use template_engine::{HandlebarsTemplateEngine, TemplateContext};
+    /// use serde_json::json;
+    ///
+    /// let engine = HandlebarsTemplateEngine::new()?;
+    /// let template = "Hello {{name}}, email: {{email}}, license: {{license}}";
+    /// let context = TemplateContext::new(json!({"name": "Alice"}));
+    ///
+    /// // This will fail with error listing both "email" and "license" as missing
+    /// let result = engine.validate_template_variables(template, &context);
+    /// assert!(result.is_err());
+    /// # Ok::<(), template_engine::HandlebarsError>(())
+    /// ```
+    fn validate_template_variables(&self, template: &str, context: &TemplateContext) -> Result<(), HandlebarsError> {
+        if !self.config.strict_variables {
+            // In non-strict mode, missing variables are allowed
+            return Ok(());
+        }
+
+        let required_vars = self.extract_variables(template);
+        let mut missing_vars = Vec::new();
+
+        for var_name in required_vars {
+            // Check if the variable exists in the context
+            let exists = if let Some(obj) = context.variables.as_object() {
+                obj.contains_key(&var_name)
+            } else {
+                false
+            };
+
+            if !exists {
+                missing_vars.push(var_name);
+            }
+        }
+
+        if !missing_vars.is_empty() {
+            return Err(HandlebarsError::MissingVariables {
+                missing_variables: missing_vars,
+            });
+        }
+
+        Ok(())
+    }
+
     /// Renders a template string with the provided context.
     ///
     /// This method compiles the template (if not cached) and renders it with
@@ -808,6 +959,10 @@ impl HandlebarsTemplateEngine {
                 ),
             });
         }
+
+        // Validate all required variables are present before attempting to render
+        // This provides better error messages by listing ALL missing variables at once
+        self.validate_template_variables(template, context)?;
 
         // Render the template with the provided context
         let result = self
