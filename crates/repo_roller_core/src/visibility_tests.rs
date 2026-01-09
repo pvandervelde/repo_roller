@@ -78,9 +78,9 @@ impl GitHubEnvironmentDetector for MockEnvironmentDetector {
     }
 }
 
-/// Test that organization Required policy overrides user preference.
+/// Test that organization Required policy rejects conflicting user preference.
 #[tokio::test]
-async fn test_required_policy_overrides_user_preference() {
+async fn test_required_policy_rejects_conflicting_user_preference() {
     let policy_provider = Arc::new(MockPolicyProvider::required(RepositoryVisibility::Private));
     let env_detector = Arc::new(MockEnvironmentDetector::paid_plan());
     let resolver = VisibilityResolver::new(policy_provider, env_detector);
@@ -88,6 +88,52 @@ async fn test_required_policy_overrides_user_preference() {
     let request = VisibilityRequest {
         organization: OrganizationName::new("test-org").unwrap(),
         user_preference: Some(RepositoryVisibility::Public),
+        template_default: None,
+    };
+
+    let result = resolver.resolve_visibility(request).await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        VisibilityError::PolicyViolation { requested, .. } => {
+            assert_eq!(requested, RepositoryVisibility::Public);
+        }
+        _ => panic!("Expected PolicyViolation error"),
+    }
+}
+
+/// Test that organization Required policy allows compliant user preference.
+#[tokio::test]
+async fn test_required_policy_allows_compliant_preference() {
+    let policy_provider = Arc::new(MockPolicyProvider::required(RepositoryVisibility::Private));
+    let env_detector = Arc::new(MockEnvironmentDetector::paid_plan());
+    let resolver = VisibilityResolver::new(policy_provider, env_detector);
+
+    let request = VisibilityRequest {
+        organization: OrganizationName::new("test-org").unwrap(),
+        user_preference: Some(RepositoryVisibility::Private),
+        template_default: None,
+    };
+
+    let decision = resolver.resolve_visibility(request).await.unwrap();
+
+    assert_eq!(decision.visibility, RepositoryVisibility::Private);
+    assert_eq!(decision.source, DecisionSource::OrganizationPolicy);
+    assert!(decision
+        .constraints_applied
+        .contains(&PolicyConstraint::OrganizationRequired));
+}
+
+/// Test that organization Required policy applies when no preference specified.
+#[tokio::test]
+async fn test_required_policy_applies_when_no_preference() {
+    let policy_provider = Arc::new(MockPolicyProvider::required(RepositoryVisibility::Private));
+    let env_detector = Arc::new(MockEnvironmentDetector::paid_plan());
+    let resolver = VisibilityResolver::new(policy_provider, env_detector);
+
+    let request = VisibilityRequest {
+        organization: OrganizationName::new("test-org").unwrap(),
+        user_preference: None,
         template_default: None,
     };
 

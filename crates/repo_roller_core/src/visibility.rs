@@ -272,6 +272,26 @@ impl VisibilityResolver {
 
         // Step 2: Check if policy requires specific visibility
         if let Some(required) = policy.required_visibility() {
+            // If user explicitly requested a different visibility, return error
+            if let Some(user_pref) = request.user_preference {
+                if user_pref != required {
+                    return Err(VisibilityError::PolicyViolation {
+                        requested: user_pref,
+                        policy: format!("Required({:?})", required),
+                    });
+                }
+            }
+
+            // If template default conflicts with required policy, return error
+            if let Some(template_default) = request.template_default {
+                if template_default != required {
+                    return Err(VisibilityError::PolicyViolation {
+                        requested: template_default,
+                        policy: format!("Required({:?})", required),
+                    });
+                }
+            }
+
             constraints.push(PolicyConstraint::OrganizationRequired);
 
             // Validate against GitHub constraints before returning
