@@ -177,11 +177,35 @@ jobs:
             - ✓ HTTP endpoints via external client
             - ✓ Complete request/response cycle
             - ✓ Production deployment environment
+
+            <!-- e2e-tests-comment -->
             `;
 
-            github.rest.issues.createComment({
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: commentBody
             });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('<!-- e2e-tests-comment -->')
+            );
+
+            // Update existing comment or create new one
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+            }

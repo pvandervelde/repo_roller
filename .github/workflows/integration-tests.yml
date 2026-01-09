@@ -3,39 +3,39 @@ name: Integration Tests
 on:
   # Run on pull requests to master
   pull_request:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - 'crates/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/integration-tests.yml'
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/integration-tests.yml"
 
   # Run on pushes to master
   push:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - 'crates/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/integration-tests.yml'
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/integration-tests.yml"
 
   # Scheduled nightly runs for orphan cleanup and regression testing
   schedule:
     # Run at 2 AM UTC daily
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
 
   # Allow manual triggering
   workflow_dispatch:
     inputs:
       cleanup_only:
-        description: 'Only perform cleanup, skip tests'
+        description: "Only perform cleanup, skip tests"
         required: false
         default: false
         type: boolean
       max_age_hours:
-        description: 'Maximum age in hours for orphaned repositories'
+        description: "Maximum age in hours for orphaned repositories"
         required: false
-        default: '24'
+        default: "24"
         type: string
 
 env:
@@ -195,7 +195,7 @@ jobs:
             const statusEmoji = success ? '✅' : '❌';
             const statusText = success ? 'PASSED' : 'FAILED';
 
-            // Create comment body
+            // Create comment body with unique identifier
             const commentBody = `
             ## ${statusEmoji} Integration Tests ${statusText}
 
@@ -216,12 +216,35 @@ jobs:
               '🎉 All integration tests passed! The changes are ready for review.' :
               '⚠️ Integration tests failed. Please review the logs and fix any issues before merging.'
             }
+
+            <!-- integration-tests-comment -->
             `;
 
-            // Post comment
-            github.rest.issues.createComment({
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: commentBody
             });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('<!-- integration-tests-comment -->')
+            );
+
+            // Update existing comment or create new one
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+            }
