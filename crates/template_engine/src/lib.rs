@@ -775,7 +775,7 @@ impl TemplateProcessor {
         // FIRST PASS: Scan all template files for variable references
         // This allows us to report ALL missing variables at once before starting processing
         let mut all_required_vars = std::collections::HashSet::new();
-        
+
         for (file_path, content) in files {
             // Skip files that match exclude patterns
             if let Some(ref config) = request.templating_config {

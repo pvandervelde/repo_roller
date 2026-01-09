@@ -803,13 +803,12 @@ impl HandlebarsTemplateEngine {
     /// ```
     pub fn extract_variables(&self, template: &str) -> Vec<String> {
         use std::collections::HashSet;
-        
+
         let mut variables = HashSet::new();
-        
+
         // Match all Handlebars expressions {{ ... }}
-        let expression_re = regex::Regex::new(r"\{\{(.*?)\}\}")
-            .expect("Invalid regex");
-        
+        let expression_re = regex::Regex::new(r"\{\{(.*?)\}\}").expect("Invalid regex");
+
         // Match the first identifier in a path (before any dots or brackets)
         // Handles both regular variables and variables in block helpers
         // Examples:
@@ -817,33 +816,51 @@ impl HandlebarsTemplateEngine {
         //   "{{author.name}}" -> captures "author"
         //   "{{#if debug_mode}}" -> captures "debug_mode" (after helper keyword)
         //   "{{#each items}}" -> captures "items" (after helper keyword)
-        let root_var_re = regex::Regex::new(r"(?:^[#/]?\s*(?:if|unless|each|with)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)") .expect("Invalid regex");
-        
+        let root_var_re =
+            regex::Regex::new(r"(?:^[#/]?\s*(?:if|unless|each|with)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)")
+                .expect("Invalid regex");
+
         for expr_cap in expression_re.captures_iter(template) {
             if let Some(expr) = expr_cap.get(1) {
                 let expr_str = expr.as_str().trim();
-                
+
                 // Skip comments
                 if expr_str.starts_with('!') {
                     continue;
                 }
-                
+
                 // Extract all root variables from the expression
                 for cap in root_var_re.captures_iter(expr_str) {
                     if let Some(root_match) = cap.get(1) {
                         let root_var = root_match.as_str();
-                        
+
                         // Skip Handlebars keywords, built-in helpers, and our custom helpers
-                        if !["this", "each", "if", "unless", "with", "lookup", "log", "else",
-                             "snake_case", "kebab_case", "upper_case", "lower_case", "capitalize",
-                             "default", "timestamp"].contains(&root_var) {
+                        if ![
+                            "this",
+                            "each",
+                            "if",
+                            "unless",
+                            "with",
+                            "lookup",
+                            "log",
+                            "else",
+                            "snake_case",
+                            "kebab_case",
+                            "upper_case",
+                            "lower_case",
+                            "capitalize",
+                            "default",
+                            "timestamp",
+                        ]
+                        .contains(&root_var)
+                        {
                             variables.insert(root_var.to_string());
                         }
                     }
                 }
             }
         }
-        
+
         let mut result: Vec<String> = variables.into_iter().collect();
         result.sort();
         result

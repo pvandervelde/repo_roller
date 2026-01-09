@@ -158,7 +158,10 @@ async fn test_template_default_public_visibility() -> Result<()> {
     variables.insert("version".to_string(), "0.1.0".to_string());
     variables.insert("author_name".to_string(), "Integration Test".to_string());
     variables.insert("author_email".to_string(), "test@example.com".to_string());
-    variables.insert("project_description".to_string(), "A test repository for template default visibility".to_string());
+    variables.insert(
+        "project_description".to_string(),
+        "A test repository for template default visibility".to_string(),
+    );
     variables.insert("license".to_string(), "MIT".to_string());
     variables.insert("license_type".to_string(), "MIT".to_string());
     variables.insert("environment".to_string(), "test".to_string());
