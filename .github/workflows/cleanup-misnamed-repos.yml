@@ -118,7 +118,7 @@ jobs:
 
             - name: Create summary (dry run)
               if: github.event.inputs.dry_run == 'true' && always()
-              uses: actions/github-script@v7
+              uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
               with:
                   script: |
                       const previewOutput = process.env.PREVIEW_OUTPUT || '';
@@ -142,7 +142,7 @@ jobs:
 
             - name: Create summary (actual cleanup)
               if: github.event.inputs.dry_run != 'true' && always()
-              uses: actions/github-script@v7
+              uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
               with:
                   script: |
                       const deletedCount = '${{ steps.cleanup.outputs.deleted_count }}';
@@ -169,7 +169,7 @@ jobs:
 
             - name: Report cleanup failure
               if: failure()
-              uses: actions/github-script@v7
+              uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
               with:
                   script: |
                       const summary = '## ⚠️ Misnamed Repository Cleanup Failed\n\n' +
