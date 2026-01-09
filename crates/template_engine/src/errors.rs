@@ -65,6 +65,31 @@ pub enum Error {
     #[error("Required variable missing: {0}")]
     RequiredVariableMissing(String),
 
+    /// Multiple required template variables were not provided.
+    ///
+    /// This error occurs when multiple template variables are referenced in
+    /// templates but were not provided in the processing request. It provides
+    /// a comprehensive list of ALL missing variables to help users fix all
+    /// issues at once, rather than discovering them one at a time.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// // Template requires: {{author_name}}, {{author_email}}, {{license}}
+    /// // But only project_name was provided
+    /// Err(Error::MissingVariables {
+    ///     variables: vec!["author_name", "author_email", "license"],
+    ///     message: "Template requires 3 variable(s)..."
+    /// })
+    /// ```
+    #[error("{message}")]
+    MissingVariables {
+        /// List of all variables that are missing
+        variables: Vec<String>,
+        /// Detailed error message explaining what's missing
+        message: String,
+    },
+
     /// Variable value doesn't match the required pattern.
     ///
     /// This error is returned when a variable value fails to match

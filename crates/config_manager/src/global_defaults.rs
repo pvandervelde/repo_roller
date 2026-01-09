@@ -7,6 +7,7 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::*;
+use crate::visibility::VisibilityPolicyConfig;
 use serde::{Deserialize, Serialize};
 
 /// Organization-wide global default configuration.
@@ -79,6 +80,29 @@ pub struct GlobalDefaults {
 
     /// Required GitHub Apps
     pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Repository visibility policy configuration
+    ///
+    /// Controls organization-wide visibility policies. This defines whether
+    /// repositories must use specific visibility, are restricted from certain
+    /// visibilities, or have unrestricted choice.
+    ///
+    /// # Examples
+    ///
+    /// Require all repositories to be private:
+    /// ```toml
+    /// [repository_visibility]
+    /// enforcement_level = "required"
+    /// required_visibility = "private"
+    /// ```
+    ///
+    /// Prohibit public repositories:
+    /// ```toml
+    /// [repository_visibility]
+    /// enforcement_level = "restricted"
+    /// restricted_visibilities = ["public"]
+    /// ```
+    pub repository_visibility: Option<VisibilityPolicyConfig>,
 }
 
 #[cfg(test)]

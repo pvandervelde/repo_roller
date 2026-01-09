@@ -1,0 +1,7 @@
+default_visibility = "internal"
+
+[template]
+name = "template-test-internal"
+description = "Template that defaults to internal visibility (Enterprise only)"
+author = "RepoRoller Test Suite"
+tags = ["test", "internal", "enterprise"]

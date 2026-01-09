@@ -332,6 +332,22 @@ pub enum HandlebarsError {
         reason: String,
     },
 
+    /// Multiple required variables are missing.
+    ///
+    /// This error occurs when attempting to render a template with multiple
+    /// missing required variables. It provides a comprehensive list of all
+    /// missing variables to help users fix all issues at once.
+    ///
+    /// # Examples
+    ///
+    /// - Template requires `{{author_name}}`, `{{author_email}}`, and `{{license}}` but none provided
+    /// - Partial variable set provided but several still missing
+    #[error("Multiple required variables are missing: {}", .missing_variables.join(", "))]
+    MissingVariables {
+        /// List of all variables that are missing
+        missing_variables: Vec<String>,
+    },
+
     /// Helper registration or execution failed.
     ///
     /// This error occurs when custom Handlebars helpers cannot be registered
@@ -757,6 +773,99 @@ impl HandlebarsTemplateEngine {
         Ok(())
     }
 
+    /// Extracts all variable references from a template string.
+    ///
+    /// This method scans the template for all Handlebars variable references
+    /// (e.g., `{{variable_name}}`, `{{object.property}}`) and returns a list
+    /// of unique variable names. It's useful for validating that all required
+    /// variables are provided before attempting to render.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - The template string to scan
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<String>` containing all unique variable names found in the template.
+    /// For nested properties like `{{author.name}}`, only the root variable (`author`)
+    /// is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use template_engine::HandlebarsTemplateEngine;
+    ///
+    /// let engine = HandlebarsTemplateEngine::new()?;
+    /// let template = "Hello {{name}}, your email is {{author.email}} and license is {{license}}";
+    /// let variables = engine.extract_variables(template);
+    /// assert_eq!(variables, vec!["name", "author", "license"]);
+    /// # Ok::<(), template_engine::HandlebarsError>(())
+    /// ```
+    pub fn extract_variables(&self, template: &str) -> Vec<String> {
+        use std::collections::HashSet;
+
+        let mut variables = HashSet::new();
+
+        // Match all Handlebars expressions {{ ... }}
+        let expression_re = regex::Regex::new(r"\{\{(.*?)\}\}").expect("Invalid regex");
+
+        // Match the first identifier in a path (before any dots or brackets)
+        // Handles both regular variables and variables in block helpers
+        // Examples:
+        //   "{{name}}" -> captures "name"
+        //   "{{author.name}}" -> captures "author"
+        //   "{{#if debug_mode}}" -> captures "debug_mode" (after helper keyword)
+        //   "{{#each items}}" -> captures "items" (after helper keyword)
+        let root_var_re =
+            regex::Regex::new(r"(?:^[#/]?\s*(?:if|unless|each|with)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)")
+                .expect("Invalid regex");
+
+        for expr_cap in expression_re.captures_iter(template) {
+            if let Some(expr) = expr_cap.get(1) {
+                let expr_str = expr.as_str().trim();
+
+                // Skip comments
+                if expr_str.starts_with('!') {
+                    continue;
+                }
+
+                // Extract all root variables from the expression
+                for cap in root_var_re.captures_iter(expr_str) {
+                    if let Some(root_match) = cap.get(1) {
+                        let root_var = root_match.as_str();
+
+                        // Skip Handlebars keywords, built-in helpers, and our custom helpers
+                        if ![
+                            "this",
+                            "each",
+                            "if",
+                            "unless",
+                            "with",
+                            "lookup",
+                            "log",
+                            "else",
+                            "snake_case",
+                            "kebab_case",
+                            "upper_case",
+                            "lower_case",
+                            "capitalize",
+                            "default",
+                            "timestamp",
+                        ]
+                        .contains(&root_var)
+                        {
+                            variables.insert(root_var.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut result: Vec<String> = variables.into_iter().collect();
+        result.sort();
+        result
+    }
+
     /// Renders a template string with the provided context.
     ///
     /// This method compiles the template (if not cached) and renders it with
@@ -810,6 +919,10 @@ impl HandlebarsTemplateEngine {
         }
 
         // Render the template with the provided context
+        // Note: Variable validation is NOT performed here because:
+        // 1. Handlebars' strict mode already validates variables at render time
+        // 2. Upfront validation can't properly handle block helper contexts (#each, #with, etc.)
+        // 3. Comprehensive validation is done at the process_template level in lib.rs
         let result = self
             .handlebars
             .render_template(template, &context.variables)

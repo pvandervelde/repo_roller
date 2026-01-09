@@ -460,6 +460,7 @@ fn test_serialize_round_trip() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        default_visibility: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -486,6 +487,7 @@ fn test_clone_creates_independent_copy() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        default_visibility: None,
     };
 
     let cloned = config.clone();
@@ -510,9 +512,235 @@ fn test_debug_format() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        default_visibility: None,
     };
 
     let debug_str = format!("{:?}", config);
     assert!(debug_str.contains("TemplateConfig"));
     assert!(debug_str.contains("template"));
+}
+
+/// Test parsing template with default_visibility set to Private.
+#[test]
+fn test_template_config_with_private_visibility() {
+    let toml = r#"
+        default_visibility = "private"
+        
+        [template]
+        name = "private-service-template"
+        description = "Internal service template"
+        author = "Platform Team"
+        tags = ["service", "private"]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
+
+    assert_eq!(config.template.name, "private-service-template");
+    assert_eq!(
+        config.default_visibility,
+        Some(crate::visibility::RepositoryVisibility::Private)
+    );
+}
+
+/// Test parsing template with default_visibility set to Public.
+#[test]
+fn test_template_config_with_public_visibility() {
+    let toml = r#"
+        default_visibility = "public"
+        
+        [template]
+        name = "public-docs-template"
+        description = "Public documentation template"
+        author = "Docs Team"
+        tags = ["docs", "public"]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
+
+    assert_eq!(config.template.name, "public-docs-template");
+    assert_eq!(
+        config.default_visibility,
+        Some(crate::visibility::RepositoryVisibility::Public)
+    );
+}
+
+/// Test parsing template with default_visibility set to Internal.
+#[test]
+fn test_template_config_with_internal_visibility() {
+    let toml = r#"
+        default_visibility = "internal"
+        
+        [template]
+        name = "internal-team-template"
+        description = "Internal team collaboration template"
+        author = "Team Lead"
+        tags = ["internal", "collaboration"]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
+
+    assert_eq!(config.template.name, "internal-team-template");
+    assert_eq!(
+        config.default_visibility,
+        Some(crate::visibility::RepositoryVisibility::Internal)
+    );
+}
+
+/// Test parsing template without default_visibility (backward compatibility).
+///
+/// Templates without default_visibility should parse successfully with None.
+#[test]
+fn test_template_config_without_visibility() {
+    let toml = r#"
+        [template]
+        name = "legacy-template"
+        description = "Template without visibility setting"
+        author = "Legacy Team"
+        tags = ["legacy"]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse template config");
+
+    assert_eq!(config.template.name, "legacy-template");
+    assert_eq!(config.default_visibility, None);
+}
+
+/// Test that invalid visibility values produce deserialization errors.
+#[test]
+fn test_template_config_with_invalid_visibility() {
+    let toml = r#"
+        default_visibility = "restricted"
+        
+        [template]
+        name = "invalid-visibility-template"
+        description = "Template with invalid visibility"
+        author = "Test"
+        tags = []
+    "#;
+
+    let result: Result<TemplateConfig, _> = toml::from_str(toml);
+
+    assert!(
+        result.is_err(),
+        "Should fail to parse invalid visibility value"
+    );
+    let err = result.unwrap_err();
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("restricted") || err_msg.contains("unknown variant"),
+        "Error should mention the invalid value: {}",
+        err_msg
+    );
+}
+
+/// Test serialization of template with default_visibility.
+///
+/// Verifies that default_visibility is correctly serialized to TOML.
+#[test]
+fn test_template_config_visibility_serialization() {
+    let config = TemplateConfig {
+        template: TemplateMetadata {
+            name: "test-template".to_string(),
+            description: "Test template".to_string(),
+            author: "Test Author".to_string(),
+            tags: vec!["test".to_string()],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        default_visibility: Some(crate::visibility::RepositoryVisibility::Private),
+    };
+
+    let toml_str = toml::to_string(&config).expect("Failed to serialize");
+
+    assert!(
+        toml_str.contains("default_visibility = \"private\""),
+        "TOML should contain default_visibility field: {}",
+        toml_str
+    );
+}
+
+/// Test that None visibility is not serialized (skip_serializing_if).
+///
+/// Verifies that templates without default_visibility don't include
+/// the field in serialized TOML.
+#[test]
+fn test_template_config_none_visibility_not_serialized() {
+    let config = TemplateConfig {
+        template: TemplateMetadata {
+            name: "no-visibility-template".to_string(),
+            description: "Template without visibility".to_string(),
+            author: "Test Author".to_string(),
+            tags: vec![],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        default_visibility: None,
+    };
+
+    let toml_str = toml::to_string(&config).expect("Failed to serialize");
+
+    assert!(
+        !toml_str.contains("default_visibility"),
+        "TOML should not contain default_visibility when None: {}",
+        toml_str
+    );
+}
+
+/// Test complete template configuration with visibility and other settings.
+///
+/// Verifies that default_visibility works correctly alongside other
+/// template configuration fields.
+#[test]
+fn test_complete_template_with_visibility() {
+    let toml = r#"
+        default_visibility = "private"
+        
+        [template]
+        name = "rust-service"
+        description = "Rust microservice template"
+        author = "Platform Team"
+        tags = ["rust", "service"]
+
+        [repository_type]
+        type = "service"
+        policy = "fixed"
+
+        [repository]
+        wiki = false
+        security_advisories = true
+
+        [variables.service_name]
+        description = "Service name"
+        required = true
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse complete template");
+
+    assert_eq!(config.template.name, "rust-service");
+    assert_eq!(
+        config.default_visibility,
+        Some(crate::visibility::RepositoryVisibility::Private)
+    );
+    assert!(config.repository_type.is_some());
+    assert!(config.repository.is_some());
+    assert!(config.variables.is_some());
+
+    // Verify repository type
+    let repo_type = config.repository_type.unwrap();
+    assert_eq!(repo_type.repository_type, "service");
+    assert_eq!(repo_type.policy, RepositoryTypePolicy::Fixed);
 }

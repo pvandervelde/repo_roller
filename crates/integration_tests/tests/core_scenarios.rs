@@ -9,7 +9,10 @@
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
 use github_client::RepositoryClient;
-use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
+use integration_tests::{
+    create_visibility_providers, generate_test_repo_name, RepositoryCleanup, TestConfig,
+    TestRepository,
+};
 use repo_roller_core::{
     create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
     TemplateName,
@@ -51,14 +54,8 @@ async fn test_basic_repository_creation() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers = create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -69,7 +66,15 @@ async fn test_basic_repository_creation() -> Result<()> {
     .build();
 
     // Create repository
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider,
+        providers.environment_detector,
+    )
+    .await;
 
     // Assert success
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -83,8 +88,16 @@ async fn test_basic_repository_creation() -> Result<()> {
         .await?;
 
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    assert!(!repo.is_private(), "Repository should be public by default");
-    info!("✓ Repository verification passed");
+    // Note: Visibility is now determined by policy configuration rather than a hardcoded default.
+    // The template-test-basic template should specify visibility or fall back to configured defaults.
+    info!(
+        "✓ Repository verification passed (visibility: {})",
+        if repo.is_private() {
+            "private"
+        } else {
+            "public"
+        }
+    );
 
     // Cleanup
     let cleanup_client =
@@ -124,14 +137,9 @@ async fn test_variable_substitution() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request with variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -154,7 +162,15 @@ async fn test_variable_substitution() -> Result<()> {
     .build();
 
     // Create repository
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
 
     // Assert success
     assert!(result.is_ok(), "Variable substitution should succeed");
@@ -228,14 +244,9 @@ async fn test_file_filtering() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request with filtering variables
     let request = RepositoryCreationRequestBuilder::new(
@@ -248,7 +259,15 @@ async fn test_file_filtering() -> Result<()> {
     .build();
 
     // Create repository
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
 
     // Assert success
     assert!(result.is_ok(), "File filtering should succeed");
@@ -307,14 +326,9 @@ async fn test_error_handling_invalid_template() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller").await?;
 
     // Build request with non-existent template
     let request = RepositoryCreationRequestBuilder::new(
@@ -325,7 +339,15 @@ async fn test_error_handling_invalid_template() -> Result<()> {
     .build();
 
     // Create repository - should fail
-    let result = create_repository(request, &metadata_provider, &auth_service, ".reporoller").await;
+    let result = create_repository(
+        request,
+        providers.metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
+    )
+    .await;
 
     // Assert failure
     assert!(result.is_err(), "Invalid template should fail");
@@ -357,14 +379,10 @@ async fn test_organization_settings() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider using test metadata repository
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
@@ -377,9 +395,11 @@ async fn test_organization_settings() -> Result<()> {
     // Create repository
     let result = create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -445,14 +465,10 @@ async fn test_team_configuration() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with team specification
     let request = RepositoryCreationRequestBuilder::new(
@@ -465,9 +481,11 @@ async fn test_team_configuration() -> Result<()> {
     // Create repository
     let result = create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -523,14 +541,10 @@ async fn test_repository_type_configuration() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request with repository type
     let request = RepositoryCreationRequestBuilder::new(
@@ -543,9 +557,11 @@ async fn test_repository_type_configuration() -> Result<()> {
     // Create repository
     let result = create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 
@@ -604,14 +620,10 @@ async fn test_configuration_hierarchy() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let github_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(github_client);
-
-    // Create metadata provider
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::explicit(".reporoller-test"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request that will test hierarchy merging
     let request = RepositoryCreationRequestBuilder::new(
@@ -624,9 +636,11 @@ async fn test_configuration_hierarchy() -> Result<()> {
     // Create repository
     let result = create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
         ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 

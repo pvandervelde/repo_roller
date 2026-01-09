@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::{OrganizationName, RepositoryName, TemplateName, Timestamp};
+use crate::{OrganizationName, RepositoryName, RepositoryVisibility, TemplateName, Timestamp};
 
 #[cfg(test)]
 #[path = "request_tests.rs"]
@@ -19,7 +19,7 @@ mod tests;
 /// # Examples
 ///
 /// ```rust
-/// use repo_roller_core::{RepositoryCreationRequest, RepositoryName, OrganizationName, TemplateName};
+/// use repo_roller_core::{RepositoryCreationRequest, RepositoryName, OrganizationName, TemplateName, RepositoryVisibility};
 /// use std::collections::HashMap;
 ///
 /// let request = RepositoryCreationRequest {
@@ -27,6 +27,7 @@ mod tests;
 ///     owner: OrganizationName::new("my-org").unwrap(),
 ///     template: TemplateName::new("rust-library").unwrap(),
 ///     variables: HashMap::new(),
+///     visibility: Some(RepositoryVisibility::Private),
 /// };
 /// ```
 ///
@@ -44,6 +45,9 @@ pub struct RepositoryCreationRequest {
 
     /// Template variables for variable substitution during processing
     pub variables: HashMap<String, String>,
+
+    /// Explicit visibility preference (optional, resolved via hierarchy if None)
+    pub visibility: Option<RepositoryVisibility>,
 }
 
 /// Result of a successful repository creation operation.
@@ -82,12 +86,12 @@ pub struct RepositoryCreationResult {
 /// Builder for constructing RepositoryCreationRequest instances.
 ///
 /// Provides an ergonomic API for building repository creation requests
-/// with optional template variables.
+/// with optional template variables and visibility.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use repo_roller_core::{RepositoryCreationRequestBuilder, RepositoryName, OrganizationName, TemplateName};
+/// use repo_roller_core::{RepositoryCreationRequestBuilder, RepositoryName, OrganizationName, TemplateName, RepositoryVisibility};
 ///
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-repo").unwrap(),
@@ -96,6 +100,7 @@ pub struct RepositoryCreationResult {
 /// )
 /// .variable("project_name", "MyProject")
 /// .variable("author", "John Doe")
+/// .with_visibility(RepositoryVisibility::Private)
 /// .build();
 /// ```
 #[derive(Debug, Clone)]
@@ -104,6 +109,7 @@ pub struct RepositoryCreationRequestBuilder {
     owner: OrganizationName,
     template: TemplateName,
     variables: HashMap<String, String>,
+    visibility: Option<RepositoryVisibility>,
 }
 
 impl RepositoryCreationRequestBuilder {
@@ -114,6 +120,7 @@ impl RepositoryCreationRequestBuilder {
             owner,
             template,
             variables: HashMap::new(),
+            visibility: None,
         }
     }
 
@@ -133,6 +140,15 @@ impl RepositoryCreationRequestBuilder {
         self
     }
 
+    /// Set explicit visibility preference.
+    ///
+    /// This visibility will be validated against organization policies
+    /// during repository creation.
+    pub fn with_visibility(mut self, visibility: RepositoryVisibility) -> Self {
+        self.visibility = Some(visibility);
+        self
+    }
+
     /// Build the final RepositoryCreationRequest.
     pub fn build(self) -> RepositoryCreationRequest {
         RepositoryCreationRequest {
@@ -140,6 +156,7 @@ impl RepositoryCreationRequestBuilder {
             owner: self.owner,
             template: self.template,
             variables: self.variables,
+            visibility: self.visibility,
         }
     }
 }

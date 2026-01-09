@@ -39,7 +39,10 @@
 //! use auth_handler::GitHubAuthService;
 //! use github_client::GitHubClient;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(
+//! #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
+//! #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a type-safe repository creation request
 //! let request = RepositoryCreationRequestBuilder::new(
 //!     RepositoryName::new("my-new-project")?,
@@ -64,7 +67,9 @@
 //!     request,
 //!     &metadata_provider,
 //!     &auth_service,
-//!     ".reporoller" // Metadata repository name
+//!     ".reporoller", // Metadata repository name
+//!     visibility_policy_provider,
+//!     environment_detector,
 //! ).await {
 //!     Ok(result) => {
 //!         println!("Repository created successfully:");
@@ -77,11 +82,6 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! ## Architecture
-//!
-//! The crate follows a dependency injection pattern for testability:
-//! - Configuration-driven template processing via [`template_engine`]
 //!
 //! ## Error Handling
 //!
@@ -129,6 +129,37 @@ pub mod github;
 /// Authentication domain types (UserId, SessionId)
 pub mod authentication;
 
+/// Repository visibility types and resolution
+///
+/// This module provides types and logic for determining repository visibility
+/// based on hierarchical policies and GitHub environment constraints.
+///
+/// # Example
+///
+/// ```no_run
+/// use repo_roller_core::{VisibilityResolver, VisibilityRequest, OrganizationName};
+/// use config_manager::RepositoryVisibility;
+/// use std::sync::Arc;
+///
+/// # async fn example(
+/// #     policy_provider: Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
+/// let resolver = VisibilityResolver::new(policy_provider, environment_detector);
+///
+/// let request = VisibilityRequest {
+///     organization: OrganizationName::new("my-org")?,
+///     user_preference: Some(RepositoryVisibility::Private),
+///     template_default: None,
+/// };
+///
+/// let decision = resolver.resolve_visibility(request).await?;
+/// println!("Visibility: {:?}", decision.visibility);
+/// # Ok(())
+/// # }
+/// ```
+pub mod visibility;
+
 // Re-export commonly used types
 pub use authentication::{SessionId, UserId};
 pub use github::{GitHubToken, InstallationId};
@@ -137,6 +168,12 @@ pub use request::{
     RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
 };
 pub use template::TemplateName;
+// Re-exported from visibility module - see module docs for examples
+pub use visibility::{
+    DecisionSource, GitHubEnvironmentDetector, PlanLimitations, PolicyConstraint,
+    RepositoryVisibility, VisibilityDecision, VisibilityError, VisibilityPolicy,
+    VisibilityPolicyProvider, VisibilityRequest, VisibilityResolver,
+};
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};
@@ -181,6 +218,10 @@ impl From<DateTime<Utc>> for Timestamp {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "lib_integration_tests.rs"]
+mod integration_tests;
 
 /// Create a new repository from a template with type-safe API.
 ///
@@ -229,7 +270,10 @@ mod tests;
 /// use auth_handler::{GitHubAuthService, UserAuthenticationService};
 /// use github_client;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(
+/// #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-service")?,
 ///     OrganizationName::new("my-org")?,
@@ -248,7 +292,7 @@ mod tests;
 ///     MetadataProviderConfig::explicit(".reporoller")
 /// );
 ///
-/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller").await {
+/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller", visibility_policy_provider, environment_detector).await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
@@ -317,16 +361,21 @@ async fn create_github_repository(
     request: &RepositoryCreationRequest,
     merged_config: &config_manager::MergedConfiguration,
     installation_repo_client: &GitHubClient,
+    visibility: visibility::RepositoryVisibility,
 ) -> RepoRollerResult<github_client::Repository> {
     let payload = RepositoryCreatePayload {
         name: request.name.as_ref().to_string(),
+        private: Some(visibility.is_private()),
         has_issues: merged_config.repository.issues.as_ref().map(|v| v.value),
         has_projects: merged_config.repository.projects.as_ref().map(|v| v.value),
         has_wiki: merged_config.repository.wiki.as_ref().map(|v| v.value),
         ..Default::default()
     };
 
-    info!("Creating GitHub repository: name='{}'", request.name);
+    info!(
+        "Creating GitHub repository: name='{}', visibility={:?}",
+        request.name, visibility
+    );
     let repo = installation_repo_client
         .create_org_repository(request.owner.as_ref(), &payload)
         .await
@@ -385,7 +434,10 @@ async fn create_github_repository(
 /// use auth_handler::GitHubAuthService;
 /// use github_client::GitHubClient;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(
+/// #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
+/// #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-repo")?,
 ///     OrganizationName::new("my-org")?,
@@ -399,11 +451,14 @@ async fn create_github_repository(
 ///     MetadataProviderConfig::explicit(".reporoller")
 /// );
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
+///
 /// let result = create_repository(
 ///     request,
 ///     &metadata_provider,
 ///     &auth_service,
-///     ".reporoller"
+///     ".reporoller",
+///     visibility_policy_provider,
+///     environment_detector,
 /// ).await?;
 /// println!("Created repository: {}", result.repository_url);
 /// # Ok(())
@@ -414,6 +469,8 @@ pub async fn create_repository(
     metadata_provider: &dyn config_manager::MetadataRepositoryProvider,
     auth_service: &dyn auth_handler::UserAuthenticationService,
     metadata_repository_name: &str,
+    visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
+    environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
 ) -> RepoRollerResult<RepositoryCreationResult> {
     info!(
         "Starting repository creation: name='{}', owner='{}', template='{}'",
@@ -479,6 +536,88 @@ pub async fn create_repository(
 
     info!("Template '{}' loaded successfully", request.template);
 
+    // Step 4.5: Resolve repository visibility
+    info!(
+        "Resolving repository visibility for organization '{}'",
+        request.owner
+    );
+    let visibility_request = visibility::VisibilityRequest {
+        organization: request.owner.clone(),
+        user_preference: request.visibility,
+        template_default: template.default_visibility,
+    };
+
+    let visibility_resolver =
+        visibility::VisibilityResolver::new(visibility_policy_provider, environment_detector);
+
+    let visibility_decision = visibility_resolver
+        .resolve_visibility(visibility_request)
+        .await
+        .map_err(|e| {
+            error!("Failed to resolve visibility: {}", e);
+            match e {
+                visibility::VisibilityError::PolicyViolation { requested, policy } => {
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility".to_string(),
+                        reason: format!(
+                            "Visibility {:?} violates organization policy: {}",
+                            requested, policy
+                        ),
+                    })
+                }
+                visibility::VisibilityError::GitHubConstraint { requested, reason } => {
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility".to_string(),
+                        reason: format!("Visibility {:?} not available: {}", requested, reason),
+                    })
+                }
+                visibility::VisibilityError::PolicyNotFound { organization } => {
+                    warn!(
+                        "No visibility policy configured for organization '{}', using default",
+                        organization
+                    );
+                    // For PolicyNotFound, we should use unrestricted policy
+                    // This error shouldn't reach here if resolver handles it correctly
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility_policy".to_string(),
+                        reason: format!(
+                            "No visibility policy configured for organization '{}'",
+                            organization
+                        ),
+                    })
+                }
+                visibility::VisibilityError::ConfigurationError { message } => {
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility".to_string(),
+                        reason: message,
+                    })
+                }
+                visibility::VisibilityError::EnvironmentDetectionFailed {
+                    organization,
+                    reason,
+                } => RepoRollerError::GitHub(GitHubError::NetworkError {
+                    reason: format!(
+                        "Failed to detect GitHub environment for organization '{}': {}",
+                        organization, reason
+                    ),
+                }),
+                visibility::VisibilityError::GitHubApiError(source) => {
+                    RepoRollerError::GitHub(GitHubError::NetworkError {
+                        reason: format!("Failed to detect GitHub environment: {}", source),
+                    })
+                }
+            }
+        })?;
+
+    info!(
+        "Visibility resolved: {:?}, source: {:?}",
+        visibility_decision.visibility, visibility_decision.source
+    );
+    debug!(
+        "Applied constraints: {:?}",
+        visibility_decision.constraints_applied
+    );
+
     // Construct source repository identifier for template fetcher
     // Format: "org/repo" (e.g., "my-org/template-rust-library")
     let template_source = format!("{}/{}", request.owner.as_ref(), request.template.as_ref());
@@ -502,8 +641,13 @@ pub async fn create_repository(
     .await?;
 
     // Step 7: Create repository on GitHub
-    let repo =
-        create_github_repository(&request, &merged_config, &installation_repo_client).await?;
+    let repo = create_github_repository(
+        &request,
+        &merged_config,
+        &installation_repo_client,
+        visibility_decision.visibility,
+    )
+    .await?;
 
     // Step 8: Push local repository to GitHub
     info!("Pushing local repository to remote: {}", repo.url());

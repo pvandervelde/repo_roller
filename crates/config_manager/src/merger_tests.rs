@@ -49,6 +49,7 @@ fn create_test_template() -> NewTemplateConfig {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     }
 }
 
@@ -70,6 +71,7 @@ fn create_template_with_repository(repo_settings: RepositorySettings) -> NewTemp
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     }
 }
 
@@ -193,6 +195,7 @@ fn test_merge_four_level_hierarchy() {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -563,6 +566,7 @@ fn test_merge_with_empty_configurations() {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -689,6 +693,7 @@ fn test_complex_merge_scenario() {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -902,6 +907,7 @@ fn test_repository_type_settings_without_global_base() {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);
@@ -1013,6 +1019,7 @@ fn test_template_settings_without_base() {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -1092,6 +1099,7 @@ fn test_all_repository_settings_fields() {
         environments: None,
         github_apps: None,
         variables: None,
+        default_visibility: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);

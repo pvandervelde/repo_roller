@@ -17,6 +17,8 @@ pub use errors::Error;
 // Domain-specific modules
 pub mod branch_protection;
 pub mod contents;
+pub mod environment;
+pub mod environment_detector;
 pub mod installation;
 pub mod label;
 pub mod repository;
@@ -25,6 +27,8 @@ pub mod user;
 // Re-export types for convenient access
 pub use branch_protection::BranchProtection;
 pub use contents::{EntryType, TreeEntry};
+pub use environment::{GitHubEnvironmentDetector, PlanLimitations};
+pub use environment_detector::GitHubApiEnvironmentDetector;
 pub use installation::{Account, Installation};
 pub use label::Label;
 pub use repository::{Organization, Repository};
@@ -143,7 +147,10 @@ impl GitHubClient {
                     org_name = org_name,
                     "No installation found for organization - this means the GitHub App is not installed on this organization"
                 );
-                Error::InvalidResponse
+                Error::AuthError(format!(
+                    "GitHub App not installed on organization '{}'",
+                    org_name
+                ))
             })?;
 
         info!(
@@ -166,10 +173,14 @@ impl GitHubClient {
                 error!(
                     org_name = org_name,
                     installation_id = installation.id,
+                    error = %e,
                     "Failed to get installation token from GitHub API"
                 );
                 log_octocrab_error("Failed to get installation token", e);
-                Error::InvalidResponse
+                Error::AuthError(format!(
+                    "Failed to get installation token for organization '{}'",
+                    org_name
+                ))
             })?;
 
         info!(
@@ -196,15 +207,37 @@ impl GitHubClient {
             Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
                 // Pattern match on octocrab error to check status code
-                if let octocrab::Error::GitHub { source, .. } = &e {
-                    if source.status_code == http::StatusCode::NOT_FOUND {
-                        debug!("Repository not found: {}/{}", owner, repo);
-                        return Err(Error::NotFound);
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            debug!("Repository not found: {}/{}", owner, repo);
+                            return Err(Error::NotFound);
+                        }
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error getting repository"
+                        );
+                        log_octocrab_error("Failed to get repository", e);
+                        Err(Error::ApiError())
+                    }
+                    _ => {
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error getting repository {}/{}: error={}",
+                            owner, repo, e
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            error = %e,
+                            "Non-GitHub error getting repository (parsing, network, etc.)"
+                        );
+                        log_octocrab_error("Failed to get repository", e);
+                        Err(Error::InvalidResponse)
                     }
                 }
-
-                log_octocrab_error("Failed to get repository", e);
-                Err(Error::InvalidResponse)
             }
         }
     }
@@ -482,23 +515,31 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
+                        eprintln!("DIAGNOSTIC: GitHub API error listing directory {} in {}/{}: status={}, message={}",
+                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = %owner,
                             repo = %repo,
                             path = %path,
                             status_code = %source.status_code,
+                            message = %source.message,
                             "GitHub API error listing directory contents"
                         );
                         log_octocrab_error("Failed to list directory contents", e);
-                        Err(Error::InvalidResponse)
+                        Err(Error::ApiError())
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error listing directory {} in {}/{}: error={}",
+                            path, owner, repo, e
+                        );
                         error!(
                             owner = %owner,
                             repo = %repo,
                             path = %path,
-                            "Failed to list directory contents"
+                            error = %e,
+                            "Non-GitHub error listing directory contents (parsing, network, etc.)"
                         );
                         log_octocrab_error("Failed to list directory contents", e);
                         Err(Error::InvalidResponse)
@@ -683,14 +724,47 @@ impl GitHubClient {
                 Err(Error::InvalidResponse)
             }
             Err(e) => {
-                error!(
-                    owner = owner,
-                    repo = repo,
-                    path = path,
-                    "Failed to get file content"
-                );
-                log_octocrab_error("Failed to get file content", e);
-                Err(Error::InvalidResponse)
+                // Map octocrab errors to appropriate Error types
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        // Check for 404 Not Found
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            error!(owner = owner, repo = repo, path = path, "File not found");
+                            log_octocrab_error("File not found", e);
+                            return Err(Error::NotFound);
+                        }
+
+                        // Other GitHub API errors
+                        eprintln!("DIAGNOSTIC: GitHub API error getting file {} in {}/{}: status={}, message={}",
+                            path, owner, repo, source.status_code, source.message);
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            path = path,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error getting file content"
+                        );
+                        log_octocrab_error("Failed to get file content", e);
+                        Err(Error::ApiError())
+                    }
+                    _ => {
+                        // Non-GitHub errors (network, parsing, etc.)
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error getting file {} in {}/{}: error={}",
+                            path, owner, repo, e
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            path = path,
+                            error = %e,
+                            "Non-GitHub error getting file content (parsing, network, etc.)"
+                        );
+                        log_octocrab_error("Failed to get file content", e);
+                        Err(Error::InvalidResponse)
+                    }
+                }
             }
         }
     }
@@ -855,6 +929,10 @@ impl RepositoryClient for GitHubClient {
                 Ok(default_branch)
             }
             Err(e) => {
+                eprintln!(
+                    "DIAGNOSTIC: Error getting org {} default branch: error={}",
+                    org_name, e
+                );
                 error!(
                     org_name = org_name,
                     "Failed to get organization information: {}", e
@@ -953,6 +1031,10 @@ impl RepositoryClient for GitHubClient {
             Ok(response) => {
                 // Parse the response array of {property_name, value} objects
                 let properties = response.as_array().ok_or_else(|| {
+                    eprintln!(
+                        "DIAGNOSTIC: Custom properties response is not an array for {}/{}",
+                        owner, repo
+                    );
                     error!("Custom properties response is not an array");
                     Error::InvalidResponse
                 })?;
@@ -974,6 +1056,10 @@ impl RepositoryClient for GitHubClient {
                 Ok(property_map)
             }
             Err(e) => {
+                eprintln!(
+                    "DIAGNOSTIC: Error getting custom properties for {}/{}: error={}",
+                    owner, repo, e
+                );
                 log_octocrab_error("Failed to get custom properties", e);
                 Err(Error::InvalidResponse)
             }
@@ -999,8 +1085,38 @@ impl RepositoryClient for GitHubClient {
                 Ok(label_names)
             }
             Err(e) => {
-                log_octocrab_error("Failed to list repository labels", e);
-                Err(Error::InvalidResponse)
+                // Match on the error type to provide detailed diagnostics
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        eprintln!(
+                            "DIAGNOSTIC: GitHub API error listing labels for {}/{}: status={}, message={}",
+                            owner, repo, source.status_code, source.message
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing repository labels"
+                        );
+                        log_octocrab_error("Failed to list repository labels", e);
+                        Err(Error::ApiError())
+                    }
+                    _ => {
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error listing labels for {}/{}: error={}",
+                            owner, repo, e
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            error = %e,
+                            "Non-GitHub error listing repository labels"
+                        );
+                        log_octocrab_error("Failed to list repository labels", e);
+                        Err(Error::InvalidResponse)
+                    }
+                }
             }
         }
     }
@@ -1060,11 +1176,19 @@ impl RepositoryClient for GitHubClient {
                             Ok(())
                         }
                         Err(update_e) => {
+                            eprintln!(
+                                "DIAGNOSTIC: Error updating label {} in {}/{}: error={}",
+                                name, owner, repo, update_e
+                            );
                             log_octocrab_error("Failed to update existing label", update_e);
                             Err(Error::InvalidResponse)
                         }
                     }
                 } else {
+                    eprintln!(
+                        "DIAGNOSTIC: Error creating label {} in {}/{}: error={}",
+                        name, owner, repo, e
+                    );
                     log_octocrab_error("Failed to create label", e);
                     Err(Error::InvalidResponse)
                 }

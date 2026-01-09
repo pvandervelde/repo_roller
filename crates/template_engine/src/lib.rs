@@ -97,6 +97,10 @@ pub use handlebars_engine::*;
 #[path = "lib_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "multiple_missing_variables_tests.rs"]
+mod multiple_missing_variables_tests;
+
 /// Trait for fetching template files from various sources.
 ///
 /// This trait abstracts the process of retrieving template files, allowing
@@ -757,7 +761,7 @@ impl TemplateProcessor {
         request: &TemplateProcessingRequest,
         _output_dir: &Path,
     ) -> Result<ProcessedTemplate, Error> {
-        // Validate variables first
+        // Validate variables against configs first
         self.validate_variables(request)?;
 
         // Convert HashMap variables to JSON format for Handlebars
@@ -768,6 +772,66 @@ impl TemplateProcessor {
         )?;
         let context = TemplateContext::new(all_variables);
 
+        // FIRST PASS: Scan all template files for variable references
+        // This allows us to report ALL missing variables at once before starting processing
+        let mut all_required_vars = std::collections::HashSet::new();
+
+        for (file_path, content) in files {
+            // Skip files that match exclude patterns
+            if let Some(ref config) = request.templating_config {
+                if self.should_exclude_file(file_path, &config.exclude_patterns) {
+                    continue;
+                }
+
+                // Only process files that match include patterns
+                if !config.include_patterns.is_empty()
+                    && !self.should_include_file(file_path, &config.include_patterns)
+                {
+                    continue;
+                }
+            }
+
+            // Check file path template for variables
+            let path_vars = self.handlebars_engine.extract_variables(file_path);
+            all_required_vars.extend(path_vars.into_iter());
+
+            // Check file content for variables (only for text files)
+            if self.is_text_file(content) {
+                let content_str = String::from_utf8_lossy(content);
+                let content_vars = self.handlebars_engine.extract_variables(&content_str);
+                all_required_vars.extend(content_vars.into_iter());
+            }
+        }
+
+        // Check if all required variables are present in the context
+        let mut missing_vars = Vec::new();
+        for var_name in &all_required_vars {
+            let exists = if let Some(obj) = context.variables.as_object() {
+                obj.contains_key(var_name)
+            } else {
+                false
+            };
+
+            if !exists {
+                missing_vars.push(var_name.clone());
+            }
+        }
+
+        // If any variables are missing, fail early with comprehensive error message
+        if !missing_vars.is_empty() {
+            missing_vars.sort();
+            return Err(Error::MissingVariables {
+                variables: missing_vars.clone(),
+                message: format!(
+                    "Template requires {} variable(s) that were not provided: {}. \
+                     Please provide values for all required variables before processing.",
+                    missing_vars.len(),
+                    missing_vars.join(", ")
+                ),
+            });
+        }
+
+        // SECOND PASS: Now process all files (we know all variables are present)
         let mut processed_files = Vec::new();
 
         for (file_path, content) in files {

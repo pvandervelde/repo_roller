@@ -21,6 +21,7 @@ This document defines the architectural rules, constraints, and policies that mu
 - `RepositoryName`, `OrganizationName`, `TemplateType`
 - `UserId`, `SessionId`, `InstallationId`
 - `GitHubToken`, `ConfigurationKey`
+- `RepositoryVisibility` (enum type for type-safe visibility)
 
 ### Result Type Requirement
 
@@ -51,6 +52,34 @@ This document defines the architectural rules, constraints, and policies that mu
 ### Dependency Direction Rules
 
 **Constraint**: Dependency flow must follow clean separation principles.
+
+**Pragmatic Exception for Infrastructure-Defined Types**:
+
+In some cases, types that are conceptually part of business configuration are defined in infrastructure crates to avoid circular dependencies. This follows the existing pattern established with `ConfigurationError`.
+
+**Example**: `repo_roller_core` re-exports types from infrastructure crates:
+```rust
+// crates/repo_roller_core/src/errors.rs:134
+pub use config_manager::{ConfigurationError, ConfigurationResult};
+
+// crates/repo_roller_core/src/lib.rs (for visibility types)
+pub use config_manager::{
+    RepositoryVisibility, VisibilityPolicy, PolicyConstraint, VisibilityPolicyProvider
+};
+```
+
+**When This Pattern Applies**:
+- Infrastructure crate defines configuration-related types and traits
+- Core business logic needs to reference these types
+- Circular dependency would result from defining types in core
+- Types are re-exported from core for convenience
+
+**Documentation Requirement**:
+- Document this pattern in specification files
+- Explain architectural rationale in comments
+- Update shared-registry.md to show both definition and re-export locations
+
+See [repository-visibility.md](interfaces/repository-visibility.md#circular-dependency-resolution) for detailed example.
 
 ### HTTP API Boundary Rules
 
@@ -527,5 +556,104 @@ impl TryFrom<CreateRepositoryHttpRequest> for RepositoryCreationRequest {
 - Release metrics tracked
 
 See [specs/interfaces/release-automation.md](./interfaces/release-automation.md) for complete release automation specification.
+
+## Repository Visibility Constraints
+
+### Visibility Policy Enforcement
+
+**Constraint**: Organization visibility policies must be enforced at all times, with no bypass mechanism.
+
+**Rationale**: Repository visibility is a security-critical setting that affects organization data exposure.
+
+**Enforcement**:
+
+- Visibility resolution must occur before any GitHub API calls
+- Policy violations must prevent repository creation entirely
+- Cache invalidation must not allow stale policies to be used
+- All visibility decisions must be logged with full audit trail
+
+### Visibility Hierarchy
+
+**Constraint**: Visibility determination must follow strict precedence hierarchy.
+
+**Decision Order** (highest to lowest priority):
+
+1. Organization Policy (required) - Mandatory visibility enforced
+2. User Preference - Explicit user choice (if allowed by policy)
+3. Template Default - Template's configured visibility
+4. System Default - Fallback (always Private)
+
+**Enforcement**:
+
+- Each level validated against organization policy before acceptance
+- GitHub platform constraints checked after policy validation
+- Decision source documented in all visibility decisions
+
+### GitHub Enterprise Detection
+
+**Constraint**: Internal repository visibility must only be available in GitHub Enterprise environments.
+
+**Rationale**: Internal visibility is a GitHub Enterprise-only feature.
+
+**Enforcement**:
+
+- Environment detection must occur during visibility resolution
+- Attempts to create internal repositories on github.com must fail with clear error
+- Detection results must be cached (1 hour) to reduce API calls
+- Detection failures must fall back safely (treat as non-Enterprise)
+
+### Visibility Configuration Format
+
+**Constraint**: Organization visibility configuration must follow standardized format.
+
+**Required Fields**:
+
+- `enforcement_level`: "required", "restricted", or "unrestricted"
+- `required_visibility`: Only when enforcement_level = "required" (values: "public", "private", "internal")
+- `restricted_visibilities`: Only when enforcement_level = "restricted" (array of prohibited values)
+- `default_visibility`: System default when no preference specified
+
+**Validation**:
+
+- Invalid enforcement_level must cause configuration error
+- required_visibility without "required" enforcement_level must warn
+- restricted_visibilities without "restricted" enforcement_level must warn
+- Empty restricted_visibilities with "restricted" enforcement must error
+- default_visibility must be valid visibility value
+
+### Visibility Caching
+
+**Constraint**: Visibility-related data must be cached with appropriate TTLs.
+
+**Cache Durations**:
+
+- Organization policies: 5 minutes
+- GitHub environment detection: 1 hour
+- Plan limitations: 1 hour
+
+**Cache Behavior**:
+
+- Cache misses must fetch fresh data
+- Cache hits must check expiration before use
+- Cache invalidation must be explicit (no automatic expiration bypass)
+- Concurrent access must be thread-safe (Arc<RwLock<>>)
+
+### Visibility Error Messages
+
+**Constraint**: Visibility errors must provide clear, actionable guidance.
+
+**Error Message Requirements**:
+
+- PolicyNotFound: "Contact organization admin to configure visibility policy"
+- PolicyViolation: Explain what policy requires/prohibits
+- GitHubConstraint: Explain plan limitation and upgrade path
+- ConfigurationError: Identify invalid configuration and correction
+- GitHubApiError: Include original error with context
+
+**No Sensitive Data**:
+
+- Error messages must not expose internal configuration details
+- Policy details kept generic in user-facing errors
+- Detailed policy info logged but not returned to user
 
 These constraints provide the framework within which all RepoRoller components must be implemented. They ensure architectural consistency, system reliability, and maintainability while supporting the complex requirements of the repository automation domain.

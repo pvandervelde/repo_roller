@@ -40,6 +40,7 @@ impl TemplateRepository for MockTemplateRepository {
             webhooks: None,
             environments: None,
             github_apps: None,
+            default_visibility: None,
         })
     }
 

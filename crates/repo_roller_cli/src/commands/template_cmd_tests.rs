@@ -142,6 +142,7 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
 
 fn create_minimal_template_config(name: &str) -> TemplateConfig {
     TemplateConfig {
+        default_visibility: None,
         template: TemplateMetadata {
             name: name.to_string(),
             description: format!("{} template", name),
@@ -190,6 +191,7 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
     );
 
     TemplateConfig {
+        default_visibility: None,
         template: TemplateMetadata {
             name: name.to_string(),
             description: format!("{} template with full config", name),

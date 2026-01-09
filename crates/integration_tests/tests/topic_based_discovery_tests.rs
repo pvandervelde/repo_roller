@@ -241,14 +241,10 @@ async fn test_end_to_end_creation_with_topic_discovery() -> Result<()> {
         .get_installation_token_for_org(&config.test_org)
         .await?;
 
-    let octocrab_client = github_client::create_token_client(&installation_token)?;
-    let github_client = github_client::GitHubClient::new(octocrab_client);
-
-    // Create metadata provider with topic-based configuration
-    let metadata_provider = config_manager::GitHubMetadataProvider::new(
-        github_client,
-        config_manager::MetadataProviderConfig::by_topic("reporoller-metadata"),
-    );
+    // Create visibility providers
+    let providers =
+        integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
+            .await?;
 
     // Build request for basic template
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
@@ -261,9 +257,11 @@ async fn test_end_to_end_creation_with_topic_discovery() -> Result<()> {
     // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
-        &metadata_provider,
+        providers.metadata_provider.as_ref(),
         &auth_service,
-        ".reporoller-test", // Will be discovered via topic, not used directly
+        ".reporoller-test",
+        providers.visibility_policy_provider.clone(),
+        providers.environment_detector.clone(),
     )
     .await;
 

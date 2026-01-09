@@ -1,0 +1,22 @@
+# Global Defaults with Required Visibility Policy
+#
+# This metadata repository tests the "required" visibility policy,
+# which forces all repositories to use a specific visibility.
+
+# Repository visibility policy - Require all repositories to be private
+[repository_visibility]
+enforcement_level = "required"
+required_visibility = "private"
+
+# Repository feature settings
+[repository]
+has_issues = { value = true, override_allowed = true }
+has_projects = { value = false, override_allowed = true }
+has_wiki = { value = false, override_allowed = true }
+security_advisories = { value = true, override_allowed = false }
+vulnerability_reporting = { value = true, override_allowed = false }
+
+# Pull request settings
+[pull_requests]
+required_approving_review_count = { value = 1, override_allowed = true }
+require_conversation_resolution = { value = true, override_allowed = false }

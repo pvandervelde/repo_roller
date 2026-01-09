@@ -31,6 +31,7 @@
 //! description = "Production-ready Rust microservice"
 //! author = "Platform Team"
 //! tags = ["rust", "microservice", "backend"]
+//! default_visibility = "private"  # Optional: "public", "private", "internal"
 //!
 //! # Repository type specification
 //! [repository_type]
@@ -61,6 +62,7 @@ use crate::settings::{
     BranchProtectionSettings, EnvironmentConfig, GitHubAppConfig, LabelConfig, PullRequestSettings,
     RepositorySettings, WebhookConfig,
 };
+use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -153,6 +155,57 @@ pub struct TemplateConfig {
     /// Apps defined here are added to apps from other levels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Default visibility for repositories created from this template (optional).
+    ///
+    /// Specifies the preferred visibility level (Public, Private, or Internal)
+    /// for repositories created from this template. This serves as a template
+    /// default in the visibility resolution hierarchy:
+    ///
+    /// 1. Organization Policy (highest priority)
+    /// 2. User Preference
+    /// 3. **Template Default** ← This field
+    /// 4. System Default (Private)
+    ///
+    /// If not specified, falls back to system default (Private). The template
+    /// default is subject to organization visibility policies and GitHub platform
+    /// constraints (e.g., Internal requires GitHub Enterprise).
+    ///
+    /// # TOML Format
+    ///
+    /// ```toml
+    /// [template]
+    /// name = "rust-library"
+    /// description = "Rust library template"
+    /// author = "Platform Team"
+    /// default_visibility = "private"  # Options: "public", "private", "internal"
+    /// ```
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::{TemplateConfig, RepositoryVisibility};
+    ///
+    /// let toml = r#"
+    ///     default_visibility = "public"
+    ///     
+    ///     [template]
+    ///     name = "public-docs-template"
+    ///     description = "Public documentation template"
+    ///     author = "Docs Team"
+    ///     tags = []
+    /// "#;
+    ///
+    /// let config: TemplateConfig = toml::from_str(toml).expect("Parse failed");
+    /// assert_eq!(config.default_visibility, Some(RepositoryVisibility::Public));
+    /// ```
+    ///
+    /// # Backward Compatibility
+    ///
+    /// Templates without this field continue to work normally - visibility
+    /// resolution falls through to system default (Private).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_visibility: Option<RepositoryVisibility>,
 }
 
 /// Template metadata providing information about the template.
