@@ -506,7 +506,8 @@ mod tests {
         let engine = HandlebarsTemplateEngine::new().unwrap();
         let context = TemplateContext::new(json!({"name": "test"}));
 
-        // Missing variable in strict mode should fail
+        // Missing variable in strict mode should fail with VariableValidation error
+        // (Handlebars' native strict mode validation, not our upfront check)
         let result = engine.render_template("Hello {{name}} and {{missing_var}}!", &context);
         assert!(result.is_err());
         assert!(matches!(

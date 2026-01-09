@@ -810,9 +810,14 @@ impl HandlebarsTemplateEngine {
         let expression_re = regex::Regex::new(r"\{\{(.*?)\}\}")
             .expect("Invalid regex");
         
-        // Match identifiers within an expression
-        let identifier_re = regex::Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]*")
-            .expect("Invalid regex");
+        // Match the first identifier in a path (before any dots or brackets)
+        // Handles both regular variables and variables in block helpers
+        // Examples:
+        //   "{{name}}" -> captures "name"
+        //   "{{author.name}}" -> captures "author"
+        //   "{{#if debug_mode}}" -> captures "debug_mode" (after helper keyword)
+        //   "{{#each items}}" -> captures "items" (after helper keyword)
+        let root_var_re = regex::Regex::new(r"(?:^[#/]?\s*(?:if|unless|each|with)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)") .expect("Invalid regex");
         
         for expr_cap in expression_re.captures_iter(template) {
             if let Some(expr) = expr_cap.get(1) {
@@ -823,15 +828,17 @@ impl HandlebarsTemplateEngine {
                     continue;
                 }
                 
-                // Find all identifiers in this expression
-                for ident_match in identifier_re.find_iter(expr_str) {
-                    let ident = ident_match.as_str();
-                    
-                    // Skip Handlebars keywords, built-in helpers, and our custom helpers
-                    if !["this", "each", "if", "unless", "with", "lookup", "log", "else",
-                         "snake_case", "kebab_case", "upper_case", "lower_case", "capitalize",
-                         "default", "timestamp"].contains(&ident) {
-                        variables.insert(ident.to_string());
+                // Extract all root variables from the expression
+                for cap in root_var_re.captures_iter(expr_str) {
+                    if let Some(root_match) = cap.get(1) {
+                        let root_var = root_match.as_str();
+                        
+                        // Skip Handlebars keywords, built-in helpers, and our custom helpers
+                        if !["this", "each", "if", "unless", "with", "lookup", "log", "else",
+                             "snake_case", "kebab_case", "upper_case", "lower_case", "capitalize",
+                             "default", "timestamp"].contains(&root_var) {
+                            variables.insert(root_var.to_string());
+                        }
                     }
                 }
             }
@@ -840,72 +847,6 @@ impl HandlebarsTemplateEngine {
         let mut result: Vec<String> = variables.into_iter().collect();
         result.sort();
         result
-    }
-
-    /// Validates that all variables referenced in a template are provided in the context.
-    ///
-    /// This method scans the template for variable references and checks if all required
-    /// variables are present in the provided context. If any variables are missing, it
-    /// returns an error listing ALL missing variables at once, rather than failing on
-    /// the first missing variable.
-    ///
-    /// # Arguments
-    ///
-    /// * `template` - The template string to validate
-    /// * `context` - Template context containing available variables
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if all required variables are present, or an error listing all missing variables.
-    ///
-    /// # Errors
-    ///
-    /// - `HandlebarsError::MissingVariables`: One or more required variables are missing
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// use template_engine::{HandlebarsTemplateEngine, TemplateContext};
-    /// use serde_json::json;
-    ///
-    /// let engine = HandlebarsTemplateEngine::new()?;
-    /// let template = "Hello {{name}}, email: {{email}}, license: {{license}}";
-    /// let context = TemplateContext::new(json!({"name": "Alice"}));
-    ///
-    /// // This will fail with error listing both "email" and "license" as missing
-    /// let result = engine.validate_template_variables(template, &context);
-    /// assert!(result.is_err());
-    /// # Ok::<(), template_engine::HandlebarsError>(())
-    /// ```
-    fn validate_template_variables(&self, template: &str, context: &TemplateContext) -> Result<(), HandlebarsError> {
-        if !self.config.strict_variables {
-            // In non-strict mode, missing variables are allowed
-            return Ok(());
-        }
-
-        let required_vars = self.extract_variables(template);
-        let mut missing_vars = Vec::new();
-
-        for var_name in required_vars {
-            // Check if the variable exists in the context
-            let exists = if let Some(obj) = context.variables.as_object() {
-                obj.contains_key(&var_name)
-            } else {
-                false
-            };
-
-            if !exists {
-                missing_vars.push(var_name);
-            }
-        }
-
-        if !missing_vars.is_empty() {
-            return Err(HandlebarsError::MissingVariables {
-                missing_variables: missing_vars,
-            });
-        }
-
-        Ok(())
     }
 
     /// Renders a template string with the provided context.
@@ -960,11 +901,11 @@ impl HandlebarsTemplateEngine {
             });
         }
 
-        // Validate all required variables are present before attempting to render
-        // This provides better error messages by listing ALL missing variables at once
-        self.validate_template_variables(template, context)?;
-
         // Render the template with the provided context
+        // Note: Variable validation is NOT performed here because:
+        // 1. Handlebars' strict mode already validates variables at render time
+        // 2. Upfront validation can't properly handle block helper contexts (#each, #with, etc.)
+        // 3. Comprehensive validation is done at the process_template level in lib.rs
         let result = self
             .handlebars
             .render_template(template, &context.variables)

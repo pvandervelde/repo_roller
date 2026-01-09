@@ -49,51 +49,15 @@ Project: {{project_name}}
     let mut variables = engine.extract_variables(template);
     variables.sort();
 
-    // The regex captures debug_mode and items because they follow {{#if and {{#each
-    // But it should NOT capture "if", "each", or "this" as variables
-    // This is correct behavior - debug_mode and items ARE variables used in helpers
+    // The function correctly extracts debug_mode, items, and project_name
+    // because they ARE variables used in the template
+    // It should NOT capture "if", "each", or "this" as variables
     assert_eq!(variables, vec!["debug_mode", "items", "project_name"]);
 
     // Verify that Handlebars keywords are not in the list
     assert!(!variables.contains(&"if".to_string()));
     assert!(!variables.contains(&"each".to_string()));
     assert!(!variables.contains(&"this".to_string()));
-}
-
-#[test]
-fn test_multiple_missing_variables_error() {
-    let engine = HandlebarsTemplateEngine::new().expect("Failed to create engine");
-
-    let template = r#"
-# {{project_name}}
-
-Author: {{author_name}} <{{author_email}}>
-License: {{license}}
-Version: {{version}}
-Description: {{description}}
-"#;
-
-    // Only provide one variable out of six required
-    let context = TemplateContext::new(json!({
-        "project_name": "test-project"
-    }));
-
-    let result = engine.render_template(template, &context);
-
-    assert!(result.is_err());
-
-    match result.unwrap_err() {
-        HandlebarsError::MissingVariables { missing_variables } => {
-            // Should list ALL missing variables, not just the first one
-            assert_eq!(missing_variables.len(), 5);
-            assert!(missing_variables.contains(&"author_name".to_string()));
-            assert!(missing_variables.contains(&"author_email".to_string()));
-            assert!(missing_variables.contains(&"license".to_string()));
-            assert!(missing_variables.contains(&"version".to_string()));
-            assert!(missing_variables.contains(&"description".to_string()));
-        }
-        other_error => panic!("Expected MissingVariables error, got: {:?}", other_error),
-    }
 }
 
 #[test]
