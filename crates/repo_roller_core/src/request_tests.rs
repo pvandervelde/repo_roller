@@ -18,14 +18,15 @@ fn test_repository_creation_request_creation() {
     let request = RepositoryCreationRequest {
         name: name.clone(),
         owner: owner.clone(),
-        template: template.clone(),
+        template: Some(template.clone()),
         variables: variables.clone(),
         visibility: None,
+        content_strategy: ContentStrategy::Template,
     };
 
     assert_eq!(request.name, name);
     assert_eq!(request.owner, owner);
-    assert_eq!(request.template, template);
+    assert_eq!(request.template, Some(template));
     assert_eq!(request.variables, variables);
 }
 
@@ -39,9 +40,10 @@ fn test_repository_creation_request_with_variables() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
         variables: variables.clone(),
         visibility: None,
+        content_strategy: ContentStrategy::Template,
     };
 
     assert_eq!(request.variables.len(), 2);
@@ -55,7 +57,8 @@ fn test_repository_creation_request_clone() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -65,6 +68,7 @@ fn test_repository_creation_request_clone() {
     assert_eq!(request.name, cloned.name);
     assert_eq!(request.owner, cloned.owner);
     assert_eq!(request.template, cloned.template);
+    assert_eq!(request.content_strategy, cloned.content_strategy);
     assert_eq!(request.variables, cloned.variables);
 }
 
@@ -74,7 +78,8 @@ fn test_repository_creation_request_debug() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -96,9 +101,10 @@ fn test_repository_creation_request_type_safety() {
 
     // These types should not be interchangeable
     let request = RepositoryCreationRequest {
-        name,     // RepositoryName
-        owner,    // OrganizationName
-        template, // TemplateName
+        name,                     // RepositoryName
+        owner,                    // OrganizationName
+        template: Some(template), // Option<TemplateName>
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -106,7 +112,7 @@ fn test_repository_creation_request_type_safety() {
     // Verify we can access the values
     assert_eq!(request.name.as_str(), "my-repo");
     assert_eq!(request.owner.as_str(), "my-org");
-    assert_eq!(request.template.as_str(), "rust-library");
+    assert_eq!(request.template.as_ref().unwrap().as_str(), "rust-library");
 }
 
 /// Verify that RepositoryCreationRequest can handle empty variables.
@@ -115,7 +121,8 @@ fn test_repository_creation_request_empty_variables() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -139,7 +146,8 @@ fn test_repository_creation_request_validates_names() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("valid-repo").unwrap(),
         owner: OrganizationName::new("valid-org").unwrap(),
-        template: TemplateName::new("valid-template").unwrap(),
+        template: Some(TemplateName::new("valid-template").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -157,13 +165,13 @@ fn test_builder_basic() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .build();
 
     assert_eq!(request.name.as_str(), "my-repo");
     assert_eq!(request.owner.as_str(), "my-org");
-    assert_eq!(request.template.as_str(), "rust-library");
+    assert_eq!(request.template.as_ref().unwrap().as_str(), "rust-library");
     assert!(request.variables.is_empty());
 }
 
@@ -173,8 +181,8 @@ fn test_builder_single_variable() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject")
     .build();
 
@@ -188,8 +196,8 @@ fn test_builder_multiple_variables_chained() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject")
     .variable("author", "John Doe")
     .variable("license", "MIT")
@@ -211,8 +219,8 @@ fn test_builder_bulk_variables() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variables(vars)
     .build();
 
@@ -231,8 +239,8 @@ fn test_builder_mixed_variables() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject")
     .variables(bulk_vars)
     .variable("version", "0.1.0")
@@ -251,8 +259,8 @@ fn test_builder_variable_overwrite() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("author", "First Author")
     .variable("author", "Second Author")
     .build();
@@ -267,8 +275,8 @@ fn test_builder_clone() {
     let builder = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject");
 
     let builder_clone = builder.clone();
@@ -290,8 +298,8 @@ fn test_builder_debug() {
     let builder = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
-    );
+    )
+    .template(TemplateName::new("rust-library").unwrap());
 
     let debug_output = format!("{:?}", builder);
     assert!(debug_output.contains("RepositoryCreationRequestBuilder"));
@@ -306,8 +314,8 @@ fn test_builder_into_string() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable(&key, &value) // &str
     .variable(key.clone(), value.clone()) // String
     .build();

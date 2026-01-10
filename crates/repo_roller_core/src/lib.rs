@@ -47,8 +47,8 @@
 //! let request = RepositoryCreationRequestBuilder::new(
 //!     RepositoryName::new("my-new-project")?,
 //!     OrganizationName::new("my-organization")?,
-//!     TemplateName::new("rust-library")?,
 //! )
+//! .template(TemplateName::new("rust-library")?)
 //! .variable("author", "Jane Doe")
 //! .build();
 //!
@@ -286,8 +286,8 @@ mod integration_tests;
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-service")?,
 ///     OrganizationName::new("my-org")?,
-///     TemplateName::new("rust-service")?,
 /// )
+/// .template(TemplateName::new("rust-service")?)
 /// .variable("author", "Jane Doe")
 /// .build();
 ///
@@ -450,8 +450,8 @@ async fn create_github_repository(
 /// let request = RepositoryCreationRequestBuilder::new(
 ///     RepositoryName::new("my-repo")?,
 ///     OrganizationName::new("my-org")?,
-///     TemplateName::new("rust-service")?,
 /// )
+/// .template(TemplateName::new("rust-service")?)
 /// .build();
 ///
 /// let github_client = github_client::create_token_client("token")?;
@@ -482,8 +482,8 @@ pub async fn create_repository(
     environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
 ) -> RepoRollerResult<RepositoryCreationResult> {
     info!(
-        "Starting repository creation: name='{}', owner='{}', template='{}'",
-        request.name, request.owner, request.template
+        "Starting repository creation: name='{}', owner='{}', template={:?}, strategy={:?}",
+        request.name, request.owner, request.template, request.content_strategy
     );
 
     // Step 1: Setup GitHub authentication and get installation token
@@ -520,30 +520,41 @@ pub async fn create_repository(
         template_engine::GitHubTemplateFetcher::new(GitHubClient::new(template_fetcher_client));
 
     // Step 3: Resolve organization configuration
+    // Template name is optional - use empty string if not provided
+    let template_name_for_config = request
+        .template
+        .as_ref()
+        .map(|t| t.as_ref())
+        .unwrap_or("");
     let merged_config = configuration::resolve_organization_configuration(
         &installation_token,
         request.owner.as_ref(),
-        request.template.as_ref(),
+        template_name_for_config,
         metadata_repository_name,
     )
     .await?;
 
-    // Step 4: Load template configuration from GitHub
-    debug!(
-        "Loading template '{}' from organization '{}'",
-        request.template, request.owner
-    );
-    let template = metadata_provider
-        .load_template_configuration(request.owner.as_ref(), request.template.as_ref())
-        .await
-        .map_err(|e| {
-            error!("Template '{}' not found: {}", request.template, e);
-            RepoRollerError::Template(TemplateError::TemplateNotFound {
-                name: request.template.as_ref().to_string(),
-            })
-        })?;
-
-    info!("Template '{}' loaded successfully", request.template);
+    // Step 4: Load template configuration from GitHub (if template provided)
+    let template = if let Some(ref template_name) = request.template {
+        debug!(
+            "Loading template '{}' from organization '{}'",
+            template_name, request.owner
+        );
+        let loaded = metadata_provider
+            .load_template_configuration(request.owner.as_ref(), template_name.as_ref())
+            .await
+            .map_err(|e| {
+                error!("Template '{}' not found: {}", template_name, e);
+                RepoRollerError::Template(TemplateError::TemplateNotFound {
+                    name: template_name.to_string(),
+                })
+            })?;
+        info!("Template '{}' loaded successfully", template_name);
+        Some(loaded)
+    } else {
+        info!("No template specified - using organization defaults");
+        None
+    };
 
     // Step 4.5: Resolve repository visibility
     info!(
@@ -553,7 +564,7 @@ pub async fn create_repository(
     let visibility_request = visibility::VisibilityRequest {
         organization: request.owner.clone(),
         user_preference: request.visibility,
-        template_default: template.default_visibility,
+        template_default: template.as_ref().and_then(|t| t.default_visibility),
     };
 
     let visibility_resolver =
@@ -627,19 +638,34 @@ pub async fn create_repository(
         visibility_decision.constraints_applied
     );
 
-    // Construct source repository identifier for template fetcher
+    // Construct source repository identifier for template fetcher (if template exists)
     // Format: "org/repo" (e.g., "my-org/template-rust-library")
-    let template_source = format!("{}/{}", request.owner.as_ref(), request.template.as_ref());
+    let template_source = request
+        .template
+        .as_ref()
+        .map(|t| format!("{}/{}", request.owner.as_ref(), t.as_ref()))
+        .unwrap_or_default();
 
-    // Step 5: Prepare local repository with template files
-    let local_repo_path = template_processing::prepare_local_repository(
-        &request,
-        &template,
-        &template_source,
-        &template_fetcher,
-        &merged_config,
-    )
-    .await?;
+    // Step 5: Generate repository content based on strategy
+    let content_provider: Box<dyn crate::ContentProvider> = match request.content_strategy {
+        crate::ContentStrategy::Template => {
+            Box::new(crate::TemplateBasedContentProvider::new(&template_fetcher))
+        }
+        crate::ContentStrategy::Empty => Box::new(crate::ZeroContentProvider::new()),
+        crate::ContentStrategy::CustomInit {
+            include_readme,
+            include_gitignore,
+        } => Box::new(crate::CustomInitContentProvider::new(
+            crate::CustomInitOptions {
+                include_readme,
+                include_gitignore,
+            },
+        )),
+    };
+
+    let local_repo_path = content_provider
+        .provide_content(&request, template.as_ref(), &template_source, &merged_config)
+        .await?;
 
     // Step 6: Initialize Git repository and commit
     let default_branch = initialize_git_repository(

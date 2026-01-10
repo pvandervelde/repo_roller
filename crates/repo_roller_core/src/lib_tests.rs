@@ -470,8 +470,8 @@ async fn test_create_repository_type_conversion() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
         OrganizationName::new("test-org").unwrap(),
-        TemplateName::new("basic").unwrap(),
     )
+    .template(TemplateName::new("basic").unwrap())
     .build();
 
     let template_config = TemplateConfig {
@@ -528,8 +528,8 @@ async fn test_create_repository_error_handling() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
         OrganizationName::new("test-org").unwrap(),
-        TemplateName::new("nonexistent-template").unwrap(),
     )
+    .template(TemplateName::new("nonexistent-template").unwrap())
     .build();
 
     let metadata_provider = MockMetadataProvider::empty(); // No templates - will cause error
@@ -562,8 +562,8 @@ async fn test_create_repository_preserves_variables() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
         OrganizationName::new("test-org").unwrap(),
-        TemplateName::new("basic").unwrap(),
     )
+    .template(TemplateName::new("basic").unwrap())
     .variables(variables.clone())
     .build();
 
@@ -597,11 +597,13 @@ async fn test_create_repository_type_safety() {
     let template = TemplateName::new("my-template").unwrap();
 
     // These types cannot be confused at compile time
-    let request = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+    let request = RepositoryCreationRequestBuilder::new(name, owner)
+        .template(template)
+        .build();
 
     assert_eq!(request.name.as_str(), "my-repo");
     assert_eq!(request.owner.as_str(), "my-org");
-    assert_eq!(request.template.as_str(), "my-template");
+    assert_eq!(request.template.as_ref().unwrap().as_str(), "my-template");
 }
 
 /// Verify that create_repository returns the correct result type.
@@ -610,8 +612,8 @@ async fn test_create_repository_result_type() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
         OrganizationName::new("test-org").unwrap(),
-        TemplateName::new("basic").unwrap(),
     )
+    .template(TemplateName::new("basic").unwrap())
     .build();
 
     let metadata_provider = MockMetadataProvider::empty();
