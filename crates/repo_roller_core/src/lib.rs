@@ -105,6 +105,9 @@ mod template_processing;
 // Re-export for testing
 pub use template_processing::extract_config_variables;
 
+// Content providers for repository initialization
+mod content_providers;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
@@ -165,7 +168,8 @@ pub use authentication::{SessionId, UserId};
 pub use github::{GitHubToken, InstallationId};
 pub use repository::{OrganizationName, RepositoryName};
 pub use request::{
-    RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
+    ContentStrategy, RepositoryCreationRequest, RepositoryCreationRequestBuilder,
+    RepositoryCreationResult,
 };
 pub use template::TemplateName;
 // Re-exported from visibility module - see module docs for examples
@@ -173,6 +177,11 @@ pub use visibility::{
     DecisionSource, GitHubEnvironmentDetector, PlanLimitations, PolicyConstraint,
     RepositoryVisibility, VisibilityDecision, VisibilityError, VisibilityPolicy,
     VisibilityPolicyProvider, VisibilityRequest, VisibilityResolver,
+};
+// Re-exported from content_providers module
+pub use content_providers::{
+    ContentProvider, CustomInitContentProvider, CustomInitOptions, TemplateBasedContentProvider,
+    ZeroContentProvider,
 };
 
 // Cross-cutting types used across all domains

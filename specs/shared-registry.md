@@ -35,6 +35,7 @@ All domain primitives use newtype pattern for type safety.
 | `PolicyConstraint` | `config_manager/src/visibility.rs` | `repo_roller_core::PolicyConstraint` | Applied visibility constraints | [repository-visibility.md](interfaces/repository-visibility.md#policyconstraint) |
 | `DecisionSource` | `repo_roller_core/src/visibility.rs` | - | Source of visibility decision | [repository-visibility.md](interfaces/repository-visibility.md#decisionsource) |
 | `PlanLimitations` | `github_client/src/environment.rs` | - | GitHub plan limitations for visibility | [repository-visibility.md](interfaces/repository-visibility.md#planlimitations) |
+| `ContentStrategy` | `repo_roller_core/src/request.rs` | - | Content generation strategy (Template, Empty, CustomInit) | [repository-creation-modes.md](interfaces/repository-creation-modes.md#contentstrategy-enum) |
 
 **Note**: Policy types defined in `config_manager` to avoid circular dependencies. See [repository-visibility.md](interfaces/repository-visibility.md#circular-dependency-resolution) for architectural rationale.
 
@@ -221,6 +222,18 @@ All domain primitives use newtype pattern for type safety.
 | `RepositorySettings` | `config_manager/src/settings/repository.rs` | Repository settings | [configuration-interfaces.md](configuration-interfaces.md) |
 | `CacheStatistics` | `config_manager/src/template_loader.rs` | Template cache metrics | [template-loading.md](interfaces/template-loading.md) |
 | `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](template-interfaces.md) |
+| `CustomInitOptions` | `repo_roller_core/src/content_providers.rs` | Custom initialization options | [content-providers.md](interfaces/content-providers.md) |
+
+## Content Provider Types (Task 6.0)
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `ContentProvider` | `repo_roller_core/src/content_providers.rs` | Trait for repository content generation | [content-providers.md](interfaces/content-providers.md#contentprovider-trait) |
+| `TemplateBasedContentProvider` | `repo_roller_core/src/content_providers.rs` | Fetch and process template files | [content-providers.md](interfaces/content-providers.md#templatebasedcontentprovider) |
+| `ZeroContentProvider` | `repo_roller_core/src/content_providers.rs` | Create empty repository | [content-providers.md](interfaces/content-providers.md#zerocontentprovider) |
+| `CustomInitContentProvider` | `repo_roller_core/src/content_providers.rs` | Create custom initialization files | [content-providers.md](interfaces/content-providers.md#custominitcontentprovider) |
+| `CustomInitOptions` | `repo_roller_core/src/content_providers.rs` | Options for custom initialization | [content-providers.md](interfaces/content-providers.md#custominitcontentprovider) |
+| `ContentStrategy` | `repo_roller_core/src/request.rs` | Content generation strategy enum | [repository-creation-modes.md](interfaces/repository-creation-modes.md#contentstrategy-enum) |
 
 ## Patterns and Conventions
 
