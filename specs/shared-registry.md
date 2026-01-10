@@ -224,7 +224,7 @@ All domain primitives use newtype pattern for type safety.
 | `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](template-interfaces.md) |
 | `CustomInitOptions` | `repo_roller_core/src/content_providers.rs` | Custom initialization options | [content-providers.md](interfaces/content-providers.md) |
 
-## Content Provider Types (Task 6.0)
+## Content Provider Types
 
 | Type | Location | Purpose | Spec Reference |
 |------|----------|---------|----------------|
