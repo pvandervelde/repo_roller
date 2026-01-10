@@ -30,9 +30,8 @@ use auth_handler::UserAuthenticationService;
 use clap::Args;
 use keyring::Entry;
 use repo_roller_core::{
-    ContentStrategy, CustomInitOptions, OrganizationName, RepoRollerResult,
-    RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
-    RepositoryName, TemplateName,
+    ContentStrategy, OrganizationName, RepoRollerResult, RepositoryCreationRequest,
+    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName, TemplateName,
 };
 use std::{fs, future::Future};
 use tracing::{debug, error, info};
@@ -443,8 +442,7 @@ where
         ))
     })?;
 
-    // TODO (Task 6.7): Implement logic to determine content_strategy based on flags
-    // For now, use placeholder implementation that compiles
+    // Build request based on flags
     let mut builder = RepositoryCreationRequestBuilder::new(name, owner);
 
     // Add template if provided
@@ -454,6 +452,19 @@ where
         })?;
         builder = builder.template(template);
     }
+
+    // Determine content strategy based on flags
+    if options.empty {
+        // Empty repository - no content files
+        builder = builder.content_strategy(ContentStrategy::Empty);
+    } else if options.init_readme || options.init_gitignore {
+        // Custom initialization - selected init files
+        builder = builder.content_strategy(ContentStrategy::CustomInit {
+            include_readme: options.init_readme,
+            include_gitignore: options.init_gitignore,
+        });
+    }
+    // If no special flags, default strategy (Template) is used
 
     let req = builder.build();
 
