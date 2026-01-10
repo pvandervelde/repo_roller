@@ -30,8 +30,9 @@ use auth_handler::UserAuthenticationService;
 use clap::Args;
 use keyring::Entry;
 use repo_roller_core::{
-    OrganizationName, RepoRollerResult, RepositoryCreationRequest,
-    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName, TemplateName,
+    ContentStrategy, CustomInitOptions, OrganizationName, RepoRollerResult,
+    RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
+    RepositoryName, TemplateName,
 };
 use std::{fs, future::Future};
 use tracing::{debug, error, info};
@@ -123,8 +124,33 @@ pub struct CreateArgs {
     ///
     /// Specifies which template should be used as the basis for the
     /// new repository (e.g., "library", "service", "action").
+    /// Optional if using --empty or custom initialization flags.
     #[arg(long)]
     pub template: Option<String>,
+
+    /// Create an empty repository with no initial files.
+    ///
+    /// When combined with --template, uses the template's settings
+    /// (repository configuration) but does not copy any files.
+    /// Without --template, creates an empty repository with organization defaults.
+    #[arg(long, conflicts_with_all = ["init_readme", "init_gitignore"])]
+    pub empty: bool,
+
+    /// Include a README.md file in the new repository.
+    ///
+    /// Creates a basic README.md with repository name and description.
+    /// Can be combined with --template to use template settings.
+    /// Implies CustomInit content strategy.
+    #[arg(long, conflicts_with = "empty")]
+    pub init_readme: bool,
+
+    /// Include a .gitignore file in the new repository.
+    ///
+    /// Creates an appropriate .gitignore based on repository type.
+    /// Can be combined with --template to use template settings.
+    /// Implies CustomInit content strategy.
+    #[arg(long, conflicts_with = "empty")]
+    pub init_gitignore: bool,
 }
 
 /// Creates a repository using the default application configuration and authentication.
@@ -390,8 +416,10 @@ where
         }
     }
 
-    // Prompt for template if missing.
-    if final_template.trim().is_empty() {
+    // Prompt for template if needed (not if --empty or --init-* flags are used).
+    // Template is optional when using empty or custom init strategies.
+    let needs_template = !options.empty && !options.init_readme && !options.init_gitignore;
+    if final_template.trim().is_empty() && needs_template {
         loop {
             final_template =
                 ask_user_for_value("Template type (required, e.g., library, service, action): ")
@@ -415,11 +443,19 @@ where
         ))
     })?;
 
-    let template = TemplateName::new(&final_template).map_err(|e| {
-        Error::InvalidArguments(format!("Invalid template name '{}': {}", final_template, e))
-    })?;
+    // TODO (Task 6.7): Implement logic to determine content_strategy based on flags
+    // For now, use placeholder implementation that compiles
+    let mut builder = RepositoryCreationRequestBuilder::new(name, owner);
 
-    let req = RepositoryCreationRequestBuilder::new(name, owner, template).build();
+    // Add template if provided
+    if !final_template.is_empty() {
+        let template = TemplateName::new(&final_template).map_err(|e| {
+            Error::InvalidArguments(format!("Invalid template name '{}': {}", final_template, e))
+        })?;
+        builder = builder.template(template);
+    }
+
+    let req = builder.build();
 
     // Call repository creation and convert RepoRollerError to CLI Error
     create_repository_fn(req)
@@ -441,6 +477,12 @@ pub struct CreateCommandOptions<'a> {
     pub owner: &'a Option<String>,
     /// Template type to use for repository creation.
     pub template: &'a Option<String>,
+    /// Create an empty repository with no initial files.
+    pub empty: bool,
+    /// Include a README.md file in the new repository.
+    pub init_readme: bool,
+    /// Include a .gitignore file in the new repository.
+    pub init_gitignore: bool,
 }
 
 impl<'a> CreateCommandOptions<'a> {
@@ -450,12 +492,18 @@ impl<'a> CreateCommandOptions<'a> {
         name: &'a Option<String>,
         owner: &'a Option<String>,
         template: &'a Option<String>,
+        empty: bool,
+        init_readme: bool,
+        init_gitignore: bool,
     ) -> Self {
         Self {
             config,
             name,
             owner,
             template,
+            empty,
+            init_readme,
+            init_gitignore,
         }
     }
 }

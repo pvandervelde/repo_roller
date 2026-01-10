@@ -521,11 +521,7 @@ pub async fn create_repository(
 
     // Step 3: Resolve organization configuration
     // Template name is optional - use empty string if not provided
-    let template_name_for_config = request
-        .template
-        .as_ref()
-        .map(|t| t.as_ref())
-        .unwrap_or("");
+    let template_name_for_config = request.template.as_ref().map(|t| t.as_ref()).unwrap_or("");
     let merged_config = configuration::resolve_organization_configuration(
         &installation_token,
         request.owner.as_ref(),
@@ -556,7 +552,7 @@ pub async fn create_repository(
         None
     };
 
-    // Step 4.5: Resolve repository visibility
+    // Step 5: Resolve repository visibility
     info!(
         "Resolving repository visibility for organization '{}'",
         request.owner
@@ -646,7 +642,7 @@ pub async fn create_repository(
         .map(|t| format!("{}/{}", request.owner.as_ref(), t.as_ref()))
         .unwrap_or_default();
 
-    // Step 5: Generate repository content based on strategy
+    // Step 6: Generate repository content based on strategy
     let content_provider: Box<dyn crate::ContentProvider> = match request.content_strategy {
         crate::ContentStrategy::Template => {
             Box::new(crate::TemplateBasedContentProvider::new(&template_fetcher))
@@ -664,10 +660,15 @@ pub async fn create_repository(
     };
 
     let local_repo_path = content_provider
-        .provide_content(&request, template.as_ref(), &template_source, &merged_config)
+        .provide_content(
+            &request,
+            template.as_ref(),
+            &template_source,
+            &merged_config,
+        )
         .await?;
 
-    // Step 6: Initialize Git repository and commit
+    // Step 7: Initialize Git repository and commit
     let default_branch = initialize_git_repository(
         &local_repo_path,
         &installation_repo_client,
@@ -675,7 +676,7 @@ pub async fn create_repository(
     )
     .await?;
 
-    // Step 7: Create repository on GitHub
+    // Step 8: Create repository on GitHub
     let repo = create_github_repository(
         &request,
         &merged_config,
@@ -684,7 +685,7 @@ pub async fn create_repository(
     )
     .await?;
 
-    // Step 8: Push local repository to GitHub
+    // Step 9: Push local repository to GitHub
     info!("Pushing local repository to remote: {}", repo.url());
     git::push_to_origin(
         &local_repo_path,
@@ -701,7 +702,7 @@ pub async fn create_repository(
 
     info!("Repository successfully pushed to GitHub");
 
-    // Step 9: Apply merged configuration to repository
+    // Step 10: Apply merged configuration to repository
     configuration::apply_repository_configuration(
         &installation_repo_client,
         request.owner.as_ref(),
@@ -712,7 +713,7 @@ pub async fn create_repository(
 
     info!("Repository creation completed successfully");
 
-    // Step 10: Return success result with repository metadata
+    // Step 11: Return success result with repository metadata
     Ok(RepositoryCreationResult {
         repository_url: repo.url().to_string(),
         repository_id: repo.node_id().to_string(),

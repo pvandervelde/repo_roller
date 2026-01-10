@@ -124,8 +124,15 @@ async fn main() {
         }
         Commands::Create(args) => {
             // Use handle_create_command to merge config, prompt, and validate
-            let options =
-                CreateCommandOptions::new(&args.config, &args.name, &args.owner, &args.template);
+            let options = CreateCommandOptions::new(
+                &args.config,
+                &args.name,
+                &args.owner,
+                &args.template,
+                args.empty,
+                args.init_readme,
+                args.init_gitignore,
+            );
             let result =
                 handle_create_command(options, &ask_user_for_value, create_repository).await;
 
