@@ -322,9 +322,19 @@ pub(crate) fn create_additional_files(
         let template_info = req
             .template
             .as_ref()
-            .map(|t| format!("\n\nTemplate: {}\nOwner: {}\n", t.as_ref(), req.owner.as_ref()))
+            .map(|t| {
+                format!(
+                    "\n\nTemplate: {}\nOwner: {}\n",
+                    t.as_ref(),
+                    req.owner.as_ref()
+                )
+            })
             .unwrap_or_else(|| format!("\n\nOwner: {}\n", req.owner.as_ref()));
-        let readme_content = format!("# {}\n\nRepository created using RepoRoller.{}", req.name.as_ref(), template_info);
+        let readme_content = format!(
+            "# {}\n\nRepository created using RepoRoller.{}",
+            req.name.as_ref(),
+            template_info
+        );
 
         debug!(
             "Creating README.md with content length: {} (template didn't provide one)",

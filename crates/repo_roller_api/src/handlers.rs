@@ -302,10 +302,7 @@ pub async fn validate_repository_request(
             if template_str == "nonexistent-template" {
                 errors.push(ValidationResult {
                     field: "template".to_string(),
-                    message: format!(
-                        "Template '{}' does not exist in organization",
-                        template_str
-                    ),
+                    message: format!("Template '{}' does not exist in organization", template_str),
                     severity: ValidationSeverity::Error,
                 });
             }
