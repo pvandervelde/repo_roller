@@ -1,27 +1,12 @@
-//! End-to-end integration tests using containerized API server
+//! End-to-end tests for empty repository creation through containerized API.
 //!
-//! These tests verify the complete deployment stack by:
-//! 1. Starting a container with the API server (assumes image is built)
-//! 2. Making HTTP requests via reqwest
-//! 3. Verifying responses and GitHub state
+//! E2E tests for non-template repositories:
+//! - Empty repositories (no files) through HTTP API
+//! - Custom initialization (README.md and/or .gitignore) through HTTP API
+//! - Settings application without templates through HTTP API
 //!
-//! ## Running Tests
-//!
-//! ### In CI/CD (Image Already Built)
-//! ```bash
-//! # Workflow builds image first, then runs tests
-//! cargo test -p integration_tests --test e2e_containerized -- --ignored --test-threads=1
-//! ```
-//!
-//! ### Local Development (Build Image First)
-//! ```bash
-//! # Option 1: Build image with Docker directly (recommended)
-//! docker build -t repo_roller_api:test -f crates/repo_roller_api/Dockerfile .
-//! cargo test -p integration_tests --test e2e_containerized -- --ignored --test-threads=1
-//!
-//! # Option 2: Let test build image (slower, uncomment build_image() calls)
-//! cargo test -p integration_tests --test e2e_containerized -- --ignored --test-threads=1
-//! ```
+//! Tests use testcontainers to run the API server in Docker and make
+//! real HTTP requests, verifying the complete deployment stack.
 
 use anyhow::Result;
 use e2e_tests::{ApiContainer, ApiContainerConfig};
@@ -36,8 +21,6 @@ fn generate_e2e_test_repo_name(test_name: &str) -> String {
 /// Helper to get GitHub installation token from environment.
 ///
 /// Creates a proper GitHub App installation token using the app credentials.
-/// This is required because the auth middleware validates tokens by calling
-/// list_installations(), which requires an installation token (not a PAT).
 async fn get_github_installation_token() -> Result<String> {
     use auth_handler::{GitHubAuthService, UserAuthenticationService};
 
@@ -53,7 +36,6 @@ async fn get_github_installation_token() -> Result<String> {
 
     tracing::info!("Generating installation token for org: {}", org);
 
-    // Create auth service and get installation token for the test organization
     let auth_service = GitHubAuthService::new(app_id, private_key);
     let token = auth_service
         .get_installation_token_for_org(&org)
@@ -65,265 +47,40 @@ async fn get_github_installation_token() -> Result<String> {
     Ok(token)
 }
 
-/// Helper to assert response status with detailed error logging.
-async fn assert_status_with_body(
-    response: reqwest::Response,
-    expected: StatusCode,
-    context: &str,
-) -> Result<reqwest::Response> {
-    let status = response.status();
-    if status != expected {
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<failed to read body>".to_string());
-        panic!(
-            "{}\n  Expected: {}\n  Got: {}\n  Response body: {}",
-            context, expected, status, body
-        );
-    }
-    Ok(response)
-}
-
-// ============================================================================
-// Health Check Tests
-// ============================================================================
-
-/// Test that the containerized API server responds to health checks.
-///
-/// This verifies:
-/// - Container starts and binds to correct port
-/// - Health endpoint is accessible
-/// - Server responds correctly to HTTP requests
-///
-/// Note: Assumes Docker image "repo_roller_api:test" is already built.
-#[tokio::test]
-async fn test_e2e_health_check() -> Result<()> {
-    let config = ApiContainerConfig::from_env()?;
-    let mut container = ApiContainer::new(config).await?;
-
-    // Start container (image should be pre-built)
-    // Uncomment to build during test (slower): container.build_image().await?;
-    let base_url = container.start().await?;
-
-    // Test health endpoint
-    let client = Client::new();
-    let response = client
-        .get(format!("{}/api/v1/health", base_url))
-        .send()
-        .await?;
-
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "Health check should return 200 OK"
-    );
-
-    // Cleanup
-    container.stop().await?;
-    Ok(())
-}
-
-// ============================================================================
-// Organization Settings E2E Tests
-// ============================================================================
-
-/// Test listing repository types through containerized API.
+/// Test creating an empty repository without template through containerized API.
 ///
 /// Verifies:
-/// - Authentication middleware works in container
-/// - Organization settings endpoints accessible
-/// - Response serialization correct
-#[tokio::test]
-async fn test_e2e_list_repository_types() -> Result<()> {
-    let config = ApiContainerConfig::from_env()?;
-    let org = config.test_org.clone();
-    let mut container = ApiContainer::new(config).await?;
-
-    // Uncomment to build during test: container.build_image().await?;
-    let base_url = container.start().await?;
-
-    let client = Client::new();
-    let token = get_github_installation_token().await?;
-    let response = client
-        .get(format!("{}/api/v1/orgs/{}/repository-types", base_url, org))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await?;
-
-    let response = assert_status_with_body(
-        response,
-        StatusCode::OK,
-        "Should return 200 OK for repository types",
-    )
-    .await?;
-
-    let json: serde_json::Value = response.json().await?;
-    assert!(
-        json["types"].is_array(),
-        "Response should contain 'types' array"
-    );
-
-    container.stop().await?;
-    Ok(())
-}
-
-/// Test getting global defaults through containerized API.
-///
-/// Verifies:
-/// - Configuration system works in container
-/// - Metadata repository access works
-/// - Configuration serialization correct
-#[tokio::test]
-async fn test_e2e_get_global_defaults() -> Result<()> {
-    let config = ApiContainerConfig::from_env()?;
-    let org = config.test_org.clone();
-    let mut container = ApiContainer::new(config).await?;
-
-    // Uncomment to build during test: container.build_image().await?;
-    let base_url = container.start().await?;
-
-    let client = Client::new();
-    let token = get_github_installation_token().await?;
-    let response = client
-        .get(format!("{}/api/v1/orgs/{}/defaults", base_url, org))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await?;
-
-    let response = assert_status_with_body(
-        response,
-        StatusCode::OK,
-        "Should return 200 OK for global defaults",
-    )
-    .await?;
-
-    let json: serde_json::Value = response.json().await?;
-    assert!(
-        json["defaults"]["repository"].is_object(),
-        "Response should contain 'defaults.repository' settings. Got: {}",
-        serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
-    );
-
-    container.stop().await?;
-    Ok(())
-}
-
-// ============================================================================
-// Configuration Preview E2E Tests
-// ============================================================================
-
-/// Test configuration preview through containerized API.
-///
-/// Verifies:
-/// - Configuration merging works in container
-/// - Preview endpoint returns merged configuration
-/// - Source tracking included in response
-#[tokio::test]
-async fn test_e2e_configuration_preview() -> Result<()> {
-    let config = ApiContainerConfig::from_env()?;
-    let org = config.test_org.clone();
-    let mut container = ApiContainer::new(config).await?;
-
-    // Uncomment to build during test: container.build_image().await?;
-    let base_url = container.start().await?;
-
-    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
-
-    let client = Client::new();
-    let token = get_github_installation_token().await?;
-    let request_body = json!({
-        "template": template
-    });
-
-    let response = client
-        .post(format!(
-            "{}/api/v1/orgs/{}/configuration/preview",
-            base_url, org
-        ))
-        .header("Authorization", format!("Bearer {}", token))
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await?;
-
-    let response = assert_status_with_body(
-        response,
-        StatusCode::OK,
-        "Configuration preview should return 200 OK",
-    )
-    .await?;
-
-    let json: serde_json::Value = response.json().await?;
-    assert!(
-        json["mergedConfiguration"].is_object(),
-        "Response should contain 'mergedConfiguration'. Got: {}",
-        serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
-    );
-    assert!(
-        json["sources"].is_object(),
-        "Response should contain 'sources' tracking. Got: {}",
-        serde_json::to_string_pretty(&json).unwrap_or_else(|_| format!("{:?}", json))
-    );
-
-    container.stop().await?;
-    Ok(())
-}
-
-// ============================================================================
-// Repository Creation E2E Tests
-// ============================================================================
-
-/// Test complete repository creation workflow through containerized API.
-///
-/// This is the most comprehensive E2E test, verifying:
-/// - Complete HTTP request/response cycle
-/// - Repository creation in GitHub
-/// - Configuration application
-/// - Response includes repository metadata
+/// - Empty content strategy works through API
+/// - Repository is created with no files
+/// - Organization defaults are applied
 ///
 /// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
-///
-/// **Prerequisites**: TEST_TEMPLATE environment variable must reference an existing
-/// template in the metadata repository (e.g., templates/template-test-basic/).
 #[tokio::test]
-async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
+async fn test_e2e_create_empty_repository_without_template() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
-    let mut container = ApiContainer::new(config).await?;
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    // Now use config.clone() since we implemented Clone
+    let mut container = ApiContainer::new(config.clone()).await?;
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
 
-    let repo_name = generate_e2e_test_repo_name("global");
-    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+    let repo_name = generate_e2e_test_repo_name("empty-no-template");
 
-    // List available templates first to help debug
     let client = Client::new();
     let token = get_github_installation_token().await?;
 
-    let list_response = client
-        .get(format!("{}/api/v1/orgs/{}/templates", base_url, org))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await?;
-
-    if list_response.status().is_success() {
-        if let Ok(json) = list_response.json::<serde_json::Value>().await {
-            if let Some(templates) = json["templates"].as_array() {
-                let available: Vec<&str> = templates
-                    .iter()
-                    .filter_map(|t| t["name"].as_str())
-                    .collect();
-                tracing::info!("Available templates: {:?}", available);
-                tracing::info!("Requesting template: {}", template);
-            }
-        }
-    }
+    // Request with Empty content strategy and no template
     let request_body = json!({
         "name": repo_name,
         "organization": org,
-        "template": template,
+        "contentStrategy": "empty",
         "visibility": "private"
     });
 
@@ -335,130 +92,300 @@ async fn test_e2e_create_repository_with_global_defaults() -> Result<()> {
         .send()
         .await?;
 
-    let response = assert_status_with_body(
-        response,
+    assert_eq!(
+        response.status(),
         StatusCode::CREATED,
-        "Repository creation should return 201 Created",
-    )
-    .await?;
+        "Empty repository creation should return 201 Created"
+    );
 
     let json: serde_json::Value = response.json().await?;
     assert_eq!(
         json["repository"]["name"], repo_name,
         "Response should contain created repository name"
     );
+
+    // Verify repository is empty by checking for README.md
+    let verification_client = github_client::create_token_client(&token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let readme_result = verification_client
+        .get_file_content(&org, &repo_name, "README.md")
+        .await;
+
     assert!(
-        json["repository"]["url"].is_string(),
-        "Response should contain repository URL"
+        readme_result.is_err(),
+        "Empty repository should not have README.md"
     );
 
-    // TODO: Add verification using integration_tests::verification module
-    // - Load expected configuration from metadata repository
-    // - Verify custom properties were set
-    // - Verify repository settings match global defaults
+    // Cleanup
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
 
-    tracing::info!("✓ Created repository via E2E test: {}", repo_name);
+    container.stop().await?;
+    Ok(())
+}
 
-    // Cleanup (best effort - don't fail test if cleanup fails)
-    let config_for_cleanup = ApiContainerConfig::from_env()?;
-    let app_id = config_for_cleanup
+/// Test creating an empty repository with template settings through containerized API.
+///
+/// Verifies:
+/// - Empty content strategy works with template
+/// - Repository is created with no files (despite template)
+/// - Template settings are applied
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
         .github_app_id
         .parse::<u64>()
         .expect("GITHUB_APP_ID must be a valid number");
-    e2e_tests::cleanup_test_repository(
-        &org,
-        &repo_name,
-        app_id,
-        &config_for_cleanup.github_app_private_key,
-    )
-    .await
-    .ok();
+    let private_key = config.github_app_private_key.clone();
 
-    container.stop().await?;
-    Ok(())
-}
-
-// ============================================================================
-// Template Discovery E2E Tests
-// ============================================================================
-
-/// Test listing templates through containerized API.
-///
-/// Verifies:
-/// - Template discovery works in container
-/// - GitHub topic search functions correctly
-/// - Template metadata serialization
-#[tokio::test]
-async fn test_e2e_list_templates() -> Result<()> {
-    let config = ApiContainerConfig::from_env()?;
-    let org = config.test_org.clone();
-    let mut container = ApiContainer::new(config).await?;
+    let mut container = ApiContainer::new(config.clone()).await?;
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
 
+    let repo_name = generate_e2e_test_repo_name("empty-with-template");
+    let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
+
     let client = Client::new();
     let token = get_github_installation_token().await?;
+
+    // Request with Empty content strategy but with template for settings
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": template,
+        "contentStrategy": "empty",
+        "visibility": "private"
+    });
+
     let response = client
-        .get(format!("{}/api/v1/orgs/{}/templates", base_url, org))
+        .post(format!("{}/api/v1/repositories", base_url))
         .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
         .send()
         .await?;
 
     assert_eq!(
         response.status(),
-        StatusCode::OK,
-        "Template list should return 200 OK"
+        StatusCode::CREATED,
+        "Empty repository with template settings should return 201 Created"
     );
 
     let json: serde_json::Value = response.json().await?;
-    assert!(
-        json["templates"].is_array(),
-        "Response should contain 'templates' array"
+    assert_eq!(
+        json["repository"]["name"], repo_name,
+        "Response should contain created repository name"
     );
+
+    // Verify repository is empty (no template files)
+    let verification_client = github_client::create_token_client(&token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let readme_result = verification_client
+        .get_file_content(&org, &repo_name, "README.md")
+        .await;
+
+    assert!(
+        readme_result.is_err(),
+        "Empty repository should not have README.md even with template"
+    );
+
+    // Cleanup
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
 
     container.stop().await?;
     Ok(())
 }
 
-// ============================================================================
-// Validation E2E Tests
-// ============================================================================
-
-/// Test organization validation through containerized API.
+/// Test creating a repository with custom init (README.md only) through containerized API.
 ///
 /// Verifies:
-/// - Validation endpoints work in container
-/// - Metadata repository validation
-/// - Error handling for invalid configurations
+/// - CustomInit content strategy works through API
+/// - Repository is created with only README.md
+/// - No template files are present
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
 #[tokio::test]
-async fn test_e2e_validate_organization() -> Result<()> {
+async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
     let config = ApiContainerConfig::from_env()?;
     let org = config.test_org.clone();
-    let mut container = ApiContainer::new(config).await?;
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
 
+    let repo_name = generate_e2e_test_repo_name("init-readme");
+
     let client = Client::new();
     let token = get_github_installation_token().await?;
+
+    // Request with CustomInit content strategy (README only)
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "contentStrategy": {
+            "customInit": {
+                "autoInitReadme": true,
+                "autoInitGitignore": false
+            }
+        },
+        "visibility": "private"
+    });
+
     let response = client
-        .post(format!("{}/api/v1/orgs/{}/validate", base_url, org))
+        .post(format!("{}/api/v1/repositories", base_url))
         .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
         .send()
         .await?;
 
     assert_eq!(
         response.status(),
-        StatusCode::OK,
-        "Organization validation should return 200 OK"
+        StatusCode::CREATED,
+        "Custom init repository (README only) should return 201 Created"
     );
 
     let json: serde_json::Value = response.json().await?;
-    assert!(
-        json["valid"].is_boolean(),
-        "Response should contain 'valid' boolean"
+    assert_eq!(
+        json["repository"]["name"], repo_name,
+        "Response should contain created repository name"
     );
+
+    // Verify repository has README.md
+    let verification_client = github_client::create_token_client(&token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let readme_content = verification_client
+        .get_file_content(&org, &repo_name, "README.md")
+        .await?;
+
+    assert!(
+        !readme_content.is_empty(),
+        "Repository should have README.md with content"
+    );
+
+    // Verify repository does NOT have .gitignore
+    let gitignore_result = verification_client
+        .get_file_content(&org, &repo_name, ".gitignore")
+        .await;
+
+    assert!(
+        gitignore_result.is_err(),
+        "Repository should not have .gitignore when not requested"
+    );
+
+    // Cleanup
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+
+    container.stop().await?;
+    Ok(())
+}
+
+/// Test creating a repository with custom init (both files) through containerized API.
+///
+/// Verifies:
+/// - CustomInit content strategy works with multiple files
+/// - Repository is created with README.md and .gitignore
+/// - No template files are present
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_create_custom_init_both_files() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+
+    // Uncomment to build during test: container.build_image().await?;
+    let base_url = container.start().await?;
+
+    let repo_name = generate_e2e_test_repo_name("init-both");
+
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    // Request with CustomInit content strategy (both files)
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "contentStrategy": {
+            "customInit": {
+                "autoInitReadme": true,
+                "autoInitGitignore": true
+            }
+        },
+        "visibility": "private"
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Custom init repository (both files) should return 201 Created"
+    );
+
+    let json: serde_json::Value = response.json().await?;
+    assert_eq!(
+        json["repository"]["name"], repo_name,
+        "Response should contain created repository name"
+    );
+
+    // Verify repository has both files
+    let verification_client = github_client::create_token_client(&token)?;
+    let verification_client = github_client::GitHubClient::new(verification_client);
+
+    let readme_content = verification_client
+        .get_file_content(&org, &repo_name, "README.md")
+        .await?;
+
+    assert!(
+        !readme_content.is_empty(),
+        "Repository should have README.md with content"
+    );
+
+    let gitignore_content = verification_client
+        .get_file_content(&org, &repo_name, ".gitignore")
+        .await?;
+
+    assert!(
+        !gitignore_content.is_empty(),
+        ".gitignore should have content"
+    );
+
+    // Cleanup
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
 
     container.stop().await?;
     Ok(())
