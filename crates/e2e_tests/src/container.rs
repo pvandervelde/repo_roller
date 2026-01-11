@@ -18,6 +18,7 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 /// Configuration for running API container in tests
+#[derive(Clone)]
 pub struct ApiContainerConfig {
     /// GitHub App ID for authentication
     pub github_app_id: String,

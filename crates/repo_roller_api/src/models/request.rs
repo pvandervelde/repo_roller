@@ -18,12 +18,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Import ContentStrategy from core for API request support
+use repo_roller_core::ContentStrategy;
+
 // Domain type translation is handled by the translation module
 
 /// HTTP request to create a repository.
 ///
 /// This type accepts flexible input from HTTP clients and is translated
 /// to `RepositoryCreationRequest` (domain type) after validation.
+///
+/// Supports multiple content strategies:
+/// - Template-based (traditional): Files from template + settings
+/// - Empty: No files, but applies settings
+/// - Custom init: Custom README/gitignore files + settings
 ///
 /// # Example
 ///
@@ -37,6 +45,35 @@ use std::collections::HashMap;
 ///   "repository_type": "library",
 ///   "variables": {
 ///     "project_name": "MyLib"
+///   },
+///   "contentStrategy": {
+///     "type": "template"
+///   }
+/// }
+/// ```
+///
+/// # Empty Repository Example
+///
+/// ```json
+/// {
+///   "organization": "myorg",
+///   "name": "empty-repo",
+///   "contentStrategy": {
+///     "type": "empty"
+///   }
+/// }
+/// ```
+///
+/// # Custom Init Example
+///
+/// ```json
+/// {
+///   "organization": "myorg",
+///   "name": "quick-start",
+///   "contentStrategy": {
+///     "type": "custom_init",
+///     "include_readme": true,
+///     "include_gitignore": true
 ///   }
 /// }
 /// ```
@@ -51,8 +88,13 @@ pub struct CreateRepositoryRequest {
     /// Repository name (must follow GitHub naming rules)
     pub name: String,
 
-    /// Template name to use for repository creation
-    pub template: String,
+    /// Template name to use for repository creation.
+    ///
+    /// Optional when using Empty or CustomInit content strategies.
+    /// If provided with those strategies, template settings are used
+    /// but template files are not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
 
     /// Repository visibility (optional, defaults from configuration)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,6 +111,17 @@ pub struct CreateRepositoryRequest {
     /// Template variables for substitution
     #[serde(default)]
     pub variables: HashMap<String, String>,
+
+    /// Content generation strategy.
+    ///
+    /// Determines how repository content is generated:
+    /// - Template: Traditional behavior (fetch and process template files)
+    /// - Empty: No files, only settings
+    /// - CustomInit: Only README/gitignore files
+    ///
+    /// Defaults to Template when not specified for backward compatibility.
+    #[serde(default)]
+    pub content_strategy: ContentStrategy,
 }
 
 // Translation to domain types is implemented in the translation module

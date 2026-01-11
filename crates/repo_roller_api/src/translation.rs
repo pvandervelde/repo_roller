@@ -19,12 +19,18 @@ use repo_roller_core::{
 /// Performs validation during conversion and returns ValidationError if
 /// any field fails validation.
 ///
+/// Handles optional template and content_strategy fields:
+/// - Template is optional when using Empty or CustomInit strategies
+/// - Content strategy defaults to Template for backward compatibility
+/// - Validates that Template strategy requires template name
+///
 /// # Errors
 ///
 /// Returns ApiError::validation_error if:
 /// - Repository name is invalid
 /// - Organization name is invalid
-/// - Template name is invalid
+/// - Template name is invalid (when provided)
+/// - Template strategy is used without template name
 pub fn http_create_repository_request_to_domain(
     http_req: CreateRepositoryRequest,
 ) -> Result<RepositoryCreationRequest, ApiError> {
@@ -37,12 +43,33 @@ pub fn http_create_repository_request_to_domain(
         ApiError::validation_error("organization", format!("Invalid organization name: {}", e))
     })?;
 
-    let template = TemplateName::new(http_req.template).map_err(|e| {
-        ApiError::validation_error("template", format!("Invalid template name: {}", e))
-    })?;
+    // Template is optional - only validate if provided
+    let template = if let Some(template_str) = http_req.template {
+        Some(TemplateName::new(template_str).map_err(|e| {
+            ApiError::validation_error("template", format!("Invalid template name: {}", e))
+        })?)
+    } else {
+        None
+    };
 
-    // Build the domain request
-    let mut builder = RepositoryCreationRequestBuilder::new(name, owner, template);
+    // Validate content strategy
+    use repo_roller_core::ContentStrategy;
+    if matches!(http_req.content_strategy, ContentStrategy::Template) && template.is_none() {
+        return Err(ApiError::validation_error(
+            "contentStrategy",
+            "Template strategy requires template field to be provided".to_string(),
+        ));
+    }
+
+    // Build the domain request using builder pattern
+    let mut builder = if let Some(tmpl) = template {
+        RepositoryCreationRequestBuilder::new(name, owner).template(tmpl)
+    } else {
+        RepositoryCreationRequestBuilder::new(name, owner)
+    };
+
+    // Add content strategy
+    builder = builder.content_strategy(http_req.content_strategy);
 
     // Add all template variables
     for (key, value) in http_req.variables {
