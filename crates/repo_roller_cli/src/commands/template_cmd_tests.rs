@@ -554,7 +554,7 @@ async fn test_validate_template_empty_description_warning() {
     let validation = result.unwrap();
     // Empty description should be a warning, not an error
     assert!(validation.valid);
-    assert!(validation.warnings.len() > 0);
+    assert!(!validation.warnings.is_empty());
     assert!(validation
         .warnings
         .iter()
@@ -574,7 +574,7 @@ async fn test_validate_template_no_tags_warning() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(validation.valid);
-    assert!(validation.warnings.len() > 0);
+    assert!(!validation.warnings.is_empty());
     assert!(validation
         .warnings
         .iter()
@@ -594,7 +594,7 @@ async fn test_validate_template_no_variables_warning() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(validation.valid);
-    assert!(validation.warnings.len() > 0);
+    assert!(!validation.warnings.is_empty());
     assert!(validation
         .warnings
         .iter()
@@ -629,7 +629,7 @@ async fn test_validate_template_invalid_variable_name() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(!validation.valid); // Should be invalid
-    assert!(validation.issues.len() > 0);
+    assert!(!validation.issues.is_empty());
     assert!(validation
         .issues
         .iter()
@@ -666,7 +666,7 @@ async fn test_validate_template_required_variable_with_default() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(!validation.valid);
-    assert!(validation.issues.len() > 0);
+    assert!(!validation.issues.is_empty());
     assert!(validation
         .issues
         .iter()
@@ -701,7 +701,7 @@ async fn test_validate_template_required_variable_without_example_warning() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(validation.valid);
-    assert!(validation.warnings.len() > 0);
+    assert!(!validation.warnings.is_empty());
     assert!(validation
         .warnings
         .iter()
@@ -727,7 +727,7 @@ async fn test_validate_template_invalid_repository_type() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(!validation.valid);
-    assert!(validation.issues.len() > 0);
+    assert!(!validation.issues.is_empty());
     assert!(validation
         .issues
         .iter()
@@ -744,7 +744,7 @@ async fn test_validate_template_not_found() {
     let validation = result.unwrap();
     assert!(!validation.valid);
     assert_eq!(validation.template_name, "missing");
-    assert!(validation.issues.len() > 0);
+    assert!(!validation.issues.is_empty());
     assert!(validation
         .issues
         .iter()
@@ -766,7 +766,7 @@ async fn test_validate_template_configuration_missing() {
     assert!(result.is_ok());
     let validation = result.unwrap();
     assert!(!validation.valid);
-    assert!(validation.issues.len() > 0);
+    assert!(!validation.issues.is_empty());
     assert!(validation
         .issues
         .iter()

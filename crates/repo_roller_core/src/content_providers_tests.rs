@@ -196,7 +196,7 @@ async fn test_zero_provider_accepts_some_template() {
 /// Assertion: Default implementation creates valid provider.
 #[tokio::test]
 async fn test_zero_provider_default() {
-    let provider = ZeroContentProvider::default();
+    let provider = ZeroContentProvider;
 
     let request = create_test_request();
     let merged_config = create_test_merged_config();

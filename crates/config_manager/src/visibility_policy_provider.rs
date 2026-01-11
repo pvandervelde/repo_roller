@@ -223,8 +223,11 @@ impl ConfigBasedPolicyProvider {
                     VisibilityPolicy::Unrestricted
                 }
             }
-            "unrestricted" | _ => {
-                // Unrestricted or unrecognized - default to unrestricted
+            "unrestricted" => {
+                VisibilityPolicy::Unrestricted
+            }
+            _ => {
+                // Unrecognized level - default to unrestricted
                 VisibilityPolicy::Unrestricted
             }
         }
