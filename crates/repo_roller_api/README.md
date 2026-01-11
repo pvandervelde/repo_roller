@@ -304,9 +304,19 @@ pub struct AppState {
 
 **Create New Repository**
 
-Creates a repository with template-based configuration and organization settings.
+Creates a repository with optional template-based configuration and organization settings.
 
-**Request**:
+**Content Strategies**:
+
+RepoRoller supports three content strategies:
+
+1. **Template** (default): Create from a template repository with variable substitution
+2. **Empty**: Create an empty repository with only organization defaults
+3. **Custom Init**: Create with just README.md and/or .gitignore
+
+See [Empty Repositories Guide](../repo_roller_cli/EMPTY_REPOSITORIES.md) for detailed documentation on non-template creation.
+
+**Request (Template-based)**:
 
 ```json
 {
@@ -321,6 +331,35 @@ Creates a repository with template-based configuration and organization settings
     "author": "John Doe"
   },
   "team": "platform"
+}
+```
+
+**Request (Empty Repository)**:
+
+```json
+{
+  "name": "my-empty-repo",
+  "organization": "my-org",
+  "contentStrategy": "empty",
+  "description": "Empty repository for code import",
+  "visibility": "private",
+  "repositoryType": "library",
+  "team": "platform"
+}
+```
+
+**Request (Custom Initialization)**:
+
+```json
+{
+  "name": "my-init-repo",
+  "organization": "my-org",
+  "contentStrategy": "custom_init",
+  "initializeReadme": true,
+  "initializeGitignore": true,
+  "description": "Repository with README and .gitignore",
+  "visibility": "private",
+  "repositoryType": "library"
 }
 ```
 
@@ -342,9 +381,26 @@ Creates a repository with template-based configuration and organization settings
 }
 ```
 
+**Request Fields**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Repository name |
+| `organization` | string | Yes | Organization name |
+| `contentStrategy` | string | No | `"template"` (default), `"empty"`, or `"custom_init"` |
+| `template` | string | Conditional | Required for `"template"` strategy |
+| `initializeReadme` | boolean | No | Create README.md (only with `"custom_init"`) |
+| `initializeGitignore` | boolean | No | Create .gitignore (only with `"custom_init"`) |
+| `description` | string | No | Repository description |
+| `visibility` | string | No | `"private"` (default) or `"public"` |
+| `repositoryType` | string | No | Repository type for configuration |
+| `team` | string | No | Team configuration |
+| `variables` | object | No | Template variables (only with `"template"`) |
+
 **Implementation Details**:
 
 - Validates request via `http_create_repository_request_to_domain()`
+- Determines content provider based on `contentStrategy`
 - Creates authenticated GitHub client using installation token
 - Calls `repo_roller_core::create_repository()` for orchestration
 - Translates domain result to HTTP response
