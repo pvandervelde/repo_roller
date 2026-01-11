@@ -1,6 +1,5 @@
 //! Integration tests for visibility resolution in create_repository flow.
 
-use super::*;
 use crate::visibility::{
     GitHubEnvironmentDetector, PlanLimitations, VisibilityPolicy, VisibilityPolicyProvider,
 };
