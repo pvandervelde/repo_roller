@@ -475,3 +475,361 @@ fn test_repository_creation_result_success_scenario() {
     assert_eq!(result.created_at, timestamp);
     assert!(!result.default_branch.is_empty());
 }
+
+// ============================================================================
+// ContentStrategy Tests (Task 6.9)
+// ============================================================================
+
+/// Test builder with Empty content strategy and no template.
+///
+/// Verifies that Empty strategy works without a template, using
+/// organization defaults for settings.
+#[test]
+fn test_builder_empty_strategy_without_template() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("empty-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .build();
+
+    assert_eq!(request.name.as_ref(), "empty-repo");
+    assert_eq!(request.owner.as_ref(), "myorg");
+    assert!(request.template.is_none());
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+}
+
+/// Test builder with Empty content strategy and template.
+///
+/// Verifies that Empty strategy can use a template for settings
+/// while creating no files.
+#[test]
+fn test_builder_empty_strategy_with_template() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("empty-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .template(TemplateName::new("github-actions").unwrap())
+    .content_strategy(ContentStrategy::Empty)
+    .build();
+
+    assert_eq!(
+        request.template.as_ref().unwrap().as_ref(),
+        "github-actions"
+    );
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+}
+
+/// Test builder with CustomInit strategy and README only.
+///
+/// Verifies that CustomInit can create README.md without .gitignore.
+#[test]
+fn test_builder_custom_init_readme_only() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("quick-start").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: false,
+    })
+    .build();
+
+    assert_eq!(request.name.as_ref(), "quick-start");
+    assert!(request.template.is_none());
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy and gitignore only.
+///
+/// Verifies that CustomInit can create .gitignore without README.md.
+#[test]
+fn test_builder_custom_init_gitignore_only() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-project").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: false,
+        include_gitignore: true,
+    })
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: false,
+            include_gitignore: true,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy and both files.
+///
+/// Verifies that CustomInit can create both README.md and .gitignore.
+#[test]
+fn test_builder_custom_init_both_files() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("full-init").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: true,
+    })
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy and template.
+///
+/// Verifies that CustomInit can use template settings while
+/// only creating custom initialization files.
+#[test]
+fn test_builder_custom_init_with_template() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("hybrid-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: false,
+    })
+    .build();
+
+    assert_eq!(request.template.as_ref().unwrap().as_ref(), "rust-library");
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy with both false.
+///
+/// Verifies that CustomInit with both options false creates
+/// empty repository (equivalent to Empty strategy).
+#[test]
+fn test_builder_custom_init_both_false() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("minimal-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: false,
+        include_gitignore: false,
+    })
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: false,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test ContentStrategy::default() returns Template.
+///
+/// Verifies backward compatibility - default strategy is Template.
+#[test]
+fn test_content_strategy_default() {
+    let strategy = ContentStrategy::default();
+    assert_eq!(strategy, ContentStrategy::Template);
+}
+
+/// Test ContentStrategy serialization for Template.
+#[test]
+fn test_content_strategy_serialize_template() {
+    let strategy = ContentStrategy::Template;
+    let json = serde_json::to_string(&strategy).unwrap();
+    assert_eq!(json, r#"{"type":"template"}"#);
+}
+
+/// Test ContentStrategy serialization for Empty.
+#[test]
+fn test_content_strategy_serialize_empty() {
+    let strategy = ContentStrategy::Empty;
+    let json = serde_json::to_string(&strategy).unwrap();
+    assert_eq!(json, r#"{"type":"empty"}"#);
+}
+
+/// Test ContentStrategy serialization for CustomInit.
+#[test]
+fn test_content_strategy_serialize_custom_init() {
+    let strategy = ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: false,
+    };
+    let json = serde_json::to_string(&strategy).unwrap();
+    assert!(json.contains(r#""type":"custom_init""#));
+    assert!(json.contains(r#""include_readme":true"#));
+    assert!(json.contains(r#""include_gitignore":false"#));
+}
+
+/// Test ContentStrategy deserialization for Template.
+#[test]
+fn test_content_strategy_deserialize_template() {
+    let json = r#"{"type":"template"}"#;
+    let strategy: ContentStrategy = serde_json::from_str(json).unwrap();
+    assert_eq!(strategy, ContentStrategy::Template);
+}
+
+/// Test ContentStrategy deserialization for Empty.
+#[test]
+fn test_content_strategy_deserialize_empty() {
+    let json = r#"{"type":"empty"}"#;
+    let strategy: ContentStrategy = serde_json::from_str(json).unwrap();
+    assert_eq!(strategy, ContentStrategy::Empty);
+}
+
+/// Test ContentStrategy deserialization for CustomInit.
+#[test]
+fn test_content_strategy_deserialize_custom_init() {
+    let json = r#"{"type":"custom_init","include_readme":true,"include_gitignore":false}"#;
+    let strategy: ContentStrategy = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test ContentStrategy Clone trait.
+#[test]
+fn test_content_strategy_clone() {
+    let strategy = ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: true,
+    };
+    let cloned = strategy.clone();
+    assert_eq!(strategy, cloned);
+}
+
+/// Test ContentStrategy Debug trait.
+#[test]
+fn test_content_strategy_debug() {
+    let strategy = ContentStrategy::Empty;
+    let debug_str = format!("{:?}", strategy);
+    assert!(debug_str.contains("Empty"));
+}
+
+/// Test RepositoryCreationRequest with Empty strategy validates correctly.
+#[test]
+fn test_request_empty_strategy_validation() {
+    let request = RepositoryCreationRequest {
+        name: RepositoryName::new("test-repo").unwrap(),
+        owner: OrganizationName::new("test-org").unwrap(),
+        template: None,
+        variables: HashMap::new(),
+        visibility: None,
+        content_strategy: ContentStrategy::Empty,
+    };
+
+    // Should not panic or error - Empty strategy doesn't require template
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+}
+
+/// Test RepositoryCreationRequest with CustomInit strategy validates correctly.
+#[test]
+fn test_request_custom_init_strategy_validation() {
+    let request = RepositoryCreationRequest {
+        name: RepositoryName::new("test-repo").unwrap(),
+        owner: OrganizationName::new("test-org").unwrap(),
+        template: None,
+        variables: HashMap::new(),
+        visibility: None,
+        content_strategy: ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        },
+    };
+
+    // Should not panic or error - CustomInit strategy doesn't require template
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        }
+    );
+}
+
+/// Test builder defaults to Template strategy when not specified.
+#[test]
+fn test_builder_defaults_to_template_strategy() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-lib").unwrap())
+    .build();
+
+    // Default strategy should be Template
+    assert_eq!(request.content_strategy, ContentStrategy::Template);
+}
+
+/// Test builder with Empty strategy and variables.
+///
+/// Verifies that variables can be passed even with Empty strategy
+/// (might be used for settings substitution).
+#[test]
+fn test_builder_empty_strategy_with_variables() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .variable("key1", "value1")
+    .variable("key2", "value2")
+    .build();
+
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+    assert_eq!(request.variables.len(), 2);
+    assert_eq!(request.variables.get("key1"), Some(&"value1".to_string()));
+}
+
+/// Test builder with CustomInit strategy and variables.
+///
+/// Verifies that variables can be passed with CustomInit strategy.
+#[test]
+fn test_builder_custom_init_strategy_with_variables() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: true,
+    })
+    .variable("project_name", "MyProject")
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        }
+    );
+    assert_eq!(request.variables.len(), 1);
+}
