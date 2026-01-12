@@ -80,7 +80,9 @@ async fn test_e2e_create_empty_repository_without_template() -> Result<()> {
     let request_body = json!({
         "name": repo_name,
         "organization": org,
-        "contentStrategy": "empty",
+        "contentStrategy": {
+            "type": "empty"
+        },
         "visibility": "private"
     });
 
@@ -160,7 +162,9 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
         "name": repo_name,
         "organization": org,
         "template": template,
-        "contentStrategy": "empty",
+        "contentStrategy": {
+            "type": "empty"
+        },
         "visibility": "private"
     });
 
@@ -239,10 +243,9 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
         "name": repo_name,
         "organization": org,
         "contentStrategy": {
-            "customInit": {
-                "autoInitReadme": true,
-                "autoInitGitignore": false
-            }
+            "type": "custom_init",
+            "includeReadme": true,
+            "includeGitignore": false
         },
         "visibility": "private"
     });
@@ -332,10 +335,9 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
         "name": repo_name,
         "organization": org,
         "contentStrategy": {
-            "customInit": {
-                "autoInitReadme": true,
-                "autoInitGitignore": true
-            }
+            "type": "custom_init",
+            "includeReadme": true,
+            "includeGitignore": true
         },
         "visibility": "private"
     });

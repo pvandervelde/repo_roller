@@ -250,8 +250,8 @@ async fn test_end_to_end_creation_with_topic_discovery() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        repo_roller_core::TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation

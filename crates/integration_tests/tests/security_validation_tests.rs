@@ -225,8 +225,8 @@ async fn test_template_variable_injection_protection() -> Result<()> {
         let result = RepositoryCreationRequestBuilder::new(
             RepositoryName::new("test-repo")?,
             OrganizationName::new("test-org")?,
-            TemplateName::new("test-template")?,
         )
+        .template(TemplateName::new("test-template")?)
         .variable("description", value)
         .build();
 
@@ -255,8 +255,8 @@ async fn test_template_variable_injection_protection() -> Result<()> {
         let result = RepositoryCreationRequestBuilder::new(
             RepositoryName::new("test-repo")?,
             OrganizationName::new("test-org")?,
-            TemplateName::new("test-template")?,
         )
+        .template(TemplateName::new("test-template")?)
         .variable("command", value)
         .build();
 
@@ -273,8 +273,8 @@ async fn test_template_variable_injection_protection() -> Result<()> {
         let result = RepositoryCreationRequestBuilder::new(
             RepositoryName::new("test-repo")?,
             OrganizationName::new("test-org")?,
-            TemplateName::new("test-template")?,
         )
+        .template(TemplateName::new("test-template")?)
         .variable("nested_template", value)
         .build();
 
@@ -433,8 +433,8 @@ async fn test_very_long_input_validation() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo")?,
         OrganizationName::new("test-org")?,
-        TemplateName::new("test-template")?,
     )
+    .template(TemplateName::new("test-template")?)
     .variable("long_description", &very_long_value)
     .build();
 

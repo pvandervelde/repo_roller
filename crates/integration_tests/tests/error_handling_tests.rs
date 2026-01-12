@@ -57,8 +57,8 @@ async fn test_metadata_repository_not_found() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -117,8 +117,8 @@ async fn test_template_repository_not_found() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("definitely-does-not-exist-template")?,
-    )
+        )
+    ).template(TemplateName::new("definitely-does-not-exist-template")?)
     .build();
 
     // Create authentication service
@@ -222,8 +222,8 @@ async fn test_malformed_template_toml() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-invalid")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-invalid")?)
     .build();
 
     let result = repo_roller_core::create_repository(

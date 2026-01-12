@@ -78,9 +78,8 @@ async fn test_nested_variable_substitution() -> Result<()> {
     );
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-nested-variables")?,
-    )
+        OrganizationName::new(&config.test_org)?,)
+        .template(TemplateName::new("template-nested-variables")?)
     .variables(variables)
     .build();
 
@@ -167,9 +166,8 @@ async fn test_missing_required_variable_error() -> Result<()> {
     // Create request without providing required variables
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-variables")?,
-    )
+        OrganizationName::new(&config.test_org)?,)
+        .template(TemplateName::new("template-test-variables")?)
     // Intentionally not providing variables
     .build();
 
@@ -269,9 +267,8 @@ async fn test_very_long_variable_values() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-variables")?,
-    )
+        OrganizationName::new(&config.test_org)?,)
+        .template(TemplateName::new("template-test-variables")?)
     .variables(variables)
     .build();
 
@@ -362,9 +359,8 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-variables")?,
-    )
+        OrganizationName::new(&config.test_org)?,)
+        .template(TemplateName::new("template-test-variables")?)
     .variables(variables)
     .build();
 
@@ -456,9 +452,8 @@ async fn test_special_characters_in_variables() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-variables")?,
-    )
+        OrganizationName::new(&config.test_org)?,)
+        .template(TemplateName::new("template-test-variables")?)
     .variables(variables)
     .build();
 
@@ -548,9 +543,8 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-variable-paths")?,
-    )
+        OrganizationName::new(&config.test_org)?,)
+        .template(TemplateName::new("template-variable-paths")?)
     .variables(variables)
     .build();
 

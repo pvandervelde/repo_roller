@@ -89,8 +89,8 @@ async fn test_template_default_private_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?, // Has default_visibility = "private"
     )
+    .template(TemplateName::new("template-test-basic")?) // Has default_visibility = "private"
     .build(); // No .with_visibility() call
 
     let result = create_repository(
@@ -170,8 +170,8 @@ async fn test_template_default_public_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-variables")?, // Has default_visibility = "public"
     )
+    .template(TemplateName::new("template-test-variables")?) // Has default_visibility = "public"
     .variables(variables)
     .build(); // No .with_visibility() call
 
@@ -238,8 +238,8 @@ async fn test_user_preference_overrides_template_default() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?, // Has default_visibility = "private"
     )
+    .template(TemplateName::new("template-test-basic")?) // Has default_visibility = "private"
     .with_visibility(RepositoryVisibility::Public) // User prefers public
     .build();
 
@@ -305,8 +305,8 @@ async fn test_no_template_default_uses_system_default() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-filtering")?, // No default_visibility
     )
+    .template(TemplateName::new("template-test-filtering")?) // No default_visibility
     .build(); // No .with_visibility() call
 
     let result = create_repository(

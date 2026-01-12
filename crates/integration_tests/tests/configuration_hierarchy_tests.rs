@@ -58,8 +58,8 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -153,8 +153,8 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -242,8 +242,8 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -323,8 +323,8 @@ async fn test_partial_field_overrides() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -415,8 +415,8 @@ async fn test_label_collection_merging() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -510,8 +510,8 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -591,8 +591,8 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -668,8 +668,8 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -747,8 +747,8 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
@@ -830,8 +830,8 @@ async fn test_conflicting_collection_items() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        TemplateName::new("template-test-basic")?,
-    )
+        )
+    ).template(TemplateName::new("template-test-basic")?)
     .build();
 
     let result = repo_roller_core::create_repository(
