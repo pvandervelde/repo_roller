@@ -90,8 +90,8 @@ async fn test_required_policy_enforces_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Public)
     .build();
 
@@ -144,8 +144,8 @@ async fn test_required_policy_allows_compliant_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
@@ -211,8 +211,8 @@ async fn test_restricted_policy_blocks_prohibited_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Public)
     .build();
 
@@ -265,8 +265,8 @@ async fn test_restricted_policy_allows_permitted_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
@@ -333,8 +333,8 @@ async fn test_unrestricted_policy_allows_all_visibilities() -> Result<()> {
     let request_pub = RepositoryCreationRequestBuilder::new(
         repo_name_pub.clone(),
         OrganizationName::new(&config.test_org)?,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Public)
     .build();
 
@@ -354,8 +354,8 @@ async fn test_unrestricted_policy_allows_all_visibilities() -> Result<()> {
     let request_priv = RepositoryCreationRequestBuilder::new(
         repo_name_priv.clone(),
         OrganizationName::new(&config.test_org)?,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
