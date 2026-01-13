@@ -502,11 +502,13 @@ pub(crate) fn set_head_reference_and_verify(
 pub fn commit_all_changes(
     local_repo_path: &TempDir,
     commit_message: &str,
+    allow_empty: bool,
 ) -> Result<(), SystemError> {
     info!(
-        "Committing all changes in repository at {:?} with message: '{}'",
+        "Committing all changes in repository at {:?} with message: '{}' (allow_empty: {})",
         local_repo_path.path(),
-        commit_message
+        commit_message,
+        allow_empty
     );
 
     // Open the repository
@@ -526,7 +528,7 @@ pub fn commit_all_changes(
     // Debug files in working directory
     let file_count = debug_working_directory(local_repo_path)?;
 
-    if file_count == 0 {
+    if file_count == 0 && !allow_empty {
         return Err(SystemError::GitOperation {
             operation: "commit files".to_string(),
             reason: "No files found in working directory - repository will be empty".to_string(),

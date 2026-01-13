@@ -321,6 +321,7 @@ async fn initialize_git_repository(
     local_repo_path: &TempDir,
     installation_repo_client: &GitHubClient,
     organization: &str,
+    allow_empty_commit: bool,
 ) -> RepoRollerResult<String> {
     info!(
         "Getting organization default branch setting for: {}",
@@ -350,13 +351,18 @@ async fn initialize_git_repository(
         })
     })?;
 
-    debug!("Committing initial changes");
-    git::commit_all_changes(local_repo_path, "Initial commit").map_err(|e| {
-        error!("Failed to commit changes: {}", e);
-        RepoRollerError::System(SystemError::Internal {
-            reason: format!("Failed to commit changes: {}", e),
-        })
-    })?;
+    debug!(
+        "Committing initial changes (allow_empty: {})",
+        allow_empty_commit
+    );
+    git::commit_all_changes(local_repo_path, "Initial commit", allow_empty_commit).map_err(
+        |e| {
+            error!("Failed to commit changes: {}", e);
+            RepoRollerError::System(SystemError::Internal {
+                reason: format!("Failed to commit changes: {}", e),
+            })
+        },
+    )?;
 
     Ok(default_branch)
 }
@@ -669,10 +675,13 @@ pub async fn create_repository(
         .await?;
 
     // Step 7: Initialize Git repository and commit
+    // For empty repositories, we allow empty commits
+    let allow_empty_commit = matches!(request.content_strategy, ContentStrategy::Empty);
     let default_branch = initialize_git_repository(
         &local_repo_path,
         &installation_repo_client,
         request.owner.as_ref(),
+        allow_empty_commit,
     )
     .await?;
 
