@@ -53,8 +53,8 @@ async fn test_basic_repository_creation() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(TemplateName::new("template-test-basic")?)
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -119,8 +119,8 @@ async fn test_variable_substitution() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(TemplateName::new("template-test-variables")?)
+    )
+    .template(TemplateName::new("template-test-variables")?)
     .variable("project_name", "test-project")
     .variable("version", "0.1.0")
     .variable("author_name", "Integration Test")
@@ -217,8 +217,8 @@ async fn test_file_filtering() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(TemplateName::new("template-test-filtering")?)
+    )
+    .template(TemplateName::new("template-test-filtering")?)
     .build();
 
     // Execute repository creation

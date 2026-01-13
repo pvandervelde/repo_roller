@@ -46,8 +46,8 @@ async fn test_missing_metadata_repository_fallback() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation - should succeed using template-only config
@@ -134,8 +134,8 @@ async fn test_malformed_global_toml_error() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation - should fail due to invalid TOML
@@ -212,8 +212,8 @@ async fn test_missing_global_toml_file() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -283,8 +283,8 @@ async fn test_conflicting_team_configuration() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -357,8 +357,8 @@ async fn test_nonexistent_repository_type() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -435,8 +435,8 @@ async fn test_malformed_team_toml() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -507,8 +507,8 @@ async fn test_missing_team_file() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -584,8 +584,8 @@ async fn test_inconsistent_metadata_structure() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -654,8 +654,8 @@ async fn test_duplicate_label_definitions() -> Result<()> {
     let request = repo_roller_core::RepositoryCreationRequestBuilder::new(
         repo_roller_core::RepositoryName::new(&repo_name)?,
         org_name,
-        )
-    ).template(repo_roller_core::TemplateName::new("template-test-basic")?)
+    )
+    .template(repo_roller_core::TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
