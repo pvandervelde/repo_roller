@@ -244,8 +244,8 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
         "organization": org,
         "contentStrategy": {
             "type": "custom_init",
-            "includeReadme": true,
-            "includeGitignore": false
+            "include_readme": true,
+            "include_gitignore": false
         },
         "visibility": "private"
     });
@@ -336,8 +336,8 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
         "organization": org,
         "contentStrategy": {
             "type": "custom_init",
-            "includeReadme": true,
-            "includeGitignore": true
+            "include_readme": true,
+            "include_gitignore": true
         },
         "visibility": "private"
     });
