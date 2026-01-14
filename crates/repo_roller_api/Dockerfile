@@ -24,7 +24,7 @@ COPY crates/ crates/
 RUN cargo build --release --package repo_roller_api
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim@sha256:e899040a73d36e2b36fa33216943539d9957cba8172b858097c2cabcdb20a3e2
+FROM debian:bookworm-slim@sha256:56ff6d36d4eb3db13a741b342ec466f121480b5edded42e4b7ee850ce7a418ee
 
 # Install runtime dependencies (OpenSSL for HTTPS, git for template cloning)
 RUN apt-get update && apt-get install -y \
