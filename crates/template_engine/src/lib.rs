@@ -373,12 +373,13 @@ impl TemplateFetcher for GitHubTemplateFetcher {
                 let path_lower = path.to_lowercase();
                 let is_git_dir =
                     path_lower.starts_with(".git/") || path_lower.starts_with(".git\\");
-                let is_github_dir =
-                    path_lower.starts_with(".github/") || path_lower.starts_with(".github\\");
+                let is_reporoller_dir =
+                    path_lower.starts_with(".reporoller/") || path_lower.starts_with(".reporoller\\");
                 let is_gitignore = path == ".gitignore";
 
-                !is_git_dir && !is_github_dir && !is_gitignore
-                // We'll handle .gitignore specially
+                // Exclude: .git/, .reporoller/, .gitignore
+                // Allow: .github/ (templates can provide workflows for target repos)
+                !is_git_dir && !is_reporoller_dir && !is_gitignore
             })
             .collect();
 
