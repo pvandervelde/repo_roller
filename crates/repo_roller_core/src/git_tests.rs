@@ -47,7 +47,7 @@ fn test_commit_all_changes_workflow() {
     fs::write(temp_dir.path().join("src/main.rs"), "fn main() {}").unwrap();
 
     // Commit all changes
-    let result = commit_all_changes(&temp_dir, "Initial commit");
+    let result = commit_all_changes(&temp_dir, "Initial commit", false);
     assert!(result.is_ok(), "Commit should succeed: {:?}", result.err());
 
     // Verify commit was created
@@ -74,7 +74,7 @@ fn test_commit_all_changes_empty_directory_fails() {
     init_local_git_repo(&temp_dir, "main").unwrap();
 
     // Try to commit without any files
-    let result = commit_all_changes(&temp_dir, "Empty commit");
+    let result = commit_all_changes(&temp_dir, "Empty commit", false);
 
     assert!(result.is_err(), "Commit should fail for empty directory");
     assert!(
@@ -126,7 +126,7 @@ fn test_prepare_index_and_tree() {
     fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
 
     let repo = Repository::open(temp_dir.path()).unwrap();
-    let result = prepare_index_and_tree(&repo);
+    let result = prepare_index_and_tree(&repo, false);
 
     assert!(result.is_ok(), "Tree preparation should succeed");
 
@@ -145,7 +145,7 @@ fn test_prepare_index_and_tree_empty_fails() {
 
     // No files created
     let repo = Repository::open(temp_dir.path()).unwrap();
-    let result = prepare_index_and_tree(&repo);
+    let result = prepare_index_and_tree(&repo, false);
 
     assert!(
         result.is_err(),
@@ -162,7 +162,7 @@ fn test_create_initial_commit() {
     fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
 
     let repo = Repository::open(temp_dir.path()).unwrap();
-    let tree_oid = prepare_index_and_tree(&repo).unwrap();
+    let tree_oid = prepare_index_and_tree(&repo, false).unwrap();
 
     // Create commit
     let result = create_initial_commit(&repo, tree_oid, "Test commit");
@@ -186,7 +186,7 @@ fn test_set_head_reference_and_verify() {
     fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
 
     let repo = Repository::open(temp_dir.path()).unwrap();
-    let tree_oid = prepare_index_and_tree(&repo).unwrap();
+    let tree_oid = prepare_index_and_tree(&repo, false).unwrap();
     let commit_oid = create_initial_commit(&repo, tree_oid, "Test commit").unwrap();
 
     // Set HEAD reference
@@ -217,7 +217,7 @@ fn test_full_git_workflow() {
     fs::write(temp_dir.path().join("src/lib.rs"), "// Library").unwrap();
 
     // Step 3: Commit all changes
-    commit_all_changes(&temp_dir, "Initial commit").unwrap();
+    commit_all_changes(&temp_dir, "Initial commit", false).unwrap();
 
     // Verify final state
     let repo = Repository::open(temp_dir.path()).unwrap();
@@ -246,7 +246,7 @@ fn test_commit_with_different_branch_names() {
 
         init_local_git_repo(&temp_dir, branch_name).unwrap();
         fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
-        commit_all_changes(&temp_dir, "Test commit").unwrap();
+        commit_all_changes(&temp_dir, "Test commit", false).unwrap();
 
         // Verify the branch was created and is HEAD after the commit
         let repo = Repository::open(temp_dir.path()).unwrap();
@@ -274,7 +274,7 @@ fn test_multiple_files_and_directories() {
     fs::write(temp_dir.path().join("tests/integration.rs"), "// Test").unwrap();
 
     // Commit everything
-    commit_all_changes(&temp_dir, "Initial structure").unwrap();
+    commit_all_changes(&temp_dir, "Initial structure", false).unwrap();
 
     // Verify all files are committed
     let repo = Repository::open(temp_dir.path()).unwrap();
