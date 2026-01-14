@@ -89,8 +89,8 @@ async fn test_create_private_repository_explicit() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
@@ -156,8 +156,8 @@ async fn test_create_public_repository_explicit() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Public)
     .build();
 
@@ -224,8 +224,8 @@ async fn test_create_repository_default_visibility() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Execute repository creation
@@ -293,24 +293,24 @@ async fn test_concurrent_visibility_resolution() -> Result<()> {
     let request_1 = RepositoryCreationRequestBuilder::new(
         repo_name_1.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
     let request_2 = RepositoryCreationRequestBuilder::new(
         repo_name_2.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .with_visibility(RepositoryVisibility::Public)
     .build();
 
     let request_3 = RepositoryCreationRequestBuilder::new(
         repo_name_3.clone(),
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build(); // No visibility (defaults to Private)
 
     // Execute all three concurrently

@@ -55,12 +55,9 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
             .await?;
 
     // Build repository creation request
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     // Execute repository creation
     let result = repo_roller_core::create_repository(
@@ -150,12 +147,9 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
             .await?;
 
     // Build request
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     // Execute repository creation
     let result = repo_roller_core::create_repository(
@@ -239,12 +233,9 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
             .await?;
 
     // Build request
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     // Execute repository creation
     let result = repo_roller_core::create_repository(
@@ -320,12 +311,9 @@ async fn test_partial_field_overrides() -> Result<()> {
     // TODO: Backend team configuration will be applied via metadata repository hierarchy
     // Currently RepositoryCreationRequestBuilder doesn't have .team() method
     // Team configuration is loaded from metadata repository based on repository naming/organization
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -412,12 +400,9 @@ async fn test_label_collection_merging() -> Result<()> {
 
     // TODO: Team configuration will be applied via metadata repository hierarchy
     // Request with backend team's custom labels merged from global
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -507,12 +492,9 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
         integration_tests::create_visibility_providers(&installation_token, ".reporoller-test")
             .await?;
 
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -588,12 +570,9 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
     // TODO: Repository type configuration will be applied via metadata repository hierarchy
     // Currently RepositoryCreationRequestBuilder doesn't have .repository_type() method
     // Repository type is determined from metadata repository structure
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -665,12 +644,9 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
             .await?;
 
     // Request with all hierarchy levels: Global, Repository Type (library), Team (backend), Template
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -744,12 +720,9 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
 
     // Request with minimal configuration - no team, no explicit repository type
     // Only Global and Template levels in hierarchy
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -827,12 +800,9 @@ async fn test_conflicting_collection_items() -> Result<()> {
     // Higher precedence (team) should override lower precedence (global)
     // TODO: Team and repository type configuration needs to be loaded via metadata repository hierarchy
     // Currently the RepositoryCreationRequestBuilder doesn't have .with_team() or .with_repository_type() methods
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,

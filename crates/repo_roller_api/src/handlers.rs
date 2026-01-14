@@ -284,29 +284,28 @@ pub async fn validate_repository_request(
         });
     }
 
-    // Validate template
-    if request.template.is_empty() {
-        errors.push(ValidationResult {
-            field: "template".to_string(),
-            message: "Template name cannot be empty".to_string(),
-            severity: ValidationSeverity::Error,
-        });
-    } else {
-        // Note: This endpoint provides basic format validation only.
-        // Comprehensive template existence validation requires GitHub API calls
-        // and happens during actual repository creation via OrganizationSettingsManager.
-        // The hardcoded check below demonstrates the validation pattern for testing
-        // without requiring GitHub API access. Real validation is in create_repository().
-        // Enhancement tracked in Task 9.7: Add GitHub API-based template validation.
-        if request.template == "nonexistent-template" {
+    // Validate template (optional unless using Template strategy)
+    if let Some(ref template_str) = request.template {
+        if template_str.is_empty() {
             errors.push(ValidationResult {
                 field: "template".to_string(),
-                message: format!(
-                    "Template '{}' does not exist in organization",
-                    request.template
-                ),
+                message: "Template name cannot be empty".to_string(),
                 severity: ValidationSeverity::Error,
             });
+        } else {
+            // Note: This endpoint provides basic format validation only.
+            // Comprehensive template existence validation requires GitHub API calls
+            // and happens during actual repository creation via OrganizationSettingsManager.
+            // The hardcoded check below demonstrates the validation pattern for testing
+            // without requiring GitHub API access. Real validation is in create_repository().
+            // Enhancement tracked in Task 9.7: Add GitHub API-based template validation.
+            if template_str == "nonexistent-template" {
+                errors.push(ValidationResult {
+                    field: "template".to_string(),
+                    message: format!("Template '{}' does not exist in organization", template_str),
+                    severity: ValidationSeverity::Error,
+                });
+            }
         }
     }
 
@@ -327,12 +326,14 @@ pub async fn validate_repository_request(
     // The hardcoded check below demonstrates the validation pattern for testing.
     // Real validation is in create_repository().
     // Enhancement tracked in Task 9.7: Add template-aware variable validation.
-    if request.template == "rust-library" && request.variables.is_empty() {
-        errors.push(ValidationResult {
-            field: "variables.project_name".to_string(),
-            message: "Required variable is missing".to_string(),
-            severity: ValidationSeverity::Error,
-        });
+    if let Some(ref template_str) = request.template {
+        if template_str == "rust-library" && request.variables.is_empty() {
+            errors.push(ValidationResult {
+                field: "variables.project_name".to_string(),
+                message: "Required variable is missing".to_string(),
+                severity: ValidationSeverity::Error,
+            });
+        }
     }
 
     // Note: This endpoint provides basic format validation only.

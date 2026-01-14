@@ -1,6 +1,5 @@
 //! Integration tests for visibility resolution in create_repository flow.
 
-use super::*;
 use crate::visibility::{
     GitHubEnvironmentDetector, PlanLimitations, VisibilityPolicy, VisibilityPolicyProvider,
 };
@@ -13,10 +12,12 @@ use std::sync::{Arc, Mutex};
 // ============================================================================
 
 /// Mock policy provider for testing
+#[allow(dead_code)]
 struct MockPolicyProvider {
     policies: Arc<Mutex<HashMap<String, VisibilityPolicy>>>,
 }
 
+#[allow(dead_code)]
 impl MockPolicyProvider {
     fn new() -> Self {
         Self {
@@ -55,10 +56,12 @@ impl VisibilityPolicyProvider for MockPolicyProvider {
 }
 
 /// Mock environment detector for testing
+#[allow(dead_code)]
 struct MockEnvironmentDetector {
     limitations: PlanLimitations,
 }
 
+#[allow(dead_code)]
 impl MockEnvironmentDetector {
     fn enterprise() -> Self {
         Self {

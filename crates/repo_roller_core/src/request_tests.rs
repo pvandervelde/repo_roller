@@ -18,14 +18,15 @@ fn test_repository_creation_request_creation() {
     let request = RepositoryCreationRequest {
         name: name.clone(),
         owner: owner.clone(),
-        template: template.clone(),
+        template: Some(template.clone()),
         variables: variables.clone(),
         visibility: None,
+        content_strategy: ContentStrategy::Template,
     };
 
     assert_eq!(request.name, name);
     assert_eq!(request.owner, owner);
-    assert_eq!(request.template, template);
+    assert_eq!(request.template, Some(template));
     assert_eq!(request.variables, variables);
 }
 
@@ -39,9 +40,10 @@ fn test_repository_creation_request_with_variables() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
         variables: variables.clone(),
         visibility: None,
+        content_strategy: ContentStrategy::Template,
     };
 
     assert_eq!(request.variables.len(), 2);
@@ -55,7 +57,8 @@ fn test_repository_creation_request_clone() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -65,6 +68,7 @@ fn test_repository_creation_request_clone() {
     assert_eq!(request.name, cloned.name);
     assert_eq!(request.owner, cloned.owner);
     assert_eq!(request.template, cloned.template);
+    assert_eq!(request.content_strategy, cloned.content_strategy);
     assert_eq!(request.variables, cloned.variables);
 }
 
@@ -74,7 +78,8 @@ fn test_repository_creation_request_debug() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -96,9 +101,10 @@ fn test_repository_creation_request_type_safety() {
 
     // These types should not be interchangeable
     let request = RepositoryCreationRequest {
-        name,     // RepositoryName
-        owner,    // OrganizationName
-        template, // TemplateName
+        name,                     // RepositoryName
+        owner,                    // OrganizationName
+        template: Some(template), // Option<TemplateName>
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -106,7 +112,7 @@ fn test_repository_creation_request_type_safety() {
     // Verify we can access the values
     assert_eq!(request.name.as_str(), "my-repo");
     assert_eq!(request.owner.as_str(), "my-org");
-    assert_eq!(request.template.as_str(), "rust-library");
+    assert_eq!(request.template.as_ref().unwrap().as_str(), "rust-library");
 }
 
 /// Verify that RepositoryCreationRequest can handle empty variables.
@@ -115,7 +121,8 @@ fn test_repository_creation_request_empty_variables() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("my-repo").unwrap(),
         owner: OrganizationName::new("my-org").unwrap(),
-        template: TemplateName::new("rust-library").unwrap(),
+        template: Some(TemplateName::new("rust-library").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -139,7 +146,8 @@ fn test_repository_creation_request_validates_names() {
     let request = RepositoryCreationRequest {
         name: RepositoryName::new("valid-repo").unwrap(),
         owner: OrganizationName::new("valid-org").unwrap(),
-        template: TemplateName::new("valid-template").unwrap(),
+        template: Some(TemplateName::new("valid-template").unwrap()),
+        content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
     };
@@ -157,13 +165,13 @@ fn test_builder_basic() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .build();
 
     assert_eq!(request.name.as_str(), "my-repo");
     assert_eq!(request.owner.as_str(), "my-org");
-    assert_eq!(request.template.as_str(), "rust-library");
+    assert_eq!(request.template.as_ref().unwrap().as_str(), "rust-library");
     assert!(request.variables.is_empty());
 }
 
@@ -173,8 +181,8 @@ fn test_builder_single_variable() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject")
     .build();
 
@@ -188,8 +196,8 @@ fn test_builder_multiple_variables_chained() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject")
     .variable("author", "John Doe")
     .variable("license", "MIT")
@@ -211,8 +219,8 @@ fn test_builder_bulk_variables() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variables(vars)
     .build();
 
@@ -231,8 +239,8 @@ fn test_builder_mixed_variables() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject")
     .variables(bulk_vars)
     .variable("version", "0.1.0")
@@ -251,8 +259,8 @@ fn test_builder_variable_overwrite() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("author", "First Author")
     .variable("author", "Second Author")
     .build();
@@ -267,8 +275,8 @@ fn test_builder_clone() {
     let builder = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable("project_name", "MyProject");
 
     let builder_clone = builder.clone();
@@ -290,8 +298,8 @@ fn test_builder_debug() {
     let builder = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
-    );
+    )
+    .template(TemplateName::new("rust-library").unwrap());
 
     let debug_output = format!("{:?}", builder);
     assert!(debug_output.contains("RepositoryCreationRequestBuilder"));
@@ -306,8 +314,8 @@ fn test_builder_into_string() {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("my-repo").unwrap(),
         OrganizationName::new("my-org").unwrap(),
-        TemplateName::new("rust-library").unwrap(),
     )
+    .template(TemplateName::new("rust-library").unwrap())
     .variable(&key, &value) // &str
     .variable(key.clone(), value.clone()) // String
     .build();
@@ -466,4 +474,362 @@ fn test_repository_creation_result_success_scenario() {
     assert!(!result.repository_id.is_empty());
     assert_eq!(result.created_at, timestamp);
     assert!(!result.default_branch.is_empty());
+}
+
+// ============================================================================
+// ContentStrategy Tests (Task 6.9)
+// ============================================================================
+
+/// Test builder with Empty content strategy and no template.
+///
+/// Verifies that Empty strategy works without a template, using
+/// organization defaults for settings.
+#[test]
+fn test_builder_empty_strategy_without_template() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("empty-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .build();
+
+    assert_eq!(request.name.as_ref(), "empty-repo");
+    assert_eq!(request.owner.as_ref(), "myorg");
+    assert!(request.template.is_none());
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+}
+
+/// Test builder with Empty content strategy and template.
+///
+/// Verifies that Empty strategy can use a template for settings
+/// while creating no files.
+#[test]
+fn test_builder_empty_strategy_with_template() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("empty-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .template(TemplateName::new("github-actions").unwrap())
+    .content_strategy(ContentStrategy::Empty)
+    .build();
+
+    assert_eq!(
+        request.template.as_ref().unwrap().as_ref(),
+        "github-actions"
+    );
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+}
+
+/// Test builder with CustomInit strategy and README only.
+///
+/// Verifies that CustomInit can create README.md without .gitignore.
+#[test]
+fn test_builder_custom_init_readme_only() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("quick-start").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: false,
+    })
+    .build();
+
+    assert_eq!(request.name.as_ref(), "quick-start");
+    assert!(request.template.is_none());
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy and gitignore only.
+///
+/// Verifies that CustomInit can create .gitignore without README.md.
+#[test]
+fn test_builder_custom_init_gitignore_only() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-project").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: false,
+        include_gitignore: true,
+    })
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: false,
+            include_gitignore: true,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy and both files.
+///
+/// Verifies that CustomInit can create both README.md and .gitignore.
+#[test]
+fn test_builder_custom_init_both_files() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("full-init").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: true,
+    })
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy and template.
+///
+/// Verifies that CustomInit can use template settings while
+/// only creating custom initialization files.
+#[test]
+fn test_builder_custom_init_with_template() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("hybrid-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: false,
+    })
+    .build();
+
+    assert_eq!(request.template.as_ref().unwrap().as_ref(), "rust-library");
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test builder with CustomInit strategy with both false.
+///
+/// Verifies that CustomInit with both options false creates
+/// empty repository (equivalent to Empty strategy).
+#[test]
+fn test_builder_custom_init_both_false() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("minimal-repo").unwrap(),
+        OrganizationName::new("myorg").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: false,
+        include_gitignore: false,
+    })
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: false,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test ContentStrategy::default() returns Template.
+///
+/// Verifies backward compatibility - default strategy is Template.
+#[test]
+fn test_content_strategy_default() {
+    let strategy = ContentStrategy::default();
+    assert_eq!(strategy, ContentStrategy::Template);
+}
+
+/// Test ContentStrategy serialization for Template.
+#[test]
+fn test_content_strategy_serialize_template() {
+    let strategy = ContentStrategy::Template;
+    let json = serde_json::to_string(&strategy).unwrap();
+    assert_eq!(json, r#"{"type":"template"}"#);
+}
+
+/// Test ContentStrategy serialization for Empty.
+#[test]
+fn test_content_strategy_serialize_empty() {
+    let strategy = ContentStrategy::Empty;
+    let json = serde_json::to_string(&strategy).unwrap();
+    assert_eq!(json, r#"{"type":"empty"}"#);
+}
+
+/// Test ContentStrategy serialization for CustomInit.
+#[test]
+fn test_content_strategy_serialize_custom_init() {
+    let strategy = ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: false,
+    };
+    let json = serde_json::to_string(&strategy).unwrap();
+    assert!(json.contains(r#""type":"custom_init""#));
+    assert!(json.contains(r#""include_readme":true"#));
+    assert!(json.contains(r#""include_gitignore":false"#));
+}
+
+/// Test ContentStrategy deserialization for Template.
+#[test]
+fn test_content_strategy_deserialize_template() {
+    let json = r#"{"type":"template"}"#;
+    let strategy: ContentStrategy = serde_json::from_str(json).unwrap();
+    assert_eq!(strategy, ContentStrategy::Template);
+}
+
+/// Test ContentStrategy deserialization for Empty.
+#[test]
+fn test_content_strategy_deserialize_empty() {
+    let json = r#"{"type":"empty"}"#;
+    let strategy: ContentStrategy = serde_json::from_str(json).unwrap();
+    assert_eq!(strategy, ContentStrategy::Empty);
+}
+
+/// Test ContentStrategy deserialization for CustomInit.
+#[test]
+fn test_content_strategy_deserialize_custom_init() {
+    let json = r#"{"type":"custom_init","include_readme":true,"include_gitignore":false}"#;
+    let strategy: ContentStrategy = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: false,
+        }
+    );
+}
+
+/// Test ContentStrategy Clone trait.
+#[test]
+fn test_content_strategy_clone() {
+    let strategy = ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: true,
+    };
+    let cloned = strategy.clone();
+    assert_eq!(strategy, cloned);
+}
+
+/// Test ContentStrategy Debug trait.
+#[test]
+fn test_content_strategy_debug() {
+    let strategy = ContentStrategy::Empty;
+    let debug_str = format!("{:?}", strategy);
+    assert!(debug_str.contains("Empty"));
+}
+
+/// Test RepositoryCreationRequest with Empty strategy validates correctly.
+#[test]
+fn test_request_empty_strategy_validation() {
+    let request = RepositoryCreationRequest {
+        name: RepositoryName::new("test-repo").unwrap(),
+        owner: OrganizationName::new("test-org").unwrap(),
+        template: None,
+        variables: HashMap::new(),
+        visibility: None,
+        content_strategy: ContentStrategy::Empty,
+    };
+
+    // Should not panic or error - Empty strategy doesn't require template
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+}
+
+/// Test RepositoryCreationRequest with CustomInit strategy validates correctly.
+#[test]
+fn test_request_custom_init_strategy_validation() {
+    let request = RepositoryCreationRequest {
+        name: RepositoryName::new("test-repo").unwrap(),
+        owner: OrganizationName::new("test-org").unwrap(),
+        template: None,
+        variables: HashMap::new(),
+        visibility: None,
+        content_strategy: ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        },
+    };
+
+    // Should not panic or error - CustomInit strategy doesn't require template
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        }
+    );
+}
+
+/// Test builder defaults to Template strategy when not specified.
+#[test]
+fn test_builder_defaults_to_template_strategy() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-lib").unwrap())
+    .build();
+
+    // Default strategy should be Template
+    assert_eq!(request.content_strategy, ContentStrategy::Template);
+}
+
+/// Test builder with Empty strategy and variables.
+///
+/// Verifies that variables can be passed even with Empty strategy
+/// (might be used for settings substitution).
+#[test]
+fn test_builder_empty_strategy_with_variables() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .variable("key1", "value1")
+    .variable("key2", "value2")
+    .build();
+
+    assert_eq!(request.content_strategy, ContentStrategy::Empty);
+    assert_eq!(request.variables.len(), 2);
+    assert_eq!(request.variables.get("key1"), Some(&"value1".to_string()));
+}
+
+/// Test builder with CustomInit strategy and variables.
+///
+/// Verifies that variables can be passed with CustomInit strategy.
+#[test]
+fn test_builder_custom_init_strategy_with_variables() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("test-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::CustomInit {
+        include_readme: true,
+        include_gitignore: true,
+    })
+    .variable("project_name", "MyProject")
+    .build();
+
+    assert_eq!(
+        request.content_strategy,
+        ContentStrategy::CustomInit {
+            include_readme: true,
+            include_gitignore: true,
+        }
+    );
+    assert_eq!(request.variables.len(), 1);
 }

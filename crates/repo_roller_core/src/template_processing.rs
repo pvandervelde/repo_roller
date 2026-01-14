@@ -319,11 +319,21 @@ pub(crate) fn create_additional_files(
     // Only create README.md if the template doesn't provide one
     if !template_file_paths.contains("README.md") {
         let readme_path = local_repo_path.path().join("README.md");
+        let template_info = req
+            .template
+            .as_ref()
+            .map(|t| {
+                format!(
+                    "\n\nTemplate: {}\nOwner: {}\n",
+                    t.as_ref(),
+                    req.owner.as_ref()
+                )
+            })
+            .unwrap_or_else(|| format!("\n\nOwner: {}\n", req.owner.as_ref()));
         let readme_content = format!(
-            "# {}\n\nRepository created using RepoRoller.\n\nTemplate: {}\nOwner: {}\n",
+            "# {}\n\nRepository created using RepoRoller.{}",
             req.name.as_ref(),
-            req.template.as_ref(),
-            req.owner.as_ref()
+            template_info
         );
 
         debug!(
@@ -588,10 +598,11 @@ pub(crate) fn replace_template_variables(
     // Generate built-in variables
     // Note: Use .as_ref() to convert branded types to &str for template_engine
     // (avoids circular dependency between crates)
+    let template_name_str = req.template.as_ref().map(|t| t.as_ref()).unwrap_or("none");
     let built_in_params = template_engine::BuiltInVariablesParams {
         repo_name: req.name.as_ref(),
         org_name: req.owner.as_ref(),
-        template_name: req.template.as_ref(),
+        template_name: template_name_str,
         template_repo: "unknown", // We'd need to get this from template config
         user_login: "reporoller-app", // Placeholder for GitHub App
         user_name: "RepoRoller App", // Placeholder for GitHub App

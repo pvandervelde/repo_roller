@@ -330,7 +330,7 @@ impl IntegrationTestRunner {
             .map_err(|e| anyhow::anyhow!("Invalid template name: {}", e))?;
 
         // Build request with scenario-specific variables
-        let mut builder = RepositoryCreationRequestBuilder::new(name, owner, template);
+        let mut builder = RepositoryCreationRequestBuilder::new(name, owner).template(template);
 
         // Add test variables based on scenario
         match scenario {

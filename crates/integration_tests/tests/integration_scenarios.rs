@@ -50,12 +50,9 @@ async fn test_basic_repository_creation() -> Result<()> {
             .await?;
 
     // Build request
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     // Execute repository creation
     let result = repo_roller_core::create_repository(
@@ -116,24 +113,21 @@ async fn test_variable_substitution() -> Result<()> {
             .await?;
 
     // Build request with variables for template-test-variables
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-variables")?,
-    )
-    .variable("project_name", "test-project")
-    .variable("version", "0.1.0")
-    .variable("author_name", "Integration Test")
-    .variable("author_email", "test@example.com")
-    .variable(
-        "project_description",
-        "A test project for integration testing",
-    )
-    .variable("license", "MIT")
-    .variable("license_type", "MIT")
-    .variable("environment", "test")
-    .variable("debug_mode", "true")
-    .build(); // Execute repository creation
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-variables")?)
+        .variable("project_name", "test-project")
+        .variable("version", "0.1.0")
+        .variable("author_name", "Integration Test")
+        .variable("author_email", "test@example.com")
+        .variable(
+            "project_description",
+            "A test project for integration testing",
+        )
+        .variable("license", "MIT")
+        .variable("license_type", "MIT")
+        .variable("environment", "test")
+        .variable("debug_mode", "true")
+        .build(); // Execute repository creation
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -214,12 +208,9 @@ async fn test_file_filtering() -> Result<()> {
             .await?;
 
     // Build request for template-test-filtering
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-filtering")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-filtering")?)
+        .build();
 
     // Execute repository creation
     let result = repo_roller_core::create_repository(

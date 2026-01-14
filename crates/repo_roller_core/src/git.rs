@@ -126,7 +126,7 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
 ///
 /// This function will return an error if:
 /// - The repository index cannot be accessed
-/// - No files are found in the working directory (empty repository)
+/// - No files are found in the working directory (when allow_empty is false)
 /// - File addition to the index fails
 /// - Tree creation from the index fails
 ///
@@ -134,10 +134,13 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
 ///
 /// ```rust,ignore
 /// let repo = Repository::open("/path/to/repo")?;
-/// let tree_oid = prepare_index_and_tree(&repo)?;
+/// let tree_oid = prepare_index_and_tree(&repo, false)?;
 /// println!("Created tree with OID: {}", tree_oid);
 /// ```
-pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, SystemError> {
+pub(crate) fn prepare_index_and_tree(
+    repo: &Repository,
+    allow_empty: bool,
+) -> Result<git2::Oid, SystemError> {
     // Get the repository index (staging area) - this is where Git tracks changes
     // before they become part of a commit
     let mut index = repo.index().map_err(|e| {
@@ -168,7 +171,7 @@ pub(crate) fn prepare_index_and_tree(repo: &Repository) -> Result<git2::Oid, Sys
     let index_entry_count = index.len();
     info!("Added {} entries to git index", index_entry_count);
 
-    if index_entry_count == 0 {
+    if index_entry_count == 0 && !allow_empty {
         error!("No files were added to the git index - cannot create commit");
         return Err(SystemError::GitOperation {
             operation: "create commit".to_string(),
@@ -496,17 +499,19 @@ pub(crate) fn set_head_reference_and_verify(
 /// ```rust,ignore
 /// let temp_dir = TempDir::new()?;
 /// // ... initialize repo and add files ...
-/// commit_all_changes(&temp_dir, "Initial repository setup")?;
+/// commit_all_changes(&temp_dir, "Initial repository setup", false)?;
 /// println!("All changes committed successfully");
 /// ```
 pub fn commit_all_changes(
     local_repo_path: &TempDir,
     commit_message: &str,
+    allow_empty: bool,
 ) -> Result<(), SystemError> {
     info!(
-        "Committing all changes in repository at {:?} with message: '{}'",
+        "Committing all changes in repository at {:?} with message: '{}' (allow_empty: {})",
         local_repo_path.path(),
-        commit_message
+        commit_message,
+        allow_empty
     );
 
     // Open the repository
@@ -526,7 +531,7 @@ pub fn commit_all_changes(
     // Debug files in working directory
     let file_count = debug_working_directory(local_repo_path)?;
 
-    if file_count == 0 {
+    if file_count == 0 && !allow_empty {
         return Err(SystemError::GitOperation {
             operation: "commit files".to_string(),
             reason: "No files found in working directory - repository will be empty".to_string(),
@@ -534,7 +539,7 @@ pub fn commit_all_changes(
     }
 
     // Prepare index and create tree
-    let tree_oid = prepare_index_and_tree(&repo)?;
+    let tree_oid = prepare_index_and_tree(&repo, allow_empty)?;
 
     // Create the initial commit
     let commit_oid = create_initial_commit(&repo, tree_oid, commit_message)?;

@@ -63,8 +63,8 @@ async fn test_organization_settings_with_global_defaults() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -158,8 +158,8 @@ async fn test_team_configuration_overrides() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -250,8 +250,8 @@ async fn test_repository_type_configuration() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -344,8 +344,8 @@ async fn test_configuration_hierarchy_merging() -> Result<()> {
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
         OrganizationName::new(&config.test_org)?,
-        TemplateName::new("template-test-basic")?,
     )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -456,8 +456,8 @@ async fn test_complete_organization_settings_workflow() -> Result<()> {
         let request = RepositoryCreationRequestBuilder::new(
             RepositoryName::new(&repo_name)?,
             OrganizationName::new(&config.test_org)?,
-            TemplateName::new("template-test-basic")?,
         )
+        .template(TemplateName::new("template-test-basic")?)
         .build();
 
         // Create repository

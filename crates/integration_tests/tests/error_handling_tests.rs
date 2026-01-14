@@ -54,12 +54,9 @@ async fn test_metadata_repository_not_found() -> Result<()> {
     let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
 
     // Try to create repository with bogus metadata repo
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-basic")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-basic")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
@@ -114,12 +111,9 @@ async fn test_template_repository_not_found() -> Result<()> {
 
     let _test_repo = TestRepository::new(repo_name.clone(), config.test_org.clone());
 
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("definitely-does-not-exist-template")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("definitely-does-not-exist-template")?)
+        .build();
 
     // Create authentication service
     let auth_service = auth_handler::GitHubAuthService::new(
@@ -219,12 +213,9 @@ async fn test_malformed_template_toml() -> Result<()> {
     let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
 
     // Try to use template-test-invalid which has malformed template.toml
-    let request = RepositoryCreationRequestBuilder::new(
-        RepositoryName::new(&repo_name)?,
-        org_name,
-        TemplateName::new("template-test-invalid")?,
-    )
-    .build();
+    let request = RepositoryCreationRequestBuilder::new(RepositoryName::new(&repo_name)?, org_name)
+        .template(TemplateName::new("template-test-invalid")?)
+        .build();
 
     let result = repo_roller_core::create_repository(
         request,
