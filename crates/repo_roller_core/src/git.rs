@@ -126,7 +126,7 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
 ///
 /// This function will return an error if:
 /// - The repository index cannot be accessed
-/// - No files are found in the working directory (empty repository)
+/// - No files are found in the working directory (when allow_empty is false)
 /// - File addition to the index fails
 /// - Tree creation from the index fails
 ///
@@ -134,7 +134,7 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
 ///
 /// ```rust,ignore
 /// let repo = Repository::open("/path/to/repo")?;
-/// let tree_oid = prepare_index_and_tree(&repo)?;
+/// let tree_oid = prepare_index_and_tree(&repo, false)?;
 /// println!("Created tree with OID: {}", tree_oid);
 /// ```
 pub(crate) fn prepare_index_and_tree(
@@ -499,7 +499,7 @@ pub(crate) fn set_head_reference_and_verify(
 /// ```rust,ignore
 /// let temp_dir = TempDir::new()?;
 /// // ... initialize repo and add files ...
-/// commit_all_changes(&temp_dir, "Initial repository setup")?;
+/// commit_all_changes(&temp_dir, "Initial repository setup", false)?;
 /// println!("All changes committed successfully");
 /// ```
 pub fn commit_all_changes(
