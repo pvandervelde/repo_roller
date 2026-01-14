@@ -54,8 +54,9 @@ async fn test_large_file_processing() -> Result<()> {
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-large-files")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-large-files")?)
     .build();
 
     // Create repository
@@ -127,8 +128,9 @@ async fn test_binary_file_preservation() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-binary-files")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-binary-files")?)
     .build();
 
     let result = create_repository(
@@ -195,8 +197,9 @@ async fn test_deep_directory_nesting() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-deep-nesting")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-deep-nesting")?)
     .build();
 
     let result = create_repository(
@@ -263,8 +266,9 @@ async fn test_many_files_template() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-many-files")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-many-files")?)
     .build();
 
     let start_time = std::time::Instant::now();
@@ -335,8 +339,9 @@ async fn test_unicode_filenames() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-unicode-names")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-unicode-names")?)
     .build();
 
     let result = create_repository(
@@ -403,8 +408,9 @@ async fn test_symlink_handling() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-with-symlinks")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-with-symlinks")?)
     .build();
 
     let result = create_repository(
@@ -471,8 +477,9 @@ async fn test_executable_permissions_preserved() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-with-scripts")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-with-scripts")?)
     .build();
 
     let result = create_repository(
@@ -538,8 +545,9 @@ async fn test_hidden_files_processing() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-with-dotfiles")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-with-dotfiles")?)
     .build();
 
     let result = create_repository(
@@ -606,8 +614,9 @@ async fn test_empty_directory_handling() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-empty-dirs")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-empty-dirs")?)
     .build();
 
     let result = create_repository(
@@ -673,8 +682,9 @@ async fn test_files_without_extensions() -> Result<()> {
 
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-no-extensions")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-no-extensions")?)
     .build();
 
     let result = create_repository(

@@ -60,8 +60,9 @@ async fn test_basic_repository_creation() -> Result<()> {
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-basic")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -143,8 +144,9 @@ async fn test_variable_substitution() -> Result<()> {
     // Build request with variables
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-variables")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-variables")?)
     .variable("project_name", "test-project")
     .variable("version", "0.1.0")
     .variable("author_name", "Integration Test")
@@ -249,8 +251,9 @@ async fn test_file_filtering() -> Result<()> {
     // Build request with filtering variables
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-filtering")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-filtering")?)
     .variable("include_docs", "true")
     .variable("include_config", "true")
     .build();
@@ -330,8 +333,9 @@ async fn test_error_handling_invalid_template() -> Result<()> {
     // Build request with non-existent template
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("test-nonexistent")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("test-nonexistent")?)
     .build();
 
     // Create repository - should fail
@@ -383,8 +387,9 @@ async fn test_organization_settings() -> Result<()> {
     // Build request
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-basic")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -468,8 +473,9 @@ async fn test_team_configuration() -> Result<()> {
     // Build request with team specification
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-basic")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -543,8 +549,9 @@ async fn test_repository_type_configuration() -> Result<()> {
     // Build request with repository type
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-basic")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
@@ -621,8 +628,9 @@ async fn test_configuration_hierarchy() -> Result<()> {
     // Build request that will test hierarchy merging
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new(&repo_name)?,
-        OrganizationName::new(&config.test_org)?,)
-        .template(TemplateName::new("template-test-basic")?)
+        OrganizationName::new(&config.test_org)?,
+    )
+    .template(TemplateName::new("template-test-basic")?)
     .build();
 
     // Create repository
