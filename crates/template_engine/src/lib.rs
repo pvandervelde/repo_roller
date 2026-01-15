@@ -373,8 +373,8 @@ impl TemplateFetcher for GitHubTemplateFetcher {
                 let path_lower = path.to_lowercase();
                 let is_git_dir =
                     path_lower.starts_with(".git/") || path_lower.starts_with(".git\\");
-                let is_reporoller_dir =
-                    path_lower.starts_with(".reporoller/") || path_lower.starts_with(".reporoller\\");
+                let is_reporoller_dir = path_lower.starts_with(".reporoller/")
+                    || path_lower.starts_with(".reporoller\\");
                 let is_gitignore = path == ".gitignore";
 
                 // Exclude: .git/, .reporoller/, .gitignore
@@ -488,7 +488,7 @@ pub struct ProcessedTemplate {
 ///     ],
 /// };
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TemplatingConfig {
     pub include_patterns: Vec<String>,
     pub exclude_patterns: Vec<String>,

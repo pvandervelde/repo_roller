@@ -65,6 +65,7 @@ use crate::settings::{
 use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use template_engine::TemplatingConfig;
 
 /// Template-specific configuration embedded in template repositories.
 ///
@@ -188,7 +189,7 @@ pub struct TemplateConfig {
     ///
     /// let toml = r#"
     ///     default_visibility = "public"
-    ///     
+    ///
     ///     [template]
     ///     name = "public-docs-template"
     ///     description = "Public documentation template"
@@ -206,6 +207,59 @@ pub struct TemplateConfig {
     /// resolution falls through to system default (Private).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_visibility: Option<RepositoryVisibility>,
+
+    /// File filtering configuration for template processing (optional).
+    ///
+    /// Controls which files from the template repository are processed and
+    /// included in the created repository. If not specified, all files are
+    /// processed (except the `.reporoller/` directory which is always excluded).
+    ///
+    /// # Pattern Matching
+    ///
+    /// - Patterns follow standard glob syntax (`*`, `?`, `**`, etc.)
+    /// - Patterns are applied relative to the template repository root
+    /// - Exclude patterns take precedence over include patterns
+    /// - If no include patterns are specified, all files are included by default
+    ///
+    /// # TOML Format
+    ///
+    /// ```toml
+    /// [templating]
+    /// include_patterns = ["**/*.rs", "**/*.toml", "**/*.md"]
+    /// exclude_patterns = ["target/**", "*.log", "tmp/**"]
+    /// ```
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use config_manager::TemplateConfig;
+    /// use template_engine::TemplatingConfig;
+    ///
+    /// let toml = r#"
+    ///     [template]
+    ///     name = "rust-service"
+    ///     description = "Rust microservice template"
+    ///     author = "Platform Team"
+    ///     tags = ["rust", "service"]
+    ///
+    ///     [templating]
+    ///     include_patterns = ["**/*.rs", "Cargo.toml", "README.md"]
+    ///     exclude_patterns = ["target/**", "*.bak"]
+    /// "#;
+    ///
+    /// let config: TemplateConfig = toml::from_str(toml).expect("Parse failed");
+    /// assert!(config.templating.is_some());
+    /// let templating = config.templating.unwrap();
+    /// assert_eq!(templating.include_patterns.len(), 3);
+    /// assert_eq!(templating.exclude_patterns.len(), 2);
+    /// ```
+    ///
+    /// # Backward Compatibility
+    ///
+    /// Templates without this field continue to work normally - all files
+    /// are processed (except `.reporoller/` which is always excluded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templating: Option<TemplatingConfig>,
 }
 
 /// Template metadata providing information about the template.
