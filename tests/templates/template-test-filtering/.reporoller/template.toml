@@ -3,3 +3,22 @@ name = "template-test-filtering"
 description = "Template with file filtering rules for testing"
 author = "RepoRoller Test Suite"
 tags = ["test", "filtering"]
+
+# File filtering configuration for testing
+# This demonstrates how to use include and exclude patterns
+[templating]
+# Include source files, documentation, and configuration
+include_patterns = [
+    "**/*.rs",           # All Rust source files
+    "**/*.toml",         # All TOML configuration files
+    "**/*.md",           # All Markdown documentation
+    "**/*.json",         # All JSON files
+]
+
+# Exclude build artifacts and temporary files
+exclude_patterns = [
+    "target/**",         # Rust build directory (should be excluded)
+    "**/*.log",          # Log files (should be excluded)
+    "**/tmp/**",         # Temporary directories (should be excluded)
+    "**/.DS_Store",      # macOS metadata (should be excluded)
+]
