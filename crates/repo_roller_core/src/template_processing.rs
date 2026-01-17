@@ -643,7 +643,7 @@ pub(crate) fn replace_template_variables(
         variables: user_variables,
         built_in_variables: all_built_in_variables,
         variable_configs,
-        templating_config: None, // Use default processing (all files)
+        templating_config: template.templating.clone(), // Use template's filtering configuration
     };
 
     // Read all files that were copied to the local repo

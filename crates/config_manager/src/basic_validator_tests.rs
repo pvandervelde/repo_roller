@@ -582,6 +582,7 @@ async fn test_validate_template_config_integration() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = validator

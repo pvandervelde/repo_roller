@@ -219,6 +219,7 @@ All domain primitives use newtype pattern for type safety.
 | Type | Location | Purpose | Spec Reference |
 |------|----------|---------|----------------|
 | `TemplateConfig` | `config_manager/src/template_config.rs` | Template configuration | [template-loading.md](interfaces/template-loading.md) |
+| `TemplatingConfig` | `template_engine/src/lib.rs` | File filtering configuration (Task 7.0) | [template-file-filtering.md](interfaces/template-file-filtering.md) |
 | `RepositorySettings` | `config_manager/src/settings/repository.rs` | Repository settings | [configuration-interfaces.md](configuration-interfaces.md) |
 | `CacheStatistics` | `config_manager/src/template_loader.rs` | Template cache metrics | [template-loading.md](interfaces/template-loading.md) |
 | `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](template-interfaces.md) |

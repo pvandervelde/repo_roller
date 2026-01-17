@@ -491,6 +491,7 @@ async fn test_create_repository_type_conversion() {
         environments: None,
         github_apps: None,
         default_visibility: None,
+        templating: None,
     };
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);

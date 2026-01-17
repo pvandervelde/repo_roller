@@ -490,6 +490,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "template_engine",
  "thiserror 2.0.17",
  "tokio",
  "toml 0.9.8",

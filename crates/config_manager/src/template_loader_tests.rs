@@ -81,6 +81,7 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         environments: None,
         github_apps: None,
         default_visibility: None,
+        templating: None,
     }
 }
 

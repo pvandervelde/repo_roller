@@ -52,6 +52,7 @@ fn create_test_template_config() -> config_manager::TemplateConfig {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     }
 }
 
