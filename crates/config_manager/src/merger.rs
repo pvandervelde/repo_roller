@@ -42,6 +42,7 @@
 //!     github_apps: None,
 //!     variables: None,
 //!     default_visibility: None,
+//!     templating: None,
 //! };
 //!
 //! // Merge configurations with precedence rules
@@ -105,6 +106,7 @@ use crate::{
 ///     github_apps: None,
 ///     variables: None,
 ///     default_visibility: None,
+///     templating: None,
 /// };
 ///
 /// // Merge with all configuration levels
@@ -184,6 +186,7 @@ impl ConfigurationMerger {
     ///     github_apps: None,
     ///     variables: None,
     ///     default_visibility: None,
+    ///     templating: None,
     /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
