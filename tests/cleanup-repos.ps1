@@ -111,17 +111,31 @@ function Get-OrganizationRepos
     param([string]$Org)
 
     Write-Host "🔍 Fetching repositories from $Org organization..." -ForegroundColor Cyan
-    $repos = gh repo list $Org --limit 1000 --json name, createdAt, isTemplate | ConvertFrom-Json
 
-    if (-not $repos)
+    try
     {
-        Write-Error "No repositories found or error accessing organization"
+        $repos = gh repo list $Org --limit 1000 --json name, createdAt, isTemplate 2>&1 | ConvertFrom-Json
+
+        if ($LASTEXITCODE -ne 0 -or -not $repos)
+        {
+            Write-Host ""
+            Write-Host "❌ Failed to fetch repositories. Please check:" -ForegroundColor Red
+            Write-Host "   - Organization name is correct: '$Org'" -ForegroundColor Gray
+            Write-Host "   - You have access to the organization" -ForegroundColor Gray
+            Write-Host "   - GitHub CLI is authenticated: gh auth status" -ForegroundColor Gray
+            return @()
+        }
+
+        Write-Host "   Found $($repos.Count) total repositories" -ForegroundColor Gray
+        Write-Host ""
+        return $repos
+    }
+    catch
+    {
+        Write-Host ""
+        Write-Host "❌ Error fetching repositories: $($_.Exception.Message)" -ForegroundColor Red
         return @()
     }
-
-    Write-Host "   Found $($repos.Count) total repositories" -ForegroundColor Gray
-    Write-Host ""
-    return $repos
 }
 
 function Get-TestRepos
@@ -400,19 +414,19 @@ function Invoke-AgeCleanup
         Write-Host "📊 Cleanup Summary:" -ForegroundColor Cyan
         Write-Host "   Successfully deleted: $($result.Deleted)" -ForegroundColor $(if ($result.Deleted -gt 0)
             {
-                'Green' 
+                'Green'
             }
             else
             {
-                'Gray' 
+                'Gray'
             })
         Write-Host "   Failed:              $($result.Failed)" -ForegroundColor $(if ($result.Failed -gt 0)
             {
-                'Red' 
+                'Red'
             }
             else
             {
-                'Gray' 
+                'Gray'
             })
 
         if ($result.Errors.Count -gt 0)
@@ -484,19 +498,19 @@ function Invoke-MisnamedCleanup
         Write-Host "📊 Cleanup Summary:" -ForegroundColor Cyan
         Write-Host "   Successfully deleted: $($result.Deleted)" -ForegroundColor $(if ($result.Deleted -gt 0)
             {
-                'Green' 
+                'Green'
             }
             else
             {
-                'Gray' 
+                'Gray'
             })
         Write-Host "   Failed:              $($result.Failed)" -ForegroundColor $(if ($result.Failed -gt 0)
             {
-                'Red' 
+                'Red'
             }
             else
             {
-                'Gray' 
+                'Gray'
             })
 
         if ($result.Errors.Count -gt 0)
