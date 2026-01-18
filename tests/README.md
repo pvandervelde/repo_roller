@@ -94,53 +94,52 @@ Use this for:
 - Repository type hierarchies
 - Complex metadata scenarios
 
-#### 3. Cleanup Utilities
+#### 3. Repository Cleanup & Inspection
 
-**[cleanup-test-repos.ps1](cleanup-test-repos.ps1)** - Removes orphaned test repositories
+**[cleanup-repos.ps1](cleanup-repos.ps1)** - Unified tool for repository cleanup and inspection
 
-```powershell
-# Preview cleanup (dry run)
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -DryRun
+This consolidated script replaces three previous utilities (cleanup-test-repos.ps1, cleanup-misnamed-repos.ps1, identify-test-repos.ps1) with a single, mode-based interface.
 
-# Delete repos older than 24 hours
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24
-
-# Quick cleanup without confirmation
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 1 -Force
-```
-
-**[cleanup-misnamed-repos.ps1](cleanup-misnamed-repos.ps1)** - Removes incorrectly named repositories
+**Inspection Mode** - List and categorize all repositories:
 
 ```powershell
-# Preview what would be deleted
-./tests/cleanup-misnamed-repos.ps1 -DryRun
-
-# Delete misnamed repos older than 7 days
-./tests/cleanup-misnamed-repos.ps1 -OlderThanDays 7
-
-# Force delete without confirmation
-./tests/cleanup-misnamed-repos.ps1 -Force
-```
-
-#### 4. Inspection Utilities
-
-**[identify-test-repos.ps1](identify-test-repos.ps1)** - Lists and categorizes repositories
-
-```powershell
-# Analyze glitchgrove repositories
-./tests/identify-test-repos.ps1
+# Analyze repositories in glitchgrove
+./tests/cleanup-repos.ps1 -Mode inspect
 
 # Check different organization
-./tests/identify-test-repos.ps1 -Organization "myorg"
+./tests/cleanup-repos.ps1 -Mode inspect -Organization "myorg"
 ```
 
-Useful for:
+**Age-Based Cleanup** - Remove repositories older than specified threshold:
 
-- Understanding repository status
-- Identifying misnamed repositories
-- Planning cleanup operations
+```powershell
+# Preview what would be deleted (dry run)
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24 -DryRun
 
-#### 5. Feature-Specific Updates
+# Delete repos older than 24 hours
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24
+
+# Quick cleanup without confirmation
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 1 -Force
+
+# Different organization
+./tests/cleanup-repos.ps1 -Mode age -Organization "myorg" -MaxAgeHours 48
+```
+
+**Misnamed Cleanup** - Remove repositories that don't follow naming conventions:
+
+```powershell
+# Preview misnamed repos that would be deleted
+./tests/cleanup-repos.ps1 -Mode misnamed -DryRun
+
+# Delete misnamed repos older than 7 days
+./tests/cleanup-repos.ps1 -Mode misnamed -OlderThanDays 7
+
+# Force delete without confirmation
+./tests/cleanup-repos.ps1 -Mode misnamed -OlderThanDays 1 -Force
+```
+
+#### 4. Feature-Specific Updates
 
 **[update-templates-visibility.ps1](update-templates-visibility.ps1)** - Updates visibility configuration in template repositories
 
@@ -329,7 +328,7 @@ Runs daily as a catch-all for any repositories missed by PR cleanup:
 
 Use the cleanup utilities for immediate cleanup:
 
-**Rust cleanup utility** (recommended):
+**Rust cleanup utility** (recommended for programmatic use):
 
 ```bash
 # Clean up all test repos older than 24 hours
@@ -342,30 +341,35 @@ cargo run --package test_cleanup --bin cleanup-pr -- 456
 cargo run --package test_cleanup --bin cleanup-orphans -- 1
 ```
 
-**PowerShell script**:
+**PowerShell script** (recommended for manual use):
 
 ```powershell
-# Preview what will be deleted (dry run)
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -DryRun
+# Inspect repositories first
+./tests/cleanup-repos.ps1 -Mode inspect
+
+# Preview age-based cleanup (dry run)
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24 -DryRun
 
 # Delete test repositories older than 24 hours
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24
 
 # Force delete without confirmation
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -Force
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24 -Force
+
+# Delete misnamed repositories older than 7 days
+./tests/cleanup-repos.ps1 -Mode misnamed -OlderThanDays 7
 
 # Delete very old repos (1 week)
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 168 -Force
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 168 -Force
 ```
 
 **GitHub CLI** (for template repositories):
 
 ```bash
-# Delete template repositories
-gh repo delete pvandervelde/test-basic --yes
-gh repo delete pvandervelde/test-variables --yes
-gh repo delete pvandervelde/test-filtering --yes
-gh repo delete pvandervelde/test-invalid --yes
+# Delete specific template repositories
+gh repo delete glitchgrove/template-test-basic --yes
+gh repo delete glitchgrove/template-test-variables --yes
+gh repo delete glitchgrove/template-test-filtering --yes
 ```
 
 #### Monitoring and Troubleshooting
@@ -398,8 +402,9 @@ If the scheduled cleanup finds more than 10 orphaned repositories, it automatica
    - Verify repository naming follows convention
 
 3. **Local test repos accumulating**
-   - Run manual cleanup: `cargo run --package test_cleanup --bin cleanup-orphans -- 0`
-   - Or use PowerShell script with short max age
+   - Run inspection: `./tests/cleanup-repos.ps1 -Mode inspect`
+   - Quick manual cleanup: `./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 0 -Force`
+   - Or use Rust utility: `cargo run --package test_cleanup --bin cleanup-orphans -- 0`
 
 **Best Practices**:
 
