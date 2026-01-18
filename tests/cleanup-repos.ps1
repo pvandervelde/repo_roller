@@ -114,7 +114,7 @@ function Get-OrganizationRepos
 
     try
     {
-        $repos = gh repo list $Org --limit 1000 --json name, createdAt, isTemplate 2>&1 | ConvertFrom-Json
+        $repos = gh repo list $Org --limit 1000 --json name,createdAt,isTemplate 2>&1 | ConvertFrom-Json
 
         if ($LASTEXITCODE -ne 0 -or -not $repos)
         {
