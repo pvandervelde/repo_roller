@@ -50,6 +50,7 @@ fn create_test_template() -> NewTemplateConfig {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     }
 }
 
@@ -72,6 +73,7 @@ fn create_template_with_repository(repo_settings: RepositorySettings) -> NewTemp
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     }
 }
 
@@ -196,6 +198,7 @@ fn test_merge_four_level_hierarchy() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -567,6 +570,7 @@ fn test_merge_with_empty_configurations() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -694,6 +698,7 @@ fn test_complex_merge_scenario() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -908,6 +913,7 @@ fn test_repository_type_settings_without_global_base() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);
@@ -1020,6 +1026,7 @@ fn test_template_settings_without_base() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -1100,6 +1107,7 @@ fn test_all_repository_settings_fields() {
         github_apps: None,
         variables: None,
         default_visibility: None,
+        templating: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);

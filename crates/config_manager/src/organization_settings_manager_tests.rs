@@ -41,6 +41,7 @@ impl TemplateRepository for MockTemplateRepository {
             environments: None,
             github_apps: None,
             default_visibility: None,
+            templating: None,
         })
     }
 

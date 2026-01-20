@@ -28,62 +28,124 @@ Before running these scripts, ensure you have:
 3. **Git installed** - Required for repository operations
 4. **Appropriate permissions** - Write access to the target GitHub organization
 
-## Scripts
+## Quick Start
 
-### Test Template Repositories
+### Creating/Updating Test Infrastructure
 
-#### PowerShell Script (Windows)
-
-```powershell
-# Basic usage (creates repos in 'pvandervelde' organization)
-./scripts/create-test-repositories.ps1
-
-# Specify different organization
-./scripts/create-test-repositories.ps1 -Organization "myorg"
-
-# Force recreation of existing repositories
-./scripts/create-test-repositories.ps1 -Force
-
-# Both options
-./scripts/create-test-repositories.ps1 -Organization "myorg" -Force
-```
-
-#### Bash Script (Linux/macOS)
-
-```bash
-# Make script executable (Linux/macOS only)
-chmod +x scripts/create-test-repositories.sh
-
-# Basic usage (creates repos in 'pvandervelde' organization)
-./scripts/create-test-repositories.sh
-
-# Specify different organization
-./scripts/create-test-repositories.sh myorg
-
-# Force recreation of existing repositories
-./scripts/create-test-repositories.sh pvandervelde true
-
-# Different organization with force
-./scripts/create-test-repositories.sh myorg true
-```
-
-### Test Metadata Repository
-
-#### PowerShell Script (Windows)
+**Primary Script** (Most common use case):
 
 ```powershell
-# Basic usage (creates .reporoller-test in 'glitchgrove' organization)
+# Update all template repositories in glitchgrove organization
+./tests/create-test-repositories.ps1 -Organization "glitchgrove"
+```
+
+This script:
+
+- Creates/updates all 16 template repositories
+- Syncs content from `tests/templates/` to GitHub
+- Marks repositories as templates
+- Handles both creation and updates
+
+### Available Scripts
+
+#### 1. Template Repository Management
+
+**[create-test-repositories.ps1](create-test-repositories.ps1)** - Primary script for template management
+
+```powershell
+# Update templates in glitchgrove (recommended)
+./tests/create-test-repositories.ps1 -Organization "glitchgrove"
+
+# Force update of existing repositories
+./tests/create-test-repositories.ps1 -Organization "glitchgrove" -Force
+
+# Use different organization
+./tests/create-test-repositories.ps1 -Organization "myorg"
+```
+
+#### 2. Metadata Repository Management
+
+**[create-test-metadata-repository.ps1](create-test-metadata-repository.ps1)** - Creates `.reporoller-test` metadata repository
+
+```powershell
+# Create .reporoller-test in glitchgrove
 ./tests/create-test-metadata-repository.ps1
 
-# Force recreation of existing repository
+# Force recreation
 ./tests/create-test-metadata-repository.ps1 -Force
-
-# Custom repository name
-./tests/create-test-metadata-repository.ps1 -RepositoryName ".reporoller-test" -Verbose
 
 # Different organization
 ./tests/create-test-metadata-repository.ps1 -Organization "myorg" -Force
 ```
+
+**[setup-test-metadata-repos.ps1](setup-test-metadata-repos.ps1)** - Creates multiple test metadata repositories for specialized testing
+
+```powershell
+# Create all test metadata repos
+./tests/setup-test-metadata-repos.ps1 -Organization "glitchgrove"
+
+# Skip existing repositories
+./tests/setup-test-metadata-repos.ps1 -SkipExisting
+```
+
+Use this for:
+
+- Testing team-specific configurations
+- Repository type hierarchies
+- Complex metadata scenarios
+
+#### 3. Repository Cleanup & Inspection
+
+**[cleanup-repos.ps1](cleanup-repos.ps1)** - Unified tool for repository cleanup and inspection
+
+This consolidated script replaces three previous utilities (cleanup-test-repos.ps1, cleanup-misnamed-repos.ps1, identify-test-repos.ps1) with a single, mode-based interface.
+
+**Inspection Mode** - List and categorize all repositories:
+
+```powershell
+# Analyze repositories in glitchgrove
+./tests/cleanup-repos.ps1 -Mode inspect
+
+# Check different organization
+./tests/cleanup-repos.ps1 -Mode inspect -Organization "myorg"
+```
+
+**Age-Based Cleanup** - Remove repositories older than specified threshold:
+
+```powershell
+# Preview what would be deleted (dry run)
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24 -DryRun
+
+# Delete repos older than 24 hours
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24
+
+# Quick cleanup without confirmation
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 1 -Force
+
+# Different organization
+./tests/cleanup-repos.ps1 -Mode age -Organization "myorg" -MaxAgeHours 48
+```
+
+**Misnamed Cleanup** - Remove repositories that don't follow naming conventions:
+
+```powershell
+# Preview misnamed repos that would be deleted
+./tests/cleanup-repos.ps1 -Mode misnamed -DryRun
+
+# Delete misnamed repos older than 7 days
+./tests/cleanup-repos.ps1 -Mode misnamed -OlderThanDays 7
+
+# Force delete without confirmation
+./tests/cleanup-repos.ps1 -Mode misnamed -OlderThanDays 1 -Force
+```
+
+#### 4. Feature-Specific Updates
+
+**[update-templates-visibility.ps1](update-templates-visibility.ps1)** - Updates visibility configuration in template repositories
+
+**[update-metadata-repos-visibility.ps1](update-metadata-repos-visibility.ps1)** - Updates visibility policies in metadata repositories
+
+These are specialized scripts for specific feature testing and should only be used when working on visibility-related features.
 
 ## What the Scripts Do
 
@@ -206,6 +268,7 @@ All test repositories follow a standardized naming pattern:
 - **Random**: Short random suffix
 
 **Examples**:
+
 - `test-repo-roller-pr456-basic-1703250123-a7f3`
 - `e2e-repo-roller-main-api-1703250456-b2e9`
 - `test-repo-roller-local-auth-1703250789-c4d1`
@@ -226,13 +289,14 @@ RepoRoller uses a two-tier cleanup system for test repositories:
 
 Runs automatically when a pull request is closed or merged:
 
-- **Trigger**: `.github/workflows/cleanup-pr-repos.yml` 
+- **Trigger**: `.github/workflows/cleanup-pr-repos.yml`
 - **Scope**: Only repositories created by that specific PR (matching `-pr{number}-` pattern)
 - **Timing**: Immediate (runs within minutes of PR closure)
 - **Reporting**: Posts comment to the closed PR with cleanup results
 - **Purpose**: Fast cleanup of PR-specific test artifacts
 
 **What happens**:
+
 1. PR closes (merged or not)
 2. Workflow identifies all test repos containing `-pr{number}-` in the name
 3. Deletes all matching repositories
@@ -248,11 +312,13 @@ Runs daily as a catch-all for any repositories missed by PR cleanup:
 - **Alerting**: Creates an issue if more than 10 orphaned repos are found
 - **Purpose**: Safety net for failed PR cleanups, crashed tests, or local development repos
 
-**Manual trigger**: 
+**Manual trigger**:
+
 - Go to Actions → "Cleanup Test Repositories" → "Run workflow"
 - Configure max age in hours (default: 24)
 
 **What it catches**:
+
 - Repositories from PRs where cleanup failed
 - Local development test repositories
 - Test runs that crashed before cleanup
@@ -262,7 +328,7 @@ Runs daily as a catch-all for any repositories missed by PR cleanup:
 
 Use the cleanup utilities for immediate cleanup:
 
-**Rust cleanup utility** (recommended):
+**Rust cleanup utility** (recommended for programmatic use):
 
 ```bash
 # Clean up all test repos older than 24 hours
@@ -275,35 +341,41 @@ cargo run --package test_cleanup --bin cleanup-pr -- 456
 cargo run --package test_cleanup --bin cleanup-orphans -- 1
 ```
 
-**PowerShell script**:
+**PowerShell script** (recommended for manual use):
 
 ```powershell
-# Preview what will be deleted (dry run)
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -DryRun
+# Inspect repositories first
+./tests/cleanup-repos.ps1 -Mode inspect
+
+# Preview age-based cleanup (dry run)
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24 -DryRun
 
 # Delete test repositories older than 24 hours
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24
 
 # Force delete without confirmation
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 24 -Force
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 24 -Force
+
+# Delete misnamed repositories older than 7 days
+./tests/cleanup-repos.ps1 -Mode misnamed -OlderThanDays 7
 
 # Delete very old repos (1 week)
-./tests/cleanup-test-repos.ps1 -MaxAgeHours 168 -Force
+./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 168 -Force
 ```
 
 **GitHub CLI** (for template repositories):
 
 ```bash
-# Delete template repositories
-gh repo delete pvandervelde/test-basic --yes
-gh repo delete pvandervelde/test-variables --yes
-gh repo delete pvandervelde/test-filtering --yes
-gh repo delete pvandervelde/test-invalid --yes
+# Delete specific template repositories
+gh repo delete glitchgrove/template-test-basic --yes
+gh repo delete glitchgrove/template-test-variables --yes
+gh repo delete glitchgrove/template-test-filtering --yes
 ```
 
 #### Monitoring and Troubleshooting
 
 **View Cleanup Status**:
+
 - PR cleanups: Check PR comments for "🧹 Test Repository Cleanup" messages
 - Scheduled cleanup: Actions → "Cleanup Test Repositories" → Latest run
 - Manual runs: Can be triggered anytime from Actions tab
@@ -311,6 +383,7 @@ gh repo delete pvandervelde/test-invalid --yes
 **High Orphan Count Alert**:
 
 If the scheduled cleanup finds more than 10 orphaned repositories, it automatically creates an issue with:
+
 - Number of repositories cleaned
 - Possible causes (PR cleanup failures, test crashes)
 - Investigation steps
@@ -329,10 +402,12 @@ If the scheduled cleanup finds more than 10 orphaned repositories, it automatica
    - Verify repository naming follows convention
 
 3. **Local test repos accumulating**
-   - Run manual cleanup: `cargo run --package test_cleanup --bin cleanup-orphans -- 0`
-   - Or use PowerShell script with short max age
+   - Run inspection: `./tests/cleanup-repos.ps1 -Mode inspect`
+   - Quick manual cleanup: `./tests/cleanup-repos.ps1 -Mode age -MaxAgeHours 0 -Force`
+   - Or use Rust utility: `cargo run --package test_cleanup --bin cleanup-orphans -- 0`
 
 **Best Practices**:
+
 - Monitor the daily cleanup summaries for trends
 - Investigate if cleanup consistently finds many repos
 - Ensure PR workflows complete successfully

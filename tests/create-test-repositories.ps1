@@ -30,7 +30,7 @@
     - template-variable-paths: Variables in file/directory names
 
 .PARAMETER Organization
-    The GitHub organization to create repositories in. Defaults to 'pvandervelde'.
+    The GitHub organization to create repositories in. Defaults to 'glitchgrove'.
 
 .PARAMETER Force
     Force recreation of repositories if they already exist.
@@ -49,7 +49,7 @@
 #>
 
 param(
-    [string]$Organization = "pvandervelde",
+    [string]$Organization = "glitchgrove",
     [switch]$Force,
     [switch]$Verbose
 )

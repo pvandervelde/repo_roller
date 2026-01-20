@@ -461,6 +461,7 @@ fn test_serialize_round_trip() {
         environments: None,
         github_apps: None,
         default_visibility: None,
+        templating: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -488,6 +489,7 @@ fn test_clone_creates_independent_copy() {
         environments: None,
         github_apps: None,
         default_visibility: None,
+        templating: None,
     };
 
     let cloned = config.clone();
@@ -513,6 +515,7 @@ fn test_debug_format() {
         environments: None,
         github_apps: None,
         default_visibility: None,
+        templating: None,
     };
 
     let debug_str = format!("{:?}", config);
@@ -525,7 +528,7 @@ fn test_debug_format() {
 fn test_template_config_with_private_visibility() {
     let toml = r#"
         default_visibility = "private"
-        
+
         [template]
         name = "private-service-template"
         description = "Internal service template"
@@ -547,7 +550,7 @@ fn test_template_config_with_private_visibility() {
 fn test_template_config_with_public_visibility() {
     let toml = r#"
         default_visibility = "public"
-        
+
         [template]
         name = "public-docs-template"
         description = "Public documentation template"
@@ -569,7 +572,7 @@ fn test_template_config_with_public_visibility() {
 fn test_template_config_with_internal_visibility() {
     let toml = r#"
         default_visibility = "internal"
-        
+
         [template]
         name = "internal-team-template"
         description = "Internal team collaboration template"
@@ -610,7 +613,7 @@ fn test_template_config_without_visibility() {
 fn test_template_config_with_invalid_visibility() {
     let toml = r#"
         default_visibility = "restricted"
-        
+
         [template]
         name = "invalid-visibility-template"
         description = "Template with invalid visibility"
@@ -655,6 +658,7 @@ fn test_template_config_visibility_serialization() {
         environments: None,
         github_apps: None,
         default_visibility: Some(crate::visibility::RepositoryVisibility::Private),
+        templating: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -689,6 +693,7 @@ fn test_template_config_none_visibility_not_serialized() {
         environments: None,
         github_apps: None,
         default_visibility: None,
+        templating: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -708,7 +713,7 @@ fn test_template_config_none_visibility_not_serialized() {
 fn test_complete_template_with_visibility() {
     let toml = r#"
         default_visibility = "private"
-        
+
         [template]
         name = "rust-service"
         description = "Rust microservice template"
@@ -743,4 +748,205 @@ fn test_complete_template_with_visibility() {
     let repo_type = config.repository_type.unwrap();
     assert_eq!(repo_type.repository_type, "service");
     assert_eq!(repo_type.policy, RepositoryTypePolicy::Fixed);
+}
+
+#[test]
+fn test_template_config_with_templating_section() {
+    let toml = r#"
+        [template]
+        name = "rust-service"
+        description = "Rust microservice template"
+        author = "Platform Team"
+        tags = ["rust", "service"]
+
+        [templating]
+        include_patterns = ["**/*.rs", "**/*.toml", "**/*.md"]
+        exclude_patterns = ["target/**", "*.log", "tmp/**"]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.templating.is_some());
+
+    let templating = config.templating.unwrap();
+    assert_eq!(templating.include_patterns.len(), 3);
+    assert_eq!(templating.include_patterns[0], "**/*.rs");
+    assert_eq!(templating.include_patterns[1], "**/*.toml");
+    assert_eq!(templating.include_patterns[2], "**/*.md");
+
+    assert_eq!(templating.exclude_patterns.len(), 3);
+    assert_eq!(templating.exclude_patterns[0], "target/**");
+    assert_eq!(templating.exclude_patterns[1], "*.log");
+    assert_eq!(templating.exclude_patterns[2], "tmp/**");
+}
+
+#[test]
+fn test_template_config_without_templating_section() {
+    let toml = r#"
+        [template]
+        name = "minimal-template"
+        description = "Minimal template without filtering"
+        author = "Test Author"
+        tags = []
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.templating.is_none());
+}
+
+#[test]
+fn test_template_config_with_empty_templating_arrays() {
+    let toml = r#"
+        [template]
+        name = "empty-filters"
+        description = "Template with empty filter arrays"
+        author = "Test Author"
+        tags = []
+
+        [templating]
+        include_patterns = []
+        exclude_patterns = []
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.templating.is_some());
+
+    let templating = config.templating.unwrap();
+    assert_eq!(templating.include_patterns.len(), 0);
+    assert_eq!(templating.exclude_patterns.len(), 0);
+}
+
+#[test]
+fn test_template_config_with_only_include_patterns() {
+    let toml = r#"
+        [template]
+        name = "include-only"
+        description = "Template with only include patterns"
+        author = "Test Author"
+        tags = []
+
+        [templating]
+        include_patterns = ["src/**/*.rs", "Cargo.toml"]
+        exclude_patterns = []
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.templating.is_some());
+
+    let templating = config.templating.unwrap();
+    assert_eq!(templating.include_patterns.len(), 2);
+    assert_eq!(templating.exclude_patterns.len(), 0);
+}
+
+#[test]
+fn test_template_config_with_only_exclude_patterns() {
+    let toml = r#"
+        [template]
+        name = "exclude-only"
+        description = "Template with only exclude patterns"
+        author = "Test Author"
+        tags = []
+
+        [templating]
+        include_patterns = []
+        exclude_patterns = ["target/**", "**/*.log", "**/tmp/**"]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.templating.is_some());
+
+    let templating = config.templating.unwrap();
+    assert_eq!(templating.include_patterns.len(), 0);
+    assert_eq!(templating.exclude_patterns.len(), 3);
+}
+
+#[test]
+fn test_template_config_with_complex_glob_patterns() {
+    let toml = r#"
+        [template]
+        name = "complex-patterns"
+        description = "Template with complex glob patterns"
+        author = "Test Author"
+        tags = []
+
+        [templating]
+        include_patterns = [
+            "**/*.rs",
+            "**/*.toml",
+            "**/README.md",
+            "LICENSE*",
+            ".gitignore"
+        ]
+        exclude_patterns = [
+            "target/**",
+            "**/test_*.rs",
+            "**/*_test.rs",
+            "**/*.tmp",
+            "**/.DS_Store",
+            "**/Thumbs.db"
+        ]
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.templating.is_some());
+
+    let templating = config.templating.unwrap();
+    assert_eq!(templating.include_patterns.len(), 5);
+    assert_eq!(templating.exclude_patterns.len(), 6);
+
+    // Verify specific patterns
+    assert!(templating.include_patterns.contains(&"**/*.rs".to_string()));
+    assert!(templating
+        .include_patterns
+        .contains(&".gitignore".to_string()));
+    assert!(templating
+        .exclude_patterns
+        .contains(&"target/**".to_string()));
+    assert!(templating
+        .exclude_patterns
+        .contains(&"**/*.tmp".to_string()));
+}
+
+#[test]
+fn test_template_config_serialization_with_templating() {
+    use template_engine::TemplatingConfig;
+
+    let config = TemplateConfig {
+        template: TemplateMetadata {
+            name: "test-template".to_string(),
+            description: "Test template".to_string(),
+            author: "Test Author".to_string(),
+            tags: vec![],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        default_visibility: None,
+        templating: Some(TemplatingConfig {
+            include_patterns: vec!["**/*.rs".to_string()],
+            exclude_patterns: vec!["target/**".to_string()],
+        }),
+    };
+
+    let toml = toml::to_string(&config).expect("Failed to serialize");
+    assert!(toml.contains("[templating]"));
+    assert!(toml.contains("include_patterns"));
+    assert!(toml.contains("exclude_patterns"));
+
+    // Verify round-trip
+    let parsed: TemplateConfig = toml::from_str(&toml).expect("Failed to parse");
+    assert!(parsed.templating.is_some());
+    assert_eq!(
+        parsed.templating.as_ref().unwrap().include_patterns.len(),
+        1
+    );
+    assert_eq!(
+        parsed.templating.as_ref().unwrap().exclude_patterns.len(),
+        1
+    );
 }
