@@ -224,6 +224,25 @@ All domain primitives use newtype pattern for type safety.
 | `CacheStatistics` | `config_manager/src/template_loader.rs` | Template cache metrics | [template-loading.md](interfaces/template-loading.md) |
 | `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](template-interfaces.md) |
 | `CustomInitOptions` | `repo_roller_core/src/content_providers.rs` | Custom initialization options | [content-providers.md](interfaces/content-providers.md) |
+| `LabelConfig` | `config_manager/src/settings/label.rs` | Label configuration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `WebhookConfig` | `config_manager/src/settings/webhook.rs` | Webhook configuration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+
+## GitHub API Types (Task 10.0)
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `Label` | `github_client/src/label.rs` | GitHub label representation | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `Webhook` | `github_client/src/lib.rs` (to be added) | GitHub webhook with ID | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `WebhookDetails` | `github_client/src/lib.rs` (to be added) | Webhook config details | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+
+## Manager Components (Task 10.0)
+
+| Type | Location | Purpose | Spec Reference |
+|------|----------|---------|----------------|
+| `LabelManager` | `repo_roller_core/src/label_manager.rs` (to be added) | Label orchestration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `WebhookManager` | `repo_roller_core/src/webhook_manager.rs` (to be added) | Webhook orchestration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `ApplyLabelsResult` | `repo_roller_core/src/label_manager.rs` (to be added) | Label operation result | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `ApplyWebhooksResult` | `repo_roller_core/src/webhook_manager.rs` (to be added) | Webhook operation result | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
 
 ## Content Provider Types
 
