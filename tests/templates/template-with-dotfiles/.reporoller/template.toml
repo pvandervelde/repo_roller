@@ -5,5 +5,7 @@ author = "RepoRoller Test Suite"
 tags = ["test", "edge-case", "dotfiles"]
 
 [templating]
+# Include all files by default
+include_patterns = []
 # Exclude GitHub workflows - test GitHub App doesn't have 'workflows' permission
 exclude_patterns = [".github/workflows/**"]
