@@ -1326,60 +1326,229 @@ impl RepositoryClient for GitHubClient {
         Ok(all_files)
     }
 
-    async fn list_webhooks(&self, _owner: &str, _repo: &str) -> Result<Vec<Webhook>, Error> {
-        unimplemented!("list_webhooks will be implemented in phase 2")
+    async fn list_webhooks(&self, owner: &str, repo: &str) -> Result<Vec<Webhook>, Error> {
+        info!(owner = owner, repo = repo, "Listing repository webhooks");
+
+        let url = format!("repos/{}/{}/hooks", owner, repo);
+
+        let result: OctocrabResult<Vec<Webhook>> = self.client.get(&url, None::<&()>).await;
+
+        match result {
+            Ok(webhooks) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    count = webhooks.len(),
+                    "Successfully listed webhooks"
+                );
+                Ok(webhooks)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to list webhooks", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 
     async fn create_webhook(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _url: &str,
-        _content_type: &str,
-        _secret: Option<&str>,
-        _active: bool,
-        _events: &[String],
+        owner: &str,
+        repo: &str,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
     ) -> Result<Webhook, Error> {
-        unimplemented!("create_webhook will be implemented in phase 2")
+        info!(
+            owner = owner,
+            repo = repo,
+            url = url,
+            "Creating repository webhook"
+        );
+
+        let api_url = format!("repos/{}/{}/hooks", owner, repo);
+
+        let mut config = serde_json::json!({
+            "url": url,
+            "content_type": content_type,
+            "insecure_ssl": "0"
+        });
+
+        if let Some(secret_value) = secret {
+            config["secret"] = serde_json::json!(secret_value);
+        }
+
+        let body = serde_json::json!({
+            "name": "web",
+            "active": active,
+            "events": events,
+            "config": config
+        });
+
+        let result: OctocrabResult<Webhook> = self.client.post(&api_url, Some(&body)).await;
+
+        match result {
+            Ok(webhook) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    webhook_id = webhook.id,
+                    "Successfully created webhook"
+                );
+                Ok(webhook)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to create webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 
     async fn update_webhook(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _webhook_id: u64,
-        _url: &str,
-        _content_type: &str,
-        _secret: Option<&str>,
-        _active: bool,
-        _events: &[String],
+        owner: &str,
+        repo: &str,
+        webhook_id: u64,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
     ) -> Result<Webhook, Error> {
-        unimplemented!("update_webhook will be implemented in phase 2")
+        info!(
+            owner = owner,
+            repo = repo,
+            webhook_id = webhook_id,
+            "Updating repository webhook"
+        );
+
+        let api_url = format!("repos/{}/{}/hooks/{}", owner, repo, webhook_id);
+
+        let mut config = serde_json::json!({
+            "url": url,
+            "content_type": content_type,
+            "insecure_ssl": "0"
+        });
+
+        if let Some(secret_value) = secret {
+            config["secret"] = serde_json::json!(secret_value);
+        }
+
+        let body = serde_json::json!({
+            "active": active,
+            "events": events,
+            "config": config
+        });
+
+        let result: OctocrabResult<Webhook> = self.client.patch(&api_url, Some(&body)).await;
+
+        match result {
+            Ok(webhook) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    webhook_id = webhook_id,
+                    "Successfully updated webhook"
+                );
+                Ok(webhook)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to update webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 
-    async fn delete_webhook(
-        &self,
-        _owner: &str,
-        _repo: &str,
-        _webhook_id: u64,
-    ) -> Result<(), Error> {
-        unimplemented!("delete_webhook will be implemented in phase 2")
+    async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: u64) -> Result<(), Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            webhook_id = webhook_id,
+            "Deleting repository webhook"
+        );
+
+        let url = format!("repos/{}/{}/hooks/{}", owner, repo, webhook_id);
+
+        let result: OctocrabResult<()> = self.client.delete(&url, None::<&()>).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    webhook_id = webhook_id,
+                    "Successfully deleted webhook"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to delete webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 
     async fn update_label(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _name: &str,
-        _new_name: &str,
-        _color: &str,
-        _description: &str,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        new_name: &str,
+        color: &str,
+        description: &str,
     ) -> Result<(), Error> {
-        unimplemented!("update_label will be implemented in phase 2")
+        info!(owner = owner, repo = repo, name = name, "Updating label");
+
+        let url = format!("repos/{}/{}/labels/{}", owner, repo, name);
+
+        let body = serde_json::json!({
+            "new_name": new_name,
+            "color": color,
+            "description": description,
+        });
+
+        let result: OctocrabResult<()> = self.client.patch(&url, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    name = name,
+                    "Successfully updated label"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to update label", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 
-    async fn delete_label(&self, _owner: &str, _repo: &str, _name: &str) -> Result<(), Error> {
-        unimplemented!("delete_label will be implemented in phase 2")
+    async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<(), Error> {
+        info!(owner = owner, repo = repo, name = name, "Deleting label");
+
+        let url = format!("repos/{}/{}/labels/{}", owner, repo, name);
+
+        let result: OctocrabResult<()> = self.client.delete(&url, None::<&()>).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    name = name,
+                    "Successfully deleted label"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to delete label", e);
+                Err(Error::InvalidResponse)
+            }
+        }
     }
 }
 

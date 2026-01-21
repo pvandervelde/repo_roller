@@ -3,11 +3,11 @@
 //! This module provides the [`LabelManager`] component for orchestrating
 //! label operations with business logic, idempotency, and error handling.
 
-use github_client::GitHubClient;
+use github_client::{GitHubClient, RepositoryClient};
 use std::collections::HashMap;
 use tracing::{info, warn};
 
-use crate::{RepoRollerError, RepoRollerResult, SystemError};
+use crate::{GitHubError, RepoRollerError, RepoRollerResult};
 
 /// Manages label operations for repositories.
 ///
@@ -97,11 +97,56 @@ impl LabelManager {
     /// - Partial success is considered success
     pub async fn apply_labels(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _labels: &HashMap<String, config_manager::settings::LabelConfig>,
+        owner: &str,
+        repo: &str,
+        labels: &HashMap<String, config_manager::settings::LabelConfig>,
     ) -> RepoRollerResult<ApplyLabelsResult> {
-        unimplemented!("apply_labels will be implemented in phase 2")
+        info!(
+            owner = owner,
+            repo = repo,
+            label_count = labels.len(),
+            "Applying labels to repository"
+        );
+
+        let mut result = ApplyLabelsResult::new();
+
+        for (label_name, label_config) in labels {
+            info!(name = label_name, "Applying label");
+
+            match self
+                .github_client
+                .create_label(
+                    owner,
+                    repo,
+                    &label_config.name,
+                    &label_config.color,
+                    &label_config.description,
+                )
+                .await
+            {
+                Ok(()) => {
+                    info!(name = label_name, "Label applied successfully");
+                    result.created += 1;
+                }
+                Err(e) => {
+                    warn!(
+                        name = label_name,
+                        error = ?e,
+                        "Failed to apply label"
+                    );
+                    result.failed += 1;
+                    result.failed_labels.push(label_name.clone());
+                }
+            }
+        }
+
+        info!(
+            created = result.created,
+            failed = result.failed,
+            "Label application complete"
+        );
+
+        Ok(result)
     }
 
     /// Lists all labels currently defined in a repository.
@@ -118,8 +163,17 @@ impl LabelManager {
     /// # Errors
     ///
     /// Returns `RepoRollerError::System` if API call fails.
-    pub async fn list_labels(&self, _owner: &str, _repo: &str) -> RepoRollerResult<Vec<String>> {
-        unimplemented!("list_labels will be implemented in phase 2")
+    pub async fn list_labels(&self, owner: &str, repo: &str) -> RepoRollerResult<Vec<String>> {
+        match self.github_client.list_repository_labels(owner, repo).await {
+            Ok(labels) => Ok(labels),
+            Err(e) => {
+                warn!(owner = owner, repo = repo, error = ?e, "Failed to list labels");
+                Err(GitHubError::InvalidResponse {
+                    reason: format!("Failed to list labels for {}/{}: {}", owner, repo, e),
+                }
+                .into())
+            }
+        }
     }
 }
 

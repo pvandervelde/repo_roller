@@ -1009,6 +1009,9 @@ async fn test_list_webhooks_success() {
 
     let result = client.list_webhooks(owner, repo).await;
 
+    if let Err(e) = &result {
+        eprintln!("DIAGNOSTIC: list_webhooks error: {:?}", e);
+    }
     assert!(result.is_ok());
     let webhooks = result.unwrap();
     assert_eq!(webhooks.len(), 2);
@@ -1091,7 +1094,7 @@ async fn test_create_webhook_success() {
             "json",
             Some("my-secret"),
             true,
-            &["push"],
+            &[String::from("push")],
         )
         .await;
 
@@ -1134,7 +1137,15 @@ async fn test_create_webhook_failure() {
     let client = GitHubClient { client: octocrab };
 
     let result = client
-        .create_webhook(owner, repo, "invalid-url", "json", None, true, &["push"])
+        .create_webhook(
+            owner,
+            repo,
+            "invalid-url",
+            "json",
+            None,
+            true,
+            &[String::from("push")],
+        )
         .await;
 
     assert!(result.is_err());
@@ -1187,7 +1198,7 @@ async fn test_update_webhook_success() {
             "json",
             Some("new-secret"),
             true,
-            &["push", "pull_request"],
+            &[String::from("push"), String::from("pull_request")],
         )
         .await;
 
@@ -1233,7 +1244,7 @@ async fn test_update_webhook_not_found() {
             "json",
             None,
             true,
-            &["push"],
+            &[String::from("push")],
         )
         .await;
 
@@ -1300,9 +1311,9 @@ async fn test_update_label_success() {
             owner,
             repo,
             label_name,
-            Some("critical-bug"),
-            Some("ff0000"),
-            Some("Critical bugs requiring immediate attention"),
+            "critical-bug",
+            "ff0000",
+            "Critical bugs requiring immediate attention",
         )
         .await;
 

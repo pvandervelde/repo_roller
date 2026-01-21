@@ -3,10 +3,10 @@
 //! This module provides the [`WebhookManager`] component for orchestrating
 //! webhook operations with validation, idempotency, and secret management.
 
-use github_client::{GitHubClient, Webhook};
+use github_client::{GitHubClient, RepositoryClient, Webhook};
 use tracing::{info, warn};
 
-use crate::{RepoRollerError, RepoRollerResult, ValidationError};
+use crate::{GitHubError, RepoRollerError, RepoRollerResult, ValidationError};
 
 /// Manages webhook operations for repositories.
 ///
@@ -102,11 +102,105 @@ impl WebhookManager {
     /// Webhook secrets are handled securely and never logged.
     pub async fn apply_webhooks(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _webhooks: &[config_manager::settings::WebhookConfig],
+        owner: &str,
+        repo: &str,
+        webhooks: &[config_manager::settings::WebhookConfig],
     ) -> RepoRollerResult<ApplyWebhooksResult> {
-        unimplemented!("apply_webhooks will be implemented in phase 2")
+        info!(
+            owner = owner,
+            repo = repo,
+            webhook_count = webhooks.len(),
+            "Applying webhooks to repository"
+        );
+
+        let mut result = ApplyWebhooksResult::new();
+
+        // First, validate all webhook configurations
+        for webhook_config in webhooks {
+            if let Err(e) = self.validate_webhook_config(webhook_config) {
+                warn!(
+                    url = webhook_config.url,
+                    error = ?e,
+                    "Invalid webhook configuration"
+                );
+                result.failed += 1;
+                result.failed_webhooks.push(webhook_config.url.clone());
+                continue;
+            }
+        }
+
+        // If all webhooks failed validation, return early
+        if result.failed == webhooks.len() {
+            return Ok(result);
+        }
+
+        // List existing webhooks to check for duplicates
+        let existing_webhooks = match self.github_client.list_webhooks(owner, repo).await {
+            Ok(webhooks) => webhooks,
+            Err(e) => {
+                warn!(
+                    owner = owner,
+                    repo = repo,
+                    error = ?e,
+                    "Failed to list existing webhooks"
+                );
+                Vec::new() // Continue with empty list if listing fails
+            }
+        };
+
+        // Apply each webhook
+        for webhook_config in webhooks {
+            // Skip if already failed validation
+            if result.failed_webhooks.contains(&webhook_config.url) {
+                continue;
+            }
+
+            info!(url = "[REDACTED]", "Applying webhook");
+
+            // Check if webhook with same URL already exists
+            if let Some(existing) = existing_webhooks
+                .iter()
+                .find(|w| w.config.url == webhook_config.url)
+            {
+                info!(webhook_id = existing.id, "Webhook already exists, skipping");
+                result.skipped += 1;
+                continue;
+            }
+
+            // Create new webhook
+            match self
+                .github_client
+                .create_webhook(
+                    owner,
+                    repo,
+                    &webhook_config.url,
+                    &webhook_config.content_type,
+                    webhook_config.secret.as_deref(),
+                    webhook_config.active,
+                    &webhook_config.events,
+                )
+                .await
+            {
+                Ok(webhook) => {
+                    info!(webhook_id = webhook.id, "Webhook created successfully");
+                    result.created += 1;
+                }
+                Err(e) => {
+                    warn!(error = ?e, "Failed to create webhook");
+                    result.failed += 1;
+                    result.failed_webhooks.push(webhook_config.url.clone());
+                }
+            }
+        }
+
+        info!(
+            created = result.created,
+            skipped = result.skipped,
+            failed = result.failed,
+            "Webhook application complete"
+        );
+
+        Ok(result)
     }
 
     /// Lists all webhooks currently configured in a repository.
@@ -123,8 +217,17 @@ impl WebhookManager {
     /// # Errors
     ///
     /// Returns `RepoRollerError::System` if API call fails.
-    pub async fn list_webhooks(&self, _owner: &str, _repo: &str) -> RepoRollerResult<Vec<Webhook>> {
-        unimplemented!("list_webhooks will be implemented in phase 2")
+    pub async fn list_webhooks(&self, owner: &str, repo: &str) -> RepoRollerResult<Vec<Webhook>> {
+        match self.github_client.list_webhooks(owner, repo).await {
+            Ok(webhooks) => Ok(webhooks),
+            Err(e) => {
+                warn!(owner = owner, repo = repo, error = ?e, "Failed to list webhooks");
+                Err(GitHubError::InvalidResponse {
+                    reason: format!("Failed to list webhooks for {}/{}: {}", owner, repo, e),
+                }
+                .into())
+            }
+        }
     }
 
     /// Validates webhook configuration before applying.
@@ -149,9 +252,47 @@ impl WebhookManager {
     /// - Secret (if provided) must meet minimum length requirements
     pub fn validate_webhook_config(
         &self,
-        _config: &config_manager::settings::WebhookConfig,
+        config: &config_manager::settings::WebhookConfig,
     ) -> RepoRollerResult<()> {
-        unimplemented!("validate_webhook_config will be implemented in phase 2")
+        // Validate URL is HTTPS
+        if !config.url.starts_with("https://") {
+            return Err(ValidationError::InvalidFormat {
+                field: "url".to_string(),
+                reason: "Webhook URL must use HTTPS".to_string(),
+            }
+            .into());
+        }
+
+        // Validate events list is not empty
+        if config.events.is_empty() {
+            return Err(ValidationError::InvalidFormat {
+                field: "events".to_string(),
+                reason: "Webhook must have at least one event".to_string(),
+            }
+            .into());
+        }
+
+        // Validate content type
+        if config.content_type != "json" && config.content_type != "form" {
+            return Err(ValidationError::InvalidFormat {
+                field: "content_type".to_string(),
+                reason: "Content type must be 'json' or 'form'".to_string(),
+            }
+            .into());
+        }
+
+        // Validate secret length if provided
+        if let Some(secret) = &config.secret {
+            if secret.len() < 8 {
+                return Err(ValidationError::InvalidFormat {
+                    field: "secret".to_string(),
+                    reason: "Webhook secret must be at least 8 characters".to_string(),
+                }
+                .into());
+            }
+        }
+
+        Ok(())
     }
 }
 
