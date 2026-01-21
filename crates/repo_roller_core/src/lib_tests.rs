@@ -323,6 +323,81 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         // Not implemented in test mock - return None (no protection)
         Ok(None)
     }
+
+    async fn list_webhooks(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<github_client::Webhook>, GitHubError> {
+        // Not implemented in test mock - return empty webhooks
+        Ok(vec![])
+    }
+
+    async fn create_webhook(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _url: &str,
+        _content_type: &str,
+        _secret: Option<&str>,
+        _active: bool,
+        _events: &[String],
+    ) -> Result<github_client::Webhook, GitHubError> {
+        // Not implemented in test mock - return error
+        Err(GitHubError::AuthError(
+            "Not implemented in test".to_string(),
+        ))
+    }
+
+    async fn update_webhook(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _webhook_id: u64,
+        _url: &str,
+        _content_type: &str,
+        _secret: Option<&str>,
+        _active: bool,
+        _events: &[String],
+    ) -> Result<github_client::Webhook, GitHubError> {
+        // Not implemented in test mock - return error
+        Err(GitHubError::AuthError(
+            "Not implemented in test".to_string(),
+        ))
+    }
+
+    async fn delete_webhook(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _webhook_id: u64,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return Ok
+        Ok(())
+    }
+
+    async fn update_label(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _name: &str,
+        _new_name: &str,
+        _color: &str,
+        _description: &str,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return Ok
+        Ok(())
+    }
+
+    async fn delete_label(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _name: &str,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return Ok
+        Ok(())
+    }
 }
 
 /// Configuration for mock repository client behavior

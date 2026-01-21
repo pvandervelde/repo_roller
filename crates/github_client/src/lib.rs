@@ -23,6 +23,7 @@ pub mod installation;
 pub mod label;
 pub mod repository;
 pub mod user;
+pub mod webhook;
 
 // Re-export types for convenient access
 pub use branch_protection::BranchProtection;
@@ -33,6 +34,7 @@ pub use installation::{Account, Installation};
 pub use label::Label;
 pub use repository::{Organization, Repository};
 pub use user::User;
+pub use webhook::{Webhook, WebhookDetails, WebhookEvent};
 
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;
@@ -1323,6 +1325,62 @@ impl RepositoryClient for GitHubClient {
 
         Ok(all_files)
     }
+
+    async fn list_webhooks(&self, _owner: &str, _repo: &str) -> Result<Vec<Webhook>, Error> {
+        unimplemented!("list_webhooks will be implemented in phase 2")
+    }
+
+    async fn create_webhook(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _url: &str,
+        _content_type: &str,
+        _secret: Option<&str>,
+        _active: bool,
+        _events: &[String],
+    ) -> Result<Webhook, Error> {
+        unimplemented!("create_webhook will be implemented in phase 2")
+    }
+
+    async fn update_webhook(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _webhook_id: u64,
+        _url: &str,
+        _content_type: &str,
+        _secret: Option<&str>,
+        _active: bool,
+        _events: &[String],
+    ) -> Result<Webhook, Error> {
+        unimplemented!("update_webhook will be implemented in phase 2")
+    }
+
+    async fn delete_webhook(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _webhook_id: u64,
+    ) -> Result<(), Error> {
+        unimplemented!("delete_webhook will be implemented in phase 2")
+    }
+
+    async fn update_label(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _name: &str,
+        _new_name: &str,
+        _color: &str,
+        _description: &str,
+    ) -> Result<(), Error> {
+        unimplemented!("update_label will be implemented in phase 2")
+    }
+
+    async fn delete_label(&self, _owner: &str, _repo: &str, _name: &str) -> Result<(), Error> {
+        unimplemented!("delete_label will be implemented in phase 2")
+    }
 }
 
 /// JWT claims structure for GitHub App authentication.
@@ -1768,6 +1826,183 @@ pub trait RepositoryClient: Send + Sync {
     /// # }
     /// ```
     async fn list_repository_files(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error>;
+
+    /// Lists all webhooks configured for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    ///
+    /// # Returns
+    ///
+    /// Vector of `Webhook` structs containing webhook details.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::InvalidResponse` - API call failed or response parsing failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// GET /repos/{owner}/{repo}/hooks
+    async fn list_webhooks(&self, owner: &str, repo: &str) -> Result<Vec<Webhook>, Error>;
+
+    /// Creates a webhook in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `url` - Webhook URL
+    /// * `content_type` - Content type ("json" or "form")
+    /// * `secret` - Optional webhook secret
+    /// * `active` - Whether the webhook is active
+    /// * `events` - Events that trigger the webhook
+    ///
+    /// # Returns
+    ///
+    /// The created `Webhook` with its ID and configuration.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error (duplicate webhook, invalid config, etc.)
+    ///
+    /// # Behavior
+    ///
+    /// This method does NOT check for existing webhooks - caller should verify
+    /// uniqueness if needed (e.g., check if webhook with same URL already exists).
+    ///
+    /// # GitHub API
+    ///
+    /// POST /repos/{owner}/{repo}/hooks
+    async fn create_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
+    ) -> Result<Webhook, Error>;
+
+    /// Updates an existing webhook in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `webhook_id` - GitHub webhook ID (from list_webhooks or create_webhook)
+    /// * `url` - Webhook URL
+    /// * `content_type` - Content type ("json" or "form")
+    /// * `secret` - Optional webhook secret
+    /// * `active` - Whether the webhook is active
+    /// * `events` - Events that trigger the webhook
+    ///
+    /// # Returns
+    ///
+    /// The updated `Webhook` with its configuration.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Webhook ID does not exist
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// PATCH /repos/{owner}/{repo}/hooks/{hook_id}
+    async fn update_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        webhook_id: u64,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
+    ) -> Result<Webhook, Error>;
+
+    /// Deletes a webhook from a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `webhook_id` - GitHub webhook ID
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful deletion
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Webhook does not exist (may be considered success)
+    /// * `Error::InvalidResponse` - API call failed
+    ///
+    /// # GitHub API
+    ///
+    /// DELETE /repos/{owner}/{repo}/hooks/{hook_id}
+    async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: u64) -> Result<(), Error>;
+
+    /// Updates an existing label in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `name` - Current label name
+    /// * `new_name` - New label name (if renaming, otherwise same as `name`)
+    /// * `color` - New label color (hex code without #)
+    /// * `description` - New label description
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful update
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Label does not exist
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// PATCH /repos/{owner}/{repo}/labels/{name}
+    async fn update_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        new_name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error>;
+
+    /// Deletes a label from a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `name` - Label name to delete
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful deletion
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Label does not exist (may be considered success)
+    /// * `Error::InvalidResponse` - API call failed
+    ///
+    /// # GitHub API
+    ///
+    /// DELETE /repos/{owner}/{repo}/labels/{name}
+    async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<(), Error>;
 }
 
 /// Settings that can be updated for an existing repository.
