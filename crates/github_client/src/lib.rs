@@ -69,7 +69,7 @@ mod tests;
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitHubClient {
     /// The underlying Octocrab client used for API requests
     client: Octocrab,

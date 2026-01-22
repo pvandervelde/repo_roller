@@ -50,6 +50,7 @@
 //! ```
 
 use crate::errors::{GitHubError, RepoRollerError, RepoRollerResult, SystemError};
+use crate::{LabelManager, WebhookManager};
 use github_client::{GitHubClient, RepositoryClient};
 use tracing::{debug, error, info, warn};
 
@@ -187,18 +188,17 @@ pub(crate) async fn resolve_organization_configuration(
 ///
 /// The function applies the following configuration elements:
 ///
-/// ### Labels (Future Implementation)
+/// ### Labels
 /// - Creates repository labels with specified colors and descriptions
-/// - Currently logged but not yet implemented (requires GitHubClient enhancement)
+/// - Uses LabelManager for orchestration (idempotent, handles partial failures)
 ///
-/// ### Webhooks (Future Implementation)
+/// ### Webhooks
 /// - Configures repository webhooks for events
-/// - Currently logged but not yet implemented (requires GitHubClient enhancement)
+/// - Uses WebhookManager for orchestration (validates, deduplicates, secure)
 ///
 /// ### Custom Properties
 /// - Sets custom repository properties including repository type
-/// - Fully implemented and functional
-/// - Uses GitHub's custom properties API
+/// - Uses GitHub's custom properties API directly
 ///
 /// ## Parameters
 ///
@@ -214,6 +214,7 @@ pub(crate) async fn resolve_organization_configuration(
 /// ## Errors
 ///
 /// Returns `RepoRollerError` if:
+/// - Label/webhook operations fail
 /// - Custom properties API call fails
 /// - Network errors occur
 /// - Authentication is insufficient
@@ -233,11 +234,14 @@ pub(crate) async fn resolve_organization_configuration(
 /// println!("Configuration applied successfully");
 /// ```
 ///
+/// ## Current Implementation
+///
+/// - Labels: Applied via LabelManager (idempotent, tracks results)
+/// - Webhooks: Applied via WebhookManager (validates, deduplicates, secure)
+/// - Custom Properties: Applied via GitHub API (including repository type)
+///
 /// ## Future Enhancements
 ///
-/// The following features are planned:
-/// - Label creation via GitHubClient::create_label()
-/// - Webhook creation via GitHubClient::create_webhook()
 /// - Branch protection rules application
 pub(crate) async fn apply_repository_configuration(
     installation_repo_client: &GitHubClient,
@@ -250,42 +254,47 @@ pub(crate) async fn apply_repository_configuration(
         owner, repo_name
     );
 
-    // Apply labels
+    // Apply labels using LabelManager
     if !merged_config.labels.is_empty() {
-        debug!("Creating {} labels", merged_config.labels.len());
-        for (label_name, label_config) in &merged_config.labels {
-            info!("Creating label: {} -> {:?}", label_name, label_config);
-            installation_repo_client
-                .create_label(
-                    owner,
-                    repo_name,
-                    &label_config.name,
-                    &label_config.color,
-                    &label_config.description,
-                )
-                .await
-                .map_err(|e| {
-                    error!("Failed to create label '{}': {}", label_name, e);
-                    RepoRollerError::System(SystemError::Internal {
-                        reason: format!("Failed to create label '{}': {}", label_name, e),
-                    })
-                })?;
+        let label_manager = LabelManager::new(installation_repo_client.clone());
+        let label_result = label_manager
+            .apply_labels(owner, repo_name, &merged_config.labels)
+            .await?;
+
+        info!(
+            "Label application complete: created={}, updated={}, failed={}, skipped={}",
+            label_result.created, label_result.updated, label_result.failed, label_result.skipped
+        );
+
+        if label_result.failed > 0 {
+            warn!(
+                "Failed to apply {} label(s): {:?}",
+                label_result.failed, label_result.failed_labels
+            );
         }
-        info!("Successfully created {} labels", merged_config.labels.len());
     }
 
-    // Apply webhooks
+    // Apply webhooks using WebhookManager
     if !merged_config.webhooks.is_empty() {
-        debug!("Creating {} webhooks", merged_config.webhooks.len());
-        // TODO: Implement webhook creation via GitHub API
-        // This requires adding create_webhook() method to GitHubClient
-        // Tracked in separate task/issue
-        for webhook in &merged_config.webhooks {
-            info!("Webhook to create: {:?}", webhook);
-        }
-        warn!(
-            "Webhook creation not yet implemented - requires GitHubClient::create_webhook() method"
+        let webhook_manager = WebhookManager::new(installation_repo_client.clone());
+        let webhook_result = webhook_manager
+            .apply_webhooks(owner, repo_name, &merged_config.webhooks)
+            .await?;
+
+        info!(
+            "Webhook application complete: created={}, updated={}, failed={}, skipped={}",
+            webhook_result.created,
+            webhook_result.updated,
+            webhook_result.failed,
+            webhook_result.skipped
         );
+
+        if webhook_result.failed > 0 {
+            warn!(
+                "Failed to apply {} webhook(s): {:?}",
+                webhook_result.failed, webhook_result.failed_webhooks
+            );
+        }
     }
 
     // Apply custom properties (including repository type)
