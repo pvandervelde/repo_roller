@@ -201,6 +201,23 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
         "Empty repository should not have README.md even with template"
     );
 
+    // Verify labels were created from configuration
+    use github_client::RepositoryClient;
+    let labels = verification_client
+        .list_repository_labels(&org, &repo_name)
+        .await?;
+
+    tracing::info!("Repository has {} labels", labels.len());
+    assert!(
+        !labels.is_empty(),
+        "Repository should have labels from configuration"
+    );
+
+    // Verify webhooks can be listed (configuration may or may not have webhooks)
+    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+    tracing::info!("Repository has {} webhooks", webhooks.len());
+    // Note: We don't assert webhook count as it depends on configuration
+
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
         .await
@@ -293,6 +310,22 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
         "Repository should not have .gitignore when not requested"
     );
 
+    // Verify labels were created from configuration
+    use github_client::RepositoryClient;
+    let labels = verification_client
+        .list_repository_labels(&org, &repo_name)
+        .await?;
+
+    tracing::info!("Repository has {} labels", labels.len());
+    assert!(
+        !labels.is_empty(),
+        "Repository should have labels from global configuration"
+    );
+
+    // Verify webhooks can be listed
+    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+    tracing::info!("Repository has {} webhooks", webhooks.len());
+
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
         .await
@@ -383,6 +416,22 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
         !gitignore_content.is_empty(),
         ".gitignore should have content"
     );
+
+    // Verify labels were created from configuration
+    use github_client::RepositoryClient;
+    let labels = verification_client
+        .list_repository_labels(&org, &repo_name)
+        .await?;
+
+    tracing::info!("Repository has {} labels", labels.len());
+    assert!(
+        !labels.is_empty(),
+        "Repository should have labels from global configuration"
+    );
+
+    // Verify webhooks can be listed
+    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+    tracing::info!("Repository has {} webhooks", webhooks.len());
 
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
