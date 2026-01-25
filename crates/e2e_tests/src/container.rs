@@ -356,6 +356,41 @@ impl ApiContainer {
 
         Ok(())
     }
+
+    /// Get container logs for debugging
+    pub async fn get_logs(&self) -> Result<String> {
+        use bollard::container::LogsOptions;
+        use futures_util::stream::StreamExt;
+
+        let container_id = self
+            .container_id
+            .as_ref()
+            .context("Container not running")?;
+
+        let mut output = String::new();
+        let options = LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            tail: "all".to_string(),
+            ..Default::default()
+        };
+
+        let mut stream = self.docker.logs(container_id, Some(options));
+
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(log_output) => {
+                    output.push_str(&log_output.to_string());
+                }
+                Err(e) => {
+                    tracing::warn!("Error reading logs: {}", e);
+                    break;
+                }
+            }
+        }
+
+        Ok(output)
+    }
 }
 
 impl Drop for ApiContainer {

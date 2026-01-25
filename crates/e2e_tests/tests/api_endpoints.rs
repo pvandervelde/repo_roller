@@ -209,6 +209,21 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     tracing::info!("Repository has {} labels", labels.len());
     
+    // If labels are missing, capture container logs for debugging
+    if labels.is_empty() {
+        tracing::error!("❌ No labels found! Capturing container logs for debugging...");
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
+    
     // Expected labels from global/standard-labels.toml
     let expected_global_labels = vec![
         "bug", "enhancement", "documentation", "good-first-issue",
@@ -378,6 +393,21 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
 
     tracing::info!("Repository has {} labels", labels.len());
     
+    // If labels are missing, capture container logs for debugging
+    if labels.is_empty() {
+        tracing::error!("❌ No labels found! Capturing container logs for debugging...");
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
+    
     // Expected labels from global/standard-labels.toml (no template used in custom init)
     let expected_global_labels = vec![
         "bug", "enhancement", "documentation", "good-first-issue",
@@ -517,6 +547,21 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
         .await?;
 
     tracing::info!("Repository has {} labels", labels.len());
+    
+    // If labels are missing, capture container logs for debugging
+    if labels.is_empty() {
+        tracing::error!("❌ No labels found! Capturing container logs for debugging...");
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
     
     // Expected labels from global/standard-labels.toml (no template used in custom init)
     let expected_global_labels = vec![
