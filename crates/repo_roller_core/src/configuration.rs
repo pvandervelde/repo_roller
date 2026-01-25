@@ -134,6 +134,9 @@ pub(crate) async fn resolve_organization_configuration(
 
     info!("Resolving organization configuration");
 
+    info!("Creating metadata provider for repository discovery");
+    info!("Metadata repository name: {}", metadata_repository_name);
+    
     // Create a separate client for the metadata provider
     let metadata_client = github_client::create_token_client(installation_token).map_err(|e| {
         error!("Failed to create metadata provider client: {}", e);
@@ -148,6 +151,8 @@ pub(crate) async fn resolve_organization_configuration(
         metadata_repo_client,
         metadata_provider_config,
     ));
+    
+    info!("Metadata provider created successfully");
 
     // Create template loader for template configuration resolution
     // Template loader needs Arc<GitHubClient> so create a separate client instance
@@ -161,11 +166,14 @@ pub(crate) async fn resolve_organization_configuration(
 
     let config_context = ConfigurationContext::new(organization, template_name);
 
+    info!("Calling settings_manager.resolve_configuration with context: org={}, template={}, team={:?}, repo_type={:?}",
+           organization, template_name, config_context.team(), config_context.repository_type());
+    
     let merged_config = settings_manager
         .resolve_configuration(&config_context)
         .await
         .or_else(|e: config_manager::ConfigurationError| -> config_manager::ConfigurationResult<config_manager::MergedConfiguration> {
-            warn!(
+            error!(
                 "Failed to resolve organization configuration: {}. Using global defaults.",
                 e
             );
@@ -174,7 +182,17 @@ pub(crate) async fn resolve_organization_configuration(
             Ok(config_manager::MergedConfiguration::default())
         })?;
 
-    info!("Organization configuration resolved successfully");
+    info!(
+        "Organization configuration resolved successfully: labels={}, webhooks={}",
+        merged_config.labels.len(),
+        merged_config.webhooks.len()
+    );
+    if !merged_config.labels.is_empty() {
+        info!(
+            "Resolved labels: {:?}",
+            merged_config.labels.keys().collect::<Vec<_>>()
+        );
+    }
     Ok(merged_config)
 }
 
@@ -255,7 +273,17 @@ pub(crate) async fn apply_repository_configuration(
     );
 
     // Apply labels using LabelManager
+    info!(
+        "Checking labels to apply: total={}, empty={}",
+        merged_config.labels.len(),
+        merged_config.labels.is_empty()
+    );
+    
     if !merged_config.labels.is_empty() {
+        info!(
+            "Labels to apply: {:?}",
+            merged_config.labels.keys().collect::<Vec<_>>()
+        );
         let label_manager = LabelManager::new(installation_repo_client.clone());
         let label_result = label_manager
             .apply_labels(owner, repo_name, &merged_config.labels)
