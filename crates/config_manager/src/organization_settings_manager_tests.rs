@@ -446,3 +446,172 @@ async fn test_resolve_configuration_is_consistent() {
         "Configurations should be consistent"
     );
 }
+
+// ============================================================================
+// New Tests: Empty template handling should preserve labels
+// ============================================================================
+
+use crate::TemplateLoader as _; // ensure TemplateLoader symbol available
+
+/// Template repository mock that returns an error when the template name is empty.
+#[derive(Debug, Clone)]
+struct EmptySensitiveTemplateRepository;
+
+#[async_trait]
+impl TemplateRepository for EmptySensitiveTemplateRepository {
+    async fn load_template_config(
+        &self,
+        _org: &str,
+        template_name: &str,
+    ) -> ConfigurationResult<TemplateConfig> {
+        if template_name.is_empty() {
+            return Err(ConfigurationError::TemplateNotFound {
+                org: "test-org".to_string(),
+                template: "".to_string(),
+            });
+        }
+
+        Ok(TemplateConfig {
+            template: crate::template_config::TemplateMetadata {
+                name: template_name.to_string(),
+                description: format!("Test template: {}", template_name),
+                author: "Test Author".to_string(),
+                tags: vec![],
+            },
+            repository_type: None,
+            variables: None,
+            repository: None,
+            pull_requests: None,
+            branch_protection: None,
+            labels: None,
+            webhooks: None,
+            environments: None,
+            github_apps: None,
+            default_visibility: None,
+            templating: None,
+        })
+    }
+
+    async fn template_exists(&self, _org: &str, _template_name: &str) -> ConfigurationResult<bool> {
+        Ok(true)
+    }
+}
+
+/// Create a test template loader that errors on empty template names.
+fn create_empty_sensitive_template_loader() -> Arc<crate::TemplateLoader> {
+    Arc::new(crate::TemplateLoader::new(Arc::new(
+        EmptySensitiveTemplateRepository,
+    )))
+}
+
+/// Metadata provider that returns a non-empty set of standard labels.
+#[derive(Debug, Clone)]
+struct LabelledMetadataProvider;
+
+#[async_trait]
+impl MetadataRepositoryProvider for LabelledMetadataProvider {
+    async fn discover_metadata_repository(
+        &self,
+        _organization: &str,
+    ) -> ConfigurationResult<MetadataRepository> {
+        Ok(MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: ".reporoller-test".to_string(),
+            discovery_method: crate::metadata_provider::DiscoveryMethod::ConfigurationBased {
+                repository_name: ".reporoller-test".to_string(),
+            },
+            last_updated: chrono::Utc::now(),
+        })
+    }
+
+    async fn load_global_defaults(
+        &self,
+        _repository: &MetadataRepository,
+    ) -> ConfigurationResult<GlobalDefaults> {
+        Ok(GlobalDefaults::default())
+    }
+
+    async fn list_templates(&self, _org: &str) -> ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn load_template_configuration(
+        &self,
+        _org: &str,
+        _template_name: &str,
+    ) -> ConfigurationResult<crate::template_config::TemplateConfig> {
+        Err(ConfigurationError::FileNotFound {
+            path: "template.toml".to_string(),
+        })
+    }
+
+    async fn load_team_configuration(
+        &self,
+        _repository: &MetadataRepository,
+        _team_name: &str,
+    ) -> ConfigurationResult<Option<TeamConfig>> {
+        Ok(None)
+    }
+
+    async fn load_repository_type_configuration(
+        &self,
+        _repository: &MetadataRepository,
+        _repository_type: &str,
+    ) -> ConfigurationResult<Option<RepositoryTypeConfig>> {
+        Ok(None)
+    }
+
+    async fn load_standard_labels(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<std::collections::HashMap<String, crate::settings::LabelConfig>> {
+        let mut labels = std::collections::HashMap::new();
+        labels.insert(
+            "bug".to_string(),
+            crate::settings::LabelConfig {
+                name: "bug".to_string(),
+                color: "d73a4a".to_string(),
+                description: "Something isn't working".to_string(),
+            },
+        );
+        Ok(labels)
+    }
+
+    async fn validate_repository_structure(
+        &self,
+        _repository: &MetadataRepository,
+    ) -> ConfigurationResult<()> {
+        Ok(())
+    }
+
+    async fn list_available_repository_types(
+        &self,
+        _repository: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+}
+
+/// Verify that when no template is specified (empty template name),
+/// configuration resolution succeeds and preserves standard labels.
+#[tokio::test]
+async fn test_resolve_configuration_with_empty_template_preserves_standard_labels() {
+    let provider = Arc::new(LabelledMetadataProvider);
+    let manager =
+        OrganizationSettingsManager::new(provider, create_empty_sensitive_template_loader());
+
+    // Empty template name simulates non-template creation modes
+    let context = crate::ConfigurationContext::new("test-org", "");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(
+        result.is_ok(),
+        "Resolution should succeed without a template"
+    );
+
+    let merged = result.unwrap();
+    assert!(
+        merged.labels.contains_key("bug"),
+        "Standard labels should be preserved when no template is provided"
+    );
+}
