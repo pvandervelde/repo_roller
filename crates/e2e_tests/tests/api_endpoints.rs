@@ -209,21 +209,6 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     tracing::info!("Repository has {} labels", labels.len());
 
-    // If labels are missing, capture container logs for debugging
-    if labels.is_empty() {
-        tracing::error!("❌ No labels found! Capturing container logs for debugging...");
-        match container.get_logs().await {
-            Ok(logs) => {
-                eprintln!("\n========== CONTAINER LOGS ==========");
-                eprintln!("{}", logs);
-                eprintln!("====================================\n");
-            }
-            Err(e) => {
-                tracing::warn!("Failed to capture container logs: {}", e);
-            }
-        }
-    }
-
     // Expected labels from global/standard-labels.toml
     let expected_global_labels = vec![
         "bug",
@@ -240,6 +225,33 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     // Expected template-specific labels from template-test-basic
     let expected_template_labels = vec!["template-feature", "template-bug"];
+
+    // Check if any labels are missing and capture logs BEFORE asserting
+    let mut all_expected = expected_global_labels.clone();
+    all_expected.extend(expected_template_labels.iter().map(|s| *s));
+    let missing_labels: Vec<_> = all_expected
+        .iter()
+        .filter(|label| !labels.contains(&label.to_string()))
+        .collect();
+
+    if !missing_labels.is_empty() {
+        tracing::error!(
+            "❌ {} labels missing: {:?}. Found: {:?}. Capturing container logs...",
+            missing_labels.len(),
+            missing_labels,
+            labels
+        );
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_create_empty_repository_with_template_settings) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
 
     for label in &expected_global_labels {
         assert!(
@@ -419,21 +431,6 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
 
     tracing::info!("Repository has {} labels", labels.len());
 
-    // If labels are missing, capture container logs for debugging
-    if labels.is_empty() {
-        tracing::error!("❌ No labels found! Capturing container logs for debugging...");
-        match container.get_logs().await {
-            Ok(logs) => {
-                eprintln!("\n========== CONTAINER LOGS ==========");
-                eprintln!("{}", logs);
-                eprintln!("====================================\n");
-            }
-            Err(e) => {
-                tracing::warn!("Failed to capture container logs: {}", e);
-            }
-        }
-    }
-
     // Expected labels from global/standard-labels.toml (no template used in custom init)
     let expected_global_labels = vec![
         "bug",
@@ -447,6 +444,31 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
         "invalid",
         "dependencies",
     ];
+
+    // Check if any labels are missing and capture logs BEFORE asserting
+    let missing_labels: Vec<_> = expected_global_labels
+        .iter()
+        .filter(|label| !labels.contains(&label.to_string()))
+        .collect();
+
+    if !missing_labels.is_empty() {
+        tracing::error!(
+            "❌ {} labels missing: {:?}. Found: {:?}. Capturing container logs...",
+            missing_labels.len(),
+            missing_labels,
+            labels
+        );
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_create_custom_init_readme_only) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
 
     for label in &expected_global_labels {
         assert!(
@@ -591,21 +613,6 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
 
     tracing::info!("Repository has {} labels", labels.len());
 
-    // If labels are missing, capture container logs for debugging
-    if labels.is_empty() {
-        tracing::error!("❌ No labels found! Capturing container logs for debugging...");
-        match container.get_logs().await {
-            Ok(logs) => {
-                eprintln!("\n========== CONTAINER LOGS ==========");
-                eprintln!("{}", logs);
-                eprintln!("====================================\n");
-            }
-            Err(e) => {
-                tracing::warn!("Failed to capture container logs: {}", e);
-            }
-        }
-    }
-
     // Expected labels from global/standard-labels.toml (no template used in custom init)
     let expected_global_labels = vec![
         "bug",
@@ -619,6 +626,31 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
         "invalid",
         "dependencies",
     ];
+
+    // Check if any labels are missing and capture logs BEFORE asserting
+    let missing_labels: Vec<_> = expected_global_labels
+        .iter()
+        .filter(|label| !labels.contains(&label.to_string()))
+        .collect();
+
+    if !missing_labels.is_empty() {
+        tracing::error!(
+            "❌ {} labels missing: {:?}. Found: {:?}. Capturing container logs...",
+            missing_labels.len(),
+            missing_labels,
+            labels
+        );
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_create_custom_init_both_files) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
 
     for label in &expected_global_labels {
         assert!(
