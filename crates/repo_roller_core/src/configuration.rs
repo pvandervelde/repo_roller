@@ -136,7 +136,7 @@ pub(crate) async fn resolve_organization_configuration(
 
     info!("Creating metadata provider for repository discovery");
     info!("Metadata repository name: {}", metadata_repository_name);
-    
+
     // Create a separate client for the metadata provider
     let metadata_client = github_client::create_token_client(installation_token).map_err(|e| {
         error!("Failed to create metadata provider client: {}", e);
@@ -151,7 +151,7 @@ pub(crate) async fn resolve_organization_configuration(
         metadata_repo_client,
         metadata_provider_config,
     ));
-    
+
     info!("Metadata provider created successfully");
 
     // Create template loader for template configuration resolution
@@ -168,7 +168,7 @@ pub(crate) async fn resolve_organization_configuration(
 
     info!("Calling settings_manager.resolve_configuration with context: org={}, template={}, team={:?}, repo_type={:?}",
            organization, template_name, config_context.team(), config_context.repository_type());
-    
+
     let merged_config = settings_manager
         .resolve_configuration(&config_context)
         .await
@@ -278,7 +278,7 @@ pub(crate) async fn apply_repository_configuration(
         merged_config.labels.len(),
         merged_config.labels.is_empty()
     );
-    
+
     if !merged_config.labels.is_empty() {
         info!(
             "Labels to apply: {:?}",

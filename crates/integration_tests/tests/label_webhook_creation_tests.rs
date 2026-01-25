@@ -14,9 +14,7 @@
 
 use anyhow::Result;
 use auth_handler::{GitHubAuthService, UserAuthenticationService};
-use config_manager::{
-    ConfigBasedPolicyProvider, GitHubMetadataProvider, MetadataProviderConfig,
-};
+use config_manager::{ConfigBasedPolicyProvider, GitHubMetadataProvider, MetadataProviderConfig};
 use github_client::{
     create_token_client, GitHubApiEnvironmentDetector, GitHubClient, RepositoryClient,
     RepositoryCreatePayload,
@@ -91,10 +89,8 @@ async fn test_labels_created_from_global_config() -> Result<()> {
     let (auth_service, github_client, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!(
-        "integration-test-labels-{}",
-        uuid::Uuid::new_v4()
-    ))?;
+    let repo_name =
+        RepositoryName::new(&format!("integration-test-labels-{}", uuid::Uuid::new_v4()))?;
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
@@ -183,15 +179,13 @@ async fn test_webhook_creation_via_manager() -> Result<()> {
 
     // Apply webhooks using WebhookManager
     let webhook_manager = WebhookManager::new(github_client.clone());
-    let webhook_configs = vec![
-        config_manager::settings::WebhookConfig {
-            url: "https://httpbin.org/post".to_string(),
-            content_type: "json".to_string(),
-            secret: Some("test-secret-123".to_string()),
-            active: true,
-            events: vec!["push".to_string(), "pull_request".to_string()],
-        },
-    ];
+    let webhook_configs = vec![config_manager::settings::WebhookConfig {
+        url: "https://httpbin.org/post".to_string(),
+        content_type: "json".to_string(),
+        secret: Some("test-secret-123".to_string()),
+        active: true,
+        events: vec!["push".to_string(), "pull_request".to_string()],
+    }];
 
     let result = webhook_manager
         .apply_webhooks(&config.test_org, repo_name.as_ref(), &webhook_configs)
@@ -215,11 +209,7 @@ async fn test_webhook_creation_via_manager() -> Result<()> {
         webhooks[0].config.url, "https://httpbin.org/post",
         "Webhook URL should match"
     );
-    assert_eq!(
-        webhooks[0].events.len(),
-        2,
-        "Webhook should have 2 events"
-    );
+    assert_eq!(webhooks[0].events.len(), 2, "Webhook should have 2 events");
 
     // Cleanup
     let cleanup_client =
@@ -297,17 +287,17 @@ async fn test_label_application_idempotency() -> Result<()> {
 
     info!("✓ Second application: created={}", result2.created);
     // create_label is idempotent, so it should succeed again
-    assert_eq!(result2.failed, 0, "Should have no failures on re-application");
+    assert_eq!(
+        result2.failed, 0,
+        "Should have no failures on re-application"
+    );
 
     // Verify only one label exists (not duplicated)
     let labels = github_client
         .list_repository_labels(&config.test_org, repo_name.as_ref())
         .await?;
 
-    let test_label_count = labels
-        .iter()
-        .filter(|l| l == &"test-label")
-        .count();
+    let test_label_count = labels.iter().filter(|l| l == &"test-label").count();
     assert_eq!(
         test_label_count, 1,
         "Should have exactly 1 test-label (no duplicates)"
@@ -486,7 +476,11 @@ async fn test_webhook_validation_rejects_invalid() -> Result<()> {
         .list_webhooks(&config.test_org, repo_name.as_ref())
         .await?;
 
-    assert_eq!(webhooks.len(), 0, "Should have no webhooks after validation failure");
+    assert_eq!(
+        webhooks.len(),
+        0,
+        "Should have no webhooks after validation failure"
+    );
 
     // Cleanup
     let cleanup_client =
