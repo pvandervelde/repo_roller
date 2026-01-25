@@ -310,14 +310,69 @@ impl OrganizationSettingsManager {
 
         // Step 5: Load template configuration from template repository
         debug!("Loading template configuration: {}", context.template());
-        let template_config = self
-            .template_loader
-            .load_template_configuration(context.organization(), context.template())
-            .await
-            .map_err(|e| {
-                warn!("Failed to load template configuration: {}", e);
-                e
-            })?;
+        use crate::template_config::{TemplateConfig, TemplateMetadata};
+
+        let template_config: TemplateConfig = if context.template().is_empty() {
+            // No template specified: proceed with minimal template configuration
+            info!("No template specified; proceeding with minimal template configuration");
+            TemplateConfig {
+                template: TemplateMetadata {
+                    name: String::new(),
+                    description: String::new(),
+                    author: String::new(),
+                    tags: vec![],
+                },
+                repository_type: None,
+                variables: None,
+                repository: None,
+                pull_requests: None,
+                branch_protection: None,
+                labels: None,
+                webhooks: None,
+                environments: None,
+                github_apps: None,
+                default_visibility: None,
+                templating: None,
+            }
+        } else {
+            match self
+                .template_loader
+                .load_template_configuration(context.organization(), context.template())
+                .await
+            {
+                Ok(cfg) => cfg,
+                Err(crate::errors::ConfigurationError::TemplateNotFound { .. })
+                | Err(crate::errors::ConfigurationError::TemplateConfigurationMissing { .. }) => {
+                    // Missing template or configuration should not be fatal for non-template flows.
+                    warn!(
+                        "Template not found or missing configuration; using minimal template configuration"
+                    );
+                    TemplateConfig {
+                        template: TemplateMetadata {
+                            name: context.template().to_string(),
+                            description: String::new(),
+                            author: String::new(),
+                            tags: vec![],
+                        },
+                        repository_type: None,
+                        variables: None,
+                        repository: None,
+                        pull_requests: None,
+                        branch_protection: None,
+                        labels: None,
+                        webhooks: None,
+                        environments: None,
+                        github_apps: None,
+                        default_visibility: None,
+                        templating: None,
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to load template configuration: {}", e);
+                    return Err(e);
+                }
+            }
+        };
 
         if let Some(ref repo_type) = template_config.repository_type {
             info!(
