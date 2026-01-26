@@ -1329,9 +1329,9 @@ impl RepositoryClient for GitHubClient {
     async fn list_webhooks(&self, owner: &str, repo: &str) -> Result<Vec<Webhook>, Error> {
         info!(owner = owner, repo = repo, "Listing repository webhooks");
 
-        let url = format!("repos/{}/{}/hooks", owner, repo);
+        let url = format!("https://api.github.com/repos/{}/{}/hooks", owner, repo);
 
-        let result: OctocrabResult<Vec<Webhook>> = self.client.get(&url, None::<&()>).await;
+        let result: OctocrabResult<Vec<Webhook>> = self.client._get(&url, None::<&()>).await;
 
         match result {
             Ok(webhooks) => {
@@ -1367,7 +1367,7 @@ impl RepositoryClient for GitHubClient {
             "Creating repository webhook"
         );
 
-        let api_url = format!("repos/{}/{}/hooks", owner, repo);
+        let api_url = format!("https://api.github.com/repos/{}/{}/hooks", owner, repo);
 
         let mut config = serde_json::json!({
             "url": url,
@@ -1386,7 +1386,7 @@ impl RepositoryClient for GitHubClient {
             "config": config
         });
 
-        let result: OctocrabResult<Webhook> = self.client.post(&api_url, Some(&body)).await;
+        let result: OctocrabResult<Webhook> = self.client._post(&api_url, Some(&body)).await;
 
         match result {
             Ok(webhook) => {
