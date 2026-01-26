@@ -121,9 +121,9 @@ async fn test_get_template_info_real_template() -> Result<()> {
     assert!(!info.description.is_empty());
     assert!(!info.author.is_empty());
 
-    // template-test-basic only has [template] section, no optional config sections
-    // This is expected for a minimal test template
-    assert_eq!(info.configuration_sections, 0);
+    // template-test-basic has [labels] and [webhooks] sections
+    // This is expected for test templates that include basic configuration
+    assert_eq!(info.configuration_sections, 2);
 
     // Verify tags are present
     assert!(!info.tags.is_empty());
