@@ -177,6 +177,9 @@ async fn test_webhook_creation_via_manager() -> Result<()> {
 
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
+    // Wait for GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Apply webhooks using WebhookManager
     let webhook_manager = WebhookManager::new(github_client.clone());
     let webhook_configs = vec![config_manager::settings::WebhookConfig {
@@ -350,6 +353,9 @@ async fn test_webhook_application_idempotency() -> Result<()> {
         .await?;
 
     info!("✓ Test repository created: {}", repo_name.as_ref());
+
+    // Wait for GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Apply webhooks using WebhookManager
     let webhook_manager = WebhookManager::new(github_client.clone());

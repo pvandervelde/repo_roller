@@ -424,8 +424,8 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
     );
 
     // Verify labels were created from global configuration
-    // Add small delay to allow GitHub API to sync after repository creation
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    // Add delay to allow GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
     use github_client::RepositoryClient;
     let labels = match verification_client
@@ -435,8 +435,8 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
         Ok(labels) => labels,
         Err(e) => {
             tracing::warn!("Failed to list labels (may be timing issue): {}", e);
-            // Try one more time after another delay
-            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            // Try one more time after longer delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             verification_client
                 .list_repository_labels(&org, &repo_name)
                 .await?
