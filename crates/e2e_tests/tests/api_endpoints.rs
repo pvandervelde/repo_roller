@@ -424,10 +424,24 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
     );
 
     // Verify labels were created from global configuration
+    // Add small delay to allow GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     use github_client::RepositoryClient;
-    let labels = verification_client
+    let labels = match verification_client
         .list_repository_labels(&org, &repo_name)
-        .await?;
+        .await
+    {
+        Ok(labels) => labels,
+        Err(e) => {
+            tracing::warn!("Failed to list labels (may be timing issue): {}", e);
+            // Try one more time after another delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            verification_client
+                .list_repository_labels(&org, &repo_name)
+                .await?
+        }
+    };
 
     tracing::info!("Repository has {} labels", labels.len());
 
@@ -485,7 +499,15 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
     );
 
     // Verify webhooks from global configuration
-    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+    let webhooks = match verification_client.list_webhooks(&org, &repo_name).await {
+        Ok(webhooks) => webhooks,
+        Err(e) => {
+            tracing::warn!("Failed to list webhooks (may be timing issue): {}", e);
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            verification_client.list_webhooks(&org, &repo_name).await?
+        }
+    };
 
     // Expected: 1 webhook from global config (no template webhooks)
     assert_eq!(
@@ -606,10 +628,24 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
     );
 
     // Verify labels were created from global configuration
+    // Add small delay to allow GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     use github_client::RepositoryClient;
-    let labels = verification_client
+    let labels = match verification_client
         .list_repository_labels(&org, &repo_name)
-        .await?;
+        .await
+    {
+        Ok(labels) => labels,
+        Err(e) => {
+            tracing::warn!("Failed to list labels (may be timing issue): {}", e);
+            // Try one more time after another delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            verification_client
+                .list_repository_labels(&org, &repo_name)
+                .await?
+        }
+    };
 
     tracing::info!("Repository has {} labels", labels.len());
 
@@ -667,7 +703,15 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
     );
 
     // Verify webhooks from global configuration
-    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+    let webhooks = match verification_client.list_webhooks(&org, &repo_name).await {
+        Ok(webhooks) => webhooks,
+        Err(e) => {
+            tracing::warn!("Failed to list webhooks (may be timing issue): {}", e);
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            verification_client.list_webhooks(&org, &repo_name).await?
+        }
+    };
 
     // Expected: 1 webhook from global config (no template webhooks)
     assert_eq!(
