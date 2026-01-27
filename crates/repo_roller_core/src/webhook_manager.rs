@@ -6,7 +6,7 @@
 use github_client::{GitHubClient, RepositoryClient, Webhook};
 use tracing::{info, warn};
 
-use crate::{GitHubError, RepoRollerError, RepoRollerResult, ValidationError};
+use crate::{GitHubError, RepoRollerResult, ValidationError};
 
 /// Manages webhook operations for repositories.
 ///

@@ -1329,9 +1329,9 @@ impl RepositoryClient for GitHubClient {
     async fn list_webhooks(&self, owner: &str, repo: &str) -> Result<Vec<Webhook>, Error> {
         info!(owner = owner, repo = repo, "Listing repository webhooks");
 
-        let url = format!("https://api.github.com/repos/{}/{}/hooks", owner, repo);
+        let route = format!("/repos/{}/{}/hooks", owner, repo);
 
-        let result: OctocrabResult<Vec<Webhook>> = self.client._get(&url, None::<&()>).await;
+        let result: OctocrabResult<Vec<Webhook>> = self.client.get(&route, None::<&()>).await;
 
         match result {
             Ok(webhooks) => {
@@ -1367,7 +1367,7 @@ impl RepositoryClient for GitHubClient {
             "Creating repository webhook"
         );
 
-        let api_url = format!("https://api.github.com/repos/{}/{}/hooks", owner, repo);
+        let api_route = format!("/repos/{}/{}/hooks", owner, repo);
 
         let mut config = serde_json::json!({
             "url": url,
@@ -1386,7 +1386,7 @@ impl RepositoryClient for GitHubClient {
             "config": config
         });
 
-        let result: OctocrabResult<Webhook> = self.client._post(&api_url, Some(&body)).await;
+        let result: OctocrabResult<Webhook> = self.client.post(&api_route, Some(&body)).await;
 
         match result {
             Ok(webhook) => {
@@ -1423,7 +1423,7 @@ impl RepositoryClient for GitHubClient {
             "Updating repository webhook"
         );
 
-        let api_url = format!("repos/{}/{}/hooks/{}", owner, repo, webhook_id);
+        let api_route = format!("/repos/{}/{}/hooks/{}", owner, repo, webhook_id);
 
         let mut config = serde_json::json!({
             "url": url,
@@ -1441,7 +1441,7 @@ impl RepositoryClient for GitHubClient {
             "config": config
         });
 
-        let result: OctocrabResult<Webhook> = self.client.patch(&api_url, Some(&body)).await;
+        let result: OctocrabResult<Webhook> = self.client.patch(&api_route, Some(&body)).await;
 
         match result {
             Ok(webhook) => {
@@ -1468,9 +1468,9 @@ impl RepositoryClient for GitHubClient {
             "Deleting repository webhook"
         );
 
-        let url = format!("repos/{}/{}/hooks/{}", owner, repo, webhook_id);
+        let route = format!("/repos/{}/{}/hooks/{}", owner, repo, webhook_id);
 
-        let result: OctocrabResult<()> = self.client.delete(&url, None::<&()>).await;
+        let result: OctocrabResult<()> = self.client.delete(&route, None::<&()>).await;
 
         match result {
             Ok(_) => {

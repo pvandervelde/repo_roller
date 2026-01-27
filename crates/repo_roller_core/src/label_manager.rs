@@ -7,7 +7,7 @@ use github_client::{GitHubClient, RepositoryClient};
 use std::collections::HashMap;
 use tracing::{info, warn};
 
-use crate::{GitHubError, RepoRollerError, RepoRollerResult};
+use crate::{GitHubError, RepoRollerResult};
 
 /// Manages label operations for repositories.
 ///
