@@ -310,6 +310,13 @@ mod mock_provider {
 
             Ok(())
         }
+
+        async fn load_global_webhooks(
+            &self,
+            _repo: &MetadataRepository,
+        ) -> ConfigurationResult<Vec<crate::settings::WebhookConfig>> {
+            Ok(vec![])
+        }
     }
 }
 

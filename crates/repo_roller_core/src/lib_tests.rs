@@ -4,8 +4,8 @@
 use super::*;
 use async_trait::async_trait;
 use config_manager::{
-    ConfigurationResult, MetadataRepository, MetadataRepositoryProvider, TemplateConfig,
-    TemplateMetadata,
+    settings::WebhookConfig, ConfigurationResult, MetadataRepository, MetadataRepositoryProvider,
+    TemplateConfig, TemplateMetadata,
 };
 use github_client::{errors::Error as GitHubError, RepositoryClient, RepositorySettingsUpdate};
 use std::sync::{Arc, Mutex};
@@ -128,6 +128,13 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
     }
 
     async fn list_templates(&self, _org: &str) -> ConfigurationResult<Vec<String>> {
+        unimplemented!("Not used in these tests")
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<WebhookConfig>> {
         unimplemented!("Not used in these tests")
     }
 }

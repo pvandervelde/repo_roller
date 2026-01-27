@@ -260,6 +260,23 @@ impl OrganizationSettingsManager {
             debug!("No standard labels found");
         }
 
+        // Step 2.6: Load global webhooks from global configuration
+        debug!("Loading global webhooks");
+        let global_webhooks = self
+            .metadata_provider
+            .load_global_webhooks(&metadata_repo)
+            .await
+            .map_err(|e| {
+                warn!("Failed to load global webhooks: {}", e);
+                e
+            })?;
+
+        if !global_webhooks.is_empty() {
+            info!("Loaded {} global webhooks", global_webhooks.len());
+        } else {
+            debug!("No global webhooks found");
+        }
+
         // Step 3: Load repository type configuration (if specified)
         let repository_type_config = if let Some(repo_type) = context.repository_type() {
             debug!("Loading repository type configuration: {}", repo_type);
@@ -409,10 +426,42 @@ impl OrganizationSettingsManager {
             merged.labels.entry(label_name).or_insert(label_config);
         }
 
+        // Step 6.5b: Merge global webhooks into configuration
+        // Global webhooks are added to merged configuration (not duplicated if already present)
+        debug!("Merging global webhooks into configuration");
+        for webhook_config in global_webhooks {
+            // Check if webhook with same URL already exists (to avoid duplicates)
+            let webhook_exists = merged.webhooks.iter().any(|w| w.url == webhook_config.url);
+            if !webhook_exists {
+                merged.webhooks.push(webhook_config);
+            }
+        }
+
+        // Step 6.6: Merge template-specific labels into configuration
+        // Template labels are added on top of standard labels
+        if let Some(template_labels) = &template_config.labels {
+            debug!(
+                "Merging {} template-specific labels into configuration",
+                template_labels.len()
+            );
+            for label_config in template_labels {
+                merged
+                    .labels
+                    .insert(label_config.name.clone(), label_config.clone());
+            }
+        }
+
         if !merged.labels.is_empty() {
             info!(
                 "Configuration has {} labels after merging",
                 merged.labels.len()
+            );
+        }
+
+        if !merged.webhooks.is_empty() {
+            info!(
+                "Configuration has {} webhooks after merging",
+                merged.webhooks.len()
             );
         }
 

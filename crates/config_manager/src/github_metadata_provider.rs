@@ -4,8 +4,9 @@
 //! that uses GitHub APIs to discover and access organization configuration repositories.
 
 use crate::{
-    ConfigurationError, ConfigurationResult, DiscoveryMethod, GlobalDefaults, LabelConfig,
-    MetadataRepository, MetadataRepositoryProvider, RepositoryTypeConfig, TeamConfig,
+    settings::WebhookConfig, ConfigurationError, ConfigurationResult, DiscoveryMethod,
+    GlobalDefaults, LabelConfig, MetadataRepository, MetadataRepositoryProvider,
+    RepositoryTypeConfig, TeamConfig,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -415,6 +416,49 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
                     repo.repository_name, file_path, e
                 );
                 Ok(HashMap::new())
+            }
+        }
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<WebhookConfig>> {
+        let file_path = "global/webhooks.toml";
+
+        match self
+            .client
+            .get_file_content(&repo.organization, &repo.repository_name, file_path)
+            .await
+        {
+            Ok(content) => {
+                // Parse TOML with array of webhooks using serde
+                #[derive(serde::Deserialize)]
+                struct WebhooksFile {
+                    webhooks: Vec<WebhookConfig>,
+                }
+
+                let parsed: WebhooksFile =
+                    toml::from_str(&content).map_err(|e| ConfigurationError::ParseError {
+                        reason: format!("{}: {}", file_path, e),
+                    })?;
+
+                debug!(
+                    "Loaded {} global webhooks from {}/{}",
+                    parsed.webhooks.len(),
+                    repo.repository_name,
+                    file_path
+                );
+
+                Ok(parsed.webhooks)
+            }
+            Err(e) => {
+                // Webhooks are optional - return empty vec if file doesn't exist
+                warn!(
+                    "Global webhooks file not found in {}/{}: {:?}. Continuing without global webhooks.",
+                    repo.repository_name, file_path, e
+                );
+                Ok(Vec::new())
             }
         }
     }

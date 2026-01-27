@@ -155,6 +155,13 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
     ) -> ConfigurationResult<Vec<String>> {
         Ok(vec![])
     }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<crate::settings::WebhookConfig>> {
+        Ok(vec![])
+    }
 }
 
 // ============================================================================
@@ -588,6 +595,13 @@ impl MetadataRepositoryProvider for LabelledMetadataProvider {
         &self,
         _repository: &MetadataRepository,
     ) -> ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<crate::settings::WebhookConfig>> {
         Ok(vec![])
     }
 }

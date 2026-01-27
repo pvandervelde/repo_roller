@@ -25,7 +25,10 @@
 //!
 //! See specs/design/organization-repository-settings.md for complete specification.
 
-use crate::{ConfigurationResult, GlobalDefaults, LabelConfig, RepositoryTypeConfig, TeamConfig};
+use crate::{
+    settings::WebhookConfig, ConfigurationResult, GlobalDefaults, LabelConfig,
+    RepositoryTypeConfig, TeamConfig,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -331,6 +334,29 @@ pub trait MetadataRepositoryProvider: Send + Sync {
         &self,
         repo: &MetadataRepository,
     ) -> ConfigurationResult<HashMap<String, LabelConfig>>;
+
+    /// Load global webhooks configuration.
+    ///
+    /// Loads the global webhook configurations from `global/webhooks.toml`.
+    /// Webhooks are optional - returns an empty vector if file doesn't exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - Metadata repository information
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of webhook configurations. Returns an empty vector
+    /// if the `global/webhooks.toml` file doesn't exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError` if the TOML file exists but cannot be parsed.
+    /// Returns other configuration errors for GitHub API failures.
+    async fn load_global_webhooks(
+        &self,
+        repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<WebhookConfig>>;
 
     /// List all available repository types.
     ///
