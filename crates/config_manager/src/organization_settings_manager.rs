@@ -266,10 +266,10 @@ impl OrganizationSettingsManager {
             .metadata_provider
             .load_global_webhooks(&metadata_repo)
             .await
-            .map_err(|e| {
-                warn!("Failed to load global webhooks: {}", e);
-                e
-            })?;
+            .unwrap_or_else(|e| {
+                warn!("Failed to load global webhooks: {}. Continuing without global webhooks.", e);
+                Vec::new()
+            });
 
         if !global_webhooks.is_empty() {
             info!("Loaded {} global webhooks", global_webhooks.len());
