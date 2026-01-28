@@ -435,6 +435,7 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
                 // Parse TOML with array of webhooks using serde
                 #[derive(serde::Deserialize)]
                 struct WebhooksFile {
+                    #[serde(default)]
                     webhooks: Vec<WebhookConfig>,
                 }
 
