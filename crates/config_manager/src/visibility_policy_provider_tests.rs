@@ -5,9 +5,9 @@
 
 use super::*;
 use crate::{
-    ConfigurationError, ConfigurationResult, DiscoveryMethod, GlobalDefaults, LabelConfig,
-    MetadataRepository, MetadataRepositoryProvider, RepositoryTypeConfig, RepositoryVisibility,
-    TeamConfig, TemplateConfig,
+    settings::WebhookConfig, ConfigurationError, ConfigurationResult, DiscoveryMethod,
+    GlobalDefaults, LabelConfig, MetadataRepository, MetadataRepositoryProvider,
+    RepositoryTypeConfig, RepositoryVisibility, TeamConfig, TemplateConfig,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -174,6 +174,13 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
         _repo: &MetadataRepository,
     ) -> ConfigurationResult<()> {
         Ok(())
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<WebhookConfig>> {
+        Ok(vec![])
     }
 }
 

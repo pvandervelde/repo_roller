@@ -31,6 +31,9 @@
     ./tests/create-test-metadata-repository.ps1 -Organization "glitchgrove" -Force
 
 .EXAMPLE
+    ./tests/create-test-metadata-repository.ps1 -Organization "glitchgrove" -Update
+
+.EXAMPLE
     ./tests/create-test-metadata-repository.ps1 -RepositoryName ".reporoller-test" -Verbose
 #>
 
@@ -38,6 +41,7 @@ param(
     [string]$Organization = "glitchgrove",
     [string]$RepositoryName = ".reporoller-test",
     [switch]$Force,
+    [switch]$Update,
     [switch]$Verbose
 )
 
@@ -112,6 +116,21 @@ description = "This issue or pull request already exists"
 [invalid]
 color = "e4e669"
 description = "This doesn't seem right"
+
+[dependencies]
+color = "0366d6"
+description = "Pull requests that update a dependency file"
+"@
+
+    "global/webhooks.toml"        = @"
+# Global webhook configurations for all repositories
+
+[[webhook]]
+url = "https://httpbin.org/global-webhook"
+events = ["push", "pull_request"]
+active = true
+content_type = "json"
+insecure_ssl = false
 "@
 
     "teams/platform/config.toml"  = @"
@@ -369,18 +388,16 @@ function Remove-Repository
 
     Write-Log "Deleting existing repository $Owner/$Repo" -Level "Warning"
 
-    try
+    $output = gh repo delete "$Owner/$Repo" --yes 2>&1
+    if ($LASTEXITCODE -ne 0)
     {
-        gh repo delete "$Owner/$Repo" --yes 2>&1 | Out-Null
-        Write-Log "✓ Repository deleted" -Level "Success"
-        Start-Sleep -Seconds 2  # Give GitHub API time to process
-        return $true
-    }
-    catch
-    {
-        Write-Log "✗ Failed to delete repository: $_" -Level "Error"
+        Write-Log "✗ Failed to delete repository: $output" -Level "Error"
         return $false
     }
+
+    Write-Log "✓ Repository deleted" -Level "Success"
+    Start-Sleep -Seconds 3  # Give GitHub API time to process deletion
+    return $true
 }
 
 function New-MetadataRepository
@@ -509,7 +526,8 @@ function Publish-Repository
     param(
         [string]$Path,
         [string]$Owner,
-        [string]$Repo
+        [string]$Repo,
+        [bool]$IsUpdate = $false
     )
 
     Write-Log "Publishing repository to GitHub"
@@ -521,19 +539,63 @@ function Publish-Repository
         {
             # Stage all files
             git add . 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw "Failed to stage files"
+            }
+
+            # Check if there are changes to commit
+            $status = git status --porcelain 2>&1
+            if (-not $status)
+            {
+                Write-Log "No changes to commit" -Level "Info"
+                return $true
+            }
 
             # Commit
-            git commit -m "Initial commit: Add test configuration files" 2>&1 | Out-Null
+            $commitMsg = if ($IsUpdate)
+            {
+                "Update test configuration files" 
+            }
+            else
+            {
+                "Initial commit: Add test configuration files" 
+            }
+            git commit -m $commitMsg 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw "Failed to commit changes"
+            }
 
-            # Add remote
+            # Add remote if it doesn't exist
             $remoteUrl = "https://github.com/$Owner/$Repo.git"
-            git remote add origin $remoteUrl 2>&1 | Out-Null
+            $existingRemote = git remote get-url origin 2>$null
+            if ($LASTEXITCODE -ne 0)
+            {
+                git remote add origin $remoteUrl 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0)
+                {
+                    throw "Failed to add remote"
+                }
+            }
 
             # Set default branch to main
             git branch -M main 2>&1 | Out-Null
 
-            # Push
-            git push -u origin main 2>&1 | Out-Null
+            # Push (force if updating to ensure we overwrite)
+            if ($IsUpdate)
+            {
+                git push -f origin main 2>&1 | Out-Null
+            }
+            else
+            {
+                git push -u origin main 2>&1 | Out-Null
+            }
+
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw "Failed to push to GitHub"
+            }
 
             Write-Log "✓ Repository published to GitHub" -Level "Success"
             return $true
@@ -573,23 +635,33 @@ if ($repoExists)
     if ($Force)
     {
         Write-Log "Repository exists and -Force specified" -Level "Warning"
+        Write-Log "Note: Deletion requires 'delete_repo' scope. Run: gh auth refresh -h github.com -s delete_repo" -Level "Info"
         if (-not (Remove-Repository -Owner $Organization -Repo $RepositoryName))
         {
+            Write-Log "Failed to delete repository. Try using -Update instead to update existing repository." -Level "Error"
             exit 1
         }
+    }
+    elseif ($Update)
+    {
+        Write-Log "Repository exists and -Update specified - will update content" -Level "Info"
+        # Continue to update existing repository
     }
     else
     {
         Write-Log "Repository $Organization/$RepositoryName already exists" -Level "Warning"
-        Write-Log "Use -Force to recreate it" -Level "Info"
+        Write-Log "Use -Force to recreate it (requires delete_repo scope) or -Update to update content" -Level "Info"
         exit 0
     }
 }
 
-# Create repository
-if (-not (New-MetadataRepository -Owner $Organization -Repo $RepositoryName))
+# Create repository if it doesn't exist (or was deleted)
+if (-not $repoExists -or $Force)
 {
-    exit 1
+    if (-not (New-MetadataRepository -Owner $Organization -Repo $RepositoryName))
+    {
+        exit 1
+    }
 }
 
 # Initialize local repository with unique path
@@ -607,7 +679,7 @@ if (-not (Add-ConfigurationFiles -BasePath $tempPath -Structure $ConfigStructure
 }
 
 # Publish to GitHub
-if (-not (Publish-Repository -Path $tempPath -Owner $Organization -Repo $RepositoryName))
+if (-not (Publish-Repository -Path $tempPath -Owner $Organization -Repo $RepositoryName -IsUpdate $Update))
 {
     exit 1
 }

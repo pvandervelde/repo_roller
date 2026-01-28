@@ -108,6 +108,12 @@ pub use template_processing::extract_config_variables;
 // Content providers for repository initialization
 mod content_providers;
 
+// Label management operations
+mod label_manager;
+
+// Webhook management operations
+mod webhook_manager;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
@@ -183,6 +189,10 @@ pub use content_providers::{
     ContentProvider, CustomInitContentProvider, CustomInitOptions, TemplateBasedContentProvider,
     ZeroContentProvider,
 };
+// Re-exported from label_manager module
+pub use label_manager::{ApplyLabelsResult, LabelManager};
+// Re-exported from webhook_manager module
+pub use webhook_manager::{ApplyWebhooksResult, WebhookManager};
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};

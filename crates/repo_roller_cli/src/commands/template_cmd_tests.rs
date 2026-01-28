@@ -6,7 +6,7 @@ use super::*;
 use async_trait::async_trait;
 use chrono::Utc;
 use config_manager::{
-    settings::{BranchProtectionSettings, PullRequestSettings, RepositorySettings},
+    settings::{BranchProtectionSettings, PullRequestSettings, RepositorySettings, WebhookConfig},
     ConfigurationError, ConfigurationResult, GlobalDefaults, LabelConfig, MetadataRepository,
     RepositoryTypeConfig, TeamConfig, TemplateConfig, TemplateMetadata, TemplateVariable,
 };
@@ -133,6 +133,13 @@ impl MetadataRepositoryProvider for MockMetadataProvider {
                     template: template_name.to_string(),
                 })
             })
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<WebhookConfig>> {
+        unimplemented!("Not needed for these tests")
     }
 }
 

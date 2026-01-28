@@ -1,0 +1,13 @@
+# Global Webhooks for All Repositories
+#
+# These webhooks are automatically configured on all new repositories.
+# Using httpbin.org for testing (delivery not verified, just configuration).
+
+[[webhooks]]
+url = "https://httpbin.org/post"
+content_type = "json"
+active = true
+events = ["push", "pull_request"]
+# Note: In production, use environment-specific secrets
+# For testing, we use a simple test secret
+secret = "test-global-webhook-secret-123"
