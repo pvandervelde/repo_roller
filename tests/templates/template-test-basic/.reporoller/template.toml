@@ -5,3 +5,22 @@ name = "template-test-basic"
 description = "Basic test template for RepoRoller integration tests"
 author = "RepoRoller Test Suite"
 tags = ["test", "basic"]
+
+# Template-specific labels (in addition to global labels)
+[[labels]]
+name = "template-feature"
+color = "fbca04"
+description = "Feature label from template-test-basic"
+
+[[labels]]
+name = "template-bug"
+color = "dea584"
+description = "Bug label from template-test-basic"
+
+# Template-specific webhooks (in addition to global webhooks)
+[[webhooks]]
+url = "https://httpbin.org/template-webhook"
+content_type = "json"
+active = true
+events = ["issues", "issue_comment"]
+secret = "template-basic-webhook-secret-456"

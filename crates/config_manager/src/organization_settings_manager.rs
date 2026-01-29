@@ -260,6 +260,26 @@ impl OrganizationSettingsManager {
             debug!("No standard labels found");
         }
 
+        // Step 2.6: Load global webhooks from global configuration
+        debug!("Loading global webhooks");
+        let global_webhooks = self
+            .metadata_provider
+            .load_global_webhooks(&metadata_repo)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(
+                    "Failed to load global webhooks: {}. Continuing without global webhooks.",
+                    e
+                );
+                Vec::new()
+            });
+
+        if !global_webhooks.is_empty() {
+            info!("Loaded {} global webhooks", global_webhooks.len());
+        } else {
+            debug!("No global webhooks found");
+        }
+
         // Step 3: Load repository type configuration (if specified)
         let repository_type_config = if let Some(repo_type) = context.repository_type() {
             debug!("Loading repository type configuration: {}", repo_type);
@@ -310,14 +330,69 @@ impl OrganizationSettingsManager {
 
         // Step 5: Load template configuration from template repository
         debug!("Loading template configuration: {}", context.template());
-        let template_config = self
-            .template_loader
-            .load_template_configuration(context.organization(), context.template())
-            .await
-            .map_err(|e| {
-                warn!("Failed to load template configuration: {}", e);
-                e
-            })?;
+        use crate::template_config::{TemplateConfig, TemplateMetadata};
+
+        let template_config: TemplateConfig = if context.template().is_empty() {
+            // No template specified: proceed with minimal template configuration
+            info!("No template specified; proceeding with minimal template configuration");
+            TemplateConfig {
+                template: TemplateMetadata {
+                    name: String::new(),
+                    description: String::new(),
+                    author: String::new(),
+                    tags: vec![],
+                },
+                repository_type: None,
+                variables: None,
+                repository: None,
+                pull_requests: None,
+                branch_protection: None,
+                labels: None,
+                webhooks: None,
+                environments: None,
+                github_apps: None,
+                default_visibility: None,
+                templating: None,
+            }
+        } else {
+            match self
+                .template_loader
+                .load_template_configuration(context.organization(), context.template())
+                .await
+            {
+                Ok(cfg) => cfg,
+                Err(crate::errors::ConfigurationError::TemplateNotFound { .. })
+                | Err(crate::errors::ConfigurationError::TemplateConfigurationMissing { .. }) => {
+                    // Missing template or configuration should not be fatal for non-template flows.
+                    warn!(
+                        "Template not found or missing configuration; using minimal template configuration"
+                    );
+                    TemplateConfig {
+                        template: TemplateMetadata {
+                            name: context.template().to_string(),
+                            description: String::new(),
+                            author: String::new(),
+                            tags: vec![],
+                        },
+                        repository_type: None,
+                        variables: None,
+                        repository: None,
+                        pull_requests: None,
+                        branch_protection: None,
+                        labels: None,
+                        webhooks: None,
+                        environments: None,
+                        github_apps: None,
+                        default_visibility: None,
+                        templating: None,
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to load template configuration: {}", e);
+                    return Err(e);
+                }
+            }
+        };
 
         if let Some(ref repo_type) = template_config.repository_type {
             info!(
@@ -354,10 +429,42 @@ impl OrganizationSettingsManager {
             merged.labels.entry(label_name).or_insert(label_config);
         }
 
+        // Step 6.5b: Merge global webhooks into configuration
+        // Global webhooks are added to merged configuration (not duplicated if already present)
+        debug!("Merging global webhooks into configuration");
+        for webhook_config in global_webhooks {
+            // Check if webhook with same URL already exists (to avoid duplicates)
+            let webhook_exists = merged.webhooks.iter().any(|w| w.url == webhook_config.url);
+            if !webhook_exists {
+                merged.webhooks.push(webhook_config);
+            }
+        }
+
+        // Step 6.6: Merge template-specific labels into configuration
+        // Template labels are added on top of standard labels
+        if let Some(template_labels) = &template_config.labels {
+            debug!(
+                "Merging {} template-specific labels into configuration",
+                template_labels.len()
+            );
+            for label_config in template_labels {
+                merged
+                    .labels
+                    .insert(label_config.name.clone(), label_config.clone());
+            }
+        }
+
         if !merged.labels.is_empty() {
             info!(
                 "Configuration has {} labels after merging",
                 merged.labels.len()
+            );
+        }
+
+        if !merged.webhooks.is_empty() {
+            info!(
+                "Configuration has {} webhooks after merging",
+                merged.webhooks.len()
             );
         }
 

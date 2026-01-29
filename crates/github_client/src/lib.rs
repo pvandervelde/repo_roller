@@ -23,6 +23,7 @@ pub mod installation;
 pub mod label;
 pub mod repository;
 pub mod user;
+pub mod webhook;
 
 // Re-export types for convenient access
 pub use branch_protection::BranchProtection;
@@ -33,6 +34,7 @@ pub use installation::{Account, Installation};
 pub use label::Label;
 pub use repository::{Organization, Repository};
 pub use user::User;
+pub use webhook::{Webhook, WebhookDetails, WebhookEvent};
 
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;
@@ -67,7 +69,7 @@ mod tests;
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitHubClient {
     /// The underlying Octocrab client used for API requests
     client: Octocrab,
@@ -1323,6 +1325,231 @@ impl RepositoryClient for GitHubClient {
 
         Ok(all_files)
     }
+
+    async fn list_webhooks(&self, owner: &str, repo: &str) -> Result<Vec<Webhook>, Error> {
+        info!(owner = owner, repo = repo, "Listing repository webhooks");
+
+        let route = format!("/repos/{}/{}/hooks", owner, repo);
+
+        let result: OctocrabResult<Vec<Webhook>> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(webhooks) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    count = webhooks.len(),
+                    "Successfully listed webhooks"
+                );
+                Ok(webhooks)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to list webhooks", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn create_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
+    ) -> Result<Webhook, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            url = url,
+            "Creating repository webhook"
+        );
+
+        let api_route = format!("/repos/{}/{}/hooks", owner, repo);
+
+        let mut config = serde_json::json!({
+            "url": url,
+            "content_type": content_type,
+            "insecure_ssl": "0"
+        });
+
+        if let Some(secret_value) = secret {
+            config["secret"] = serde_json::json!(secret_value);
+        }
+
+        let body = serde_json::json!({
+            "name": "web",
+            "active": active,
+            "events": events,
+            "config": config
+        });
+
+        let result: OctocrabResult<Webhook> = self.client.post(&api_route, Some(&body)).await;
+
+        match result {
+            Ok(webhook) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    webhook_id = webhook.id,
+                    "Successfully created webhook"
+                );
+                Ok(webhook)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to create webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn update_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        webhook_id: u64,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
+    ) -> Result<Webhook, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            webhook_id = webhook_id,
+            "Updating repository webhook"
+        );
+
+        let api_route = format!("/repos/{}/{}/hooks/{}", owner, repo, webhook_id);
+
+        let mut config = serde_json::json!({
+            "url": url,
+            "content_type": content_type,
+            "insecure_ssl": "0"
+        });
+
+        if let Some(secret_value) = secret {
+            config["secret"] = serde_json::json!(secret_value);
+        }
+
+        let body = serde_json::json!({
+            "active": active,
+            "events": events,
+            "config": config
+        });
+
+        let result: OctocrabResult<Webhook> = self.client.patch(&api_route, Some(&body)).await;
+
+        match result {
+            Ok(webhook) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    webhook_id = webhook_id,
+                    "Successfully updated webhook"
+                );
+                Ok(webhook)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to update webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: u64) -> Result<(), Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            webhook_id = webhook_id,
+            "Deleting repository webhook"
+        );
+
+        let route = format!("/repos/{}/{}/hooks/{}", owner, repo, webhook_id);
+
+        let result: OctocrabResult<()> = self.client.delete(&route, None::<&()>).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    webhook_id = webhook_id,
+                    "Successfully deleted webhook"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to delete webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn update_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        new_name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error> {
+        info!(owner = owner, repo = repo, name = name, "Updating label");
+
+        let url = format!("repos/{}/{}/labels/{}", owner, repo, name);
+
+        let body = serde_json::json!({
+            "new_name": new_name,
+            "color": color,
+            "description": description,
+        });
+
+        let result: OctocrabResult<()> = self.client.patch(&url, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    name = name,
+                    "Successfully updated label"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to update label", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<(), Error> {
+        info!(owner = owner, repo = repo, name = name, "Deleting label");
+
+        let url = format!("repos/{}/{}/labels/{}", owner, repo, name);
+
+        let result: OctocrabResult<()> = self.client.delete(&url, None::<&()>).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    name = name,
+                    "Successfully deleted label"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to delete label", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
 }
 
 /// JWT claims structure for GitHub App authentication.
@@ -1768,6 +1995,183 @@ pub trait RepositoryClient: Send + Sync {
     /// # }
     /// ```
     async fn list_repository_files(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error>;
+
+    /// Lists all webhooks configured for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    ///
+    /// # Returns
+    ///
+    /// Vector of `Webhook` structs containing webhook details.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::InvalidResponse` - API call failed or response parsing failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// GET /repos/{owner}/{repo}/hooks
+    async fn list_webhooks(&self, owner: &str, repo: &str) -> Result<Vec<Webhook>, Error>;
+
+    /// Creates a webhook in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `url` - Webhook URL
+    /// * `content_type` - Content type ("json" or "form")
+    /// * `secret` - Optional webhook secret
+    /// * `active` - Whether the webhook is active
+    /// * `events` - Events that trigger the webhook
+    ///
+    /// # Returns
+    ///
+    /// The created `Webhook` with its ID and configuration.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error (duplicate webhook, invalid config, etc.)
+    ///
+    /// # Behavior
+    ///
+    /// This method does NOT check for existing webhooks - caller should verify
+    /// uniqueness if needed (e.g., check if webhook with same URL already exists).
+    ///
+    /// # GitHub API
+    ///
+    /// POST /repos/{owner}/{repo}/hooks
+    async fn create_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
+    ) -> Result<Webhook, Error>;
+
+    /// Updates an existing webhook in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `webhook_id` - GitHub webhook ID (from list_webhooks or create_webhook)
+    /// * `url` - Webhook URL
+    /// * `content_type` - Content type ("json" or "form")
+    /// * `secret` - Optional webhook secret
+    /// * `active` - Whether the webhook is active
+    /// * `events` - Events that trigger the webhook
+    ///
+    /// # Returns
+    ///
+    /// The updated `Webhook` with its configuration.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Webhook ID does not exist
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// PATCH /repos/{owner}/{repo}/hooks/{hook_id}
+    async fn update_webhook(
+        &self,
+        owner: &str,
+        repo: &str,
+        webhook_id: u64,
+        url: &str,
+        content_type: &str,
+        secret: Option<&str>,
+        active: bool,
+        events: &[String],
+    ) -> Result<Webhook, Error>;
+
+    /// Deletes a webhook from a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `webhook_id` - GitHub webhook ID
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful deletion
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Webhook does not exist (may be considered success)
+    /// * `Error::InvalidResponse` - API call failed
+    ///
+    /// # GitHub API
+    ///
+    /// DELETE /repos/{owner}/{repo}/hooks/{hook_id}
+    async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: u64) -> Result<(), Error>;
+
+    /// Updates an existing label in a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `name` - Current label name
+    /// * `new_name` - New label name (if renaming, otherwise same as `name`)
+    /// * `color` - New label color (hex code without #)
+    /// * `description` - New label description
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful update
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Label does not exist
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// PATCH /repos/{owner}/{repo}/labels/{name}
+    async fn update_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        new_name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), Error>;
+
+    /// Deletes a label from a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `name` - Label name to delete
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful deletion
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Label does not exist (may be considered success)
+    /// * `Error::InvalidResponse` - API call failed
+    ///
+    /// # GitHub API
+    ///
+    /// DELETE /repos/{owner}/{repo}/labels/{name}
+    async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<(), Error>;
 }
 
 /// Settings that can be updated for an existing repository.

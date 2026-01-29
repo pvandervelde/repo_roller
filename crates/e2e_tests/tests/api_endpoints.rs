@@ -201,6 +201,136 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
         "Empty repository should not have README.md even with template"
     );
 
+    // Verify labels were created from configuration
+    use github_client::RepositoryClient;
+    let labels = verification_client
+        .list_repository_labels(&org, &repo_name)
+        .await?;
+
+    tracing::info!("Repository has {} labels", labels.len());
+
+    // Expected labels from global/standard-labels.toml
+    let expected_global_labels = vec![
+        "bug",
+        "enhancement",
+        "documentation",
+        "good-first-issue",
+        "help-wanted",
+        "question",
+        "wontfix",
+        "duplicate",
+        "invalid",
+        "dependencies",
+    ];
+
+    // Expected template-specific labels from template-test-basic
+    let expected_template_labels = vec!["template-feature", "template-bug"];
+
+    // Check if any labels are missing and capture logs BEFORE asserting
+    let mut all_expected = expected_global_labels.clone();
+    all_expected.extend(expected_template_labels.iter().map(|s| *s));
+    let missing_labels: Vec<_> = all_expected
+        .iter()
+        .filter(|label| !labels.contains(&label.to_string()))
+        .collect();
+
+    if !missing_labels.is_empty() {
+        tracing::error!(
+            "❌ {} labels missing: {:?}. Found: {:?}. Capturing container logs...",
+            missing_labels.len(),
+            missing_labels,
+            labels
+        );
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_create_empty_repository_with_template_settings) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
+
+    for label in &expected_global_labels {
+        assert!(
+            labels.contains(&label.to_string()),
+            "Missing global label '{}' from standard-labels.toml - found: {:?}",
+            label,
+            labels
+        );
+    }
+
+    for label in &expected_template_labels {
+        assert!(
+            labels.contains(&label.to_string()),
+            "Missing template-specific label '{}' from template-test-basic - found: {:?}",
+            label,
+            labels
+        );
+    }
+
+    tracing::info!(
+        "✓ Verified {} labels (10 global + 2 template-specific)",
+        labels.len()
+    );
+
+    // Verify webhooks from configuration
+    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+
+    // Expected webhooks: 1 from global config + 1 from template-test-basic
+    assert_eq!(
+        webhooks.len(),
+        2,
+        "Expected 2 webhooks (1 global + 1 template), found {}",
+        webhooks.len()
+    );
+
+    // Verify global webhook (from global/webhooks.toml)
+    let global_webhook = webhooks
+        .iter()
+        .find(|w| w.config.url == "https://httpbin.org/global-webhook");
+    assert!(
+        global_webhook.is_some(),
+        "Missing global webhook with URL 'https://httpbin.org/global-webhook'"
+    );
+    let global_wh = global_webhook.unwrap();
+    assert!(global_wh.active, "Global webhook should be active");
+    assert!(
+        global_wh
+            .events
+            .contains(&github_client::WebhookEvent::Push),
+        "Global webhook should have 'push' event"
+    );
+    assert!(
+        global_wh
+            .events
+            .contains(&github_client::WebhookEvent::PullRequest),
+        "Global webhook should have 'pull_request' event"
+    );
+
+    // Verify template webhook (from template-test-basic)
+    let template_webhook = webhooks
+        .iter()
+        .find(|w| w.config.url == "https://httpbin.org/template-webhook");
+    assert!(
+        template_webhook.is_some(),
+        "Missing template webhook with URL 'https://httpbin.org/template-webhook'"
+    );
+    let template_wh = template_webhook.unwrap();
+    assert!(template_wh.active, "Template webhook should be active");
+    assert!(
+        template_wh
+            .events
+            .contains(&github_client::WebhookEvent::Issues),
+        "Template webhook should have 'issues' event"
+    );
+
+    tracing::info!(
+        "✓ Verified 2 webhooks (1 global + 1 template-specific) with correct configurations"
+    );
+
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
         .await
@@ -293,6 +423,119 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
         "Repository should not have .gitignore when not requested"
     );
 
+    // Verify labels were created from global configuration
+    // Add delay to allow GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+    use github_client::RepositoryClient;
+    let labels = match verification_client
+        .list_repository_labels(&org, &repo_name)
+        .await
+    {
+        Ok(labels) => labels,
+        Err(e) => {
+            tracing::warn!("Failed to list labels (may be timing issue): {}", e);
+            // Try one more time after longer delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            verification_client
+                .list_repository_labels(&org, &repo_name)
+                .await?
+        }
+    };
+
+    tracing::info!("Repository has {} labels", labels.len());
+
+    // Expected labels from global/standard-labels.toml (no template used in custom init)
+    let expected_global_labels = vec![
+        "bug",
+        "enhancement",
+        "documentation",
+        "good-first-issue",
+        "help-wanted",
+        "question",
+        "wontfix",
+        "duplicate",
+        "invalid",
+        "dependencies",
+    ];
+
+    // Check if any labels are missing and capture logs BEFORE asserting
+    let missing_labels: Vec<_> = expected_global_labels
+        .iter()
+        .filter(|label| !labels.contains(&label.to_string()))
+        .collect();
+
+    if !missing_labels.is_empty() {
+        tracing::error!(
+            "❌ {} labels missing: {:?}. Found: {:?}. Capturing container logs...",
+            missing_labels.len(),
+            missing_labels,
+            labels
+        );
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_create_custom_init_readme_only) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
+
+    for label in &expected_global_labels {
+        assert!(
+            labels.contains(&label.to_string()),
+            "Missing global label '{}' from standard-labels.toml - found: {:?}",
+            label,
+            labels
+        );
+    }
+
+    tracing::info!(
+        "✓ Verified {} global labels from standard-labels.toml",
+        expected_global_labels.len()
+    );
+
+    // Verify webhooks from global configuration
+    let webhooks = match verification_client.list_webhooks(&org, &repo_name).await {
+        Ok(webhooks) => webhooks,
+        Err(e) => {
+            tracing::warn!("Failed to list webhooks (may be timing issue): {}", e);
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            verification_client.list_webhooks(&org, &repo_name).await?
+        }
+    };
+
+    // Expected: 1 webhook from global config (no template webhooks)
+    assert_eq!(
+        webhooks.len(),
+        1,
+        "Expected 1 global webhook, found {}",
+        webhooks.len()
+    );
+
+    // Verify global webhook (from global/webhooks.toml)
+    let global_webhook = &webhooks[0];
+    assert_eq!(
+        global_webhook.config.url, "https://httpbin.org/global-webhook",
+        "Global webhook URL should match configuration"
+    );
+    assert!(global_webhook.active, "Global webhook should be active");
+    assert!(
+        global_webhook
+            .events
+            .contains(&github_client::WebhookEvent::Push)
+            && global_webhook
+                .events
+                .contains(&github_client::WebhookEvent::PullRequest),
+        "Global webhook should have 'push' and 'pull_request' events"
+    );
+
+    tracing::info!("✓ Verified 1 global webhook with correct configuration");
+
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
         .await
@@ -383,6 +626,119 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
         !gitignore_content.is_empty(),
         ".gitignore should have content"
     );
+
+    // Verify labels were created from global configuration
+    // Add small delay to allow GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    use github_client::RepositoryClient;
+    let labels = match verification_client
+        .list_repository_labels(&org, &repo_name)
+        .await
+    {
+        Ok(labels) => labels,
+        Err(e) => {
+            tracing::warn!("Failed to list labels (may be timing issue): {}", e);
+            // Try one more time after another delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            verification_client
+                .list_repository_labels(&org, &repo_name)
+                .await?
+        }
+    };
+
+    tracing::info!("Repository has {} labels", labels.len());
+
+    // Expected labels from global/standard-labels.toml (no template used in custom init)
+    let expected_global_labels = vec![
+        "bug",
+        "enhancement",
+        "documentation",
+        "good-first-issue",
+        "help-wanted",
+        "question",
+        "wontfix",
+        "duplicate",
+        "invalid",
+        "dependencies",
+    ];
+
+    // Check if any labels are missing and capture logs BEFORE asserting
+    let missing_labels: Vec<_> = expected_global_labels
+        .iter()
+        .filter(|label| !labels.contains(&label.to_string()))
+        .collect();
+
+    if !missing_labels.is_empty() {
+        tracing::error!(
+            "❌ {} labels missing: {:?}. Found: {:?}. Capturing container logs...",
+            missing_labels.len(),
+            missing_labels,
+            labels
+        );
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_create_custom_init_both_files) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to capture container logs: {}", e);
+            }
+        }
+    }
+
+    for label in &expected_global_labels {
+        assert!(
+            labels.contains(&label.to_string()),
+            "Missing global label '{}' from standard-labels.toml - found: {:?}",
+            label,
+            labels
+        );
+    }
+
+    tracing::info!(
+        "✓ Verified {} global labels from standard-labels.toml",
+        expected_global_labels.len()
+    );
+
+    // Verify webhooks from global configuration
+    let webhooks = match verification_client.list_webhooks(&org, &repo_name).await {
+        Ok(webhooks) => webhooks,
+        Err(e) => {
+            tracing::warn!("Failed to list webhooks (may be timing issue): {}", e);
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            verification_client.list_webhooks(&org, &repo_name).await?
+        }
+    };
+
+    // Expected: 1 webhook from global config (no template webhooks)
+    assert_eq!(
+        webhooks.len(),
+        1,
+        "Expected 1 global webhook, found {}",
+        webhooks.len()
+    );
+
+    // Verify global webhook (from global/webhooks.toml)
+    let global_webhook = &webhooks[0];
+    assert_eq!(
+        global_webhook.config.url, "https://httpbin.org/global-webhook",
+        "Global webhook URL should match configuration"
+    );
+    assert!(global_webhook.active, "Global webhook should be active");
+    assert!(
+        global_webhook
+            .events
+            .contains(&github_client::WebhookEvent::Push)
+            && global_webhook
+                .events
+                .contains(&github_client::WebhookEvent::PullRequest),
+        "Global webhook should have 'push' and 'pull_request' events"
+    );
+
+    tracing::info!("✓ Verified 1 global webhook with correct configuration");
 
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
