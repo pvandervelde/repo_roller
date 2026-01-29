@@ -267,7 +267,10 @@ impl OrganizationSettingsManager {
             .load_global_webhooks(&metadata_repo)
             .await
             .unwrap_or_else(|e| {
-                warn!("Failed to load global webhooks: {}. Continuing without global webhooks.", e);
+                warn!(
+                    "Failed to load global webhooks: {}. Continuing without global webhooks.",
+                    e
+                );
                 Vec::new()
             });
 
