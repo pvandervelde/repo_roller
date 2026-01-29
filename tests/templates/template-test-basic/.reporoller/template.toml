@@ -19,7 +19,7 @@ description = "Bug label from template-test-basic"
 
 # Template-specific webhooks (in addition to global webhooks)
 [[webhooks]]
-url = "https://httpbin.org/webhook-template-basic"
+url = "https://httpbin.org/template-webhook"
 content_type = "json"
 active = true
 events = ["issues", "issue_comment"]
