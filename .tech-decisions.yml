@@ -1,0 +1,369 @@
+# Technology Decisions and Standards
+# Generated: 2026-01-31
+# This file is read by CI and commit hooks to enforce standards
+
+# Detected languages
+languages: [rust]
+
+# Database (customize for your project)
+database:
+  choice: null # Stateless architecture - no database
+  rationale: "See docs/adr/ADR-003-stateless-architecture.md"
+  alternatives_rejected:
+    - "sqlite: Breaks serverless model, state management complexity"
+    - "postgresql: Over-engineered for use case, additional infrastructure"
+  storage_strategy: "GitHub repositories for all persistent data"
+  forbidden_operations:
+    - "Never use local database or persistent storage"
+    - "All data must be retrievable from GitHub"
+
+# HTTP client standards
+http_client:
+  rust: reqwest # Standard HTTP client for Rust (not directly used, octocrab uses it)
+
+  github_client:
+    library: octocrab
+    version: "0.47"
+    rationale: "Most mature GitHub API client for Rust with async support"
+    alternatives_rejected: []
+
+  rationale: "Standardized for consistency across projects"
+
+# Error Handling
+error_handling:
+  pattern: result_type_throughout
+  library: thiserror
+  version: "2.0"
+  rationale: "Explicit error handling, no panic in production, aligns with Rust philosophy"
+  alternatives_rejected:
+    - "exceptions: Not idiomatic Rust, hidden control flow"
+    - "mixed_approach: Inconsistent, confusing boundaries"
+  documentation: "docs/spec/tradeoffs.md#error-handling-strategy"
+
+  forbidden_operations:
+    - "Never use panic!, unwrap(), expect() in production code paths"
+    - "Never use Any trait or dynamic typing in domain code"
+    - "All public functions returning fallible results must use Result<T, E>"
+
+# Circular Dependency Pattern
+circular_dependency_resolution:
+  pattern: re_export_from_core
+  rationale: "Avoid circular deps between repo_roller_core and config_manager"
+  example: "RepositoryVisibility defined in config_manager, re-exported from core"
+  documentation: "docs/spec/constraints.md#pragmatic-exception-for-infrastructure-defined-types"
+
+  review_status: technical_debt
+  alternatives_to_consider:
+    - "Extract shared types to separate crate"
+    - "Accept one-way dependency with duplication"
+
+  when_to_use:
+    - "Infrastructure crate defines configuration-related types"
+    - "Core business logic needs to reference these types"
+    - "Circular dependency would result from defining in core"
+
+# Structured Logging
+logging:
+  framework: tracing
+  version: "0.1"
+  rationale: "Structured logging with async/span support, vendor-neutral"
+  alternatives_rejected:
+    - "log: Less suitable for async code"
+    - "slog: Less ecosystem adoption"
+    - "built_in_dashboard: Not core mission, maintenance overhead"
+
+  integration: external_monitoring
+  format: json_structured
+
+  required_fields:
+    - "timestamp (ISO 8601 UTC)"
+    - "log_level (ERROR, WARN, INFO, DEBUG, TRACE)"
+    - "component_name"
+    - "request_id (correlation)"
+    - "operation_name"
+
+  sensitive_data: auto_sanitization
+  forbidden:
+    - "Never log tokens, passwords, or secrets"
+    - "Never log full GitHub API responses (may contain tokens)"
+  documentation: "docs/spec/operations/observability.md"
+
+# Template Engine
+template_engine:
+  choice: handlebars
+  version: "6.0"
+  rationale: "Mature Rust implementation, familiar syntax, extensible helpers"
+  alternatives_rejected:
+    - "jinja2: No mature Rust implementation"
+    - "custom: Development overhead not justified"
+  documentation: "docs/spec/tradeoffs.md#template-processing-engine"
+
+  custom_helpers:
+    - "snake_case, kebab_case, upper_case, lower_case"
+    - "capitalize"
+    - "timestamp formatting"
+    - "default values"
+
+  security:
+    - "Path traversal prevention (../ forbidden)"
+    - "Template sandboxing (no filesystem access from templates)"
+    - "Resource limits (30s timeout, 100MB memory)"
+    - "No network access from template context"
+
+# JWT Handling (for GitHub App authentication)
+jwt_handling:
+  library: jsonwebtoken
+  version: "9.3"
+  rationale: "Required for GitHub App authentication (JWT for installation tokens)"
+  usage: "github_client crate for app authentication only"
+  documentation: "docs/adr/ADR-006-github-app-authentication.md"
+
+# Type Safety Patterns
+type_safety:
+  pattern: branded_types_newtype
+  rationale: "Prevent type confusion at compile time (e.g., RepositoryName vs OrganizationName)"
+  required_for:
+    - "All domain primitives (RepositoryName, OrganizationName, TemplateName)"
+    - "Security-sensitive types (GitHubToken with secrecy wrapper)"
+    - "All IDs (UserId, SessionId, InstallationId)"
+
+  security_types:
+    library: secrecy
+    version: "0.10"
+    rationale: "Prevent accidental logging of secrets"
+    usage: "Wrap GitHubToken to prevent Debug output"
+
+  forbidden:
+    - "String or u64 parameters in public domain interfaces"
+    - "Any trait or dynamic typing in domain code"
+    - "Implementing Debug for token/secret types"
+
+  documentation: "docs/spec/constraints.md#branded-types-requirement"
+
+# Async Runtime
+async_runtime:
+  choice: tokio
+  version: "1.0"
+  features: ["full"]
+  rationale: "Standard async runtime for Rust, required by octocrab and axum"
+  alternatives_rejected: []
+
+# Web Framework (for API)
+web_framework:
+  choice: axum
+  version: "0.7"
+  rationale: "Modern async framework built on tokio, excellent ergonomics, type-safe"
+
+  api_versioning: url_based
+  current_version: v1
+  path_pattern: "/api/v1/*"
+
+  error_format: rfc7807_problem_details
+  authentication: bearer_token
+
+  documentation: "crates/repo_roller_api/README.md"
+
+# Authentication
+authentication:
+  primary_method: github_app_installation_tokens
+  rationale: "Organization-scoped, fine-grained permissions, automatic rotation, audit trail"
+  alternatives_rejected:
+    - "pat_only: Poor enterprise UX, security risks, manual token management"
+    - "oauth_app: Limited to user permissions, requires web redirect"
+  documentation: "docs/adr/ADR-006-github-app-authentication.md"
+
+  secret_management:
+    cli: system_keyring # macOS Keychain, Windows Credential Manager, Linux Secret Service
+    cloud: azure_key_vault
+
+  token_types:
+    - "App Private Key: Long-lived, stored securely"
+    - "JWT Token: 10 minutes, used to request installation token"
+    - "Installation Token: 1 hour, used for GitHub API calls"
+
+  security_requirements:
+    - "Never log tokens (use secrecy crate)"
+    - "Tokens must implement zeroize on drop"
+    - "No Debug output for token types"
+    - "Tokens stored in Key Vault or system keyring only"
+
+# Caching Strategy
+caching:
+  strategy: in_memory_ttl
+  rationale: "Stateless deployment model, no persistent cache needed"
+  implementation: "Arc<RwLock<HashMap>>"
+
+  ttls:
+    organization_policies: "5 minutes"
+    github_environment_detection: "1 hour"
+    template_configurations: "5 minutes"
+    plan_limitations: "1 hour"
+
+  invalidation:
+    method: explicit_only
+    triggers:
+      - "Configuration repository changes (webhook)"
+      - "Manual API call for cache clear"
+      - "Automatic TTL expiration"
+
+  concurrency: thread_safe_required
+  documentation: "docs/spec/constraints.md#visibility-caching"
+
+# Testing requirements
+testing:
+  unit_coverage_minimum: 80
+  mutation_score_minimum: 70
+
+  test_organization:
+    pattern: "file_name_tests.rs co-located with implementation"
+    rationale: "Keep tests close to code, clear module structure"
+    example: "src/visibility.rs has src/visibility_tests.rs"
+
+  integration_test_required_for:
+    - "API endpoints"
+    - "GitHub API interactions"
+    - "Template processing"
+    - "Configuration resolution"
+    - "Authentication/authorization logic"
+    - "Repository creation workflows"
+
+  # Test naming conventions
+  test_naming: "test_<function>_<scenario>_<expected>"
+
+  # Required test types
+  required_test_types:
+    - "unit" # Fast, isolated tests
+    - "integration" # Tests with real dependencies
+    - "e2e" # Full user journey tests (for user-facing apps)
+
+  # E2E tests (expensive, use real GitHub API)
+  e2e_tests:
+    location: "crates/e2e_tests/"
+    requires:
+      - "Real GitHub API access"
+      - "Test organization with appropriate permissions"
+      - "Live authentication credentials (GitHub App or PAT)"
+    scope: "Full user journeys from CLI/API input to repository creation"
+    run_frequency: "Pre-release only (expensive, uses real API quota)"
+    cleanup:
+      tool: "crates/test_cleanup/"
+      requirement: "Automated cleanup of test repositories required"
+      scripts: "tests/cleanup-repos.ps1"
+    documentation: "tests/TESTING_STRATEGY.md"
+
+  # Test utilities
+  test_utilities:
+    location: "crates/test_utils/"
+    provides:
+      - "Mock implementations of port traits"
+      - "Test fixtures and builders"
+      - "Shared test helpers"
+
+# Code quality standards
+code_quality:
+  max_function_length: 50
+  max_file_length: 500
+  max_complexity: 10
+  no_duplicate_blocks: true
+
+  # Naming conventions
+  naming:
+    variables: "snake_case"
+    functions: "snake_case"
+    classes: "PascalCase"
+    constants: "SCREAMING_SNAKE_CASE"
+
+# Security standards
+security:
+  secret_management: "environment variables or secret manager"
+  no_hardcoded_secrets: true
+  required_security_headers:
+    - "Content-Security-Policy"
+    - "X-Frame-Options"
+    - "X-Content-Type-Options"
+
+  dependency_scanning:
+    enabled: true
+    fail_on: "high" # Severity level: low, medium, high, critical
+
+# Infrastructure standards
+infrastructure:
+  deployment:
+    targets:
+      - "CLI binary (single executable)"
+      - "REST API server (Axum)"
+      - "Azure Functions (serverless)"
+      - "MCP server (JSON-RPC)"
+
+    packaging: single_rust_binary
+    cloud_provider: azure
+    serverless: azure_functions
+    secrets: azure_key_vault
+    monitoring: azure_monitor
+
+  always:
+    - "Include health check endpoint (for API deployments)"
+    - "Use semantic versioning for releases"
+    - "Tag container images with commit SHA"
+    - "Include structured logging"
+    - "Set resource limits (memory, timeout)"
+
+  never:
+    - "Hard-code credentials or tokens"
+    - "Store secrets in configuration files"
+    - "Use 'latest' tag in production"
+    - "Deploy without smoke tests"
+    - "Log sensitive data (tokens, secrets)"
+
+# Documentation requirements
+documentation:
+  required_for:
+    - "Public APIs"
+    - "Database schema changes"
+    - "Security-related changes"
+    - "Performance-critical code"
+
+  adr_required_for:
+    - "Architectural decisions"
+    - "Technology choices"
+    - "Security model changes"
+    - "Data model changes"
+
+# Performance standards
+performance:
+  max_response_time_p95: "200ms" # API endpoints (simple operations)
+
+  repository_creation_target: "< 2 minutes" # End-to-end repo creation
+  template_processing_timeout: "30 seconds" # Template rendering
+  template_context_memory_limit: "100MB" # Template variable context
+
+  cli_performance:
+    list_templates: "< 5 seconds for 50 templates"
+    get_template_info: "< 2 seconds per template"
+    validate_template: "< 3 seconds per template"
+
+  github_api:
+    rate_limit: "5000 requests/hour (authenticated)"
+    rate_limit_handling: "exponential backoff with retry"
+
+# Task tracking configuration
+task_tracking:
+  tool: beads
+  required_in_commit: recommended # Recommend bd-xxx in commit messages
+  auto_close_on_merge: false # Manual close for explicit decision tracking
+
+  # When to create tasks
+  task_required_for:
+    - "New features"
+    - "Bug fixes"
+    - "Architectural changes"
+    - "Infrastructure changes"
+
+  # Task types (align with your workflow)
+  types:
+    - feature # New functionality
+    - bug # Bug fixes
+    - refactor # Code improvements
+    - docs # Documentation
+    - infrastructure # Build, deploy, tooling
+    - security # Security fixes/improvements
