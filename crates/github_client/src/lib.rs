@@ -22,6 +22,7 @@ pub mod environment_detector;
 pub mod installation;
 pub mod label;
 pub mod repository;
+pub mod ruleset;
 pub mod user;
 pub mod webhook;
 
@@ -33,6 +34,11 @@ pub use environment_detector::GitHubApiEnvironmentDetector;
 pub use installation::{Account, Installation};
 pub use label::Label;
 pub use repository::{Organization, Repository};
+pub use ruleset::{
+    BypassActor, BypassActorType, BypassMode, MergeMethod, PullRequestParameters, RefNameCondition,
+    RepositoryRuleset, RequiredStatusChecksParameters, Rule, RulesetConditions, RulesetEnforcement,
+    RulesetTarget, StatusCheck,
+};
 pub use user::User;
 pub use webhook::{Webhook, WebhookDetails, WebhookEvent};
 
