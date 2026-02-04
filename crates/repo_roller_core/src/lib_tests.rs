@@ -596,6 +596,7 @@ async fn test_create_repository_type_conversion() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: None,
         templating: None,
     };

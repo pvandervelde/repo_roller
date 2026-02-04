@@ -40,6 +40,7 @@ impl TemplateRepository for MockTemplateRepository {
             webhooks: None,
             environments: None,
             github_apps: None,
+            rulesets: None,
             default_visibility: None,
             templating: None,
         })
@@ -492,6 +493,7 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             webhooks: None,
             environments: None,
             github_apps: None,
+            rulesets: None,
             default_visibility: None,
             templating: None,
         })

@@ -64,7 +64,7 @@ use crate::{
     repository_type_config::RepositoryTypeConfig,
     settings::{
         BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
-        PullRequestSettings, RepositorySettings, WebhookConfig,
+        PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
     },
     team_config::TeamConfig,
     template_config::TemplateConfig as NewTemplateConfig,
@@ -305,6 +305,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::Global,
             ));
         }
+        if let Some(rulesets) = &global.rulesets {
+            source_updates.extend(self.merge_rulesets(
+                &mut merged.rulesets,
+                rulesets,
+                ConfigurationSource::Global,
+            ));
+        }
     }
 
     /// Applies repository type-specific overrides.
@@ -397,6 +404,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::RepositoryType,
             ));
         }
+        if let Some(rulesets) = &repo_type.rulesets {
+            source_updates.extend(self.merge_rulesets(
+                &mut merged.rulesets,
+                rulesets,
+                ConfigurationSource::RepositoryType,
+            ));
+        }
 
         Ok(())
     }
@@ -483,6 +497,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::Team,
             ));
         }
+        if let Some(rulesets) = &team.rulesets {
+            source_updates.extend(self.merge_rulesets(
+                &mut merged.rulesets,
+                rulesets,
+                ConfigurationSource::Team,
+            ));
+        }
 
         Ok(())
     }
@@ -563,6 +584,13 @@ impl ConfigurationMerger {
             source_updates.extend(self.merge_github_apps(
                 &mut merged.github_apps,
                 apps,
+                ConfigurationSource::Template,
+            ));
+        }
+        if let Some(rulesets) = &template.rulesets {
+            source_updates.extend(self.merge_rulesets(
+                &mut merged.rulesets,
+                rulesets,
                 ConfigurationSource::Template,
             ));
         }
@@ -945,6 +973,25 @@ impl ConfigurationMerger {
         source_updates
     }
 
+    /// Merges ruleset collections additively.
+    ///
+    /// All rulesets from all sources are combined.
+    fn merge_rulesets(
+        &self,
+        target: &mut Vec<RulesetConfig>,
+        rulesets: &[RulesetConfig],
+        source: ConfigurationSource,
+    ) -> Vec<(String, ConfigurationSource)> {
+        let mut source_updates = Vec::new();
+
+        for ruleset in rulesets {
+            target.push(ruleset.clone());
+            source_updates.push(("rulesets".to_string(), source));
+        }
+
+        source_updates
+    }
+
     /// Validates that an override is allowed.
     ///
     /// Checks if a setting can be overridden based on its `override_allowed` flag.
@@ -1083,3 +1130,7 @@ impl ConfigurationMerger {
 #[cfg(test)]
 #[path = "merger_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "merger_ruleset_tests.rs"]
+mod ruleset_tests;

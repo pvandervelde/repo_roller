@@ -351,6 +351,7 @@ impl OrganizationSettingsManager {
                 webhooks: None,
                 environments: None,
                 github_apps: None,
+                rulesets: None,
                 default_visibility: None,
                 templating: None,
             }
@@ -383,6 +384,7 @@ impl OrganizationSettingsManager {
                         webhooks: None,
                         environments: None,
                         github_apps: None,
+                        rulesets: None,
                         default_visibility: None,
                         templating: None,
                     }
