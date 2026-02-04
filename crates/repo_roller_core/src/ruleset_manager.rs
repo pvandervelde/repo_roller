@@ -299,15 +299,13 @@ impl RulesetManager {
 ///
 /// Vector of detected conflicts with severity and recommendations
 fn detect_conflicts(_rulesets: &[RepositoryRuleset]) -> Vec<RulesetConflict> {
-    let conflicts = Vec::new();
-
     // TODO: Implement conflict detection logic
     // - Detect merge strategy deadlocks
     // - Detect contradictory enforcement levels
     // - Detect overlapping conditions
     // - Detect conflicting bypass actors
 
-    conflicts
+    Vec::new()
 }
 
 /// Result of applying rulesets to a repository.

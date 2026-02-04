@@ -40,7 +40,9 @@ pub use ruleset::{
     RulesetTarget, StatusCheck,
 };
 pub use user::User;
-pub use webhook::{CreateWebhookParams, UpdateWebhookParams, Webhook, WebhookDetails, WebhookEvent};
+pub use webhook::{
+    CreateWebhookParams, UpdateWebhookParams, Webhook, WebhookDetails, WebhookEvent,
+};
 
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;

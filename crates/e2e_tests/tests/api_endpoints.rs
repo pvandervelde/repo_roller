@@ -228,7 +228,7 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     // Check if any labels are missing and capture logs BEFORE asserting
     let mut all_expected = expected_global_labels.clone();
-    all_expected.extend(expected_template_labels.iter().map(|s| *s));
+    all_expected.extend(expected_template_labels.iter().copied());
     let missing_labels: Vec<_> = all_expected
         .iter()
         .filter(|label| !labels.contains(&label.to_string()))
