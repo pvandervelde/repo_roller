@@ -114,6 +114,9 @@ mod label_manager;
 // Webhook management operations
 mod webhook_manager;
 
+// Ruleset management operations
+mod ruleset_manager;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
@@ -193,6 +196,10 @@ pub use content_providers::{
 pub use label_manager::{ApplyLabelsResult, LabelManager};
 // Re-exported from webhook_manager module
 pub use webhook_manager::{ApplyWebhooksResult, WebhookManager};
+// Re-exported from ruleset_manager module
+pub use ruleset_manager::{
+    ApplyRulesetsResult, ConflictSeverity, RulesetConflict, RulesetManager,
+};
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};

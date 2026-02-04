@@ -344,11 +344,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         &self,
         _owner: &str,
         _repo: &str,
-        _url: &str,
-        _content_type: &str,
-        _secret: Option<&str>,
-        _active: bool,
-        _events: &[String],
+        _params: &github_client::CreateWebhookParams<'_>,
     ) -> Result<github_client::Webhook, GitHubError> {
         // Not implemented in test mock - return error
         Err(GitHubError::AuthError(
@@ -361,11 +357,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         _owner: &str,
         _repo: &str,
         _webhook_id: u64,
-        _url: &str,
-        _content_type: &str,
-        _secret: Option<&str>,
-        _active: bool,
-        _events: &[String],
+        _params: &github_client::UpdateWebhookParams<'_>,
     ) -> Result<github_client::Webhook, GitHubError> {
         // Not implemented in test mock - return error
         Err(GitHubError::AuthError(
@@ -381,6 +373,38 @@ impl RepositoryClient for ConfigurableMockRepoClient {
     ) -> Result<(), GitHubError> {
         // Not implemented in test mock - return Ok
         Ok(())
+    }
+
+    async fn list_repository_rulesets(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<github_client::RepositoryRuleset>, GitHubError> {
+        // Not implemented in test mock - return empty list
+        Ok(Vec::new())
+    }
+
+    async fn create_repository_ruleset(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        ruleset: &github_client::RepositoryRuleset,
+    ) -> Result<github_client::RepositoryRuleset, GitHubError> {
+        // Not implemented in test mock - return the input with an ID
+        let mut result = ruleset.clone();
+        result.id = Some(1);
+        Ok(result)
+    }
+
+    async fn update_repository_ruleset(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _ruleset_id: u64,
+        ruleset: &github_client::RepositoryRuleset,
+    ) -> Result<github_client::RepositoryRuleset, GitHubError> {
+        // Not implemented in test mock - return the input
+        Ok(ruleset.clone())
     }
 
     async fn update_label(

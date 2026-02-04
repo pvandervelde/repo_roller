@@ -65,6 +65,8 @@ pub enum RulesetTarget {
     Branch,
     /// Ruleset applies to tags
     Tag,
+    /// Ruleset applies to pushes
+    Push,
 }
 
 /// Enforcement level for a ruleset.
@@ -93,17 +95,36 @@ pub struct BypassActor {
 }
 
 /// Type of actor that can bypass a ruleset.
+///
+/// # Repository Roles
+///
+/// The `RepositoryRole` variant encompasses multiple specific roles:
+/// - Repository admin
+/// - Maintain role
+/// - Write role
+///
+/// The specific role is determined by the `actor_id` field, which references
+/// the role ID in GitHub's role system.
+///
+/// # Special Bypass Modes
+///
+/// - Use `Team` with organization-level team IDs to allow specific teams
+/// - Use `Integration` for GitHub Apps
+/// - Deploy keys are represented via `DeployKey`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub enum BypassActorType {
-    /// Organization admin
+    /// Organization admin role
     OrganizationAdmin,
-    /// Repository role
+    /// Repository-level role (admin, maintain, write)
+    /// The actor_id specifies which repository role
     RepositoryRole,
-    /// Team
+    /// Team (use team ID as actor_id)
     Team,
     /// Integration (GitHub App)
     Integration,
+    /// Deploy key
+    DeployKey,
 }
 
 /// Mode for bypassing a ruleset.

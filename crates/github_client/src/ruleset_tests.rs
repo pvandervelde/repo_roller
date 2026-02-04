@@ -420,3 +420,58 @@ fn test_ruleset_optional_fields_omitted() {
     assert!(!json.contains("\"id\""));
     assert!(!json.contains("\"conditions\""));
 }
+
+/// Test RulesetTarget with Push variant.
+#[test]
+fn test_ruleset_target_push() {
+    assert_eq!(to_string(&RulesetTarget::Push).unwrap(), "\"push\"");
+    assert_eq!(
+        from_str::<RulesetTarget>("\"push\"").unwrap(),
+        RulesetTarget::Push
+    );
+}
+
+/// Test BypassActorType with DeployKey variant.
+#[test]
+fn test_bypass_actor_type_deploy_key() {
+    assert_eq!(
+        to_string(&BypassActorType::DeployKey).unwrap(),
+        "\"DeployKey\""
+    );
+    assert_eq!(
+        from_str::<BypassActorType>("\"DeployKey\"").unwrap(),
+        BypassActorType::DeployKey
+    );
+}
+
+/// Test complete ruleset with push target and deploy key bypass.
+#[test]
+fn test_ruleset_with_push_target_and_deploy_key() {
+    let json = r#"{
+        "id": 456,
+        "name": "push-protection",
+        "target": "push",
+        "enforcement": "active",
+        "bypass_actors": [{
+            "actor_id": 999,
+            "actor_type": "DeployKey",
+            "bypass_mode": "always"
+        }],
+        "rules": [{"type": "creation"}]
+    }"#;
+
+    let ruleset: RepositoryRuleset = from_str(json).expect("Failed to deserialize");
+
+    assert_eq!(ruleset.id, Some(456));
+    assert_eq!(ruleset.name, "push-protection");
+    assert_eq!(ruleset.target, RulesetTarget::Push);
+    assert_eq!(ruleset.enforcement, RulesetEnforcement::Active);
+    assert_eq!(ruleset.bypass_actors.len(), 1);
+    assert_eq!(ruleset.bypass_actors[0].actor_id, 999);
+    assert_eq!(
+        ruleset.bypass_actors[0].actor_type,
+        BypassActorType::DeployKey
+    );
+    assert_eq!(ruleset.bypass_actors[0].bypass_mode, BypassMode::Always);
+    assert_eq!(ruleset.rules.len(), 1);
+}

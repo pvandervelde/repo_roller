@@ -38,7 +38,7 @@ pub struct RulesetConfig {
     /// Ruleset name
     pub name: String,
 
-    /// Target type: "branch" or "tag"
+    /// Target type: "branch", "tag", or "push"
     #[serde(default = "default_target")]
     pub target: String,
 
@@ -67,12 +67,20 @@ fn default_enforcement() -> String {
 }
 
 /// Actor who can bypass a ruleset.
+///
+/// # Actor Types
+///
+/// - `OrganizationAdmin`: Organization administrators
+/// - `RepositoryRole`: Repository-level roles (admin, maintain, write)
+/// - `Team`: Specific teams (use team ID)
+/// - `Integration`: GitHub Apps
+/// - `DeployKey`: Deploy keys
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BypassActorConfig {
     /// Actor ID
     pub actor_id: u64,
 
-    /// Actor type: "OrganizationAdmin", "RepositoryRole", "Team", or "Integration"
+    /// Actor type: "OrganizationAdmin", "RepositoryRole", "Team", "Integration", or "DeployKey"
     pub actor_type: String,
 
     /// Bypass mode: "always" or "pull_request"
@@ -173,4 +181,133 @@ pub struct StatusCheckConfig {
     /// Integration ID (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub integration_id: Option<u64>,
+}
+
+impl RulesetConfig {
+    /// Converts configuration to domain type.
+    ///
+    /// Maps TOML-friendly configuration to GitHub API domain types.
+    pub fn to_domain_ruleset(&self) -> github_client::RepositoryRuleset {
+        use github_client::{
+            BypassActor, BypassActorType, BypassMode, RefNameCondition, RepositoryRuleset, Rule,
+            RulesetConditions, RulesetEnforcement, RulesetTarget,
+        };
+
+        // Convert target
+        let target = match self.target.as_str() {
+            "tag" => RulesetTarget::Tag,
+            "push" => RulesetTarget::Push,
+            _ => RulesetTarget::Branch,
+        };
+
+        // Convert enforcement
+        let enforcement = match self.enforcement.as_str() {
+            "disabled" => RulesetEnforcement::Disabled,
+            "evaluate" => RulesetEnforcement::Evaluate,
+            _ => RulesetEnforcement::Active,
+        };
+
+        // Convert bypass actors
+        let bypass_actors: Vec<BypassActor> = self
+            .bypass_actors
+            .iter()
+            .map(|ba| BypassActor {
+                actor_id: ba.actor_id,
+                actor_type: match ba.actor_type.as_str() {
+                    "RepositoryRole" => BypassActorType::RepositoryRole,
+                    "Team" => BypassActorType::Team,
+                    "Integration" => BypassActorType::Integration,
+                    "DeployKey" => BypassActorType::DeployKey,
+                    _ => BypassActorType::OrganizationAdmin,
+                },
+                bypass_mode: match ba.bypass_mode.as_str() {
+                    "pull_request" => BypassMode::PullRequest,
+                    _ => BypassMode::Always,
+                },
+            })
+            .collect();
+
+        // Convert conditions
+        let conditions = self.conditions.as_ref().map(|c| RulesetConditions {
+            ref_name: RefNameCondition {
+                include: c.ref_name.include.clone(),
+                exclude: c.ref_name.exclude.clone(),
+            },
+        });
+
+        // Convert rules
+        let rules: Vec<Rule> = self
+            .rules
+            .iter()
+            .map(|r| match r {
+                RuleConfig::Creation => Rule::Creation,
+                RuleConfig::Update => Rule::Update,
+                RuleConfig::Deletion => Rule::Deletion,
+                RuleConfig::RequiredLinearHistory => Rule::RequiredLinearHistory,
+                RuleConfig::RequiredSignatures => Rule::RequiredSignatures,
+                RuleConfig::PullRequest {
+                    dismiss_stale_reviews_on_push,
+                    require_code_owner_review,
+                    require_last_push_approval,
+                    required_approving_review_count,
+                    required_review_thread_resolution,
+                    allowed_merge_methods,
+                } => {
+                    use github_client::{MergeMethod, PullRequestParameters};
+
+                    Rule::PullRequest {
+                        parameters: PullRequestParameters {
+                            dismiss_stale_reviews_on_push: *dismiss_stale_reviews_on_push,
+                            require_code_owner_review: *require_code_owner_review,
+                            require_last_push_approval: *require_last_push_approval,
+                            required_approving_review_count: *required_approving_review_count,
+                            required_review_thread_resolution: *required_review_thread_resolution,
+                            allowed_merge_methods: allowed_merge_methods.as_ref().map(|methods| {
+                                methods
+                                    .iter()
+                                    .filter_map(|m| match m.as_str() {
+                                        "merge" => Some(MergeMethod::Merge),
+                                        "squash" => Some(MergeMethod::Squash),
+                                        "rebase" => Some(MergeMethod::Rebase),
+                                        _ => None,
+                                    })
+                                    .collect()
+                            }),
+                        },
+                    }
+                }
+                RuleConfig::RequiredStatusChecks {
+                    required_status_checks,
+                    strict_required_status_checks_policy,
+                } => {
+                    use github_client::{RequiredStatusChecksParameters, StatusCheck};
+
+                    Rule::RequiredStatusChecks {
+                        parameters: RequiredStatusChecksParameters {
+                            required_status_checks: required_status_checks
+                                .iter()
+                                .map(|sc| StatusCheck {
+                                    context: sc.context.clone(),
+                                    integration_id: sc.integration_id,
+                                })
+                                .collect(),
+                            strict_required_status_checks_policy:
+                                *strict_required_status_checks_policy,
+                        },
+                    }
+                }
+                RuleConfig::NonFastForward => Rule::NonFastForward,
+            })
+            .collect();
+
+        RepositoryRuleset {
+            id: None, // Will be assigned by GitHub
+            name: self.name.clone(),
+            target,
+            enforcement,
+            bypass_actors,
+            conditions,
+            rules,
+        }
+    }
 }

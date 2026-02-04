@@ -448,3 +448,110 @@ fn test_multiple_rules() {
         RuleConfig::RequiredStatusChecks { .. }
     ));
 }
+
+/// Test ruleset with push target.
+#[test]
+fn test_push_target_ruleset() {
+    let toml = r#"
+        name = "push-rules"
+        target = "push"
+        rules = []
+    "#;
+
+    let config: RulesetConfig = toml::from_str(toml).expect("Failed to parse");
+
+    assert_eq!(config.name, "push-rules");
+    assert_eq!(config.target, "push");
+
+    // Test conversion to domain type
+    let domain = config.to_domain_ruleset();
+    assert_eq!(domain.target, github_client::RulesetTarget::Push);
+}
+
+/// Test bypass actor with DeployKey type.
+#[test]
+fn test_deploy_key_bypass_actor() {
+    let toml = r#"
+        name = "with-deploy-key"
+        rules = []
+
+        [[bypass_actors]]
+        actor_id = 789
+        actor_type = "DeployKey"
+    "#;
+
+    let config: RulesetConfig = toml::from_str(toml).expect("Failed to parse");
+
+    assert_eq!(config.bypass_actors.len(), 1);
+    assert_eq!(config.bypass_actors[0].actor_id, 789);
+    assert_eq!(config.bypass_actors[0].actor_type, "DeployKey");
+    assert_eq!(config.bypass_actors[0].bypass_mode, "always"); // default
+
+    // Test conversion to domain type
+    let domain = config.to_domain_ruleset();
+    assert_eq!(domain.bypass_actors.len(), 1);
+    assert_eq!(
+        domain.bypass_actors[0].actor_type,
+        github_client::BypassActorType::DeployKey
+    );
+}
+
+/// Test all target types convert correctly.
+#[test]
+fn test_target_conversion() {
+    let targets = vec![
+        ("branch", github_client::RulesetTarget::Branch),
+        ("tag", github_client::RulesetTarget::Tag),
+        ("push", github_client::RulesetTarget::Push),
+    ];
+
+    for (config_target, expected_domain) in targets {
+        let toml = format!(
+            r#"
+            name = "test"
+            target = "{}"
+            rules = []
+            "#,
+            config_target
+        );
+
+        let config: RulesetConfig = toml::from_str(&toml).expect("Failed to parse");
+        let domain = config.to_domain_ruleset();
+
+        assert_eq!(domain.target, expected_domain);
+    }
+}
+
+/// Test all bypass actor types convert correctly.
+#[test]
+fn test_bypass_actor_type_conversion() {
+    use github_client::BypassActorType;
+
+    let actor_types = vec![
+        ("OrganizationAdmin", BypassActorType::OrganizationAdmin),
+        ("RepositoryRole", BypassActorType::RepositoryRole),
+        ("Team", BypassActorType::Team),
+        ("Integration", BypassActorType::Integration),
+        ("DeployKey", BypassActorType::DeployKey),
+    ];
+
+    for (config_type, expected_domain) in actor_types {
+        let toml = format!(
+            r#"
+            name = "test"
+            rules = []
+
+            [[bypass_actors]]
+            actor_id = 1
+            actor_type = "{}"
+            "#,
+            config_type
+        );
+
+        let config: RulesetConfig = toml::from_str(&toml).expect("Failed to parse");
+        let domain = config.to_domain_ruleset();
+
+        assert_eq!(domain.bypass_actors.len(), 1);
+        assert_eq!(domain.bypass_actors[0].actor_type, expected_domain);
+    }
+}
