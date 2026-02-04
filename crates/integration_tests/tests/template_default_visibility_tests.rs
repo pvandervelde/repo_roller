@@ -83,7 +83,7 @@ async fn test_template_default_private_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-tmpl-priv-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-tmpl-priv-{}", uuid::Uuid::new_v4()))?;
 
     // Create repository without specifying visibility - should use template default (private)
     let request = RepositoryCreationRequestBuilder::new(
@@ -149,7 +149,7 @@ async fn test_template_default_public_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-tmpl-pub-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-tmpl-pub-{}", uuid::Uuid::new_v4()))?;
 
     // Create repository without specifying visibility - should use template default (public)
     // Must provide all required variables for template-test-variables
@@ -232,7 +232,7 @@ async fn test_user_preference_overrides_template_default() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-override-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-override-{}", uuid::Uuid::new_v4()))?;
 
     // Template has default_visibility = "private", but we explicitly request public
     let request = RepositoryCreationRequestBuilder::new(
@@ -299,7 +299,7 @@ async fn test_no_template_default_uses_system_default() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-sysdef-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-sysdef-{}", uuid::Uuid::new_v4()))?;
 
     // Create repository without specifying visibility, using template with no default
     let request = RepositoryCreationRequestBuilder::new(
