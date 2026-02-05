@@ -22,10 +22,7 @@ use github_client::{
     RepositoryCreatePayload,
 };
 use integration_tests::{RepositoryCleanup, TestConfig};
-use repo_roller_core::{
-    OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, RulesetManager,
-    TemplateName,
-};
+use repo_roller_core::{RepositoryName, RulesetManager};
 use std::{collections::HashMap, sync::Arc};
 use tracing::info;
 

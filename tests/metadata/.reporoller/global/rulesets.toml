@@ -1,0 +1,23 @@
+# Global Repository Rulesets for All Repositories
+#
+# These rulesets are automatically configured on all new repositories.
+# They provide baseline branch protection and governance rules.
+
+# Main branch protection
+[[rulesets]]
+name = "main-branch-protection"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main", "refs/heads/master"]
+exclude = []
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "non_fast_forward"
+
+[[rulesets.rules]]
+type = "required_linear_history"

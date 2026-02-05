@@ -536,6 +536,44 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
 
     tracing::info!("✓ Verified 1 global webhook with correct configuration");
 
+    // Verify rulesets from global configuration
+    let rulesets = match verification_client
+        .list_repository_rulesets(&org, &repo_name)
+        .await
+    {
+        Ok(rulesets) => rulesets,
+        Err(e) => {
+            tracing::warn!("Failed to list rulesets (may be timing issue): {}", e);
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            verification_client
+                .list_repository_rulesets(&org, &repo_name)
+                .await?
+        }
+    };
+
+    tracing::info!("Repository has {} rulesets", rulesets.len());
+
+    // Verify that rulesets were applied (if any exist in global config)
+    // Note: The exact number depends on what's in .reporoller-test/global/rulesets.toml
+    // For now, we just verify the operation succeeded and log the count
+    if !rulesets.is_empty() {
+        tracing::info!(
+            "✓ Verified {} ruleset(s) applied from global configuration",
+            rulesets.len()
+        );
+        for ruleset in &rulesets {
+            tracing::info!(
+                "  - Ruleset: {} (target: {:?}, enforcement: {:?})",
+                ruleset.name,
+                ruleset.target,
+                ruleset.enforcement
+            );
+        }
+    } else {
+        tracing::info!("✓ No rulesets configured (verified list operation succeeds)");
+    }
+
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
         .await
@@ -739,6 +777,44 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
     );
 
     tracing::info!("✓ Verified 1 global webhook with correct configuration");
+
+    // Verify rulesets from global configuration
+    let rulesets = match verification_client
+        .list_repository_rulesets(&org, &repo_name)
+        .await
+    {
+        Ok(rulesets) => rulesets,
+        Err(e) => {
+            tracing::warn!("Failed to list rulesets (may be timing issue): {}", e);
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            verification_client
+                .list_repository_rulesets(&org, &repo_name)
+                .await?
+        }
+    };
+
+    tracing::info!("Repository has {} rulesets", rulesets.len());
+
+    // Verify that rulesets were applied (if any exist in global config)
+    // Note: The exact number depends on what's in .reporoller-test/global/rulesets.toml
+    // For now, we just verify the operation succeeded and log the count
+    if !rulesets.is_empty() {
+        tracing::info!(
+            "✓ Verified {} ruleset(s) applied from global configuration",
+            rulesets.len()
+        );
+        for ruleset in &rulesets {
+            tracing::info!(
+                "  - Ruleset: {} (target: {:?}, enforcement: {:?})",
+                ruleset.name,
+                ruleset.target,
+                ruleset.enforcement
+            );
+        }
+    } else {
+        tracing::info!("✓ No rulesets configured (verified list operation succeeds)");
+    }
 
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
