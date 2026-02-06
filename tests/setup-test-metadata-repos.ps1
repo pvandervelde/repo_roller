@@ -15,7 +15,7 @@ param(
     [string]$Organization = "glitchgrove",
 
     [Parameter(Mandatory = $false)]
-    [switch]$SkipExisting
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,26 +29,30 @@ function New-TestMetadataRepo
     )
 
     Write-Host "`n========================================" -ForegroundColor Cyan
-    Write-Host "Creating $RepoName" -ForegroundColor Cyan
+    Write-Host "Updating $RepoName" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
 
-    # Check if repo already exists
-    if ($SkipExisting)
-    {
-        $existing = gh repo view "$Organization/$RepoName" 2>$null
-        if ($LASTEXITCODE -eq 0)
-        {
-            Write-Host "✓ Repository already exists, skipping..." -ForegroundColor Yellow
-            return
-        }
-    }
-
-    # Create repository
-    Write-Host "Creating GitHub repository..." -ForegroundColor Gray
-    gh repo create "$Organization/$RepoName" --public --description $Description
+    # Check if repo exists
+    $existing = gh repo view "$Organization/$RepoName" 2>$null
     if ($LASTEXITCODE -ne 0)
     {
-        throw "Failed to create repository $RepoName"
+        # Repository doesn't exist, create it
+        Write-Host "Creating GitHub repository..." -ForegroundColor Yellow
+        gh repo create "$Organization/$RepoName" --public --description $Description
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "Failed to create repository $RepoName"
+        }
+    }
+    else
+    {
+        Write-Host "Repository exists" -ForegroundColor Gray
+        if (-not $Force)
+        {
+            Write-Host "✓ Skipping (use -Force to update existing repositories)" -ForegroundColor Yellow
+            return
+        }
+        Write-Host "Updating existing repository..." -ForegroundColor Yellow
     }
 
     # Clone repository
@@ -71,15 +75,24 @@ function New-TestMetadataRepo
         Write-Host "Setting up repository contents..." -ForegroundColor Gray
         & $SetupScript
 
-        # Commit and push
-        Write-Host "Committing changes..." -ForegroundColor Gray
+        # Check if there are changes to commit
         git add .
-        git commit -m "Initial setup for integration testing" 2>&1 | Out-Null
+        $status = git status --porcelain
+        if (-not $status)
+        {
+            Write-Host "✓ No changes needed" -ForegroundColor Green
+        }
+        else
+        {
+            # Commit and push
+            Write-Host "Committing changes..." -ForegroundColor Gray
+            git commit -m "Update repository configuration for integration testing" 2>&1 | Out-Null
 
-        Write-Host "Pushing to GitHub..." -ForegroundColor Gray
-        git push 2>&1 | Out-Null
+            Write-Host "Pushing to GitHub..." -ForegroundColor Gray
+            git push 2>&1 | Out-Null
 
-        Write-Host "✓ Successfully created $RepoName" -ForegroundColor Green
+            Write-Host "✓ Successfully updated $RepoName" -ForegroundColor Green
+        }
     }
     finally
     {
@@ -138,7 +151,7 @@ has_projects = false
 "@ | Out-File -FilePath types/library.toml -Encoding utf8
 
     # Create .gitkeep to preserve empty global directory
-    New-Item -ItemType File -Path global/.gitkeep | Out-Null
+    New-Item -ItemType File -Path global/.gitkeep -Force | Out-Null
 
     @"
 # Test Metadata Repository: Missing Global Defaults
@@ -309,6 +322,60 @@ Tests how RepoRoller handles duplicate label definitions:
 - Does it use the first definition?
 - Does it use the last definition?
 - Does it report an error?
+"@ | Out-File -FilePath README.md -Encoding utf8
+}
+
+# Repository 7: Main Test Metadata Repository
+New-TestMetadataRepo -RepoName ".reporoller-test" -Description "Primary test metadata repository for RepoRoller integration tests" -SetupScript {
+    $metadataSource = "F:\vcs\github\pvandervelde\repo_roller\tests\metadata\.reporoller"
+
+    if (Test-Path $metadataSource)
+    {
+        # Copy the entire .reporoller directory structure
+        Copy-Item -Path "$metadataSource\*" -Destination "." -Recurse -Force
+    }
+    else
+    {
+        # Fallback: create basic structure
+        New-Item -ItemType Directory -Path global, teams, types -Force | Out-Null
+
+        @"
+[repository_settings]
+has_issues = true
+has_wiki = false
+has_projects = false
+"@ | Out-File -FilePath global/defaults.toml -Encoding utf8
+    }
+
+    @"
+# RepoRoller Test Metadata Repository
+
+This is the primary test metadata repository for RepoRoller integration tests.
+It contains the standard configuration hierarchy used by most integration tests.
+
+## Structure
+
+- ``global/`` - Global configuration (defaults, labels, webhooks, rulesets)
+- ``teams/`` - Team-specific configurations
+- ``types/`` - Repository type configurations
+- ``templates/`` - Template-specific configurations
+
+## Purpose
+
+This repository serves as the primary configuration source for RepoRoller integration
+and E2E tests. It contains realistic configuration examples that demonstrate:
+
+- Configuration hierarchy and merging
+- Label definitions
+- Webhook configurations
+- Repository ruleset policies
+- Repository settings with override controls
+
+## Usage
+
+Integration tests reference this repository using the ``GitHubClient`` to retrieve
+merged configuration for test repositories. E2E tests verify that repositories
+created through the API correctly apply the configuration from this metadata repository.
 "@ | Out-File -FilePath README.md -Encoding utf8
 }
 
