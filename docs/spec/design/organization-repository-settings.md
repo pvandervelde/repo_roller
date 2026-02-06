@@ -540,6 +540,360 @@ site_name = { description = "Name of the documentation site", example = "API Doc
 base_url = { description = "Base URL for the site", example = "https://docs.example.com" }
 ```
 
+### Repository Ruleset Configuration Format
+
+Repository rulesets define governance rules for branches and tags, providing enforcement for
+branch protection, merge requirements, and other repository policies.
+
+#### Global Rulesets
+
+Organization-wide rulesets applied to all repositories:
+
+```toml
+# global/rulesets.toml
+
+# Main branch protection
+[[rulesets]]
+name = "main-branch-protection"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main", "refs/heads/master"]
+exclude = []
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "non_fast_forward"
+
+[[rulesets.rules]]
+type = "required_linear_history"
+
+# Release branch protection
+[[rulesets]]
+name = "release-branch-protection"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/release/*"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "pull_request"
+required_approving_review_count = 2
+require_code_owner_review = true
+allowed_merge_methods = ["squash"]
+
+[[rulesets.rules]]
+type = "required_status_checks"
+required_checks = [
+  { context = "ci/build" },
+  { context = "ci/test" },
+  { context = "security/scan" }
+]
+```
+
+#### Team-Specific Rulesets
+
+Team rulesets that apply to repositories created by specific teams:
+
+```toml
+# teams/backend-team/config.toml
+
+# Team-specific branch protection
+[[rulesets]]
+name = "backend-team-main-protection"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main"]
+
+[[rulesets.rules]]
+type = "pull_request"
+required_approving_review_count = 2
+require_code_owner_review = true
+dismiss_stale_reviews_on_push = true
+allowed_merge_methods = ["squash", "merge"]
+
+[[rulesets.rules]]
+type = "required_status_checks"
+strict_required_status_checks_policy = true
+required_checks = [
+  { context = "ci/build" },
+  { context = "ci/test" },
+  { context = "ci/integration-test" },
+  { context = "security/dependency-check" }
+]
+
+# Development branch rules
+[[rulesets]]
+name = "backend-feature-branch-rules"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/feature/*", "refs/heads/bugfix/*"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "update"
+```
+
+#### Repository Type Rulesets
+
+Type-specific rulesets for different repository categories:
+
+```toml
+# types/library/config.toml
+
+[[rulesets]]
+name = "library-main-protection"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "non_fast_forward"
+
+[[rulesets.rules]]
+type = "required_linear_history"
+
+[[rulesets.rules]]
+type = "pull_request"
+required_approving_review_count = 2
+require_code_owner_review = true
+require_last_push_approval = true
+allowed_merge_methods = ["squash"]
+
+[[rulesets.rules]]
+type = "required_status_checks"
+strict_required_status_checks_policy = true
+required_checks = [
+  { context = "ci/build" },
+  { context = "ci/test" },
+  { context = "ci/coverage", integration_id = 12345 },
+  { context = "security/vulnerability-scan" }
+]
+
+# Tag protection for releases
+[[rulesets]]
+name = "library-release-tags"
+target = "tag"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/tags/v*"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "update"
+```
+
+```toml
+# types/service/config.toml
+
+[[rulesets]]
+name = "service-deployment-protection"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main", "refs/heads/production"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "pull_request"
+required_approving_review_count = 1
+require_code_owner_review = true
+allowed_merge_methods = ["squash", "merge"]
+
+[[rulesets.rules]]
+type = "required_status_checks"
+required_checks = [
+  { context = "ci/build" },
+  { context = "ci/test" },
+  { context = "ci/e2e-test" },
+  { context = "security/container-scan" },
+  { context = "security/dependency-check" }
+]
+
+[[rulesets.rules]]
+type = "required_deployments"
+required_deployment_environments = ["staging"]
+```
+
+#### Template-Specific Rulesets
+
+Templates can define their own rulesets that combine with hierarchical configuration:
+
+```toml
+# .reporoller/template.toml
+
+[template]
+name = "rust-microservice"
+description = "Production-ready Rust microservice template"
+
+# Template-specific rulesets
+[[rulesets]]
+name = "microservice-main-branch"
+target = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "non_fast_forward"
+
+[[rulesets.rules]]
+type = "pull_request"
+required_approving_review_count = 2
+require_code_owner_review = true
+dismiss_stale_reviews_on_push = true
+required_review_thread_resolution = true
+allowed_merge_methods = ["squash"]
+
+[[rulesets.rules]]
+type = "required_status_checks"
+strict_required_status_checks_policy = true
+required_checks = [
+  { context = "rust/build" },
+  { context = "rust/test" },
+  { context = "rust/clippy" },
+  { context = "rust/fmt" },
+  { context = "docker/build" },
+  { context = "security/cargo-audit" }
+]
+
+# Protect version tags
+[[rulesets]]
+name = "microservice-version-tags"
+target = "tag"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/tags/v*.*.*"]
+
+[[rulesets.rules]]
+type = "deletion"
+
+[[rulesets.rules]]
+type = "update"
+```
+
+#### Ruleset Configuration Reference
+
+**Ruleset Fields:**
+
+- `name` (required): Unique name for the ruleset
+- `target` (optional, default: "branch"): Target type - "branch", "tag", or "push"
+- `enforcement` (optional, default: "active"): Enforcement level - "active", "disabled", or "evaluate"
+- `bypass_actors` (optional): List of actors who can bypass this ruleset
+- `conditions` (optional): Conditions for when the ruleset applies
+- `rules` (required): List of rules in this ruleset
+
+**Condition Fields:**
+
+- `ref_name.include` (required): Reference patterns to include (e.g., "refs/heads/main")
+- `ref_name.exclude` (optional): Reference patterns to exclude
+
+**Rule Types:**
+
+- `deletion`: Prevents deletion of matching references
+- `non_fast_forward`: Prevents force pushes
+- `required_linear_history`: Requires linear history (no merge commits)
+- `update`: Prevents updates to matching references
+- `pull_request`: Requires pull request before merging
+- `required_status_checks`: Requires specific status checks to pass
+- `required_deployments`: Requires deployment to specific environments
+- `commit_message_pattern`: Enforces commit message format
+- `commit_author_email_pattern`: Enforces commit author email format
+- `committer_email_pattern`: Enforces committer email format
+
+**Pull Request Rule Fields:**
+
+- `required_approving_review_count` (optional): Number of approving reviews required
+- `require_code_owner_review` (optional): Require review from code owner
+- `require_last_push_approval` (optional): Require approval after last push
+- `dismiss_stale_reviews_on_push` (optional): Dismiss reviews when new commits pushed
+- `required_review_thread_resolution` (optional): Require all review threads resolved
+- `allowed_merge_methods` (optional): List of allowed merge methods - "merge", "squash", "rebase"
+
+**Required Status Checks Rule Fields:**
+
+- `strict_required_status_checks_policy` (optional): Require branches to be up to date before merging
+- `required_checks` (required): List of required status checks
+  - `context` (required): Status check name
+  - `integration_id` (optional): GitHub App integration ID for the check
+
+**Bypass Actor Fields:**
+
+- `actor_id` (required): GitHub actor ID
+- `actor_type` (required): Actor type - "OrganizationAdmin", "RepositoryRole", "Team", "Integration", or "DeployKey"
+- `bypass_mode` (optional, default: "always"): Bypass mode - "always" or "pull_request"
+
+#### Ruleset Hierarchy and Merging
+
+Rulesets follow the standard configuration hierarchy:
+
+1. **Global** (`global/rulesets.toml`): Organization-wide baseline rulesets
+2. **Repository Type** (`types/{type}/config.toml`): Type-specific rulesets
+3. **Team** (`teams/{team}/config.toml`): Team-specific rulesets
+4. **Template** (`.reporoller/template.toml`): Template-specific rulesets
+
+**Merging Behavior:**
+
+- Rulesets are **additive** - all rulesets from all levels are applied
+- Rulesets with duplicate names are **merged** with higher levels taking precedence
+- Rules within rulesets are combined (not replaced)
+- Conditions are merged by combining include/exclude patterns
+- More specific reference patterns override less specific ones
+
+**Example Merge:**
+
+```
+Global:     rulesets = [main-protection]
+Type:       rulesets = [library-protection, tag-protection]
+Team:       rulesets = [team-specific-checks]
+Template:   rulesets = [template-requirements]
+
+Result:     rulesets = [main-protection, library-protection, tag-protection,
+                        team-specific-checks, template-requirements]
+```
+
+#### Best Practices
+
+1. **Start with Global Defaults**: Define baseline protection in global rulesets
+2. **Use Type-Specific Rules**: Add repository type-appropriate rules
+3. **Team Customization**: Allow teams to add their specific requirements
+4. **Template Requirements**: Templates should define minimal required rules
+5. **Descriptive Names**: Use clear, descriptive names for rulesets
+6. **Explicit Conditions**: Always specify which branches/tags the ruleset applies to
+7. **Document Bypass Actors**: Clearly document who can bypass rules and why
+8. **Test Enforcement**: Use "evaluate" mode to test rulesets before "active" enforcement
+9. **Status Check Context**: Use consistent, descriptive status check context names
+10. **Avoid Overly Restrictive Rules**: Balance security with developer productivity
+
 ## Security Considerations
 
 ### Override Policy Enforcement
