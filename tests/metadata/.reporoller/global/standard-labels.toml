@@ -2,53 +2,46 @@
 #
 # These labels are automatically created on all new repositories.
 # They provide a consistent labeling system across the organization.
+#
+# Format: Each label is defined as a TOML table with color and description.
+# The label name is the table key.
 
-[[labels]]
-name = "bug"
+[bug]
 color = "d73a4a"
 description = "Something isn't working"
 
-[[labels]]
-name = "enhancement"
+[enhancement]
 color = "a2eeef"
 description = "New feature or request"
 
-[[labels]]
-name = "documentation"
+[documentation]
 color = "0075ca"
 description = "Improvements or additions to documentation"
 
-[[labels]]
-name = "good-first-issue"
+[good-first-issue]
 color = "7057ff"
 description = "Good for newcomers"
 
-[[labels]]
-name = "help-wanted"
+[help-wanted]
 color = "008672"
 description = "Extra attention is needed"
 
-[[labels]]
-name = "question"
+[question]
 color = "d876e3"
 description = "Further information is requested"
 
-[[labels]]
-name = "wontfix"
+[wontfix]
 color = "ffffff"
 description = "This will not be worked on"
 
-[[labels]]
-name = "duplicate"
+[duplicate]
 color = "cfd3d7"
 description = "This issue or pull request already exists"
 
-[[labels]]
-name = "invalid"
+[invalid]
 color = "e4e669"
 description = "This doesn't seem right"
 
-[[labels]]
-name = "security"
-color = "ee0701"
-description = "Security-related issue or improvement"
+[dependencies]
+color = "0366d6"
+description = "Pull requests that update a dependency file"
