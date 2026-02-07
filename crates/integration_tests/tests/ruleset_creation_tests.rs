@@ -77,6 +77,12 @@ async fn create_test_dependencies(
 
 /// Helper to create a minimal test ruleset configuration.
 fn create_test_ruleset_config(name: &str, target: &str) -> RulesetConfig {
+    // Use appropriate ref pattern based on target type
+    let ref_pattern = match target {
+        "tag" => "refs/tags/*".to_string(),
+        _ => "refs/heads/main".to_string(),
+    };
+
     RulesetConfig {
         name: name.to_string(),
         target: target.to_string(),
@@ -84,7 +90,7 @@ fn create_test_ruleset_config(name: &str, target: &str) -> RulesetConfig {
         bypass_actors: vec![],
         conditions: Some(RulesetConditionsConfig {
             ref_name: RefNameConditionConfig {
-                include: vec!["refs/heads/main".to_string()],
+                include: vec![ref_pattern],
                 exclude: vec![],
             },
         }),
