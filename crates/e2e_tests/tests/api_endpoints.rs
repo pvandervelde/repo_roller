@@ -377,7 +377,7 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
             "include_readme": true,
             "include_gitignore": false
         },
-        "visibility": "private"
+        "visibility": "public"  // Public required for ruleset verification (no GitHub Pro)
     });
 
     let response = client
@@ -620,7 +620,7 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
             "include_readme": true,
             "include_gitignore": true
         },
-        "visibility": "private"
+        "visibility": "public"  // Public required for ruleset verification (no GitHub Pro)
     });
 
     let response = client
