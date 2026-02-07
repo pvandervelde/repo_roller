@@ -118,7 +118,7 @@ async fn test_ruleset_creation_via_manager() -> Result<()> {
     let payload = RepositoryCreatePayload {
         name: repo_name.as_ref().to_string(),
         description: Some("Test repository for ruleset creation".to_string()),
-        private: Some(true),
+        private: Some(false), // Rulesets require public repos or GitHub Pro
         ..Default::default()
     };
 
@@ -201,7 +201,7 @@ async fn test_rulesets_are_idempotent() -> Result<()> {
     let payload = RepositoryCreatePayload {
         name: repo_name.as_ref().to_string(),
         description: Some("Test repository for ruleset idempotency".to_string()),
-        private: Some(true),
+        private: Some(false), // Rulesets require public repos or GitHub Pro
         ..Default::default()
     };
 
@@ -298,7 +298,7 @@ async fn test_list_existing_rulesets() -> Result<()> {
     let payload = RepositoryCreatePayload {
         name: repo_name.as_ref().to_string(),
         description: Some("Test repository for listing rulesets".to_string()),
-        private: Some(true),
+        private: Some(false), // Rulesets require public repos or GitHub Pro
         ..Default::default()
     };
 
@@ -394,7 +394,7 @@ async fn test_update_existing_rulesets() -> Result<()> {
     let payload = RepositoryCreatePayload {
         name: repo_name.as_ref().to_string(),
         description: Some("Test repository for updating rulesets".to_string()),
-        private: Some(true),
+        private: Some(false), // Rulesets require public repos or GitHub Pro
         ..Default::default()
     };
 
@@ -486,7 +486,7 @@ async fn test_empty_ruleset_configuration() -> Result<()> {
     let payload = RepositoryCreatePayload {
         name: repo_name.as_ref().to_string(),
         description: Some("Test repository for empty ruleset config".to_string()),
-        private: Some(true),
+        private: Some(false), // Rulesets require public repos or GitHub Pro
         ..Default::default()
     };
 
