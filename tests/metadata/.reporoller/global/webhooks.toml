@@ -4,7 +4,7 @@
 # Using httpbin.org for testing (delivery not verified, just configuration).
 
 [[webhooks]]
-url = "https://httpbin.org/post"
+url = "https://httpbin.org/global-webhook"
 content_type = "json"
 active = true
 events = ["push", "pull_request"]
