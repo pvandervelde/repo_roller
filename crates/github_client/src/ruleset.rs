@@ -54,6 +54,10 @@ pub struct RepositoryRuleset {
     pub conditions: Option<RulesetConditions>,
 
     /// Rules in this ruleset
+    ///
+    /// Note: GitHub's LIST rulesets endpoint does not include rules in the response.
+    /// Use GET /repos/{owner}/{repo}/rules/{ruleset_id} to fetch full ruleset details.
+    #[serde(default)]
     pub rules: Vec<Rule>,
 }
 
