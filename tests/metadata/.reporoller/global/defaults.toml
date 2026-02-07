@@ -28,13 +28,13 @@ delete_branch_on_merge = { value = true, override_allowed = true }
 security_advisories = { value = true, override_allowed = false }
 vulnerability_reporting = { value = true, override_allowed = false }
 
-# Pull request settings
-[pull_requests]
-require_code_owner_reviews = { value = false, override_allowed = true }
-required_approving_review_count = { value = 1, override_allowed = true }
-require_conversation_resolution = { value = true, override_allowed = false }
-
 # Branch protection
 [branch_protection]
 require_pull_request_reviews = { value = true, override_allowed = false }
+required_approving_review_count = { value = 1, override_allowed = true }
+require_code_owner_reviews = { value = false, override_allowed = true }
 enforce_admins = { value = false, override_allowed = true }
+
+# Pull request settings
+[pull_requests]
+require_conversation_resolution = { value = true, override_allowed = false }
