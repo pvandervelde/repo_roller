@@ -1512,7 +1512,7 @@ impl RepositoryClient for GitHubClient {
                 eprintln!("[GITHUB_CLIENT DEBUG] Body: {}", json_str);
 
                 // Now try to deserialize into our type
-                match serde_json::from_value::<Vec<RepositoryRuleset>>(json_value) {
+                match serde_json::from_value::<Vec<RepositoryRuleset>>(json_value.clone()) {
                     Ok(rulesets) => {
                         info!(
                             owner = owner,
@@ -1520,6 +1520,16 @@ impl RepositoryClient for GitHubClient {
                             count = rulesets.len(),
                             "Successfully retrieved rulesets"
                         );
+                        if rulesets.is_empty() {
+                            eprintln!(
+                                "[GITHUB_CLIENT DEBUG] Repository has no rulesets (empty array)"
+                            );
+                        } else {
+                            eprintln!(
+                                "[GITHUB_CLIENT DEBUG] Successfully deserialized {} rulesets",
+                                rulesets.len()
+                            );
+                        }
                         Ok(rulesets)
                     }
                     Err(e) => {
@@ -1532,18 +1542,63 @@ impl RepositoryClient for GitHubClient {
                             "Failed to deserialize rulesets response"
                         );
                         eprintln!("[GITHUB_CLIENT DEBUG] Deserialization error: {:?}", e);
+                        eprintln!("[GITHUB_CLIENT DEBUG] This means the JSON structure doesn't match Vec<RepositoryRuleset>");
+                        eprintln!("[GITHUB_CLIENT DEBUG] Check if response is an error object instead of an array");
+
+                        // Try to see if it's an error response
+                        if let Some(message) = json_value.get("message") {
+                            eprintln!(
+                                "[GITHUB_CLIENT DEBUG] Response contains 'message' field: {:?}",
+                                message
+                            );
+                            eprintln!(
+                                "[GITHUB_CLIENT DEBUG] This looks like a GitHub error response"
+                            );
+                        }
+
                         Err(Error::InvalidResponse)
                     }
                 }
             }
             Err(e) => {
-                error!(
-                    owner = owner,
-                    repo = repo,
-                    route = &route,
-                    error = ?e,
-                    "Failed to make request to list repository rulesets"
-                );
+                // Check what kind of error this is
+                match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            route = &route,
+                            status = source.status_code.as_u16(),
+                            error_message = %source.message,
+                            documentation = %source.documentation_url.as_deref().unwrap_or("N/A"),
+                            "GitHub API error when listing rulesets"
+                        );
+                        eprintln!("\n[GITHUB_CLIENT ERROR] GitHub API returned error:");
+                        eprintln!("[GITHUB_CLIENT ERROR] Status: {}", source.status_code);
+                        eprintln!("[GITHUB_CLIENT ERROR] Message: {}", source.message);
+                        eprintln!("[GITHUB_CLIENT ERROR] URL: {}", route);
+                        eprintln!("[GITHUB_CLIENT ERROR] This likely means:");
+                        if source.status_code.as_u16() == 404 {
+                            eprintln!("[GITHUB_CLIENT ERROR]   - Repository doesn't exist yet (timing issue)");
+                            eprintln!("[GITHUB_CLIENT ERROR]   - Rulesets endpoint not available for this repo");
+                        } else if source.status_code.as_u16() == 403 {
+                            eprintln!("[GITHUB_CLIENT ERROR]   - Insufficient permissions (need 'administration:read')");
+                            eprintln!(
+                                "[GITHUB_CLIENT ERROR]   - GitHub App doesn't have ruleset access"
+                            );
+                        }
+                    }
+                    _ => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            route = &route,
+                            error = ?e,
+                            "Failed to make request to list repository rulesets"
+                        );
+                        eprintln!("\n[GITHUB_CLIENT ERROR] Unexpected error type: {:?}", e);
+                    }
+                }
                 log_octocrab_error("Failed to list rulesets", e);
                 Err(Error::InvalidResponse)
             }

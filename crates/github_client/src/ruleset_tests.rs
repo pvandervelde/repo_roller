@@ -40,6 +40,12 @@ fn test_ruleset_serialization() {
         bypass_actors: vec![],
         conditions: None,
         rules: vec![],
+        node_id: None,
+        source: None,
+        source_type: None,
+        created_at: None,
+        updated_at: None,
+        _links: None,
     };
 
     let json = to_string(&ruleset).expect("Failed to serialize");
@@ -412,6 +418,12 @@ fn test_ruleset_optional_fields_omitted() {
         bypass_actors: vec![],
         conditions: None,
         rules: vec![Rule::Creation],
+        node_id: None,
+        source: None,
+        source_type: None,
+        created_at: None,
+        updated_at: None,
+        _links: None,
     };
 
     let json = to_string(&ruleset).expect("Failed to serialize");
@@ -419,6 +431,8 @@ fn test_ruleset_optional_fields_omitted() {
     // Optional fields should not be present
     assert!(!json.contains("\"id\""));
     assert!(!json.contains("\"conditions\""));
+    assert!(!json.contains("\"node_id\""));
+    assert!(!json.contains("\"_links\""));
 }
 
 /// Test RulesetTarget with Push variant.

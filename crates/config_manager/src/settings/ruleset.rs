@@ -308,6 +308,12 @@ impl RulesetConfig {
             bypass_actors,
             conditions,
             rules,
+            node_id: None,
+            source: None,
+            source_type: None,
+            created_at: None,
+            updated_at: None,
+            _links: None,
         }
     }
 }

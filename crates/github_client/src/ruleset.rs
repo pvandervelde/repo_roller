@@ -28,6 +28,12 @@ mod tests;
 ///     bypass_actors: vec![],
 ///     conditions: None,
 ///     rules: vec![],
+///     node_id: None,
+///     source: None,
+///     source_type: None,
+///     created_at: None,
+///     updated_at: None,
+///     _links: None,
 /// };
 /// ```
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -59,6 +65,32 @@ pub struct RepositoryRuleset {
     /// Use GET /repos/{owner}/{repo}/rules/{ruleset_id} to fetch full ruleset details.
     #[serde(default)]
     pub rules: Vec<Rule>,
+
+    /// Node ID (GitHub's global node identifier)
+    /// Returned by LIST and GET endpoints, not used for CREATE
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+
+    /// Source of the ruleset (repository or organization name)
+    /// Example: "owner/repo" or "org-name"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+
+    /// Type of source (Repository or Organization)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_type: Option<String>,
+
+    /// Timestamp when ruleset was created (ISO 8601)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+
+    /// Timestamp when ruleset was last updated (ISO 8601)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+
+    /// Links to related resources
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _links: Option<serde_json::Value>,
 }
 
 /// Target type for a ruleset.
