@@ -1512,6 +1512,12 @@ impl RepositoryClient for GitHubClient {
                 Ok(rulesets)
             }
             Err(e) => {
+                error!(
+                    owner = owner,
+                    repo = repo,
+                    route = &route,
+                    "Failed to list repository rulesets"
+                );
                 log_octocrab_error("Failed to list rulesets", e);
                 Err(Error::InvalidResponse)
             }

@@ -537,18 +537,56 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
     tracing::info!("✓ Verified 1 global webhook with correct configuration");
 
     // Verify rulesets from global configuration
+    tracing::info!(
+        org = &org,
+        repo = &repo_name,
+        "Attempting to list repository rulesets for verification"
+    );
     let rulesets = match verification_client
         .list_repository_rulesets(&org, &repo_name)
         .await
     {
-        Ok(rulesets) => rulesets,
+        Ok(rulesets) => {
+            tracing::info!(
+                org = &org,
+                repo = &repo_name,
+                count = rulesets.len(),
+                "Successfully listed rulesets"
+            );
+            rulesets
+        }
         Err(e) => {
-            tracing::warn!("Failed to list rulesets (may be timing issue): {}", e);
+            tracing::warn!(
+                org = &org,
+                repo = &repo_name,
+                error = %e,
+                "Failed to list rulesets on first attempt, retrying after delay"
+            );
             // Try one more time after delay
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            verification_client
+            match verification_client
                 .list_repository_rulesets(&org, &repo_name)
-                .await?
+                .await
+            {
+                Ok(rulesets) => {
+                    tracing::info!(
+                        org = &org,
+                        repo = &repo_name,
+                        count = rulesets.len(),
+                        "Successfully listed rulesets on retry"
+                    );
+                    rulesets
+                }
+                Err(e) => {
+                    tracing::error!(
+                        org = &org,
+                        repo = &repo_name,
+                        error = %e,
+                        "Failed to list rulesets after retry - this may indicate API response format mismatch"
+                    );
+                    return Err(e.into());
+                }
+            }
         }
     };
 
@@ -779,18 +817,56 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
     tracing::info!("✓ Verified 1 global webhook with correct configuration");
 
     // Verify rulesets from global configuration
+    tracing::info!(
+        org = &org,
+        repo = &repo_name,
+        "Attempting to list repository rulesets for verification"
+    );
     let rulesets = match verification_client
         .list_repository_rulesets(&org, &repo_name)
         .await
     {
-        Ok(rulesets) => rulesets,
+        Ok(rulesets) => {
+            tracing::info!(
+                org = &org,
+                repo = &repo_name,
+                count = rulesets.len(),
+                "Successfully listed rulesets"
+            );
+            rulesets
+        }
         Err(e) => {
-            tracing::warn!("Failed to list rulesets (may be timing issue): {}", e);
+            tracing::warn!(
+                org = &org,
+                repo = &repo_name,
+                error = %e,
+                "Failed to list rulesets on first attempt, retrying after delay"
+            );
             // Try one more time after delay
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            verification_client
+            match verification_client
                 .list_repository_rulesets(&org, &repo_name)
-                .await?
+                .await
+            {
+                Ok(rulesets) => {
+                    tracing::info!(
+                        org = &org,
+                        repo = &repo_name,
+                        count = rulesets.len(),
+                        "Successfully listed rulesets on retry"
+                    );
+                    rulesets
+                }
+                Err(e) => {
+                    tracing::error!(
+                        org = &org,
+                        repo = &repo_name,
+                        error = %e,
+                        "Failed to list rulesets after retry - this may indicate API response format mismatch"
+                    );
+                    return Err(e.into());
+                }
+            }
         }
     };
 
