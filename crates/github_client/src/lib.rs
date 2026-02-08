@@ -1498,25 +1498,51 @@ impl RepositoryClient for GitHubClient {
 
         let route = format!("/repos/{}/{}/rulesets", owner, repo);
 
-        let result: OctocrabResult<Vec<RepositoryRuleset>> =
-            self.client.get(&route, None::<&()>).await;
+        // First get as serde_json::Value to log the raw response
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
 
         match result {
-            Ok(rulesets) => {
-                info!(
-                    owner = owner,
-                    repo = repo,
-                    count = rulesets.len(),
-                    "Successfully retrieved rulesets"
+            Ok(json_value) => {
+                let json_str = serde_json::to_string_pretty(&json_value)
+                    .unwrap_or_else(|_| format!("{:?}", json_value));
+                eprintln!(
+                    "[GITHUB_CLIENT DEBUG] list_repository_rulesets response for {}/{}:",
+                    owner, repo
                 );
-                Ok(rulesets)
+                eprintln!("[GITHUB_CLIENT DEBUG] Body: {}", json_str);
+
+                // Now try to deserialize into our type
+                match serde_json::from_value::<Vec<RepositoryRuleset>>(json_value) {
+                    Ok(rulesets) => {
+                        info!(
+                            owner = owner,
+                            repo = repo,
+                            count = rulesets.len(),
+                            "Successfully retrieved rulesets"
+                        );
+                        Ok(rulesets)
+                    }
+                    Err(e) => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            route = &route,
+                            error = ?e,
+                            body_sample = &json_str[..json_str.len().min(500)],
+                            "Failed to deserialize rulesets response"
+                        );
+                        eprintln!("[GITHUB_CLIENT DEBUG] Deserialization error: {:?}", e);
+                        Err(Error::InvalidResponse)
+                    }
+                }
             }
             Err(e) => {
                 error!(
                     owner = owner,
                     repo = repo,
                     route = &route,
-                    "Failed to list repository rulesets"
+                    error = ?e,
+                    "Failed to make request to list repository rulesets"
                 );
                 log_octocrab_error("Failed to list rulesets", e);
                 Err(Error::InvalidResponse)
