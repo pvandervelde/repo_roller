@@ -361,41 +361,6 @@ pub(crate) async fn apply_repository_configuration(
                 ruleset_result.failed, ruleset_result.failed_rulesets
             );
         }
-
-        if !ruleset_result.conflicts.is_empty() {
-            warn!(
-                "Detected {} ruleset conflict(s) during application",
-                ruleset_result.conflicts.len()
-            );
-            for conflict in &ruleset_result.conflicts {
-                match conflict.severity {
-                    crate::ConflictSeverity::Critical => {
-                        error!(
-                            "Critical ruleset conflict: {} - Recommendation: {}",
-                            conflict.description, conflict.recommendation
-                        );
-                    }
-                    crate::ConflictSeverity::Error => {
-                        error!(
-                            "Ruleset error: {} - Recommendation: {}",
-                            conflict.description, conflict.recommendation
-                        );
-                    }
-                    crate::ConflictSeverity::Warning => {
-                        warn!(
-                            "Ruleset warning: {} - Recommendation: {}",
-                            conflict.description, conflict.recommendation
-                        );
-                    }
-                    crate::ConflictSeverity::Info => {
-                        info!(
-                            "Ruleset info: {} - Recommendation: {}",
-                            conflict.description, conflict.recommendation
-                        );
-                    }
-                }
-            }
-        }
     }
 
     // Apply custom properties (including repository type)

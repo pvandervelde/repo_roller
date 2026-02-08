@@ -4,9 +4,7 @@ use super::*;
 use config_manager::settings::{
     RefNameConditionConfig, RuleConfig, RulesetConditionsConfig, RulesetConfig,
 };
-use github_client::{
-    RefNameCondition, RepositoryRuleset, Rule, RulesetConditions, RulesetEnforcement, RulesetTarget,
-};
+use github_client::{RepositoryRuleset, RulesetEnforcement, RulesetTarget};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -109,7 +107,6 @@ fn test_apply_rulesets_result_new() {
     assert_eq!(result.updated, 0);
     assert_eq!(result.failed, 0);
     assert!(result.failed_rulesets.is_empty());
-    assert!(result.conflicts.is_empty());
 }
 
 #[test]
@@ -128,7 +125,6 @@ fn test_apply_rulesets_result_is_success_when_no_failures() {
         updated: 2,
         failed: 0,
         failed_rulesets: vec![],
-        conflicts: vec![],
     };
 
     assert!(result.is_success());
@@ -141,7 +137,6 @@ fn test_apply_rulesets_result_is_not_success_when_failures() {
         updated: 2,
         failed: 1,
         failed_rulesets: vec!["failed-ruleset".to_string()],
-        conflicts: vec![],
     };
 
     assert!(!result.is_success());
@@ -154,7 +149,6 @@ fn test_apply_rulesets_result_has_changes_when_created() {
         updated: 0,
         failed: 0,
         failed_rulesets: vec![],
-        conflicts: vec![],
     };
 
     assert!(result.has_changes());
@@ -167,7 +161,6 @@ fn test_apply_rulesets_result_has_changes_when_updated() {
         updated: 1,
         failed: 0,
         failed_rulesets: vec![],
-        conflicts: vec![],
     };
 
     assert!(result.has_changes());
@@ -180,89 +173,9 @@ fn test_apply_rulesets_result_no_changes_when_none() {
         updated: 0,
         failed: 0,
         failed_rulesets: vec![],
-        conflicts: vec![],
     };
 
     assert!(!result.has_changes());
-}
-
-#[test]
-fn test_apply_rulesets_result_has_critical_conflicts() {
-    let result = ApplyRulesetsResult {
-        created: 0,
-        updated: 0,
-        failed: 0,
-        failed_rulesets: vec![],
-        conflicts: vec![
-            RulesetConflict {
-                severity: ConflictSeverity::Warning,
-                description: "Minor conflict".to_string(),
-                recommendation: "Review".to_string(),
-                rulesets: vec![],
-            },
-            RulesetConflict {
-                severity: ConflictSeverity::Critical,
-                description: "Merge strategy deadlock".to_string(),
-                recommendation: "Fix immediately".to_string(),
-                rulesets: vec![],
-            },
-        ],
-    };
-
-    assert!(result.has_critical_conflicts());
-}
-
-#[test]
-fn test_apply_rulesets_result_no_critical_conflicts() {
-    let result = ApplyRulesetsResult {
-        created: 0,
-        updated: 0,
-        failed: 0,
-        failed_rulesets: vec![],
-        conflicts: vec![
-            RulesetConflict {
-                severity: ConflictSeverity::Warning,
-                description: "Minor conflict".to_string(),
-                recommendation: "Review".to_string(),
-                rulesets: vec![],
-            },
-            RulesetConflict {
-                severity: ConflictSeverity::Info,
-                description: "FYI".to_string(),
-                recommendation: "None".to_string(),
-                rulesets: vec![],
-            },
-        ],
-    };
-
-    assert!(!result.has_critical_conflicts());
-}
-
-// ============================================================================
-// Conflict Detection Tests (currently stubbed)
-// ============================================================================
-
-#[test]
-fn test_detect_conflicts_returns_empty_when_no_conflicts() {
-    let rulesets = vec![RepositoryRuleset {
-        id: Some(1),
-        name: "main-protection".to_string(),
-        target: RulesetTarget::Branch,
-        enforcement: RulesetEnforcement::Active,
-        bypass_actors: vec![],
-        conditions: Some(RulesetConditions {
-            ref_name: RefNameCondition {
-                include: vec!["refs/heads/main".to_string()],
-                exclude: vec![],
-            },
-        }),
-        rules: vec![Rule::Deletion],
-    }];
-
-    let conflicts = detect_conflicts(&rulesets);
-
-    // Currently stubbed to return empty
-    assert!(conflicts.is_empty());
 }
 
 // ============================================================================
@@ -349,14 +262,6 @@ async fn test_apply_rulesets_empty_config() {
 }
 
 #[tokio::test]
-async fn test_apply_rulesets_tracks_conflicts() {
-    // Test: Detected conflicts are included in result
-    // Given: Rulesets with potential conflicts
-    // When: apply_rulesets called
-    // Then: Conflicts detected and included in result.conflicts
-}
-
-#[tokio::test]
 async fn test_list_rulesets_success() {
     // Test: list_rulesets returns rulesets from GitHub
     // Given: Repository with 3 rulesets
@@ -393,7 +298,6 @@ fn test_apply_rulesets_result_example() {
         updated: 1,
         failed: 0,
         failed_rulesets: vec![],
-        conflicts: vec![],
     };
 
     assert!(result.is_success());

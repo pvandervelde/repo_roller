@@ -978,7 +978,9 @@ impl ConfigurationMerger {
 
     /// Merges ruleset collections additively.
     ///
-    /// All rulesets from all sources are combined.
+    /// All rulesets from all sources are combined. If duplicate names are detected,
+    /// a warning is logged as this results in multiple independent rulesets rather
+    /// than merged configuration.
     fn merge_rulesets(
         &self,
         target: &mut Vec<RulesetConfig>,
@@ -988,6 +990,15 @@ impl ConfigurationMerger {
         let mut source_updates = Vec::new();
 
         for ruleset in rulesets {
+            // Check for duplicate names and warn
+            if target.iter().any(|r| r.name == ruleset.name) {
+                tracing::warn!(
+                    ruleset_name = %ruleset.name,
+                    source = ?source,
+                    "Ruleset with duplicate name detected - will create separate rulesets, not merge"
+                );
+            }
+
             target.push(ruleset.clone());
             source_updates.push(("rulesets".to_string(), source));
         }

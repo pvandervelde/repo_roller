@@ -733,10 +733,6 @@ required_checks = [
   { context = "security/container-scan" },
   { context = "security/dependency-check" }
 ]
-
-[[rulesets.rules]]
-type = "required_deployments"
-required_deployment_environments = ["staging"]
 ```
 
 #### Template-Specific Rulesets
@@ -825,10 +821,8 @@ type = "update"
 - `update`: Prevents updates to matching references
 - `pull_request`: Requires pull request before merging
 - `required_status_checks`: Requires specific status checks to pass
-- `required_deployments`: Requires deployment to specific environments
-- `commit_message_pattern`: Enforces commit message format
-- `commit_author_email_pattern`: Enforces commit author email format
-- `committer_email_pattern`: Enforces committer email format
+- `required_signatures`: Requires signed commits
+- `creation`: Prevents creation of matching references
 
 **Pull Request Rule Fields:**
 
@@ -864,7 +858,8 @@ Rulesets follow the standard configuration hierarchy:
 **Merging Behavior:**
 
 - Rulesets are **additive** - all rulesets from all levels are applied
-- Rulesets with duplicate names are **merged** with higher levels taking precedence
+- Rulesets with duplicate names create separate independent rulesets (not merged)
+- A warning is logged when duplicate ruleset names are detected
 - Rules within rulesets are combined (not replaced)
 - Conditions are merged by combining include/exclude patterns
 - More specific reference patterns override less specific ones

@@ -322,15 +322,6 @@ required_checks = [
   { context = "security/sast" },
   { context = "security/dependencies" }
 ]
-
-[[rulesets.rules]]
-type = "required_deployments"
-required_deployment_environments = ["staging"]
-
-[[rulesets.rules]]
-type = "commit_message_pattern"
-operator = "regex"
-pattern = "^(feat|fix|docs|chore|test|refactor):"
 ```
 
 ### Ruleset Rule Types
@@ -343,10 +334,8 @@ Available rule types:
 - **update**: Prevents updates to matching references
 - **pull_request**: Requires pull request before merging
 - **required_status_checks**: Requires specific status checks to pass
-- **required_deployments**: Requires deployment to specific environments
-- **commit_message_pattern**: Enforces commit message format
-- **commit_author_email_pattern**: Enforces commit author email format
-- **committer_email_pattern**: Enforces committer email format
+- **required_signatures**: Requires signed commits
+- **creation**: Prevents creation of matching references
 
 ### Ruleset Hierarchy
 
@@ -361,7 +350,9 @@ Template:    template-requirements (requires code owner review)
 Result:      All four rulesets are applied to the repository
 ```
 
-Rulesets with the same name are merged, with higher levels taking precedence for conflicting settings.
+**Note:** If rulesets with the same name are defined at different levels, they will create
+separate independent rulesets (not merged). A warning will be logged when duplicate names
+are detected.
 
 ## Override Controls
 
