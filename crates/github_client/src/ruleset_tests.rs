@@ -475,3 +475,90 @@ fn test_ruleset_with_push_target_and_deploy_key() {
     assert_eq!(ruleset.bypass_actors[0].bypass_mode, BypassMode::Always);
     assert_eq!(ruleset.rules.len(), 1);
 }
+
+// ============================================================================
+// GitHub API Response Shape Tests
+// ============================================================================
+
+/// Test LIST rulesets response (no rules field).
+///
+/// GitHub's LIST endpoint returns minimal metadata without the rules array.
+/// This caused deserialization failures until we added #[serde(default)].
+#[test]
+fn test_list_rulesets_response_without_rules() {
+    // Real response shape from GitHub LIST /repos/{owner}/{repo}/rules
+    let json = r#"{
+        "id": 12555584,
+        "name": "branch-protection",
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": []
+    }"#;
+
+    let ruleset: RepositoryRuleset = from_str(json).expect("Should handle missing rules field");
+
+    assert_eq!(ruleset.id, Some(12555584));
+    assert_eq!(ruleset.name, "branch-protection");
+    assert_eq!(ruleset.target, RulesetTarget::Branch);
+    assert_eq!(ruleset.enforcement, RulesetEnforcement::Active);
+    assert!(ruleset.bypass_actors.is_empty());
+    assert!(
+        ruleset.rules.is_empty(),
+        "Missing rules field should default to empty vec"
+    );
+}
+
+/// Test GET ruleset response (with rules field).
+///
+/// GitHub's GET endpoint returns full details including rules.
+#[test]
+fn test_get_ruleset_response_with_rules() {
+    // Real response shape from GitHub GET /repos/{owner}/{repo}/rules/{id}
+    let json = r#"{
+        "id": 12555584,
+        "name": "branch-protection",
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": [],
+        "rules": [
+            {"type": "creation"},
+            {"type": "deletion"}
+        ]
+    }"#;
+
+    let ruleset: RepositoryRuleset =
+        from_str(json).expect("Should handle rules field when present");
+
+    assert_eq!(ruleset.id, Some(12555584));
+    assert_eq!(ruleset.rules.len(), 2);
+    assert!(matches!(ruleset.rules[0], Rule::Creation));
+    assert!(matches!(ruleset.rules[1], Rule::Deletion));
+}
+
+/// Test LIST response with conditions but no rules.
+#[test]
+fn test_list_response_with_conditions_no_rules() {
+    let json = r#"{
+        "id": 12555585,
+        "name": "tag-protection",
+        "target": "tag",
+        "enforcement": "active",
+        "bypass_actors": [],
+        "conditions": {
+            "ref_name": {
+                "include": ["refs/tags/v*"],
+                "exclude": []
+            }
+        }
+    }"#;
+
+    let ruleset: RepositoryRuleset =
+        from_str(json).expect("Should handle conditions without rules");
+
+    assert_eq!(ruleset.id, Some(12555585));
+    assert!(ruleset.conditions.is_some());
+    assert!(
+        ruleset.rules.is_empty(),
+        "Missing rules should default to empty"
+    );
+}
