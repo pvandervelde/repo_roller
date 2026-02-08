@@ -395,3 +395,92 @@ fn test_http_to_domain_default_content_strategy_with_template() {
     let domain_req = result.unwrap();
     assert_eq!(domain_req.content_strategy, ContentStrategy::Template);
 }
+
+/// Test translation with explicit public visibility
+#[test]
+fn test_http_to_domain_visibility_public() {
+    use repo_roller_core::{ContentStrategy, RepositoryVisibility};
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("public".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok());
+
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.visibility, Some(RepositoryVisibility::Public));
+}
+
+/// Test translation with explicit private visibility
+#[test]
+fn test_http_to_domain_visibility_private() {
+    use repo_roller_core::{ContentStrategy, RepositoryVisibility};
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok());
+
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.visibility, Some(RepositoryVisibility::Private));
+}
+
+/// Test translation with no visibility defaults to None (resolved later)
+#[test]
+fn test_http_to_domain_visibility_none() {
+    use repo_roller_core::ContentStrategy;
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: None,
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok());
+
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.visibility, None);
+}
+
+/// Test translation fails with invalid visibility value
+#[test]
+fn test_http_to_domain_visibility_invalid() {
+    use repo_roller_core::ContentStrategy;
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("invalid".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_err());
+}

@@ -61,6 +61,25 @@ pub fn http_create_repository_request_to_domain(
         ));
     }
 
+    // Parse visibility if provided
+    let visibility = if let Some(visibility_str) = http_req.visibility {
+        let parsed: config_manager::RepositoryVisibility = serde_json::from_value(
+            serde_json::Value::String(visibility_str.clone()),
+        )
+        .map_err(|_| {
+            ApiError::validation_error(
+                "visibility",
+                format!(
+                    "Invalid visibility '{}'. Must be 'public', 'private', or 'internal'",
+                    visibility_str
+                ),
+            )
+        })?;
+        Some(parsed)
+    } else {
+        None
+    };
+
     // Build the domain request using builder pattern
     let mut builder = if let Some(tmpl) = template {
         RepositoryCreationRequestBuilder::new(name, owner).template(tmpl)
@@ -70,6 +89,11 @@ pub fn http_create_repository_request_to_domain(
 
     // Add content strategy
     builder = builder.content_strategy(http_req.content_strategy);
+
+    // Add visibility if provided
+    if let Some(vis) = visibility {
+        builder = builder.with_visibility(vis);
+    }
 
     // Add all template variables
     for (key, value) in http_req.variables {
