@@ -168,17 +168,17 @@ impl WebhookManager {
             }
 
             // Create new webhook
+            let params = github_client::CreateWebhookParams {
+                url: &webhook_config.url,
+                content_type: &webhook_config.content_type,
+                secret: webhook_config.secret.as_deref(),
+                active: webhook_config.active,
+                events: &webhook_config.events,
+            };
+
             match self
                 .github_client
-                .create_webhook(
-                    owner,
-                    repo,
-                    &webhook_config.url,
-                    &webhook_config.content_type,
-                    webhook_config.secret.as_deref(),
-                    webhook_config.active,
-                    &webhook_config.events,
-                )
+                .create_webhook(owner, repo, &params)
                 .await
             {
                 Ok(webhook) => {

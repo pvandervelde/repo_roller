@@ -50,7 +50,7 @@
 //! ```
 
 use crate::errors::{GitHubError, RepoRollerError, RepoRollerResult, SystemError};
-use crate::{LabelManager, WebhookManager};
+use crate::{LabelManager, RulesetManager, WebhookManager};
 use github_client::{GitHubClient, RepositoryClient};
 use tracing::{debug, error, info, warn};
 
@@ -256,6 +256,7 @@ pub(crate) async fn resolve_organization_configuration(
 ///
 /// - Labels: Applied via LabelManager (idempotent, tracks results)
 /// - Webhooks: Applied via WebhookManager (validates, deduplicates, secure)
+/// - Rulesets: Applied via RulesetManager (idempotent, conflict detection)
 /// - Custom Properties: Applied via GitHub API (including repository type)
 ///
 /// ## Future Enhancements
@@ -322,6 +323,78 @@ pub(crate) async fn apply_repository_configuration(
                 "Failed to apply {} webhook(s): {:?}",
                 webhook_result.failed, webhook_result.failed_webhooks
             );
+        }
+    }
+
+    // Apply rulesets using RulesetManager
+    if !merged_config.rulesets.is_empty() {
+        info!(
+            "Applying {} rulesets to repository {}/{}",
+            merged_config.rulesets.len(),
+            owner,
+            repo_name
+        );
+
+        // Convert Vec<RulesetConfig> to HashMap<String, RulesetConfig>
+        let rulesets_map: std::collections::HashMap<
+            String,
+            config_manager::settings::RulesetConfig,
+        > = merged_config
+            .rulesets
+            .iter()
+            .map(|r| (r.name.clone(), r.clone()))
+            .collect();
+
+        let ruleset_manager = RulesetManager::new(installation_repo_client.clone());
+        let ruleset_result = ruleset_manager
+            .apply_rulesets(owner, repo_name, &rulesets_map)
+            .await?;
+
+        info!(
+            "Ruleset application complete: created={}, updated={}, failed={}",
+            ruleset_result.created, ruleset_result.updated, ruleset_result.failed
+        );
+
+        if ruleset_result.failed > 0 {
+            warn!(
+                "Failed to apply {} ruleset(s): {:?}",
+                ruleset_result.failed, ruleset_result.failed_rulesets
+            );
+        }
+
+        if !ruleset_result.conflicts.is_empty() {
+            warn!(
+                "Detected {} ruleset conflict(s) during application",
+                ruleset_result.conflicts.len()
+            );
+            for conflict in &ruleset_result.conflicts {
+                match conflict.severity {
+                    crate::ConflictSeverity::Critical => {
+                        error!(
+                            "Critical ruleset conflict: {} - Recommendation: {}",
+                            conflict.description, conflict.recommendation
+                        );
+                    }
+                    crate::ConflictSeverity::Error => {
+                        error!(
+                            "Ruleset error: {} - Recommendation: {}",
+                            conflict.description, conflict.recommendation
+                        );
+                    }
+                    crate::ConflictSeverity::Warning => {
+                        warn!(
+                            "Ruleset warning: {} - Recommendation: {}",
+                            conflict.description, conflict.recommendation
+                        );
+                    }
+                    crate::ConflictSeverity::Info => {
+                        info!(
+                            "Ruleset info: {} - Recommendation: {}",
+                            conflict.description, conflict.recommendation
+                        );
+                    }
+                }
+            }
         }
     }
 

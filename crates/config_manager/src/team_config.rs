@@ -46,7 +46,7 @@
 
 use crate::settings::{
     ActionSettings, BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
-    PullRequestSettings, PushSettings, RepositorySettings, WebhookConfig,
+    PullRequestSettings, PushSettings, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -80,7 +80,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(config.repository.is_some());
 /// assert!(config.pull_requests.is_some());
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct TeamConfig {
     /// Repository feature settings overrides.
     ///
@@ -131,6 +131,12 @@ pub struct TeamConfig {
     /// Apps defined here are added to global required apps.
     /// Teams can enable additional apps for their repositories.
     pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Team-specific rulesets (additive).
+    ///
+    /// Rulesets defined here are added to global rulesets.
+    /// Teams can define additional governance rules for their repositories.
+    pub rulesets: Option<Vec<RulesetConfig>>,
 }
 
 #[cfg(test)]

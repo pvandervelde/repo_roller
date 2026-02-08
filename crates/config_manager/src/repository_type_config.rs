@@ -54,7 +54,7 @@
 
 use crate::settings::{
     BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    PullRequestSettings, RepositorySettings, WebhookConfig,
+    PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +88,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(config.repository.is_some());
 /// assert!(config.pull_requests.is_some());
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct RepositoryTypeConfig {
     /// Repository feature settings for this type.
     ///
@@ -137,6 +137,13 @@ pub struct RepositoryTypeConfig {
     /// Enables type-specific integrations (e.g., documentation generators
     /// for documentation repositories).
     pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Type-specific rulesets (additive).
+    ///
+    /// Rulesets defined here are added to global rulesets.
+    /// Allows repository types to define governance rules appropriate
+    /// for the type (e.g., stricter rules for library repositories).
+    pub rulesets: Option<Vec<RulesetConfig>>,
 }
 
 #[cfg(test)]

@@ -84,7 +84,7 @@ async fn test_create_private_repository_explicit() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-private-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-private-{}", uuid::Uuid::new_v4()))?;
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
@@ -151,7 +151,7 @@ async fn test_create_public_repository_explicit() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-public-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-public-{}", uuid::Uuid::new_v4()))?;
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
@@ -218,7 +218,7 @@ async fn test_create_repository_default_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!("test-default-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-default-{}", uuid::Uuid::new_v4()))?;
 
     // Don't specify visibility - should use system default (Private)
     let request = RepositoryCreationRequestBuilder::new(
@@ -286,9 +286,9 @@ async fn test_concurrent_visibility_resolution() -> Result<()> {
         create_test_dependencies(&config).await?;
 
     // Create 3 repositories concurrently with different visibilities
-    let repo_name_1 = RepositoryName::new(&format!("test-concurrent-1-{}", uuid::Uuid::new_v4()))?;
-    let repo_name_2 = RepositoryName::new(&format!("test-concurrent-2-{}", uuid::Uuid::new_v4()))?;
-    let repo_name_3 = RepositoryName::new(&format!("test-concurrent-3-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_1 = RepositoryName::new(format!("test-concurrent-1-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_2 = RepositoryName::new(format!("test-concurrent-2-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_3 = RepositoryName::new(format!("test-concurrent-3-{}", uuid::Uuid::new_v4()))?;
 
     let request_1 = RepositoryCreationRequestBuilder::new(
         repo_name_1.clone(),

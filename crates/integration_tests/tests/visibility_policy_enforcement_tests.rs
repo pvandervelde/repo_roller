@@ -84,7 +84,7 @@ async fn test_required_policy_enforces_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config, ".reporoller-required").await?;
 
-    let repo_name = RepositoryName::new(&format!("test-required-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-required-{}", uuid::Uuid::new_v4()))?;
 
     // Try to create a public repository when policy requires private
     let request = RepositoryCreationRequestBuilder::new(
@@ -138,7 +138,7 @@ async fn test_required_policy_allows_compliant_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config, ".reporoller-required").await?;
 
-    let repo_name = RepositoryName::new(&format!("test-compliant-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-compliant-{}", uuid::Uuid::new_v4()))?;
 
     // Create a private repository as required by policy
     let request = RepositoryCreationRequestBuilder::new(
@@ -205,7 +205,7 @@ async fn test_restricted_policy_blocks_prohibited_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config, ".reporoller-restricted").await?;
 
-    let repo_name = RepositoryName::new(&format!("test-blocked-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-blocked-{}", uuid::Uuid::new_v4()))?;
 
     // Try to create a public repository when policy restricts it
     let request = RepositoryCreationRequestBuilder::new(
@@ -259,7 +259,7 @@ async fn test_restricted_policy_allows_permitted_visibility() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config, ".reporoller-restricted").await?;
 
-    let repo_name = RepositoryName::new(&format!("test-permitted-{}", uuid::Uuid::new_v4()))?;
+    let repo_name = RepositoryName::new(format!("test-permitted-{}", uuid::Uuid::new_v4()))?;
 
     // Create a private repository (not prohibited by policy)
     let request = RepositoryCreationRequestBuilder::new(
@@ -326,8 +326,8 @@ async fn test_unrestricted_policy_allows_all_visibilities() -> Result<()> {
     let (auth_service, metadata_provider, policy_provider, env_detector) =
         create_test_dependencies(&config, ".reporoller").await?;
 
-    let repo_name_pub = RepositoryName::new(&format!("test-unres-pub-{}", uuid::Uuid::new_v4()))?;
-    let repo_name_priv = RepositoryName::new(&format!("test-unres-priv-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_pub = RepositoryName::new(format!("test-unres-pub-{}", uuid::Uuid::new_v4()))?;
+    let repo_name_priv = RepositoryName::new(format!("test-unres-priv-{}", uuid::Uuid::new_v4()))?;
 
     // Create public repository
     let request_pub = RepositoryCreationRequestBuilder::new(

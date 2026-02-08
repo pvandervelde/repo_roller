@@ -35,13 +35,15 @@ fn test_webhook_event_deserialization() {
 
 #[test]
 fn test_webhook_event_from_str() {
-    assert_eq!(WebhookEvent::from_str("push"), Some(WebhookEvent::Push));
+    use std::str::FromStr;
+
+    assert_eq!(WebhookEvent::from_str("push"), Ok(WebhookEvent::Push));
     assert_eq!(
         WebhookEvent::from_str("pull_request"),
-        Some(WebhookEvent::PullRequest)
+        Ok(WebhookEvent::PullRequest)
     );
-    assert_eq!(WebhookEvent::from_str("*"), Some(WebhookEvent::All));
-    assert_eq!(WebhookEvent::from_str("invalid"), None);
+    assert_eq!(WebhookEvent::from_str("*"), Ok(WebhookEvent::All));
+    assert!(WebhookEvent::from_str("invalid").is_err());
 }
 
 #[test]

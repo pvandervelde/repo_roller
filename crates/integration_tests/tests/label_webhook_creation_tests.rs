@@ -90,7 +90,7 @@ async fn test_labels_created_from_global_config() -> Result<()> {
         create_test_dependencies(&config).await?;
 
     let repo_name =
-        RepositoryName::new(&format!("integration-test-labels-{}", uuid::Uuid::new_v4()))?;
+        RepositoryName::new(format!("integration-test-labels-{}", uuid::Uuid::new_v4()))?;
 
     let request = RepositoryCreationRequestBuilder::new(
         repo_name.clone(),
@@ -152,7 +152,7 @@ async fn test_webhook_creation_via_manager() -> Result<()> {
     let config = TestConfig::from_env()?;
     let (auth_service, github_client, _, _, _) = create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!(
+    let repo_name = RepositoryName::new(format!(
         "integration-test-webhooks-{}",
         uuid::Uuid::new_v4()
     ))?;
@@ -238,7 +238,7 @@ async fn test_label_application_idempotency() -> Result<()> {
     let config = TestConfig::from_env()?;
     let (auth_service, github_client, _, _, _) = create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!(
+    let repo_name = RepositoryName::new(format!(
         "integration-test-label-idempotent-{}",
         uuid::Uuid::new_v4()
     ))?;
@@ -329,7 +329,7 @@ async fn test_webhook_application_idempotency() -> Result<()> {
     let config = TestConfig::from_env()?;
     let (auth_service, github_client, _, _, _) = create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!(
+    let repo_name = RepositoryName::new(format!(
         "integration-test-webhook-idempotent-{}",
         uuid::Uuid::new_v4()
     ))?;
@@ -422,7 +422,7 @@ async fn test_webhook_validation_rejects_invalid() -> Result<()> {
     let config = TestConfig::from_env()?;
     let (auth_service, github_client, _, _, _) = create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!(
+    let repo_name = RepositoryName::new(format!(
         "integration-test-webhook-invalid-{}",
         uuid::Uuid::new_v4()
     ))?;
@@ -511,7 +511,7 @@ async fn test_multiple_labels_batch_creation() -> Result<()> {
     let config = TestConfig::from_env()?;
     let (auth_service, github_client, _, _, _) = create_test_dependencies(&config).await?;
 
-    let repo_name = RepositoryName::new(&format!(
+    let repo_name = RepositoryName::new(format!(
         "integration-test-multiple-labels-{}",
         uuid::Uuid::new_v4()
     ))?;

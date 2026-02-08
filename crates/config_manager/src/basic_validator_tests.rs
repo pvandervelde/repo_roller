@@ -580,6 +580,7 @@ async fn test_validate_template_config_integration() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         variables: None,
         default_visibility: None,
         templating: None,

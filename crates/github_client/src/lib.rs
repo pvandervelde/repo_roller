@@ -22,6 +22,7 @@ pub mod environment_detector;
 pub mod installation;
 pub mod label;
 pub mod repository;
+pub mod ruleset;
 pub mod user;
 pub mod webhook;
 
@@ -33,8 +34,15 @@ pub use environment_detector::GitHubApiEnvironmentDetector;
 pub use installation::{Account, Installation};
 pub use label::Label;
 pub use repository::{Organization, Repository};
+pub use ruleset::{
+    BypassActor, BypassActorType, BypassMode, MergeMethod, PullRequestParameters, RefNameCondition,
+    RepositoryRuleset, RequiredStatusChecksParameters, Rule, RulesetConditions, RulesetEnforcement,
+    RulesetTarget, StatusCheck,
+};
 pub use user::User;
-pub use webhook::{Webhook, WebhookDetails, WebhookEvent};
+pub use webhook::{
+    CreateWebhookParams, UpdateWebhookParams, Webhook, WebhookDetails, WebhookEvent,
+};
 
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;
@@ -1354,35 +1362,31 @@ impl RepositoryClient for GitHubClient {
         &self,
         owner: &str,
         repo: &str,
-        url: &str,
-        content_type: &str,
-        secret: Option<&str>,
-        active: bool,
-        events: &[String],
+        params: &CreateWebhookParams<'_>,
     ) -> Result<Webhook, Error> {
         info!(
             owner = owner,
             repo = repo,
-            url = url,
+            url = params.url,
             "Creating repository webhook"
         );
 
         let api_route = format!("/repos/{}/{}/hooks", owner, repo);
 
         let mut config = serde_json::json!({
-            "url": url,
-            "content_type": content_type,
+            "url": params.url,
+            "content_type": params.content_type,
             "insecure_ssl": "0"
         });
 
-        if let Some(secret_value) = secret {
+        if let Some(secret_value) = params.secret {
             config["secret"] = serde_json::json!(secret_value);
         }
 
         let body = serde_json::json!({
             "name": "web",
-            "active": active,
-            "events": events,
+            "active": params.active,
+            "events": params.events,
             "config": config
         });
 
@@ -1410,11 +1414,7 @@ impl RepositoryClient for GitHubClient {
         owner: &str,
         repo: &str,
         webhook_id: u64,
-        url: &str,
-        content_type: &str,
-        secret: Option<&str>,
-        active: bool,
-        events: &[String],
+        params: &UpdateWebhookParams<'_>,
     ) -> Result<Webhook, Error> {
         info!(
             owner = owner,
@@ -1426,18 +1426,18 @@ impl RepositoryClient for GitHubClient {
         let api_route = format!("/repos/{}/{}/hooks/{}", owner, repo, webhook_id);
 
         let mut config = serde_json::json!({
-            "url": url,
-            "content_type": content_type,
+            "url": params.url,
+            "content_type": params.content_type,
             "insecure_ssl": "0"
         });
 
-        if let Some(secret_value) = secret {
+        if let Some(secret_value) = params.secret {
             config["secret"] = serde_json::json!(secret_value);
         }
 
         let body = serde_json::json!({
-            "active": active,
-            "events": events,
+            "active": params.active,
+            "events": params.events,
             "config": config
         });
 
@@ -1484,6 +1484,115 @@ impl RepositoryClient for GitHubClient {
             }
             Err(e) => {
                 log_octocrab_error("Failed to delete webhook", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn list_repository_rulesets(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<RepositoryRuleset>, Error> {
+        info!(owner = owner, repo = repo, "Listing repository rulesets");
+
+        let route = format!("/repos/{}/{}/rulesets", owner, repo);
+
+        let result: OctocrabResult<Vec<RepositoryRuleset>> =
+            self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(rulesets) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    count = rulesets.len(),
+                    "Successfully retrieved rulesets"
+                );
+                Ok(rulesets)
+            }
+            Err(e) => {
+                error!(
+                    owner = owner,
+                    repo = repo,
+                    route = &route,
+                    "Failed to list repository rulesets"
+                );
+                log_octocrab_error("Failed to list rulesets", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn create_repository_ruleset(
+        &self,
+        owner: &str,
+        repo: &str,
+        ruleset: &RepositoryRuleset,
+    ) -> Result<RepositoryRuleset, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            ruleset_name = &ruleset.name,
+            "Creating repository ruleset"
+        );
+
+        let route = format!("/repos/{}/{}/rulesets", owner, repo);
+
+        let result: OctocrabResult<RepositoryRuleset> =
+            self.client.post(&route, Some(ruleset)).await;
+
+        match result {
+            Ok(created_ruleset) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    ruleset_name = &created_ruleset.name,
+                    ruleset_id = created_ruleset.id,
+                    "Successfully created ruleset"
+                );
+                Ok(created_ruleset)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to create ruleset", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn update_repository_ruleset(
+        &self,
+        owner: &str,
+        repo: &str,
+        ruleset_id: u64,
+        ruleset: &RepositoryRuleset,
+    ) -> Result<RepositoryRuleset, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            ruleset_id = ruleset_id,
+            ruleset_name = &ruleset.name,
+            "Updating repository ruleset"
+        );
+
+        let route = format!("/repos/{}/{}/rulesets/{}", owner, repo, ruleset_id);
+
+        let result: OctocrabResult<RepositoryRuleset> =
+            self.client.put(&route, Some(ruleset)).await;
+
+        match result {
+            Ok(updated_ruleset) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    ruleset_id = updated_ruleset.id,
+                    ruleset_name = &updated_ruleset.name,
+                    "Successfully updated ruleset"
+                );
+                Ok(updated_ruleset)
+            }
+            Err(e) => {
+                log_octocrab_error("Failed to update ruleset", e);
                 Err(Error::InvalidResponse)
             }
         }
@@ -2050,11 +2159,7 @@ pub trait RepositoryClient: Send + Sync {
         &self,
         owner: &str,
         repo: &str,
-        url: &str,
-        content_type: &str,
-        secret: Option<&str>,
-        active: bool,
-        events: &[String],
+        params: &CreateWebhookParams<'_>,
     ) -> Result<Webhook, Error>;
 
     /// Updates an existing webhook in a repository.
@@ -2088,11 +2193,7 @@ pub trait RepositoryClient: Send + Sync {
         owner: &str,
         repo: &str,
         webhook_id: u64,
-        url: &str,
-        content_type: &str,
-        secret: Option<&str>,
-        active: bool,
-        events: &[String],
+        params: &UpdateWebhookParams<'_>,
     ) -> Result<Webhook, Error>;
 
     /// Deletes a webhook from a repository.
@@ -2116,6 +2217,88 @@ pub trait RepositoryClient: Send + Sync {
     ///
     /// DELETE /repos/{owner}/{repo}/hooks/{hook_id}
     async fn delete_webhook(&self, owner: &str, repo: &str, webhook_id: u64) -> Result<(), Error>;
+
+    /// Lists all repository rulesets for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    ///
+    /// # Returns
+    ///
+    /// Vector of `RepositoryRuleset` objects
+    ///
+    /// # Errors
+    ///
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error
+    ///
+    /// # GitHub API
+    ///
+    /// GET /repos/{owner}/{repo}/rulesets
+    async fn list_repository_rulesets(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<RepositoryRuleset>, Error>;
+
+    /// Creates a new repository ruleset.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `ruleset` - Ruleset configuration to create
+    ///
+    /// # Returns
+    ///
+    /// The created `RepositoryRuleset` with assigned ID
+    ///
+    /// # Errors
+    ///
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error (e.g., validation failure)
+    ///
+    /// # GitHub API
+    ///
+    /// POST /repos/{owner}/{repo}/rulesets
+    async fn create_repository_ruleset(
+        &self,
+        owner: &str,
+        repo: &str,
+        ruleset: &RepositoryRuleset,
+    ) -> Result<RepositoryRuleset, Error>;
+
+    /// Updates an existing repository ruleset.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - Repository owner (organization or user)
+    /// * `repo` - Repository name
+    /// * `ruleset_id` - ID of the ruleset to update
+    /// * `ruleset` - Updated ruleset configuration
+    ///
+    /// # Returns
+    ///
+    /// The updated `RepositoryRuleset`
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotFound` - Ruleset does not exist
+    /// * `Error::InvalidResponse` - API call failed
+    /// * `Error::ApiError` - GitHub API error (e.g., validation failure)
+    ///
+    /// # GitHub API
+    ///
+    /// PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}
+    async fn update_repository_ruleset(
+        &self,
+        owner: &str,
+        repo: &str,
+        ruleset_id: u64,
+        ruleset: &RepositoryRuleset,
+    ) -> Result<RepositoryRuleset, Error>;
 
     /// Updates an existing label in a repository.
     ///

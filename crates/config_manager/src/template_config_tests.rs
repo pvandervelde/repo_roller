@@ -460,6 +460,7 @@ fn test_serialize_round_trip() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: None,
         templating: None,
     };
@@ -488,6 +489,7 @@ fn test_clone_creates_independent_copy() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: None,
         templating: None,
     };
@@ -514,6 +516,7 @@ fn test_debug_format() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: None,
         templating: None,
     };
@@ -657,6 +660,7 @@ fn test_template_config_visibility_serialization() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: Some(crate::visibility::RepositoryVisibility::Private),
         templating: None,
     };
@@ -692,6 +696,7 @@ fn test_template_config_none_visibility_not_serialized() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: None,
         templating: None,
     };
@@ -926,6 +931,7 @@ fn test_template_config_serialization_with_templating() {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         default_visibility: None,
         templating: Some(TemplatingConfig {
             include_patterns: vec!["**/*.rs".to_string()],
