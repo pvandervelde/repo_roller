@@ -95,6 +95,18 @@ All domain primitives use newtype pattern for type safety.
 | `TemplateRepository` | `config_manager/src/template_loader.rs` | Template configuration access abstraction | [template-loading.md](interfaces/template-loading.md) |
 | `TemplateLoader` | `config_manager/src/template_loader.rs` | Template config loading with caching | [template-loading.md](interfaces/template-loading.md) |
 
+### Event Notification Domain
+
+| Interface | Location | Purpose | Spec Reference |
+|-----------|----------|---------|----------------|
+| `RepositoryCreatedEvent` | `repo_roller_core/src/event_publisher.rs` | Event payload for repository.created | [event-publisher.md](interfaces/event-publisher.md#repositorycreatedevent) |
+| `AppliedSettings` | `repo_roller_core/src/event_publisher.rs` | Repository settings in event payload | [event-publisher.md](interfaces/event-publisher.md#appliedsettings) |
+| `NotificationEndpoint` | `repo_roller_core/src/event_publisher.rs` | Webhook endpoint configuration | [event-publisher.md](interfaces/event-publisher.md#notificationendpoint) |
+| `NotificationsConfig` | `repo_roller_core/src/event_publisher.rs` | Configuration file structure | [event-publisher.md](interfaces/event-publisher.md#notificationsconfig) |
+| `DeliveryResult` | `repo_roller_core/src/event_publisher.rs` | Delivery outcome | [event-publisher.md](interfaces/event-publisher.md#deliveryresult) |
+| `SecretResolver` | `repo_roller_core/src/event_secrets.rs` | Secret resolution abstraction | [event-secrets.md](interfaces/event-secrets.md#secretresolver-trait) |
+| `EventMetrics` | `repo_roller_core/src/event_metrics.rs` | Metrics recording abstraction | [event-metrics.md](interfaces/event-metrics.md#eventmetrics-trait) |
+
 ### Template Domain
 
 | Interface | Location | Purpose | Spec Reference |

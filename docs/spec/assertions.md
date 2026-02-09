@@ -437,4 +437,154 @@ Any failure scenario must leave the system in a consistent state with no orphane
 **Invariant INV-005: Permission Model Consistency**
 All permission checks must be performed through the hierarchical permission system, and permission escalation must require explicit approval through defined workflows.
 
+---
+
+## Event Notification Assertions
+
+### Successful Event Delivery
+
+**Assertion ENA-001: Notification Sent After Repository Creation**
+
+- **Given**: Organization has configured outbound webhook endpoints at one or more hierarchy levels
+- **And**: Repository creation succeeds
+- **When**: Repository creation completes
+- **Then**: Repository creation event notification is sent to all active configured endpoints
+- **And**: Event payload includes complete repository metadata (org, repo name, created_by, repository_type, template, etc.)
+- **And**: HTTP requests are signed with HMAC-SHA256 using configured secrets
+- **And**: All delivery attempts are logged with success/failure status
+- **And**: Repository creation returns success to caller immediately (non-blocking)
+
+**Assertion ENA-002: Multi-Level Endpoint Accumulation**
+
+- **Given**: Organization has 1 webhook configured at global level
+- **And**: Team has 1 webhook configured at team level
+- **And**: Template has 1 webhook configured at template level
+- **When**: Repository is created using that team and template
+- **Then**: Event notification is sent to all 3 endpoints (accumulated, not overridden)
+- **And**: Each endpoint receives the same event payload
+- **And**: Each delivery is logged independently
+
+**Assertion ENA-003: Endpoint Deduplication**
+
+- **Given**: Organization has webhook endpoint configured at global level with URL "<https://example.com/webhook>"
+- **And**: Team also configures same URL with same event types
+- **When**: Repository is created for that team
+- **Then**: Only one notification is sent to "<https://example.com/webhook>" (deduplicated)
+- **And**: Duplicate detection based on URL + event type combination
+
+### Event Delivery Failures
+
+**Assertion ENF-001: Delivery Failure Does Not Block Creation**
+
+- **Given**: Notification endpoint is unreachable or returns HTTP error
+- **When**: Repository creation completes successfully
+- **Then**: Repository creation succeeds despite notification delivery failure
+- **And**: Notification failure is logged as warning (not error)
+- **And**: Metrics track notification delivery failure rate
+- **And**: Caller receives successful repository creation result
+
+**Assertion ENF-002: Partial Delivery Success**
+
+- **Given**: Organization has 3 configured webhook endpoints
+- **And**: 2 endpoints are reachable, 1 endpoint is down
+- **When**: Repository creation completes
+- **Then**: Notifications sent to all 3 endpoints (attempted)
+- **And**: 2 deliveries succeed (HTTP 2xx), 1 delivery fails (timeout/error)
+- **And**: All 3 delivery attempts logged independently
+- **And**: Repository creation succeeds regardless of delivery outcomes
+
+**Assertion ENF-003: Invalid Endpoint Configuration Skipped**
+
+- **Given**: Organization has 2 configured webhook endpoints
+- **And**: 1 endpoint has invalid configuration (HTTP URL instead of HTTPS)
+- **When**: Configuration is loaded
+- **Then**: Invalid endpoint is rejected during validation
+- **And**: Validation error logged with clear message
+- **And**: Valid endpoint still receives notification
+- **And**: Repository creation proceeds normally
+
+### No Endpoints Configured
+
+**Assertion ENC-001: No Endpoints No Notifications**
+
+- **Given**: Organization has no outbound webhook endpoints configured at any level
+- **When**: Repository creation completes
+- **Then**: No notification delivery attempts are made
+- **And**: Repository creation completes normally
+- **And**: No errors or warnings logged about missing endpoints
+
+### Event Payload Completeness
+
+**Assertion ENP-001: Required Fields Present**
+
+- **Given**: Repository is created successfully
+- **When**: Event notification is constructed
+- **Then**: Payload includes all required fields:
+  - `event_type` = "repository.created"
+  - `event_id` (UUID)
+  - `timestamp` (ISO 8601 UTC)
+  - `organization`, `repository_name`, `repository_url`, `repository_id`
+  - `created_by` (user who requested creation)
+  - `content_strategy` ("template", "empty", or "custom_init")
+  - `visibility` ("public", "private", or "internal")
+
+**Assertion ENP-002: Optional Fields Included When Available**
+
+- **Given**: Repository is created with template, repository type, team, and description
+- **When**: Event notification is constructed
+- **Then**: Payload includes optional fields:
+  - `template_name` (template used)
+  - `repository_type` (type classification)
+  - `team` (team name)
+  - `description` (repository description)
+  - `custom_properties` (applied custom properties)
+  - `applied_settings` (repository settings like has_issues, has_wiki)
+
+**Assertion ENP-003: Empty Repository Event Payload**
+
+- **Given**: Repository is created as empty repository (no template)
+- **When**: Event notification is constructed
+- **Then**: `template_name` field is null/absent
+- **And**: `content_strategy` is "empty"
+- **And**: All other required fields are present
+
+### Request Signing
+
+**Assertion ENS-001: Request Signed with HMAC-SHA256**
+
+- **Given**: Webhook endpoint is configured with secret
+- **When**: Notification is delivered to endpoint
+- **Then**: HTTP request includes header `X-RepoRoller-Signature-256`
+- **And**: Header value starts with "sha256="
+- **And**: Signature is HMAC-SHA256 digest of request body using configured secret
+- **And**: Recipient can verify signature using shared secret
+
+**Assertion ENS-002: Different Secrets for Different Endpoints**
+
+- **Given**: Organization has 2 configured webhook endpoints with different secrets
+- **When**: Notifications are delivered to both endpoints
+- **Then**: Each request is signed with its respective endpoint's secret
+- **And**: Signatures are different (even though payload is identical)
+
+### Asynchronous Delivery
+
+**Assertion ENA-004: Non-Blocking Delivery**
+
+- **Given**: Notification endpoint has slow response time (3 seconds)
+- **When**: Repository creation completes
+- **Then**: Repository creation returns success to caller immediately
+- **And**: Total repository creation time not impacted by notification delivery time
+- **And**: Notification delivery happens in background task
+
+**Assertion ENA-005: Timeout Enforcement**
+
+- **Given**: Webhook endpoint has configured timeout of 5 seconds
+- **And**: Endpoint does not respond within 5 seconds
+- **When**: Notification delivery is attempted
+- **Then**: HTTP request is cancelled after 5 seconds
+- **And**: Delivery logged as failure with timeout error message
+- **And**: No indefinite hanging or resource leak
+
+---
+
 These behavioral assertions provide concrete, testable specifications for RepoRoller's behavior across all functional areas. They serve as both acceptance criteria for development and regression test specifications for ongoing maintenance.

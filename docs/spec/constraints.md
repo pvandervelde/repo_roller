@@ -58,6 +58,7 @@ This document defines the architectural rules, constraints, and policies that mu
 In some cases, types that are conceptually part of business configuration are defined in infrastructure crates to avoid circular dependencies. This follows the existing pattern established with `ConfigurationError`.
 
 **Example**: `repo_roller_core` re-exports types from infrastructure crates:
+
 ```rust
 // crates/repo_roller_core/src/errors.rs:134
 pub use config_manager::{ConfigurationError, ConfigurationResult};
@@ -69,12 +70,14 @@ pub use config_manager::{
 ```
 
 **When This Pattern Applies**:
+
 - Infrastructure crate defines configuration-related types and traits
 - Core business logic needs to reference these types
 - Circular dependency would result from defining types in core
 - Types are re-exported from core for convenience
 
 **Documentation Requirement**:
+
 - Document this pattern in specification files
 - Explain architectural rationale in comments
 - Update shared-registry.md to show both definition and re-export locations
@@ -370,6 +373,70 @@ impl TryFrom<CreateRepositoryHttpRequest> for RepositoryCreationRequest {
 - File processing: Template files < 50MB total size
 - API rate limits: Respect GitHub API rate limits with intelligent backoff
 - Cache size: Configuration cache with LRU eviction and size limits
+
+## Event Notification Constraints
+
+### Fire-and-Forget Delivery
+
+**Constraint**: Event delivery MUST NOT block repository creation workflow.
+
+**Rationale**: Repository creation is the primary workflow; notifications are supplementary.
+
+**Enforcement**:
+
+- `publish_repository_created` spawned in background task
+- Delivery failures logged but not propagated to caller
+- No retries in initial implementation
+
+### Best-Effort Delivery
+
+**Constraint**: Event delivery uses best-effort semantics (no guarantees).
+
+**Rationale**: Operational simplicity, avoids complexity of retry logic and dead letter queues.
+
+**Enforcement**:
+
+- Single delivery attempt per endpoint
+- Failures logged with structured logging
+- Metrics recorded for observability
+
+### Security Requirements
+
+**Constraint**: All webhook requests MUST be signed with HMAC-SHA256.
+
+**Rationale**: Allows recipients to verify request authenticity.
+
+**Enforcement**:
+
+- `X-RepoRoller-Signature-256` header on all requests
+- Secrets resolved from container-native sources
+- Secrets NEVER logged or included in error messages
+
+### HTTPS Enforcement
+
+**Constraint**: Only HTTPS webhook URLs accepted.
+
+**Rationale**: Prevents man-in-the-middle attacks, protects payload confidentiality.
+
+**Enforcement**:
+
+- `NotificationEndpoint::validate()` rejects HTTP URLs
+- TLS certificate validation enforced
+- No certificate pinning
+
+### Configuration Hierarchy
+
+**Constraint**: Notification endpoints configured at org/team/template levels with additive accumulation.
+
+**Rationale**: Matches existing hierarchical configuration model.
+
+**Enforcement**:
+
+- Load from `.reporoller/global/notifications.toml` (org)
+- Load from `.reporoller/teams/{team}/notifications.toml` (team)
+- Load from `.reporoller/notifications.toml` in template repo (template)
+- Accumulate all endpoints (not override)
+- Deduplicate by URL + event type
 
 ## Testing Constraints
 

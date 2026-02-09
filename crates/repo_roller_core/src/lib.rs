@@ -117,6 +117,15 @@ mod webhook_manager;
 // Ruleset management operations
 mod ruleset_manager;
 
+// Event publishing operations
+mod event_publisher;
+
+// Event secret resolution
+mod event_secrets;
+
+// Event metrics collection
+mod event_metrics;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
@@ -198,6 +207,18 @@ pub use label_manager::{ApplyLabelsResult, LabelManager};
 pub use webhook_manager::{ApplyWebhooksResult, WebhookManager};
 // Re-exported from ruleset_manager module
 pub use ruleset_manager::{ApplyRulesetsResult, RulesetManager};
+// Re-exported from event_publisher module
+pub use event_publisher::{
+    collect_notification_endpoints, compute_hmac_sha256, publish_repository_created,
+    sign_webhook_request, AppliedSettings, DeliveryResult, NotificationEndpoint,
+    NotificationsConfig, RepositoryCreatedEvent,
+};
+// Re-exported from event_secrets module
+pub use event_secrets::{
+    EnvironmentSecretResolver, FilesystemSecretResolver, SecretResolutionError, SecretResolver,
+};
+// Re-exported from event_metrics module
+pub use event_metrics::{EventMetrics, NoOpEventMetrics, PrometheusEventMetrics};
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};

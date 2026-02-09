@@ -47,7 +47,13 @@ Interface specifications serve as:
 
 - [**Release Automation**](release-automation.md) - Automated release management, versioning, and artifact publishing (Task 4a.0)
 
-**Status**: ✅ 15 interface specifications complete
+### Event Notification Specifications
+
+- [**Event Publisher**](event-publisher.md) - Outbound webhook notifications for repository events (Task 17.0)
+- [**Event Secrets**](event-secrets.md) - Container-native secret resolution for webhook signing
+- [**Event Metrics**](event-metrics.md) - Metrics collection abstraction for delivery observability
+
+**Status**: ✅ 18 interface specifications complete
 
 ## Architecture Overview
 

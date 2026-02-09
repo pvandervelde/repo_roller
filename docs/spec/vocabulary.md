@@ -290,4 +290,70 @@ Complete record of all significant operations and decisions.
 - Merge operation produces single resolved configuration
 - Source attribution maintained for audit purposes
 
+## Event Publishing Domain
+
+### Core Concepts
+
+**RepositoryEvent**
+An occurrence in the repository lifecycle that external systems may need to know about.
+
+- **Types**: Created, CreationFailed (future: Updated, Deleted)
+- **Properties**: Event type, unique event ID (UUID), timestamp, repository metadata, actor information
+- **Lifecycle**: Triggered → Serialized → Delivered → Acknowledged (logged)
+- **Constraints**: Must be idempotent-safe (recipients may receive duplicates)
+- **Delivery**: Asynchronous, fire-and-forget, best-effort
+
+**EventNotificationEndpoint**
+A configured destination for receiving repository event notifications via webhook.
+
+- **Identity**: Unique combination of URL and organization scope
+- **Properties**: HTTPS URL, shared secret reference, event type filters, active/inactive status, timeout configuration
+- **Behavior**: Receives HTTP POST with JSON payload and HMAC-SHA256 signature
+- **Constraints**: Must use HTTPS (no HTTP), secret must be non-empty, must specify at least one event type
+- **Configuration**: Defined at organization, team, or template level
+
+**EventDeliveryAttempt**
+A single attempt to deliver an event notification to an endpoint.
+
+- **Properties**: Endpoint URL, HTTP status code (if received), response time in milliseconds, success/failure status, error details
+- **Behavior**: Records delivery outcome, enables observability and troubleshooting
+- **Lifecycle**: Created → Attempted → Completed (success or failure) → Logged
+- **Constraints**: Must complete within configured timeout (default 5 seconds, max 30 seconds)
+
+**EventPublisher**
+Component responsible for sending event notifications to configured webhook endpoints.
+
+- **Responsibilities**: Load notification endpoints from configuration hierarchy, serialize events to JSON, sign requests with HMAC-SHA256, send HTTP POST requests, log delivery results, emit metrics
+- **Behavior**: Asynchronous delivery (spawns background tasks), non-blocking (does not delay repository creation), best-effort (logs failures but does not retry)
+- **Collaboration**: Works with ConfigurationManager (loads endpoints), SecretsManager (resolves signing secrets), MetricsCollector (records delivery stats)
+- **Constraints**: Must not block repository creation workflow, must not propagate errors to caller, must log all delivery attempts
+
+**NotificationConfiguration**
+Hierarchical configuration for webhook notification endpoints.
+
+- **Levels**: Organization (`.reporoller/global/notifications.toml`), Team (`.reporoller/teams/{team}/notifications.toml`), Template (`.reporoller/notifications.toml` in template repository)
+- **Behavior**: Endpoints from all levels are accumulated (additive, not override), duplicates detected and removed based on URL + event type combination
+- **Properties**: List of notification endpoints with URL, secret reference, event filters, timeout, active status
+- **Validation**: All endpoints validated on load, invalid endpoints skipped with warnings
+
+### Event Publishing Relationships
+
+**EventPublisher consumes NotificationConfiguration**
+
+- Publisher loads endpoints from all hierarchy levels
+- Endpoints accumulated (not overridden) across levels
+- Deduplication based on URL + event type
+
+**RepositoryCreationOrchestrator triggers EventPublisher**
+
+- After successful repository creation
+- Fire-and-forget (non-blocking)
+- Failures logged but do not affect repository creation result
+
+**EventPublisher depends on SecretsManager**
+
+- Resolves secret references to actual secret values
+- Secrets used for HMAC-SHA256 signing
+- Secret resolution failures skip that endpoint
+
 This vocabulary provides the foundation for all interface definitions and implementation decisions. All team members must use these terms consistently, and any additions or modifications to this vocabulary must be documented and communicated to the entire team.
