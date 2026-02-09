@@ -50,6 +50,7 @@ fn create_test_template_config() -> config_manager::TemplateConfig {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         variables: None,
         default_visibility: None,
         templating: None,

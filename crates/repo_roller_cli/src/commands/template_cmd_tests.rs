@@ -165,6 +165,7 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         templating: None,
     }
 }
@@ -218,6 +219,7 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         webhooks: None,
         environments: None,
         github_apps: None,
+        rulesets: None,
         templating: None,
     }
 }

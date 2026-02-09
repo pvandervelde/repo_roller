@@ -52,7 +52,7 @@ use serde::{Deserialize, Serialize};
 /// active = true
 /// events = ["push", "pull_request"]
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct GlobalDefaults {
     /// Repository feature settings
     pub repository: Option<RepositorySettings>,
@@ -103,6 +103,28 @@ pub struct GlobalDefaults {
     /// restricted_visibilities = ["public"]
     /// ```
     pub repository_visibility: Option<VisibilityPolicyConfig>,
+
+    /// Repository rulesets (additive).
+    ///
+    /// Rulesets defined here are added to rulesets from other levels.
+    /// This allows global governance rules to be defined and enforced
+    /// across all repositories.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[rulesets]]
+    /// name = "main-protection"
+    /// target = "branch"
+    /// enforcement = "active"
+    ///
+    /// [rulesets.conditions.ref_name]
+    /// include = ["refs/heads/main"]
+    ///
+    /// [[rulesets.rules]]
+    /// type = "deletion"
+    /// ```
+    pub rulesets: Option<Vec<RulesetConfig>>,
 }
 
 #[cfg(test)]

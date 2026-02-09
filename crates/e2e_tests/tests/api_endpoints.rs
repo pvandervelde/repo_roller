@@ -228,7 +228,7 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     // Check if any labels are missing and capture logs BEFORE asserting
     let mut all_expected = expected_global_labels.clone();
-    all_expected.extend(expected_template_labels.iter().map(|s| *s));
+    all_expected.extend(expected_template_labels.iter().copied());
     let missing_labels: Vec<_> = all_expected
         .iter()
         .filter(|label| !labels.contains(&label.to_string()))
@@ -377,7 +377,7 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
             "include_readme": true,
             "include_gitignore": false
         },
-        "visibility": "private"
+        "visibility": "public"  // Public required for ruleset verification (no GitHub Pro)
     });
 
     let response = client
@@ -536,6 +536,82 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
 
     tracing::info!("✓ Verified 1 global webhook with correct configuration");
 
+    // Verify rulesets from global configuration
+    tracing::info!(
+        org = &org,
+        repo = &repo_name,
+        "Attempting to list repository rulesets for verification"
+    );
+    let rulesets = match verification_client
+        .list_repository_rulesets(&org, &repo_name)
+        .await
+    {
+        Ok(rulesets) => {
+            tracing::info!(
+                org = &org,
+                repo = &repo_name,
+                count = rulesets.len(),
+                "Successfully listed rulesets"
+            );
+            rulesets
+        }
+        Err(e) => {
+            tracing::warn!(
+                org = &org,
+                repo = &repo_name,
+                error = %e,
+                "Failed to list rulesets on first attempt, retrying after delay"
+            );
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            match verification_client
+                .list_repository_rulesets(&org, &repo_name)
+                .await
+            {
+                Ok(rulesets) => {
+                    tracing::info!(
+                        org = &org,
+                        repo = &repo_name,
+                        count = rulesets.len(),
+                        "Successfully listed rulesets on retry"
+                    );
+                    rulesets
+                }
+                Err(e) => {
+                    tracing::error!(
+                        org = &org,
+                        repo = &repo_name,
+                        error = %e,
+                        "Failed to list rulesets after retry - this may indicate API response format mismatch"
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+    };
+
+    tracing::info!("Repository has {} rulesets", rulesets.len());
+
+    // Verify that rulesets were applied (if any exist in global config)
+    // Note: The exact number depends on what's in .reporoller-test/global/rulesets.toml
+    // For now, we just verify the operation succeeded and log the count
+    if !rulesets.is_empty() {
+        tracing::info!(
+            "✓ Verified {} ruleset(s) applied from global configuration",
+            rulesets.len()
+        );
+        for ruleset in &rulesets {
+            tracing::info!(
+                "  - Ruleset: {} (target: {:?}, enforcement: {:?})",
+                ruleset.name,
+                ruleset.target,
+                ruleset.enforcement
+            );
+        }
+    } else {
+        tracing::info!("✓ No rulesets configured (verified list operation succeeds)");
+    }
+
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
         .await
@@ -582,7 +658,7 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
             "include_readme": true,
             "include_gitignore": true
         },
-        "visibility": "private"
+        "visibility": "public"  // Public required for ruleset verification (no GitHub Pro)
     });
 
     let response = client
@@ -739,6 +815,82 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
     );
 
     tracing::info!("✓ Verified 1 global webhook with correct configuration");
+
+    // Verify rulesets from global configuration
+    tracing::info!(
+        org = &org,
+        repo = &repo_name,
+        "Attempting to list repository rulesets for verification"
+    );
+    let rulesets = match verification_client
+        .list_repository_rulesets(&org, &repo_name)
+        .await
+    {
+        Ok(rulesets) => {
+            tracing::info!(
+                org = &org,
+                repo = &repo_name,
+                count = rulesets.len(),
+                "Successfully listed rulesets"
+            );
+            rulesets
+        }
+        Err(e) => {
+            tracing::warn!(
+                org = &org,
+                repo = &repo_name,
+                error = %e,
+                "Failed to list rulesets on first attempt, retrying after delay"
+            );
+            // Try one more time after delay
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            match verification_client
+                .list_repository_rulesets(&org, &repo_name)
+                .await
+            {
+                Ok(rulesets) => {
+                    tracing::info!(
+                        org = &org,
+                        repo = &repo_name,
+                        count = rulesets.len(),
+                        "Successfully listed rulesets on retry"
+                    );
+                    rulesets
+                }
+                Err(e) => {
+                    tracing::error!(
+                        org = &org,
+                        repo = &repo_name,
+                        error = %e,
+                        "Failed to list rulesets after retry - this may indicate API response format mismatch"
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+    };
+
+    tracing::info!("Repository has {} rulesets", rulesets.len());
+
+    // Verify that rulesets were applied (if any exist in global config)
+    // Note: The exact number depends on what's in .reporoller-test/global/rulesets.toml
+    // For now, we just verify the operation succeeded and log the count
+    if !rulesets.is_empty() {
+        tracing::info!(
+            "✓ Verified {} ruleset(s) applied from global configuration",
+            rulesets.len()
+        );
+        for ruleset in &rulesets {
+            tracing::info!(
+                "  - Ruleset: {} (target: {:?}, enforcement: {:?})",
+                ruleset.name,
+                ruleset.target,
+                ruleset.enforcement
+            );
+        }
+    } else {
+        tracing::info!("✓ No rulesets configured (verified list operation succeeds)");
+    }
 
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)

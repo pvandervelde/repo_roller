@@ -38,6 +38,7 @@ impl MockMetadataProvider {
             custom_properties: None,
             environments: None,
             github_apps: None,
+            rulesets: None,
             repository_visibility: None, // No policy = unrestricted
         };
 
@@ -66,6 +67,7 @@ impl MockMetadataProvider {
             custom_properties: None,
             environments: None,
             github_apps: None,
+            rulesets: None,
             repository_visibility: Some(VisibilityPolicyConfig {
                 enforcement_level: enforcement_level.to_string(),
                 required_visibility: required.map(|s| s.to_string()),

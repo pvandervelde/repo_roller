@@ -1,8 +1,6 @@
 //! Tests for label_manager module.
 
 use super::*;
-use config_manager::settings::LabelConfig;
-use std::collections::HashMap;
 
 // Note: Full integration tests with mock GitHubClient will be added in Phase 2
 // For now, we test the result types and helper methods that are fully implemented
@@ -133,11 +131,6 @@ fn test_apply_labels_result_counts() {
 fn test_label_manager_can_be_created() {
     // This is a compilation test - verifies the type system is correct
     // In Phase 2, we'll add tests that actually call apply_labels with mocks
-    // For now, verify that the LabelManager type exists and has the right shape
-
-    // Can't easily create a real GitHubClient here without authentication
-    // So we just verify the types compile correctly
-    fn accepts_label_manager(_manager: LabelManager) {}
-
-    // This function compiles, proving LabelManager is properly defined
+    // The LabelManager type exists and has the correct public API
+    // (verified by successful compilation of this crate)
 }

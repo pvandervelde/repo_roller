@@ -60,7 +60,7 @@
 
 use crate::settings::{
     BranchProtectionSettings, EnvironmentConfig, GitHubAppConfig, LabelConfig, PullRequestSettings,
-    RepositorySettings, WebhookConfig,
+    RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
@@ -93,7 +93,7 @@ use template_engine::TemplatingConfig;
 /// assert_eq!(config.template.name, "rust-library");
 /// assert!(config.repository.is_some());
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TemplateConfig {
     /// Template metadata (required).
     ///
@@ -156,6 +156,14 @@ pub struct TemplateConfig {
     /// Apps defined here are added to apps from other levels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github_apps: Option<Vec<GitHubAppConfig>>,
+
+    /// Template-specific rulesets (additive).
+    ///
+    /// Rulesets defined here are added to rulesets from other levels.
+    /// Allows templates to define governance rules appropriate for
+    /// repositories created from this template.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rulesets: Option<Vec<RulesetConfig>>,
 
     /// Default visibility for repositories created from this template (optional).
     ///

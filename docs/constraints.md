@@ -64,6 +64,27 @@ Source: `docs/adr/ADR-002-hierarchical-configuration.md`
   - Yes: Port traits defined in core, implemented in adapters
   - Source: `docs/adr/ADR-001-hexagonal-architecture.md`
 
+## GitHub API Quirks (learn from our pain!)
+
+- **Repository Rulesets API has different response shapes**:
+  - **LIST** `/repos/{owner}/{repo}/rules`: Returns metadata ONLY (no `rules` field)
+  - **GET** `/repos/{owner}/{repo}/rules/{ruleset_id}`: Returns full details (with `rules` field)
+  - **CREATE** `/repos/{owner}/{repo}/rules`: Requires full payload (with `rules` field)
+  - **Fix**: Use `#[serde(default)]` on optional fields to handle both shapes
+  - Why this matters: Deserialization fails with "missing field `rules`" if struct expects it always
+
+- **Ruleset ref patterns must match target type**:
+  - Branch rulesets → Use `refs/heads/*` or `refs/heads/main` patterns
+  - Tag rulesets → Use `refs/tags/*` or `refs/tags/v*` patterns
+  - Mismatch causes GitHub API "Validation Failed" error (cryptic!)
+  - Helper functions must be context-aware: select pattern based on target type
+
+- **Private repositories + rulesets = GitHub Pro required**:
+  - Free tier GitHub orgs cannot apply rulesets to private repos
+  - Error message: "Upgrade to GitHub Pro or make repository public"
+  - **Test strategy**: Use public repos for integration/e2e tests on free orgs
+  - Don't waste cycles debugging—just make test repos public!
+
 ## Before You Build
 
 - **New component?** Check `docs/catalog.md` — avoid reinventing the wheel

@@ -14,6 +14,7 @@ pub mod label;
 pub mod pull_request;
 pub mod push;
 pub mod repository;
+pub mod ruleset;
 pub mod webhook;
 
 // Re-export all types for convenient access
@@ -26,4 +27,8 @@ pub use label::LabelConfig;
 pub use pull_request::PullRequestSettings;
 pub use push::PushSettings;
 pub use repository::RepositorySettings;
+pub use ruleset::{
+    BypassActorConfig, RefNameConditionConfig, RuleConfig, RulesetConditionsConfig, RulesetConfig,
+    StatusCheckConfig,
+};
 pub use webhook::WebhookConfig;

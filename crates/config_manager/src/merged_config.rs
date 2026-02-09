@@ -38,7 +38,7 @@
 
 use crate::settings::{
     BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    PullRequestSettings, RepositorySettings, WebhookConfig,
+    PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use std::collections::HashMap;
 
@@ -90,6 +90,11 @@ pub struct MergedConfiguration {
     /// Merged from all sources (additive).
     pub github_apps: Vec<GitHubAppConfig>,
 
+    /// Repository rulesets to apply.
+    ///
+    /// Merged from all sources (additive - all rulesets from all sources).
+    pub rulesets: Vec<RulesetConfig>,
+
     /// Source trace tracking which configuration source provided each setting.
     ///
     /// Used for auditing, debugging, and understanding configuration precedence.
@@ -111,6 +116,7 @@ impl MergedConfiguration {
             custom_properties: Vec::new(),
             environments: Vec::new(),
             github_apps: Vec::new(),
+            rulesets: Vec::new(),
             source_trace: ConfigurationSourceTrace::new(),
         }
     }

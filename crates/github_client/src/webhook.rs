@@ -1,6 +1,7 @@
 //! GitHub webhook types and operations.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::str::FromStr;
 
 /// GitHub webhook event types.
 ///
@@ -42,31 +43,32 @@ pub enum WebhookEvent {
     All,
 }
 
-impl WebhookEvent {
-    /// Converts a string slice to a WebhookEvent.
-    ///
-    /// Returns None if the string doesn't match a known event type.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for WebhookEvent {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "push" => Some(Self::Push),
-            "pull_request" => Some(Self::PullRequest),
-            "pull_request_review" => Some(Self::PullRequestReview),
-            "pull_request_review_comment" => Some(Self::PullRequestReviewComment),
-            "issues" => Some(Self::Issues),
-            "issue_comment" => Some(Self::IssueComment),
-            "create" => Some(Self::Create),
-            "delete" => Some(Self::Delete),
-            "fork" => Some(Self::Fork),
-            "release" => Some(Self::Release),
-            "watch" => Some(Self::Watch),
-            "deployment" => Some(Self::Deployment),
-            "deployment_status" => Some(Self::DeploymentStatus),
-            "status" => Some(Self::Status),
-            "*" => Some(Self::All),
-            _ => None,
+            "push" => Ok(Self::Push),
+            "pull_request" => Ok(Self::PullRequest),
+            "pull_request_review" => Ok(Self::PullRequestReview),
+            "pull_request_review_comment" => Ok(Self::PullRequestReviewComment),
+            "issues" => Ok(Self::Issues),
+            "issue_comment" => Ok(Self::IssueComment),
+            "create" => Ok(Self::Create),
+            "delete" => Ok(Self::Delete),
+            "fork" => Ok(Self::Fork),
+            "release" => Ok(Self::Release),
+            "watch" => Ok(Self::Watch),
+            "deployment" => Ok(Self::Deployment),
+            "deployment_status" => Ok(Self::DeploymentStatus),
+            "status" => Ok(Self::Status),
+            "*" => Ok(Self::All),
+            _ => Err(format!("Unknown webhook event type: {}", s)),
         }
     }
+}
 
+impl WebhookEvent {
     /// Converts the WebhookEvent to a string.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -200,6 +202,42 @@ where
 {
     let s = String::deserialize(deserializer)?;
     Ok(s == "1")
+}
+
+/// Parameters for creating a webhook.
+///
+/// Groups webhook configuration into a single struct to avoid
+/// functions with too many parameters.
+#[derive(Debug, Clone)]
+pub struct CreateWebhookParams<'a> {
+    /// Webhook URL
+    pub url: &'a str,
+    /// Content type ("json" or "form")
+    pub content_type: &'a str,
+    /// Optional secret for webhook signatures
+    pub secret: Option<&'a str>,
+    /// Whether the webhook is active
+    pub active: bool,
+    /// Events that trigger this webhook
+    pub events: &'a [String],
+}
+
+/// Parameters for updating a webhook.
+///
+/// Groups webhook configuration into a single struct to avoid
+/// functions with too many parameters.
+#[derive(Debug, Clone)]
+pub struct UpdateWebhookParams<'a> {
+    /// Webhook URL
+    pub url: &'a str,
+    /// Content type ("json" or "form")
+    pub content_type: &'a str,
+    /// Optional secret for webhook signatures
+    pub secret: Option<&'a str>,
+    /// Whether the webhook is active
+    pub active: bool,
+    /// Events that trigger this webhook
+    pub events: &'a [String],
 }
 
 #[cfg(test)]

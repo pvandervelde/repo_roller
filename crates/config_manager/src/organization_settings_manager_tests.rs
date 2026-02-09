@@ -40,6 +40,7 @@ impl TemplateRepository for MockTemplateRepository {
             webhooks: None,
             environments: None,
             github_apps: None,
+            rulesets: None,
             default_visibility: None,
             templating: None,
         })
@@ -458,8 +459,6 @@ async fn test_resolve_configuration_is_consistent() {
 // New Tests: Empty template handling should preserve labels
 // ============================================================================
 
-use crate::TemplateLoader as _; // ensure TemplateLoader symbol available
-
 /// Template repository mock that returns an error when the template name is empty.
 #[derive(Debug, Clone)]
 struct EmptySensitiveTemplateRepository;
@@ -494,6 +493,7 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             webhooks: None,
             environments: None,
             github_apps: None,
+            rulesets: None,
             default_visibility: None,
             templating: None,
         })
