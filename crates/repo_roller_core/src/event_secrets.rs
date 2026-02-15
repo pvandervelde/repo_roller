@@ -91,8 +91,10 @@ impl Default for EnvironmentSecretResolver {
 
 #[async_trait]
 impl SecretResolver for EnvironmentSecretResolver {
-    async fn resolve_secret(&self, _secret_ref: &str) -> Result<String, SecretResolutionError> {
-        unimplemented!("See docs/spec/interfaces/event-secrets.md#environmentsecretresolver")
+    async fn resolve_secret(&self, secret_ref: &str) -> Result<String, SecretResolutionError> {
+        std::env::var(secret_ref).map_err(|_| SecretResolutionError::NotFound {
+            reference: secret_ref.to_string(),
+        })
     }
 }
 
@@ -112,7 +114,6 @@ impl SecretResolver for EnvironmentSecretResolver {
 /// ```
 ///
 /// See docs/spec/interfaces/event-secrets.md#filesystemsecretresolver
-#[allow(dead_code)] // TODO(task-17.4): Remove when implementing FilesystemSecretResolver
 pub struct FilesystemSecretResolver {
     base_path: std::path::PathBuf,
 }
@@ -131,8 +132,33 @@ impl FilesystemSecretResolver {
 
 #[async_trait]
 impl SecretResolver for FilesystemSecretResolver {
-    async fn resolve_secret(&self, _secret_ref: &str) -> Result<String, SecretResolutionError> {
-        unimplemented!("See docs/spec/interfaces/event-secrets.md#filesystemsecretresolver")
+    async fn resolve_secret(&self, secret_ref: &str) -> Result<String, SecretResolutionError> {
+        // Join base_path with secret_ref
+        let full_path = self.base_path.join(secret_ref);
+
+        // Read file content
+        match tokio::fs::read_to_string(&full_path).await {
+            Ok(content) => {
+                // Trim whitespace/newlines (common in mounted secrets)
+                Ok(content.trim().to_string())
+            }
+            Err(e) => {
+                // Map I/O errors to appropriate SecretResolutionError
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    Err(SecretResolutionError::NotFound {
+                        reference: secret_ref.to_string(),
+                    })
+                } else if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    Err(SecretResolutionError::AccessDenied {
+                        reference: secret_ref.to_string(),
+                    })
+                } else {
+                    Err(SecretResolutionError::Other {
+                        message: format!("Failed to read secret file: {}", e),
+                    })
+                }
+            }
+        }
     }
 }
 
