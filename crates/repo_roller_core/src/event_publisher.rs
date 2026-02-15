@@ -372,8 +372,25 @@ pub async fn publish_repository_created(
 /// Signature in format: `"sha256=<hex-encoded-signature>"`
 ///
 /// See docs/spec/interfaces/event-publisher.md#compute_hmac_sha256
-pub fn compute_hmac_sha256(_payload: &[u8], _secret: &str) -> String {
-    unimplemented!("See docs/spec/interfaces/event-publisher.md#compute_hmac_sha256")
+pub fn compute_hmac_sha256(payload: &[u8], secret: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    type HmacSha256 = Hmac<Sha256>;
+
+    // Create HMAC instance with secret
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can accept keys of any size");
+
+    // Update with payload
+    mac.update(payload);
+
+    // Finalize and get result
+    let result = mac.finalize();
+    let code_bytes = result.into_bytes();
+
+    // Format as "sha256=<hex>"
+    format!("sha256={}", hex::encode(code_bytes))
 }
 
 /// Adds HMAC signature header to HTTP request.
@@ -388,11 +405,12 @@ pub fn compute_hmac_sha256(_payload: &[u8], _secret: &str) -> String {
 ///
 /// See docs/spec/interfaces/event-publisher.md#sign_webhook_request
 pub fn sign_webhook_request(
-    _request: reqwest::RequestBuilder,
-    _payload: &[u8],
-    _secret: &str,
+    request: reqwest::RequestBuilder,
+    payload: &[u8],
+    secret: &str,
 ) -> reqwest::RequestBuilder {
-    unimplemented!("See docs/spec/interfaces/event-publisher.md#sign_webhook_request")
+    let signature = compute_hmac_sha256(payload, secret);
+    request.header("X-RepoRoller-Signature-256", signature)
 }
 
 /// Collects and deduplicates endpoints from all configuration levels.
