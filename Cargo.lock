@@ -2682,6 +2682,7 @@ dependencies = [
  "config_manager",
  "git2",
  "github_client",
+ "hex",
  "hmac",
  "prometheus",
  "reqwest",
