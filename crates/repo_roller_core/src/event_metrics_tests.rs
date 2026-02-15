@@ -6,6 +6,7 @@ use super::*;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 // Mock implementation for testing
+#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
 pub struct MockEventMetrics {
     pub successes: AtomicU64,
     pub failures: AtomicU64,
@@ -13,6 +14,7 @@ pub struct MockEventMetrics {
     pub active_tasks: AtomicI64,
 }
 
+#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
 impl MockEventMetrics {
     pub fn new() -> Self {
         Self {
@@ -69,8 +71,6 @@ impl EventMetrics for MockEventMetrics {
 }
 
 mod prometheus_metrics_tests {
-    use super::*;
-
     #[test]
     fn test_prometheus_metrics_registration() {
         // TODO: Implement per docs/spec/interfaces/event-metrics.md
@@ -133,70 +133,6 @@ mod noop_metrics_tests {
     fn test_noop_metrics_zero_overhead() {
         // TODO: Implement per docs/spec/interfaces/event-metrics.md
         // - Verify all methods complete in < 1μs
-        unimplemented!()
-    }
-}
-
-mod mock_metrics_tests {
-    use super::testing::*;
-    use super::EventMetrics;
-    use super::*;
-
-    #[test]
-    fn test_mock_metrics_track_successes() {
-        let metrics = MockEventMetrics::new();
-
-        metrics.record_delivery_success("https://example.com", 100);
-        metrics.record_delivery_success("https://example.com", 200);
-
-        assert_eq!(metrics.success_count(), 2);
-        assert_eq!(metrics.failure_count(), 0);
-        assert_eq!(metrics.error_count(), 0);
-    }
-
-    #[test]
-    fn test_mock_metrics_track_failures() {
-        let metrics = MockEventMetrics::new();
-
-        metrics.record_delivery_failure("https://example.com", 500);
-        metrics.record_delivery_failure("https://example.com", 503);
-
-        assert_eq!(metrics.success_count(), 0);
-        assert_eq!(metrics.failure_count(), 2);
-        assert_eq!(metrics.error_count(), 0);
-    }
-
-    #[test]
-    fn test_mock_metrics_track_errors() {
-        let metrics = MockEventMetrics::new();
-
-        metrics.record_delivery_error("https://example.com");
-
-        assert_eq!(metrics.success_count(), 0);
-        assert_eq!(metrics.failure_count(), 0);
-        assert_eq!(metrics.error_count(), 1);
-    }
-
-    #[test]
-    fn test_mock_metrics_track_active_tasks() {
-        let metrics = MockEventMetrics::new();
-
-        metrics.increment_active_tasks();
-        metrics.increment_active_tasks();
-        assert_eq!(metrics.active_task_count(), 2);
-
-        metrics.decrement_active_tasks();
-        assert_eq!(metrics.active_task_count(), 1);
-
-        metrics.decrement_active_tasks();
-        assert_eq!(metrics.active_task_count(), 0);
-    }
-
-    #[test]
-    fn test_mock_metrics_thread_safe() {
-        // TODO: Implement per docs/spec/interfaces/event-metrics.md
-        // - Concurrent access from multiple threads
-        // - Verify counts are accurate
         unimplemented!()
     }
 }

@@ -112,6 +112,7 @@ impl SecretResolver for EnvironmentSecretResolver {
 /// ```
 ///
 /// See docs/spec/interfaces/event-secrets.md#filesystemsecretresolver
+#[allow(dead_code)] // TODO(task-17.4): Remove when implementing FilesystemSecretResolver
 pub struct FilesystemSecretResolver {
     base_path: std::path::PathBuf,
 }

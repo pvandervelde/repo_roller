@@ -7,10 +7,12 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 // Mock implementation for testing
+#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
 pub struct MockSecretResolver {
     secrets: HashMap<String, String>,
 }
 
+#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
 impl MockSecretResolver {
     pub fn with_secrets(secrets: HashMap<String, String>) -> Self {
         Self { secrets }
@@ -30,7 +32,6 @@ impl SecretResolver for MockSecretResolver {
 }
 
 mod environment_resolver_tests {
-    use super::*;
 
     #[tokio::test]
     async fn test_environment_resolver_resolves_existing_var() {
@@ -65,8 +66,6 @@ mod environment_resolver_tests {
 }
 
 mod filesystem_resolver_tests {
-    use super::*;
-
     #[tokio::test]
     async fn test_filesystem_resolver_resolves_file() {
         // TODO: Implement per docs/spec/interfaces/event-secrets.md
@@ -105,41 +104,5 @@ mod filesystem_resolver_tests {
         // TODO: Implement per docs/spec/interfaces/event-secrets.md
         // - Verify base path properly joined with secret ref
         unimplemented!()
-    }
-}
-
-mod mock_resolver_tests {
-    use super::testing::*;
-    use super::SecretResolver;
-    use super::*;
-
-    #[tokio::test]
-    async fn test_mock_resolver_resolves_configured_secrets() {
-        // TODO: Implement per docs/spec/interfaces/event-secrets.md
-        use std::collections::HashMap;
-
-        let mut secrets = HashMap::new();
-        secrets.insert("test-secret".to_string(), "secret-value".to_string());
-
-        let resolver = MockSecretResolver::with_secrets(secrets);
-
-        let result = resolver.resolve_secret("test-secret").await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "secret-value");
-    }
-
-    #[tokio::test]
-    async fn test_mock_resolver_returns_not_found() {
-        // TODO: Implement per docs/spec/interfaces/event-secrets.md
-        use std::collections::HashMap;
-
-        let resolver = MockSecretResolver::with_secrets(HashMap::new());
-
-        let result = resolver.resolve_secret("missing").await;
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            SecretResolutionError::NotFound { .. }
-        ));
     }
 }

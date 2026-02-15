@@ -73,12 +73,125 @@ impl RepositoryCreatedEvent {
     ///
     /// See docs/spec/interfaces/event-publisher.md#repositorycreatedevent
     pub fn from_result_and_request(
-        _result: &RepositoryCreationResult,
-        _request: &RepositoryCreationRequest,
-
-        _created_by: &str,
+        result: &RepositoryCreationResult,
+        request: &RepositoryCreationRequest,
+        merged_config: &config_manager::MergedConfiguration,
+        created_by: &str,
     ) -> Self {
-        unimplemented!("See docs/spec/interfaces/event-publisher.md#repositorycreatedevent")
+        // Generate unique event ID (UUID v4)
+        let event_id = uuid::Uuid::new_v4().to_string();
+
+        // Current timestamp in UTC
+        let timestamp = chrono::Utc::now();
+
+        // Extract organization and repository name from request
+        let organization = request.owner.as_ref().to_string();
+        let repository_name = request.name.as_ref().to_string();
+
+        // Determine content strategy string
+        let content_strategy = match &request.content_strategy {
+            crate::ContentStrategy::Template => "template",
+            crate::ContentStrategy::Empty => "empty",
+            crate::ContentStrategy::CustomInit { .. } => "custom_init",
+        }
+        .to_string();
+
+        // Extract visibility (convert enum to string, default to "private" if not specified)
+        let visibility = request
+            .visibility
+            .as_ref()
+            .map(|v| match v {
+                crate::RepositoryVisibility::Public => "public",
+                crate::RepositoryVisibility::Private => "private",
+                crate::RepositoryVisibility::Internal => "internal",
+            })
+            .unwrap_or("private")
+            .to_string();
+
+        // Extract template name (only if template strategy)
+        let template_name = request.template.as_ref().map(|t| t.as_ref().to_string());
+
+        // Extract repository type from request variables (if present)
+        let repository_type = request.variables.get("repository_type").cloned();
+
+        // Extract team from request variables (if present)
+        let team = request.variables.get("team").cloned();
+
+        // Extract description from request variables (if present)
+        let description = request.variables.get("description").cloned();
+
+        // Extract custom properties from merged config
+        let custom_properties = if !merged_config.custom_properties.is_empty() {
+            let mut props = HashMap::new();
+            for prop in &merged_config.custom_properties {
+                // Convert CustomPropertyValue to string
+                let value_str = match &prop.value {
+                    config_manager::settings::custom_property::CustomPropertyValue::String(s) => {
+                        s.clone()
+                    }
+                    config_manager::settings::custom_property::CustomPropertyValue::SingleSelect(
+                        s,
+                    ) => s.clone(),
+                    config_manager::settings::custom_property::CustomPropertyValue::MultiSelect(
+                        vec,
+                    ) => vec.join(","),
+                    config_manager::settings::custom_property::CustomPropertyValue::Boolean(b) => {
+                        b.to_string()
+                    }
+                };
+                props.insert(prop.property_name.clone(), value_str);
+            }
+            Some(props)
+        } else {
+            None
+        };
+
+        // Extract applied settings from merged config
+        let applied_settings = {
+            let has_issues = merged_config.repository.issues.as_ref().map(|v| v.value);
+            let has_wiki = merged_config.repository.wiki.as_ref().map(|v| v.value);
+            let has_projects = merged_config.repository.projects.as_ref().map(|v| v.value);
+            let has_discussions = merged_config
+                .repository
+                .discussions
+                .as_ref()
+                .map(|v| v.value);
+
+            // Only include applied_settings if at least one setting is present
+            if has_issues.is_some()
+                || has_wiki.is_some()
+                || has_projects.is_some()
+                || has_discussions.is_some()
+            {
+                Some(AppliedSettings {
+                    has_issues,
+                    has_wiki,
+                    has_projects,
+                    has_discussions,
+                })
+            } else {
+                None
+            }
+        };
+
+        Self {
+            event_type: "repository.created".to_string(),
+            event_id,
+            timestamp,
+            organization,
+            repository_name,
+            repository_url: result.repository_url.clone(),
+            repository_id: result.repository_id.clone(),
+            created_by: created_by.to_string(),
+            repository_type,
+            template_name,
+            content_strategy,
+            visibility,
+            team,
+            description,
+            custom_properties,
+            applied_settings,
+        }
     }
 }
 
