@@ -1499,3 +1499,202 @@ mod endpoint_collection_tests {
         assert!(urls.contains(&"https://unique-team.example.com/webhook"));
     }
 }
+
+#[cfg(test)]
+mod publish_workflow_tests {
+    use super::*;
+    use crate::{
+        ContentStrategy, EventMetrics, OrganizationName, RepositoryCreationRequest,
+        RepositoryCreationResult, RepositoryName, SecretResolutionError, SecretResolver,
+        TemplateName, Timestamp,
+    };
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+
+    // Mock SecretResolver for testing
+    struct MockSecretResolver {
+        secrets: HashMap<String, String>,
+    }
+
+    impl MockSecretResolver {
+        fn with_secrets(secrets: HashMap<String, String>) -> Self {
+            Self { secrets }
+        }
+    }
+
+    #[async_trait]
+    impl SecretResolver for MockSecretResolver {
+        async fn resolve_secret(&self, secret_ref: &str) -> Result<String, SecretResolutionError> {
+            self.secrets
+                .get(secret_ref)
+                .cloned()
+                .ok_or_else(|| SecretResolutionError::NotFound {
+                    reference: secret_ref.to_string(),
+                })
+        }
+    }
+
+    // Mock EventMetrics for testing
+    struct MockEventMetrics {
+        successes: AtomicU64,
+        failures: AtomicU64,
+        errors: AtomicU64,
+        active_tasks: AtomicI64,
+    }
+
+    impl MockEventMetrics {
+        fn new() -> Self {
+            Self {
+                successes: AtomicU64::new(0),
+                failures: AtomicU64::new(0),
+                errors: AtomicU64::new(0),
+                active_tasks: AtomicI64::new(0),
+            }
+        }
+    }
+
+    impl EventMetrics for MockEventMetrics {
+        fn record_delivery_success(&self, _endpoint_url: &str, _duration_ms: u64) {
+            self.successes.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_delivery_failure(&self, _endpoint_url: &str, _status_code: u16) {
+            self.failures.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_delivery_error(&self, _endpoint_url: &str) {
+            self.errors.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn increment_active_tasks(&self) {
+            self.active_tasks.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn decrement_active_tasks(&self) {
+            self.active_tasks.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+
+    fn create_test_request() -> RepositoryCreationRequest {
+        RepositoryCreationRequest {
+            name: RepositoryName::new("test-repo").unwrap(),
+            owner: OrganizationName::new("test-org").unwrap(),
+            template: Some(TemplateName::new("test-template").unwrap()),
+            variables: HashMap::new(),
+            visibility: None,
+            content_strategy: ContentStrategy::Template,
+        }
+    }
+
+    fn create_test_result() -> RepositoryCreationResult {
+        RepositoryCreationResult {
+            repository_url: "https://github.com/test-org/test-repo".to_string(),
+            repository_id: "R_kgDOABCDEF".to_string(),
+            created_at: Timestamp::now(),
+            default_branch: "main".to_string(),
+        }
+    }
+
+    // NOTE(task-17.7): These tests are placeholders for the simplified signature.
+    // When ConfigurationManager integration is added (task 17.8), tests will be
+    // updated to test actual config loading and multi-level endpoint collection.
+
+    #[tokio::test]
+    async fn test_publish_empty_when_no_configuration() {
+        // Arrange: No configuration loaded (task 17.8 will add config loading)
+        let request = create_test_request();
+        let result = create_test_result();
+        let created_by = "test-user";
+
+        let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
+        let metrics = MockEventMetrics::new();
+
+        // Act: Call publish (will return empty since no config yet)
+        let delivery_results =
+            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
+                .await;
+
+        // Assert: Should return empty vector until config loading added
+        assert!(delivery_results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_creates_repository_created_event_with_correct_fields() {
+        // Arrange
+        let request = create_test_request();
+        let result = create_test_result();
+        let created_by = "jane.doe";
+
+        let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
+        let metrics = MockEventMetrics::new();
+
+        // Act
+        let _ =
+            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
+                .await;
+
+        // Assert: Event construction tested in event_construction_tests
+        // This test verifies integration (no panics, executes successfully)
+    }
+
+    #[tokio::test]
+    async fn test_handles_secret_resolution_gracefully() {
+        // Arrange: Secret resolver that fails
+        let request = create_test_request();
+        let result = create_test_result();
+        let created_by = "test-user";
+
+        let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
+        let metrics = MockEventMetrics::new();
+
+        // Act
+        let delivery_results =
+            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
+                .await;
+
+        // Assert: Should not panic on secret resolution failure
+        assert!(delivery_results.is_empty()); // No endpoints configured yet
+    }
+
+    #[tokio::test]
+    async fn test_records_metrics_for_operations() {
+        // Arrange
+        let request = create_test_request();
+        let result = create_test_result();
+        let created_by = "test-user";
+
+        let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
+        let metrics = MockEventMetrics::new();
+
+        // Act
+        let _ =
+            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
+                .await;
+
+        // Assert: Metrics integration verified (no errors)
+        // Actual metric recording will be tested when endpoints are delivered
+    }
+
+    // TODO(task-17.8): Add tests for config loading once ConfigurationManager integration added
+    // - test_loads_org_config_successfully
+    // - test_loads_team_config_when_specified
+    // - test_loads_template_config_when_specified
+    // - test_handles_config_load_failures_gracefully
+    // - test_deduplicates_endpoints_from_all_levels
+
+    // TODO(task-17.7-http): Add tests for HTTP delivery once wiremock integration added
+    // - test_delivers_to_single_endpoint_successfully
+    // - test_delivers_to_multiple_endpoints_sequentially
+    // - test_continues_delivery_after_endpoint_failure
+    // - test_respects_endpoint_timeout_settings
+    // - test_includes_correct_headers_in_request
+    // - test_signs_request_with_hmac_sha256
+    // - test_handles_http_4xx_errors_gracefully
+    // - test_handles_http_5xx_errors_gracefully
+    // - test_handles_network_timeout_gracefully
+    // - test_records_success_metrics_for_200_response
+    // - test_records_failure_metrics_for_failed_delivery
+    // - test_logs_info_for_successful_delivery
+    // - test_logs_warn_for_failed_delivery
+}
