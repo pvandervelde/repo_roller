@@ -60,11 +60,11 @@ pub trait EventMetrics: Send + Sync {
 ///
 /// See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics
 pub struct PrometheusEventMetrics {
-    _delivery_attempts: prometheus::Counter,
-    _delivery_successes: prometheus::Counter,
-    _delivery_failures: prometheus::Counter,
-    _delivery_duration: prometheus::Histogram,
-    _active_tasks: prometheus::Gauge,
+    delivery_attempts: prometheus::Counter,
+    delivery_successes: prometheus::Counter,
+    delivery_failures: prometheus::Counter,
+    delivery_duration: prometheus::Histogram,
+    active_tasks: prometheus::Gauge,
 }
 
 impl PrometheusEventMetrics {
@@ -77,30 +77,97 @@ impl PrometheusEventMetrics {
     /// Panics if metrics cannot be registered (duplicate names)
     ///
     /// See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics
-    pub fn new(_registry: &prometheus::Registry) -> Self {
-        unimplemented!("See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics")
+    pub fn new(registry: &prometheus::Registry) -> Self {
+        use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts};
+
+        // Define histogram buckets: 100ms, 500ms, 1s, 2.5s, 5s, 10s
+        let buckets = vec![0.1, 0.5, 1.0, 2.5, 5.0, 10.0];
+
+        // Create metrics
+        let delivery_attempts = Counter::with_opts(Opts::new(
+            "notification_delivery_attempts_total",
+            "Total notification delivery attempts",
+        ))
+        .expect("Failed to create attempts counter");
+
+        let delivery_successes = Counter::with_opts(Opts::new(
+            "notification_delivery_successes_total",
+            "Successful notification deliveries",
+        ))
+        .expect("Failed to create successes counter");
+
+        let delivery_failures = Counter::with_opts(Opts::new(
+            "notification_delivery_failures_total",
+            "Failed notification deliveries",
+        ))
+        .expect("Failed to create failures counter");
+
+        let delivery_duration = Histogram::with_opts(
+            HistogramOpts::new(
+                "notification_delivery_duration_seconds",
+                "Notification delivery duration in seconds",
+            )
+            .buckets(buckets),
+        )
+        .expect("Failed to create duration histogram");
+
+        let active_tasks = Gauge::with_opts(Opts::new(
+            "notification_active_tasks",
+            "Active notification delivery tasks",
+        ))
+        .expect("Failed to create active tasks gauge");
+
+        // Register metrics with registry
+        registry
+            .register(Box::new(delivery_attempts.clone()))
+            .expect("Failed to register attempts counter");
+        registry
+            .register(Box::new(delivery_successes.clone()))
+            .expect("Failed to register successes counter");
+        registry
+            .register(Box::new(delivery_failures.clone()))
+            .expect("Failed to register failures counter");
+        registry
+            .register(Box::new(delivery_duration.clone()))
+            .expect("Failed to register duration histogram");
+        registry
+            .register(Box::new(active_tasks.clone()))
+            .expect("Failed to register active tasks gauge");
+
+        Self {
+            delivery_attempts,
+            delivery_successes,
+            delivery_failures,
+            delivery_duration,
+            active_tasks,
+        }
     }
 }
 
 impl EventMetrics for PrometheusEventMetrics {
-    fn record_delivery_success(&self, _endpoint_url: &str, _duration_ms: u64) {
-        unimplemented!("See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics")
+    fn record_delivery_success(&self, _endpoint_url: &str, duration_ms: u64) {
+        self.delivery_attempts.inc();
+        self.delivery_successes.inc();
+        // Convert milliseconds to seconds for histogram
+        self.delivery_duration.observe(duration_ms as f64 / 1000.0);
     }
 
     fn record_delivery_failure(&self, _endpoint_url: &str, _status_code: u16) {
-        unimplemented!("See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics")
+        self.delivery_attempts.inc();
+        self.delivery_failures.inc();
     }
 
     fn record_delivery_error(&self, _endpoint_url: &str) {
-        unimplemented!("See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics")
+        self.delivery_attempts.inc();
+        self.delivery_failures.inc();
     }
 
     fn increment_active_tasks(&self) {
-        unimplemented!("See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics")
+        self.active_tasks.inc();
     }
 
     fn decrement_active_tasks(&self) {
-        unimplemented!("See docs/spec/interfaces/event-metrics.md#prometheuseventmetrics")
+        self.active_tasks.dec();
     }
 }
 
