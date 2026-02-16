@@ -359,7 +359,31 @@ pub async fn publish_repository_created(
     _secret_resolver: &dyn crate::event_secrets::SecretResolver,
     _metrics: &dyn crate::event_metrics::EventMetrics,
 ) -> Vec<DeliveryResult> {
-    unimplemented!("See docs/spec/interfaces/event-publisher.md#publish_repository_created")
+    // TODO(task-17.8): Add ConfigurationManager parameter and load configurations
+    // - Load org config: config_manager.load_notifications_config(org, None, None)
+    // - Load team config: config_manager.load_notifications_config(org, Some(team), None)
+    // - Load template config: config_manager.load_notifications_config(org, None, Some(template))
+    // - Create MergedConfiguration for event construction
+    // - Create event: RepositoryCreatedEvent::from_result_and_request(result, request, merged_config, created_by)
+    //
+    // TODO(task-17.7-http): Implement HTTP delivery workflow
+    // - Collect endpoints: collect_notification_endpoints(org, team, template)
+    // - Filter active endpoints for "repository.created" event
+    // - Serialize event to JSON payload
+    // - For each endpoint:
+    //   - Resolve signing secret via secret_resolver
+    //   - Create HTTP POST request with reqwest
+    //   - Sign request with HMAC-SHA256 via sign_webhook_request()
+    //   - Add headers: Content-Type: application/json, User-Agent: RepoRoller/1.0
+    //   - Set timeout from endpoint.timeout_seconds
+    //   - Send request and await response
+    //   - Record metrics (success/failure/error, duration)
+    //   - Log result (INFO for success, WARN for failure)
+    //   - Create DeliveryResult with outcome
+    //
+    // For now, return empty vector until configuration loading is implemented (task 17.8)
+
+    Vec::new()
 }
 
 /// Computes HMAC-SHA256 signature for webhook payload.
