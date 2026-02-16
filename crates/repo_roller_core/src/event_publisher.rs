@@ -425,11 +425,51 @@ pub fn sign_webhook_request(
 ///
 /// See docs/spec/interfaces/event-publisher.md#collect_notification_endpoints
 pub fn collect_notification_endpoints(
-    _org_config: &NotificationsConfig,
-    _team_config: Option<&NotificationsConfig>,
-    _template_config: Option<&NotificationsConfig>,
+    org_config: &NotificationsConfig,
+    team_config: Option<&NotificationsConfig>,
+    template_config: Option<&NotificationsConfig>,
 ) -> Vec<NotificationEndpoint> {
-    unimplemented!("See docs/spec/interfaces/event-publisher.md#collect_notification_endpoints")
+    use std::collections::HashSet;
+
+    let mut endpoints = Vec::new();
+    let mut seen = HashSet::new();
+
+    // Helper to generate deduplication key (URL + sorted events)
+    let dedup_key = |endpoint: &NotificationEndpoint| -> (String, Vec<String>) {
+        let mut events = endpoint.events.clone();
+        events.sort(); // Sort for order-independent comparison
+        (endpoint.url.clone(), events)
+    };
+
+    // Collect from organization level first
+    for endpoint in &org_config.outbound_webhooks {
+        let key = dedup_key(endpoint);
+        if seen.insert(key) {
+            endpoints.push(endpoint.clone());
+        }
+    }
+
+    // Collect from team level (if present)
+    if let Some(team) = team_config {
+        for endpoint in &team.outbound_webhooks {
+            let key = dedup_key(endpoint);
+            if seen.insert(key) {
+                endpoints.push(endpoint.clone());
+            }
+        }
+    }
+
+    // Collect from template level (if present)
+    if let Some(template) = template_config {
+        for endpoint in &template.outbound_webhooks {
+            let key = dedup_key(endpoint);
+            if seen.insert(key) {
+                endpoints.push(endpoint.clone());
+            }
+        }
+    }
+
+    endpoints
 }
 
 #[cfg(test)]
