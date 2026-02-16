@@ -1163,13 +1163,339 @@ mod signature_tests {
 }
 
 mod endpoint_collection_tests {
+    use super::*;
+
     #[test]
-    fn test_endpoint_deduplication() {
-        // TODO: Implement per docs/spec/interfaces/event-publisher.md
-        // - Accumulates endpoints from all levels
-        // - Deduplicates by URL + event type
-        // - Preserves order (org, team, template)
-        // - Handles missing team/template configs
-        unimplemented!()
+    fn test_collect_from_org_only() {
+        // Arrange: Only organization-level config
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://org.example.com/webhook".to_string(),
+                secret: "org-secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, None, None);
+
+        // Assert: Should return org endpoints
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].url, "https://org.example.com/webhook");
+    }
+
+    #[test]
+    fn test_collect_from_all_levels() {
+        // Arrange: Endpoints at all three levels
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://org.example.com/webhook".to_string(),
+                secret: "org-secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://team.example.com/webhook".to_string(),
+                secret: "team-secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        let template_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://template.example.com/webhook".to_string(),
+                secret: "template-secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        let endpoints =
+            collect_notification_endpoints(&org_config, Some(&team_config), Some(&template_config));
+
+        // Assert: Should have all 3 endpoints in order (org → team → template)
+        assert_eq!(endpoints.len(), 3);
+        assert_eq!(endpoints[0].url, "https://org.example.com/webhook");
+        assert_eq!(endpoints[1].url, "https://team.example.com/webhook");
+        assert_eq!(endpoints[2].url, "https://template.example.com/webhook");
+    }
+
+    #[test]
+    fn test_deduplication_by_url_and_events() {
+        // Arrange: Same URL and events at multiple levels (should deduplicate)
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://shared.example.com/webhook".to_string(),
+                secret: "org-secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://shared.example.com/webhook".to_string(),
+                secret: "team-secret".to_string(), // Different secret
+                events: vec!["repository.created".to_string()], // Same events
+                active: true,
+                timeout_seconds: 10, // Different timeout
+                description: Some("Team override".to_string()),
+            }],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, Some(&team_config), None);
+
+        // Assert: Should deduplicate, keeping first occurrence (org level)
+        assert_eq!(endpoints.len(), 1, "Should deduplicate same URL + events");
+        assert_eq!(endpoints[0].url, "https://shared.example.com/webhook");
+        assert_eq!(
+            endpoints[0].secret, "org-secret",
+            "Should keep first occurrence"
+        );
+    }
+
+    #[test]
+    fn test_no_deduplication_for_different_events() {
+        // Arrange: Same URL but different events (should NOT deduplicate)
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://example.com/webhook".to_string(),
+                secret: "secret1".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://example.com/webhook".to_string(),
+                secret: "secret2".to_string(),
+                events: vec!["repository.updated".to_string()], // Different event
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, Some(&team_config), None);
+
+        // Assert: Should NOT deduplicate (different event types)
+        assert_eq!(endpoints.len(), 2, "Should keep both (different events)");
+        assert_eq!(endpoints[0].events[0], "repository.created");
+        assert_eq!(endpoints[1].events[0], "repository.updated");
+    }
+
+    #[test]
+    fn test_deduplication_with_multiple_events() {
+        // Arrange: Endpoints with multiple events
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://example.com/webhook".to_string(),
+                secret: "secret".to_string(),
+                events: vec![
+                    "repository.created".to_string(),
+                    "repository.updated".to_string(),
+                ],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://example.com/webhook".to_string(),
+                secret: "different-secret".to_string(),
+                events: vec![
+                    "repository.updated".to_string(), // Different order
+                    "repository.created".to_string(),
+                ],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, Some(&team_config), None);
+
+        // Assert: Should deduplicate if events match (order-independent)
+        // Note: Implementation may or may not be order-independent
+        // This test documents expected behavior
+        assert_eq!(endpoints.len(), 1, "Should deduplicate same URL + events");
+    }
+
+    #[test]
+    fn test_preserves_order_org_team_template() {
+        // Arrange: Multiple endpoints at each level
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![
+                NotificationEndpoint {
+                    url: "https://org1.example.com/webhook".to_string(),
+                    secret: "secret".to_string(),
+                    events: vec!["repository.created".to_string()],
+                    active: true,
+                    timeout_seconds: 5,
+                    description: None,
+                },
+                NotificationEndpoint {
+                    url: "https://org2.example.com/webhook".to_string(),
+                    secret: "secret".to_string(),
+                    events: vec!["repository.created".to_string()],
+                    active: true,
+                    timeout_seconds: 5,
+                    description: None,
+                },
+            ],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://team1.example.com/webhook".to_string(),
+                secret: "secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        let template_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://template1.example.com/webhook".to_string(),
+                secret: "secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        let endpoints =
+            collect_notification_endpoints(&org_config, Some(&team_config), Some(&template_config));
+
+        // Assert: Should preserve order: org1, org2, team1, template1
+        assert_eq!(endpoints.len(), 4);
+        assert!(endpoints[0].url.contains("org1"));
+        assert!(endpoints[1].url.contains("org2"));
+        assert!(endpoints[2].url.contains("team1"));
+        assert!(endpoints[3].url.contains("template1"));
+    }
+
+    #[test]
+    fn test_handles_empty_configs() {
+        // Arrange: Configs with no webhooks
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, Some(&team_config), None);
+
+        // Assert: Should return empty vector
+        assert_eq!(endpoints.len(), 0);
+    }
+
+    #[test]
+    fn test_handles_none_optional_configs() {
+        // Arrange: Only org config, team and template are None
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://org.example.com/webhook".to_string(),
+                secret: "secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, None, None);
+
+        // Assert: Should work fine with None configs
+        assert_eq!(endpoints.len(), 1);
+    }
+
+    #[test]
+    fn test_deduplication_complex_scenario() {
+        // Arrange: Mix of unique and duplicate endpoints
+        let org_config = NotificationsConfig {
+            outbound_webhooks: vec![
+                NotificationEndpoint {
+                    url: "https://unique-org.example.com/webhook".to_string(),
+                    secret: "secret".to_string(),
+                    events: vec!["repository.created".to_string()],
+                    active: true,
+                    timeout_seconds: 5,
+                    description: None,
+                },
+                NotificationEndpoint {
+                    url: "https://shared.example.com/webhook".to_string(),
+                    secret: "org-secret".to_string(),
+                    events: vec!["repository.created".to_string()],
+                    active: true,
+                    timeout_seconds: 5,
+                    description: None,
+                },
+            ],
+        };
+
+        let team_config = NotificationsConfig {
+            outbound_webhooks: vec![
+                NotificationEndpoint {
+                    url: "https://shared.example.com/webhook".to_string(),
+                    secret: "team-secret".to_string(), // Duplicate
+                    events: vec!["repository.created".to_string()],
+                    active: true,
+                    timeout_seconds: 5,
+                    description: None,
+                },
+                NotificationEndpoint {
+                    url: "https://unique-team.example.com/webhook".to_string(),
+                    secret: "secret".to_string(),
+                    events: vec!["repository.created".to_string()],
+                    active: true,
+                    timeout_seconds: 5,
+                    description: None,
+                },
+            ],
+        };
+
+        // Act
+        let endpoints = collect_notification_endpoints(&org_config, Some(&team_config), None);
+
+        // Assert: Should have 3 unique endpoints (deduplicate shared)
+        assert_eq!(endpoints.len(), 3);
+
+        let urls: Vec<&str> = endpoints.iter().map(|e| e.url.as_str()).collect();
+        assert!(urls.contains(&"https://unique-org.example.com/webhook"));
+        assert!(urls.contains(&"https://shared.example.com/webhook"));
+        assert!(urls.contains(&"https://unique-team.example.com/webhook"));
     }
 }
