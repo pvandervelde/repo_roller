@@ -46,7 +46,8 @@
 
 use crate::settings::{
     ActionSettings, BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
-    PullRequestSettings, PushSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+    NotificationsConfig, PullRequestSettings, PushSettings, RepositorySettings, RulesetConfig,
+    WebhookConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -137,6 +138,12 @@ pub struct TeamConfig {
     /// Rulesets defined here are added to global rulesets.
     /// Teams can define additional governance rules for their repositories.
     pub rulesets: Option<Vec<RulesetConfig>>,
+
+    /// Outbound event notification configuration (additive).
+    ///
+    /// Team-level webhook endpoints for event notifications.
+    /// Combined with global, repository type, and template notifications.
+    pub notifications: Option<NotificationsConfig>,
 }
 
 #[cfg(test)]

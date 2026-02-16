@@ -210,9 +210,10 @@ pub use ruleset_manager::{ApplyRulesetsResult, RulesetManager};
 // Re-exported from event_publisher module
 pub use event_publisher::{
     collect_notification_endpoints, compute_hmac_sha256, publish_repository_created,
-    sign_webhook_request, AppliedSettings, DeliveryResult, NotificationEndpoint,
-    NotificationsConfig, RepositoryCreatedEvent,
+    sign_webhook_request, AppliedSettings, DeliveryResult, RepositoryCreatedEvent,
 };
+// Re-exported from config_manager
+pub use config_manager::{NotificationEndpoint, NotificationsConfig};
 // Re-exported from event_secrets module
 pub use event_secrets::{
     EnvironmentSecretResolver, FilesystemSecretResolver, SecretResolutionError, SecretResolver,

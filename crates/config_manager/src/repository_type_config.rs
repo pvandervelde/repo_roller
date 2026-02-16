@@ -54,7 +54,7 @@
 
 use crate::settings::{
     BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+    NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -144,6 +144,12 @@ pub struct RepositoryTypeConfig {
     /// Allows repository types to define governance rules appropriate
     /// for the type (e.g., stricter rules for library repositories).
     pub rulesets: Option<Vec<RulesetConfig>>,
+
+    /// Outbound event notification configuration (additive).
+    ///
+    /// Type-specific webhook endpoints for event notifications.
+    /// Combined with global, team, and template notifications.
+    pub notifications: Option<NotificationsConfig>,
 }
 
 #[cfg(test)]

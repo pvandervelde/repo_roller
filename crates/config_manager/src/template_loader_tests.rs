@@ -83,6 +83,7 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         rulesets: None,
         default_visibility: None,
         templating: None,
+        notifications: None,
     }
 }
 

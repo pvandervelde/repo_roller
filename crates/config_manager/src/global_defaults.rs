@@ -125,6 +125,24 @@ pub struct GlobalDefaults {
     /// type = "deletion"
     /// ```
     pub rulesets: Option<Vec<RulesetConfig>>,
+
+    /// Outbound event notification configuration (additive).
+    ///
+    /// Defines webhook endpoints that receive notifications when RepoRoller
+    /// performs operations (e.g., repository creation). Notifications from
+    /// all levels are combined (additive merging).
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[notifications.outbound_webhooks]]
+    /// url = "https://monitoring.example.com/webhook"
+    /// secret = "ENV:WEBHOOK_SECRET"
+    /// events = ["repository.created"]
+    /// active = true
+    /// timeout_seconds = 5
+    /// ```
+    pub notifications: Option<NotificationsConfig>,
 }
 
 #[cfg(test)]

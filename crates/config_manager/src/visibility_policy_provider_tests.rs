@@ -40,6 +40,7 @@ impl MockMetadataProvider {
             github_apps: None,
             rulesets: None,
             repository_visibility: None, // No policy = unrestricted
+            notifications: None,
         };
 
         Self {
@@ -74,6 +75,7 @@ impl MockMetadataProvider {
                 restricted_visibilities: restricted
                     .map(|v| v.iter().map(|s| s.to_string()).collect()),
             }),
+            notifications: None,
         };
 
         self.config_data = Some(defaults);

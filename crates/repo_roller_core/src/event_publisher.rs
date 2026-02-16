@@ -2,10 +2,10 @@
 // Event publishing operations for repository lifecycle events
 
 use chrono::{DateTime, Utc};
+use config_manager::{NotificationEndpoint, NotificationsConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::errors::ValidationError;
 use crate::{RepositoryCreationRequest, RepositoryCreationResult};
 
 /// Event published when a repository is successfully created.
@@ -204,113 +204,6 @@ pub struct AppliedSettings {
     pub has_wiki: Option<bool>,
     pub has_projects: Option<bool>,
     pub has_discussions: Option<bool>,
-}
-
-/// Configuration for a single webhook endpoint.
-///
-/// See docs/spec/interfaces/event-publisher.md#notificationendpoint
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotificationEndpoint {
-    /// HTTPS URL to POST events to
-    pub url: String,
-
-    /// Reference to shared secret (resolved via SecretResolver)
-    pub secret: String,
-
-    /// Event types to send to this endpoint
-    pub events: Vec<String>,
-
-    /// Whether this endpoint is active
-    pub active: bool,
-
-    /// HTTP request timeout in seconds (default: 5)
-    #[serde(default = "default_timeout")]
-    pub timeout_seconds: u64,
-
-    /// Human-readable description
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-fn default_timeout() -> u64 {
-    5
-}
-
-impl NotificationEndpoint {
-    /// Validates endpoint configuration.
-    ///
-    /// # Errors
-    /// Returns `ValidationError::InvalidFormat` if validation fails.
-    ///
-    /// See docs/spec/interfaces/event-publisher.md#notificationendpoint
-    pub fn validate(&self) -> Result<(), ValidationError> {
-        // Validate URL is HTTPS and well-formed
-        let parsed_url =
-            url::Url::parse(&self.url).map_err(|e| ValidationError::InvalidFormat {
-                field: "url".to_string(),
-                reason: format!("Malformed URL: {}", e),
-            })?;
-
-        if parsed_url.scheme() != "https" {
-            return Err(ValidationError::InvalidFormat {
-                field: "url".to_string(),
-                reason: "URL must use HTTPS scheme".to_string(),
-            });
-        }
-
-        // Validate secret is non-empty
-        if self.secret.is_empty() {
-            return Err(ValidationError::EmptyField {
-                field: "secret".to_string(),
-            });
-        }
-
-        // Validate events array is non-empty
-        if self.events.is_empty() {
-            return Err(ValidationError::InvalidFormat {
-                field: "events".to_string(),
-                reason: "At least one event type must be specified".to_string(),
-            });
-        }
-
-        // Validate timeout is within allowed range (1-30 seconds)
-        if self.timeout_seconds < 1 || self.timeout_seconds > 30 {
-            return Err(ValidationError::InvalidFormat {
-                field: "timeout_seconds".to_string(),
-                reason: format!(
-                    "Timeout must be between 1 and 30 seconds, got {}",
-                    self.timeout_seconds
-                ),
-            });
-        }
-
-        Ok(())
-    }
-
-    /// Checks if this endpoint should receive a specific event type.
-    ///
-    /// Returns true if the endpoint is active and configured to receive this event type.
-    ///
-    /// See docs/spec/interfaces/event-publisher.md#notificationendpoint
-    pub fn accepts_event(&self, event_type: &str) -> bool {
-        // Inactive endpoints don't accept any events
-        if !self.active {
-            return false;
-        }
-
-        // Check if event type is in the configured list (case-sensitive)
-        self.events.iter().any(|e| e == event_type)
-    }
-}
-
-/// Configuration file structure for notifications.
-///
-/// See docs/spec/interfaces/event-publisher.md#notificationsconfig
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotificationsConfig {
-    /// List of webhook endpoints
-    #[serde(default)]
-    pub outbound_webhooks: Vec<NotificationEndpoint>,
 }
 
 /// Result of delivering an event to one endpoint.
