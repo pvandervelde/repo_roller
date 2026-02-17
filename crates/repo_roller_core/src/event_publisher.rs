@@ -227,6 +227,7 @@ pub struct DeliveryResult {
 /// # Arguments
 /// * `result` - Successful repository creation outcome
 /// * `request` - Original creation request
+/// * `merged_config` - Merged configuration with notification settings
 /// * `created_by` - User who requested creation
 /// * `secret_resolver` - Secret resolution service
 /// * `metrics` - Metrics collection service
@@ -242,41 +243,182 @@ pub struct DeliveryResult {
 /// - Network/timeout errors: Log WARN, record in DeliveryResult
 ///
 /// See docs/spec/interfaces/event-publisher.md#publish_repository_created
-///
-/// NOTE: Full implementation will integrate with ConfigurationManager trait
-/// once event notification configuration methods are added to that trait.
 pub async fn publish_repository_created(
-    _result: &RepositoryCreationResult,
-    _request: &RepositoryCreationRequest,
-    _created_by: &str,
-    _secret_resolver: &dyn crate::event_secrets::SecretResolver,
-    _metrics: &dyn crate::event_metrics::EventMetrics,
+    result: &RepositoryCreationResult,
+    request: &RepositoryCreationRequest,
+    merged_config: &config_manager::MergedConfiguration,
+    created_by: &str,
+    secret_resolver: &dyn crate::event_secrets::SecretResolver,
+    metrics: &dyn crate::event_metrics::EventMetrics,
 ) -> Vec<DeliveryResult> {
-    // TODO(task-17.8): Add ConfigurationManager parameter and load configurations
-    // - Load org config: config_manager.load_notifications_config(org, None, None)
-    // - Load team config: config_manager.load_notifications_config(org, Some(team), None)
-    // - Load template config: config_manager.load_notifications_config(org, None, Some(template))
-    // - Create MergedConfiguration for event construction
-    // - Create event: RepositoryCreatedEvent::from_result_and_request(result, request, merged_config, created_by)
-    //
-    // TODO(task-17.7-http): Implement HTTP delivery workflow
-    // - Collect endpoints: collect_notification_endpoints(org, team, template)
-    // - Filter active endpoints for "repository.created" event
-    // - Serialize event to JSON payload
-    // - For each endpoint:
-    //   - Resolve signing secret via secret_resolver
-    //   - Create HTTP POST request with reqwest
-    //   - Sign request with HMAC-SHA256 via sign_webhook_request()
-    //   - Add headers: Content-Type: application/json, User-Agent: RepoRoller/1.0
-    //   - Set timeout from endpoint.timeout_seconds
-    //   - Send request and await response
-    //   - Record metrics (success/failure/error, duration)
-    //   - Log result (INFO for success, WARN for failure)
-    //   - Create DeliveryResult with outcome
-    //
-    // For now, return empty vector until configuration loading is implemented (task 17.8)
+    use tracing::{error, info, warn};
 
-    Vec::new()
+    // Step 1: Create the event payload
+    let event =
+        RepositoryCreatedEvent::from_result_and_request(result, request, merged_config, created_by);
+
+    // Step 2: Serialize event to JSON
+    let payload_json = match serde_json::to_string(&event) {
+        Ok(json) => json,
+        Err(e) => {
+            error!(
+                event_id = %event.event_id,
+                error = %e,
+                "Failed to serialize event to JSON"
+            );
+            return Vec::new();
+        }
+    };
+    let payload_bytes = payload_json.as_bytes();
+
+    info!(
+        event_id = %event.event_id,
+        event_type = %event.event_type,
+        organization = %event.organization,
+        repository = %event.repository_name,
+        "Publishing repository creation event"
+    );
+
+    // Step 3: Get endpoints from merged config (no deduplication needed - already done in merge)
+    let endpoints = &merged_config.notifications.outbound_webhooks;
+
+    // Filter for active endpoints that accept this event type
+    let event_type = "repository.created";
+    let matching_endpoints: Vec<&NotificationEndpoint> = endpoints
+        .iter()
+        .filter(|endpoint| endpoint.active && endpoint.accepts_event(event_type))
+        .collect();
+
+    info!(
+        event_id = %event.event_id,
+        endpoint_count = matching_endpoints.len(),
+        "Collected notification endpoints"
+    );
+
+    if matching_endpoints.is_empty() {
+        info!(
+            event_id = %event.event_id,
+            "No matching notification endpoints configured"
+        );
+        return Vec::new();
+    }
+
+    // Step 4: Deliver to each endpoint sequentially
+    let mut results = Vec::new();
+    let client = reqwest::Client::new();
+
+    for endpoint in matching_endpoints {
+        let start_time = std::time::Instant::now();
+
+        // Resolve secret
+        let secret = match secret_resolver.resolve_secret(&endpoint.secret).await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(
+                    event_id = %event.event_id,
+                    endpoint_url = %endpoint.url,
+                    error = %e,
+                    "Secret resolution failed, skipping endpoint"
+                );
+                // Skip this endpoint - secret resolution failed
+                continue;
+            }
+        };
+
+        // Create HTTP request
+        let request_builder = client
+            .post(&endpoint.url)
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "RepoRoller/1.0")
+            .timeout(std::time::Duration::from_secs(
+                endpoint.timeout_seconds as u64,
+            ))
+            .body(payload_bytes.to_vec());
+
+        // Sign request
+        let signed_request = sign_webhook_request(request_builder, payload_bytes, &secret);
+
+        // Send request
+        match signed_request.send().await {
+            Ok(response) => {
+                let status_code = response.status().as_u16();
+                let duration_ms = start_time.elapsed().as_millis() as u64;
+
+                if response.status().is_success() {
+                    info!(
+                        event_id = %event.event_id,
+                        endpoint_url = %endpoint.url,
+                        status_code = status_code,
+                        response_time_ms = duration_ms,
+                        "Event delivery successful"
+                    );
+                    metrics.record_delivery_success(&endpoint.url, duration_ms);
+
+                    results.push(DeliveryResult {
+                        endpoint_url: endpoint.url.clone(),
+                        success: true,
+                        status_code: Some(status_code),
+                        response_time_ms: duration_ms,
+                        error_message: None,
+                    });
+                } else {
+                    warn!(
+                        event_id = %event.event_id,
+                        endpoint_url = %endpoint.url,
+                        status_code = status_code,
+                        response_time_ms = duration_ms,
+                        "Event delivery failed with HTTP error"
+                    );
+                    metrics.record_delivery_failure(&endpoint.url, status_code);
+
+                    results.push(DeliveryResult {
+                        endpoint_url: endpoint.url.clone(),
+                        success: false,
+                        status_code: Some(status_code),
+                        response_time_ms: duration_ms,
+                        error_message: Some(format!("HTTP {}", status_code)),
+                    });
+                }
+            }
+            Err(e) => {
+                let duration_ms = start_time.elapsed().as_millis() as u64;
+                let error_msg = if e.is_timeout() {
+                    "Request timeout".to_string()
+                } else if e.is_connect() {
+                    "Connection failed".to_string()
+                } else {
+                    format!("Network error: {}", e)
+                };
+
+                warn!(
+                    event_id = %event.event_id,
+                    endpoint_url = %endpoint.url,
+                    error = %error_msg,
+                    response_time_ms = duration_ms,
+                    "Event delivery failed with network error"
+                );
+                metrics.record_delivery_error(&endpoint.url);
+
+                results.push(DeliveryResult {
+                    endpoint_url: endpoint.url.clone(),
+                    success: false,
+                    status_code: None,
+                    response_time_ms: duration_ms,
+                    error_message: Some(error_msg),
+                });
+            }
+        }
+    }
+
+    info!(
+        event_id = %event.event_id,
+        success_count = results.iter().filter(|r| r.success).count(),
+        failure_count = results.iter().filter(|r| !r.success).count(),
+        total_endpoints = results.len(),
+        "Event delivery complete"
+    );
+
+    results
 }
 
 /// Computes HMAC-SHA256 signature for webhook payload.

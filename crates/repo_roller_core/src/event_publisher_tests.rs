@@ -1297,14 +1297,21 @@ mod publish_workflow_tests {
         let request = create_test_request();
         let result = create_test_result();
         let created_by = "test-user";
+        let merged_config = config_manager::MergedConfiguration::new();
 
         let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
         let metrics = MockEventMetrics::new();
 
         // Act: Call publish (will return empty since no config yet)
-        let delivery_results =
-            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
-                .await;
+        let delivery_results = publish_repository_created(
+            &result,
+            &request,
+            &merged_config,
+            created_by,
+            &secret_resolver,
+            &metrics,
+        )
+        .await;
 
         // Assert: Should return empty vector until config loading added
         assert!(delivery_results.is_empty());
@@ -1316,14 +1323,21 @@ mod publish_workflow_tests {
         let request = create_test_request();
         let result = create_test_result();
         let created_by = "jane.doe";
+        let merged_config = config_manager::MergedConfiguration::new();
 
         let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
         let metrics = MockEventMetrics::new();
 
         // Act
-        let _ =
-            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
-                .await;
+        let _ = publish_repository_created(
+            &result,
+            &request,
+            &merged_config,
+            created_by,
+            &secret_resolver,
+            &metrics,
+        )
+        .await;
 
         // Assert: Event construction tested in event_construction_tests
         // This test verifies integration (no panics, executes successfully)
@@ -1335,14 +1349,21 @@ mod publish_workflow_tests {
         let request = create_test_request();
         let result = create_test_result();
         let created_by = "test-user";
+        let merged_config = config_manager::MergedConfiguration::new();
 
         let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
         let metrics = MockEventMetrics::new();
 
         // Act
-        let delivery_results =
-            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
-                .await;
+        let delivery_results = publish_repository_created(
+            &result,
+            &request,
+            &merged_config,
+            created_by,
+            &secret_resolver,
+            &metrics,
+        )
+        .await;
 
         // Assert: Should not panic on secret resolution failure
         assert!(delivery_results.is_empty()); // No endpoints configured yet
@@ -1354,14 +1375,21 @@ mod publish_workflow_tests {
         let request = create_test_request();
         let result = create_test_result();
         let created_by = "test-user";
+        let merged_config = config_manager::MergedConfiguration::new();
 
         let secret_resolver = MockSecretResolver::with_secrets(HashMap::new());
         let metrics = MockEventMetrics::new();
 
         // Act
-        let _ =
-            publish_repository_created(&result, &request, created_by, &secret_resolver, &metrics)
-                .await;
+        let _ = publish_repository_created(
+            &result,
+            &request,
+            &merged_config,
+            created_by,
+            &secret_resolver,
+            &metrics,
+        )
+        .await;
 
         // Assert: Metrics integration verified (no errors)
         // Actual metric recording will be tested when endpoints are delivered
