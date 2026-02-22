@@ -60,6 +60,7 @@ async fn test_large_file_processing() -> Result<()> {
     .build();
 
     // Create repository
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -67,6 +68,11 @@ async fn test_large_file_processing() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -133,6 +139,7 @@ async fn test_binary_file_preservation() -> Result<()> {
     .template(TemplateName::new("template-binary-files")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -140,6 +147,11 @@ async fn test_binary_file_preservation() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -202,6 +214,7 @@ async fn test_deep_directory_nesting() -> Result<()> {
     .template(TemplateName::new("template-deep-nesting")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -209,6 +222,11 @@ async fn test_deep_directory_nesting() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -272,6 +290,7 @@ async fn test_many_files_template() -> Result<()> {
     .build();
 
     let start_time = std::time::Instant::now();
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -279,6 +298,11 @@ async fn test_many_files_template() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     let elapsed = start_time.elapsed();
@@ -344,6 +368,7 @@ async fn test_unicode_filenames() -> Result<()> {
     .template(TemplateName::new("template-unicode-names")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -351,6 +376,11 @@ async fn test_unicode_filenames() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -413,6 +443,7 @@ async fn test_symlink_handling() -> Result<()> {
     .template(TemplateName::new("template-with-symlinks")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -420,6 +451,11 @@ async fn test_symlink_handling() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -482,6 +518,7 @@ async fn test_executable_permissions_preserved() -> Result<()> {
     .template(TemplateName::new("template-with-scripts")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -489,6 +526,11 @@ async fn test_executable_permissions_preserved() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -550,6 +592,7 @@ async fn test_hidden_files_processing() -> Result<()> {
     .template(TemplateName::new("template-with-dotfiles")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -557,6 +600,11 @@ async fn test_hidden_files_processing() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -619,6 +667,7 @@ async fn test_empty_directory_handling() -> Result<()> {
     .template(TemplateName::new("template-empty-dirs")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -626,6 +675,11 @@ async fn test_empty_directory_handling() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -687,6 +741,7 @@ async fn test_files_without_extensions() -> Result<()> {
     .template(TemplateName::new("template-no-extensions")?)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -694,6 +749,11 @@ async fn test_files_without_extensions() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");

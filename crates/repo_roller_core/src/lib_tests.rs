@@ -606,6 +606,11 @@ async fn test_create_repository_type_conversion() {
     let auth_service = MockAuthService;
     let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
     let environment_detector = Arc::new(MockEnvironmentDetector);
+    let secret_resolver = Arc::new(crate::event_secrets::EnvironmentSecretResolver::new());
+    let test_registry = prometheus::Registry::new();
+    let metrics = Arc::new(crate::event_metrics::PrometheusEventMetrics::new(
+        &test_registry,
+    ));
 
     let result = create_repository(
         request,
@@ -614,6 +619,7 @@ async fn test_create_repository_type_conversion() {
         ".reporoller",
         visibility_policy_provider,
         environment_detector,
+        EventNotificationContext::new("unit-test", secret_resolver, metrics),
     )
     .await;
 
@@ -646,6 +652,11 @@ async fn test_create_repository_error_handling() {
 
     let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
     let environment_detector = Arc::new(MockEnvironmentDetector);
+    let secret_resolver = Arc::new(crate::event_secrets::EnvironmentSecretResolver::new());
+    let test_registry = prometheus::Registry::new();
+    let metrics = Arc::new(crate::event_metrics::PrometheusEventMetrics::new(
+        &test_registry,
+    ));
 
     let result = create_repository(
         request,
@@ -654,6 +665,7 @@ async fn test_create_repository_error_handling() {
         ".reporoller",
         visibility_policy_provider,
         environment_detector,
+        EventNotificationContext::new("unit-test", secret_resolver, metrics),
     )
     .await;
 
@@ -684,6 +696,11 @@ async fn test_create_repository_preserves_variables() {
     let auth_service = MockAuthService;
     let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
     let environment_detector = Arc::new(MockEnvironmentDetector);
+    let secret_resolver = Arc::new(crate::event_secrets::EnvironmentSecretResolver::new());
+    let test_registry = prometheus::Registry::new();
+    let metrics = Arc::new(crate::event_metrics::PrometheusEventMetrics::new(
+        &test_registry,
+    ));
     let _result = create_repository(
         request,
         &metadata_provider,
@@ -691,6 +708,7 @@ async fn test_create_repository_preserves_variables() {
         ".reporoller",
         visibility_policy_provider,
         environment_detector,
+        EventNotificationContext::new("unit-test", secret_resolver, metrics),
     )
     .await;
 }
@@ -729,6 +747,11 @@ async fn test_create_repository_result_type() {
     let auth_service = MockAuthService;
     let visibility_policy_provider = Arc::new(MockVisibilityPolicyProvider);
     let environment_detector = Arc::new(MockEnvironmentDetector);
+    let secret_resolver = Arc::new(crate::event_secrets::EnvironmentSecretResolver::new());
+    let test_registry = prometheus::Registry::new();
+    let metrics = Arc::new(crate::event_metrics::PrometheusEventMetrics::new(
+        &test_registry,
+    ));
 
     let result = create_repository(
         request,
@@ -737,6 +760,7 @@ async fn test_create_repository_result_type() {
         ".reporoller",
         visibility_policy_provider,
         environment_detector,
+        EventNotificationContext::new("unit-test", secret_resolver, metrics),
     )
     .await;
 

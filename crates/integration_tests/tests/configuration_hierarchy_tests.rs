@@ -60,6 +60,7 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
         .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -67,6 +68,11 @@ async fn test_override_protection_prevents_template_override() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -152,6 +158,7 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
         .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -159,6 +166,11 @@ async fn test_fixed_value_cannot_be_overridden() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -238,6 +250,7 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
         .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -245,6 +258,11 @@ async fn test_null_and_empty_value_handling() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -315,6 +333,7 @@ async fn test_partial_field_overrides() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -322,6 +341,11 @@ async fn test_partial_field_overrides() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -404,6 +428,7 @@ async fn test_label_collection_merging() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -411,6 +436,11 @@ async fn test_label_collection_merging() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -496,6 +526,7 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -503,6 +534,11 @@ async fn test_webhook_collection_accumulation() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -574,6 +610,7 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -581,6 +618,11 @@ async fn test_invalid_repository_type_combination() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -648,6 +690,7 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -655,6 +698,11 @@ async fn test_complete_four_level_hierarchy() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -724,6 +772,7 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -731,6 +780,11 @@ async fn test_hierarchy_with_missing_levels() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -804,6 +858,7 @@ async fn test_conflicting_collection_items() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -811,6 +866,11 @@ async fn test_conflicting_collection_items() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 

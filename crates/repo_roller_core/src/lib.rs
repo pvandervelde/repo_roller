@@ -62,6 +62,15 @@
 //! // Create authentication service
 //! let auth_service = GitHubAuthService::new(12345, "private-key-content".to_string());
 //!
+//! // Create event notification providers
+//! let secret_resolver = std::sync::Arc::new(
+//!     repo_roller_core::event_secrets::EnvironmentSecretResolver::new()
+//! );
+//! let metrics_registry = prometheus::Registry::new();
+//! let metrics = std::sync::Arc::new(
+//!     repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry)
+//! );
+//!
 //! // Create the repository
 //! match create_repository(
 //!     request,
@@ -70,6 +79,9 @@
 //!     ".reporoller", // Metadata repository name
 //!     visibility_policy_provider,
 //!     environment_detector,
+//!     "user@example.com",
+//!     secret_resolver,
+//!     metrics,
 //! ).await {
 //!     Ok(result) => {
 //!         println!("Repository created successfully:");
@@ -118,13 +130,13 @@ mod webhook_manager;
 mod ruleset_manager;
 
 // Event publishing operations
-mod event_publisher;
+pub mod event_publisher;
 
 // Event secret resolution
-mod event_secrets;
+pub mod event_secrets;
 
 // Event metrics collection
-mod event_metrics;
+pub mod event_metrics;
 
 // Re-export error types for public API
 pub use errors::{
@@ -210,7 +222,8 @@ pub use ruleset_manager::{ApplyRulesetsResult, RulesetManager};
 // Re-exported from event_publisher module
 pub use event_publisher::{
     collect_notification_endpoints, compute_hmac_sha256, publish_repository_created,
-    sign_webhook_request, AppliedSettings, DeliveryResult, RepositoryCreatedEvent,
+    sign_webhook_request, AppliedSettings, DeliveryResult, EventNotificationContext,
+    RepositoryCreatedEvent,
 };
 // Re-exported from config_manager
 pub use config_manager::{NotificationEndpoint, NotificationsConfig};
@@ -338,7 +351,17 @@ mod integration_tests;
 ///     MetadataProviderConfig::explicit(".reporoller")
 /// );
 ///
-/// match create_repository(request, &metadata_provider, &auth_service, ".reporoller", visibility_policy_provider, environment_detector).await {
+/// match create_repository(
+///     request,
+///     &metadata_provider,
+///     &auth_service,
+///     ".reporoller",
+///     visibility_policy_provider,
+///     environment_detector,
+///     "user@example.com",
+///     std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new()),
+///     std::sync::Arc::new(repo_roller_core::event_metrics::PrometheusEventMetrics::new(&prometheus::Registry::new())),
+/// ).await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
 ///         println!("ID: {}", result.repository_id);
@@ -485,6 +508,7 @@ async fn create_github_repository(
 /// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
 /// use auth_handler::GitHubAuthService;
 /// use github_client::GitHubClient;
+/// use repo_roller_core::{event_secrets, event_metrics};
 ///
 /// # async fn example(
 /// #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
@@ -504,6 +528,10 @@ async fn create_github_repository(
 /// );
 /// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
 ///
+/// let secret_resolver = std::sync::Arc::new(event_secrets::EnvironmentSecretResolver::new());
+/// let metrics_registry = prometheus::Registry::new();
+/// let metrics = std::sync::Arc::new(event_metrics::PrometheusEventMetrics::new(&metrics_registry));
+///
 /// let result = create_repository(
 ///     request,
 ///     &metadata_provider,
@@ -511,6 +539,7 @@ async fn create_github_repository(
 ///     ".reporoller",
 ///     visibility_policy_provider,
 ///     environment_detector,
+///     event_context,
 /// ).await?;
 /// println!("Created repository: {}", result.repository_url);
 /// # Ok(())
@@ -523,6 +552,7 @@ pub async fn create_repository(
     metadata_repository_name: &str,
     visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
     environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
+    event_context: event_publisher::EventNotificationContext,
 ) -> RepoRollerResult<RepositoryCreationResult> {
     info!(
         "Starting repository creation: name='{}', owner='{}', template={:?}, strategy={:?}",
@@ -760,10 +790,63 @@ pub async fn create_repository(
     info!("Repository creation completed successfully");
 
     // Step 11: Return success result with repository metadata
-    Ok(RepositoryCreationResult {
+    let result = RepositoryCreationResult {
         repository_url: repo.url().to_string(),
         repository_id: repo.node_id().to_string(),
         created_at: Timestamp::now(),
         default_branch: default_branch.clone(),
-    })
+    };
+
+    // Step 12: Spawn background task for event notification
+    // Clone data needed for async task (avoid borrowing issues)
+    let result_clone = result.clone();
+    let request_clone = request.clone();
+    let merged_config_clone = merged_config.clone();
+    let created_by_str = event_context.created_by;
+    let secret_resolver_clone = event_context.secret_resolver;
+    let metrics_clone = event_context.metrics;
+
+    tokio::spawn(async move {
+        info!(
+            event_id = "background-task",
+            repository = %request_clone.name,
+            "Spawning background task for event notifications"
+        );
+
+        metrics_clone.increment_active_tasks();
+
+        let delivery_results = publish_repository_created(
+            &result_clone,
+            &request_clone,
+            &merged_config_clone,
+            &created_by_str,
+            secret_resolver_clone.as_ref(),
+            metrics_clone.as_ref(),
+        )
+        .await;
+
+        metrics_clone.decrement_active_tasks();
+
+        // Log summary
+        let success_count = delivery_results.iter().filter(|r| r.success).count();
+        let failure_count = delivery_results.len() - success_count;
+
+        if failure_count > 0 {
+            warn!(
+                repository = %request_clone.name,
+                success_count = success_count,
+                failure_count = failure_count,
+                "Event notification delivery completed with failures"
+            );
+        } else if success_count > 0 {
+            info!(
+                repository = %request_clone.name,
+                success_count = success_count,
+                "Event notification delivery completed successfully"
+            );
+        }
+    });
+
+    // Return result immediately (fire-and-forget pattern)
+    Ok(result)
 }

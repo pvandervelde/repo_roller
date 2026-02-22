@@ -84,6 +84,7 @@ async fn test_nested_variable_substitution() -> Result<()> {
     .variables(variables)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -91,6 +92,11 @@ async fn test_nested_variable_substitution() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(result.is_ok(), "Repository creation should succeed");
@@ -173,6 +179,7 @@ async fn test_missing_required_variable_error() -> Result<()> {
     // Intentionally not providing variables
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -180,6 +187,11 @@ async fn test_missing_required_variable_error() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -276,6 +288,7 @@ async fn test_very_long_variable_values() -> Result<()> {
     .build();
 
     let start_time = std::time::Instant::now();
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -283,6 +296,11 @@ async fn test_very_long_variable_values() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     let elapsed = start_time.elapsed();
@@ -368,6 +386,7 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
     .variables(variables)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -375,6 +394,11 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(
@@ -462,6 +486,7 @@ async fn test_special_characters_in_variables() -> Result<()> {
     .variables(variables)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -469,6 +494,11 @@ async fn test_special_characters_in_variables() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(
@@ -554,6 +584,7 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
     .variables(variables)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -561,6 +592,11 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
         ".reporoller",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
     assert!(

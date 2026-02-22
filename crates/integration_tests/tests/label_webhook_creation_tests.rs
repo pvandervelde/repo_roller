@@ -100,6 +100,7 @@ async fn test_labels_created_from_global_config() -> Result<()> {
     .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -107,6 +108,11 @@ async fn test_labels_created_from_global_config() -> Result<()> {
         ".reporoller-test",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 

@@ -1394,26 +1394,639 @@ mod publish_workflow_tests {
         // Assert: Metrics integration verified (no errors)
         // Actual metric recording will be tested when endpoints are delivered
     }
+}
 
-    // TODO(task-17.8): Add tests for config loading once ConfigurationManager integration added
-    // - test_loads_org_config_successfully
-    // - test_loads_team_config_when_specified
-    // - test_loads_template_config_when_specified
-    // - test_handles_config_load_failures_gracefully
-    // - test_deduplicates_endpoints_from_all_levels
+/// Tests for HTTP delivery via publish_repository_created.
+///
+/// These tests use wiremock to verify real HTTP requests are made with
+/// the correct headers, HMAC signatures, and error handling behaviour.
+#[cfg(test)]
+mod http_delivery_tests {
+    use super::*;
+    use crate::{
+        ContentStrategy, EventMetrics, OrganizationName, RepositoryCreationRequest,
+        RepositoryCreationResult, RepositoryName, SecretResolutionError, SecretResolver,
+        TemplateName, Timestamp,
+    };
+    use config_manager::{NotificationEndpoint, NotificationsConfig};
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+    use wiremock::matchers::{header, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // TODO(task-17.7-http): Add tests for HTTP delivery once wiremock integration added
-    // - test_delivers_to_single_endpoint_successfully
-    // - test_delivers_to_multiple_endpoints_sequentially
-    // - test_continues_delivery_after_endpoint_failure
-    // - test_respects_endpoint_timeout_settings
-    // - test_includes_correct_headers_in_request
-    // - test_signs_request_with_hmac_sha256
-    // - test_handles_http_4xx_errors_gracefully
-    // - test_handles_http_5xx_errors_gracefully
-    // - test_handles_network_timeout_gracefully
-    // - test_records_success_metrics_for_200_response
-    // - test_records_failure_metrics_for_failed_delivery
-    // - test_logs_info_for_successful_delivery
-    // - test_logs_warn_for_failed_delivery
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    fn make_endpoint(url: String, secret_ref: &str) -> NotificationEndpoint {
+        NotificationEndpoint {
+            url,
+            secret: secret_ref.to_string(),
+            events: vec!["repository.created".to_string()],
+            active: true,
+            timeout_seconds: 5,
+            description: None,
+        }
+    }
+
+    fn merged_config_with(
+        endpoints: Vec<NotificationEndpoint>,
+    ) -> config_manager::MergedConfiguration {
+        let mut config = config_manager::MergedConfiguration::new();
+        config.notifications = NotificationsConfig {
+            outbound_webhooks: endpoints,
+        };
+        config
+    }
+
+    struct MockSecretResolver {
+        secrets: HashMap<String, String>,
+    }
+
+    impl MockSecretResolver {
+        fn with(ref_name: &str, value: &str) -> Self {
+            let mut secrets = HashMap::new();
+            secrets.insert(ref_name.to_string(), value.to_string());
+            Self { secrets }
+        }
+
+        fn multi(pairs: &[(&str, &str)]) -> Self {
+            let secrets = pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            Self { secrets }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SecretResolver for MockSecretResolver {
+        async fn resolve_secret(&self, secret_ref: &str) -> Result<String, SecretResolutionError> {
+            self.secrets
+                .get(secret_ref)
+                .cloned()
+                .ok_or_else(|| SecretResolutionError::NotFound {
+                    reference: secret_ref.to_string(),
+                })
+        }
+    }
+
+    struct TrackingMetrics {
+        successes: AtomicU64,
+        failures: AtomicU64,
+        errors: AtomicU64,
+        active_tasks: AtomicI64,
+    }
+
+    impl TrackingMetrics {
+        fn new() -> Self {
+            Self {
+                successes: AtomicU64::new(0),
+                failures: AtomicU64::new(0),
+                errors: AtomicU64::new(0),
+                active_tasks: AtomicI64::new(0),
+            }
+        }
+        fn successes(&self) -> u64 {
+            self.successes.load(Ordering::Relaxed)
+        }
+        fn failures(&self) -> u64 {
+            self.failures.load(Ordering::Relaxed)
+        }
+        fn errors(&self) -> u64 {
+            self.errors.load(Ordering::Relaxed)
+        }
+    }
+
+    impl EventMetrics for TrackingMetrics {
+        fn record_delivery_success(&self, _url: &str, _ms: u64) {
+            self.successes.fetch_add(1, Ordering::Relaxed);
+        }
+        fn record_delivery_failure(&self, _url: &str, _code: u16) {
+            self.failures.fetch_add(1, Ordering::Relaxed);
+        }
+        fn record_delivery_error(&self, _url: &str) {
+            self.errors.fetch_add(1, Ordering::Relaxed);
+        }
+        fn increment_active_tasks(&self) {
+            self.active_tasks.fetch_add(1, Ordering::Relaxed);
+        }
+        fn decrement_active_tasks(&self) {
+            self.active_tasks.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+
+    fn test_request() -> RepositoryCreationRequest {
+        RepositoryCreationRequest {
+            name: RepositoryName::new("test-repo").unwrap(),
+            owner: OrganizationName::new("test-org").unwrap(),
+            template: Some(TemplateName::new("test-template").unwrap()),
+            variables: HashMap::new(),
+            visibility: None,
+            content_strategy: ContentStrategy::Template,
+        }
+    }
+
+    fn test_result() -> RepositoryCreationResult {
+        RepositoryCreationResult {
+            repository_url: "https://github.com/test-org/test-repo".to_string(),
+            repository_id: "R_kgDOABCDEF".to_string(),
+            created_at: Timestamp::now(),
+            default_branch: "main".to_string(),
+        }
+    }
+
+    // ── tests ─────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_delivers_to_single_endpoint_successfully() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "MY_SECRET")]);
+        let resolver = MockSecretResolver::with("MY_SECRET", "signing-key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1, "Expected exactly one delivery result");
+        assert!(results[0].success, "Delivery should succeed for HTTP 200");
+        assert_eq!(results[0].status_code, Some(200));
+        assert!(results[0].error_message.is_none());
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_delivers_to_multiple_endpoints_sequentially() {
+        let server1 = MockServer::start().await;
+        let server2 = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server1)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server2)
+            .await;
+
+        let config = merged_config_with(vec![
+            make_endpoint(server1.uri(), "S1"),
+            make_endpoint(server2.uri(), "S2"),
+        ]);
+        let resolver = MockSecretResolver::multi(&[("S1", "key1"), ("S2", "key2")]);
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].success, "First endpoint should succeed");
+        assert!(results[1].success, "Second endpoint should succeed");
+        server1.verify().await;
+        server2.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_continues_delivery_after_endpoint_failure() {
+        let server1 = MockServer::start().await; // returns 500
+        let server2 = MockServer::start().await; // returns 200
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&server1)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server2)
+            .await;
+
+        let config = merged_config_with(vec![
+            make_endpoint(server1.uri(), "S1"),
+            make_endpoint(server2.uri(), "S2"),
+        ]);
+        let resolver = MockSecretResolver::multi(&[("S1", "key1"), ("S2", "key2")]);
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 2);
+        assert!(!results[0].success, "First endpoint (500) should fail");
+        assert_eq!(results[0].status_code, Some(500));
+        assert!(
+            results[1].success,
+            "Second endpoint should still be called and succeed"
+        );
+        server1.verify().await;
+        server2.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_includes_correct_headers_in_request() {
+        let server = MockServer::start().await;
+        // Mount a mock that requires both headers to be present — if headers are wrong, expect(1) fails
+        Mock::given(method("POST"))
+            .and(header("content-type", "application/json"))
+            .and(header("user-agent", "RepoRoller/1.0"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].success,
+            "Request must match content-type and user-agent headers"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_hmac_signature_header_is_present_and_correctly_formatted() {
+        let server = MockServer::start().await;
+        // Receive any POST — we'll inspect the received request to check the header
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let signing_secret = "test-hmac-signing-secret";
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "SIG_SECRET")]);
+        let resolver = MockSecretResolver::with("SIG_SECRET", signing_secret);
+        let metrics = TrackingMetrics::new();
+
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Retrieve the recorded request and inspect the signature header
+        let received = server
+            .received_requests()
+            .await
+            .expect("Request recording should be enabled");
+        assert_eq!(
+            received.len(),
+            1,
+            "Should have received exactly one request"
+        );
+
+        let sig_header = received[0]
+            .headers
+            .get("x-reporoller-signature-256")
+            .and_then(|v| v.to_str().ok())
+            .expect("X-RepoRoller-Signature-256 header must be present");
+
+        assert!(
+            sig_header.starts_with("sha256="),
+            "Signature header must use sha256= prefix, got: {sig_header}"
+        );
+
+        // Verify the HMAC value is correct against the actual payload
+        let body = &received[0].body;
+        let expected = compute_hmac_sha256(body, signing_secret);
+        assert_eq!(
+            sig_header, expected,
+            "HMAC signature must match expected value"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handles_http_4xx_error_gracefully() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "4xx response should be a failure");
+        assert_eq!(results[0].status_code, Some(404));
+        assert!(results[0].error_message.is_some());
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_handles_http_5xx_error_gracefully() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "5xx response should be a failure");
+        assert_eq!(results[0].status_code, Some(503));
+        assert!(results[0].error_message.is_some());
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_skips_endpoint_when_secret_resolution_fails() {
+        let server = MockServer::start().await;
+        // No requests should arrive — secret can't be resolved
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "MISSING_SECRET")]);
+        // Resolver has no entry for MISSING_SECRET
+        let resolver = MockSecretResolver::with("OTHER_SECRET", "value");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Endpoint is skipped on secret failure — no entry in results
+        assert!(
+            results.is_empty(),
+            "Failed secret resolution should skip the endpoint"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_inactive_endpoints_are_not_delivered_to() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0) // Must not receive any request
+            .mount(&server)
+            .await;
+
+        let mut endpoint = make_endpoint(server.uri(), "S");
+        endpoint.active = false; // Mark inactive
+        let config = merged_config_with(vec![endpoint]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert!(
+            results.is_empty(),
+            "Inactive endpoint should be filtered out"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_event_type_filtering_prevents_delivery() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0) // Must not receive any request
+            .mount(&server)
+            .await;
+
+        let mut endpoint = make_endpoint(server.uri(), "S");
+        endpoint.events = vec!["repository.deleted".to_string()]; // Different event type
+        let config = merged_config_with(vec![endpoint]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert!(
+            results.is_empty(),
+            "Endpoint for different event type must be filtered out"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_wildcard_event_receives_delivery() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut endpoint = make_endpoint(server.uri(), "S");
+        endpoint.events = vec!["*".to_string()]; // Wildcard
+        let config = merged_config_with(vec![endpoint]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].success,
+            "Wildcard endpoint should receive the event"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_records_success_metric_on_200_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(metrics.successes(), 1, "Success metric must be incremented");
+        assert_eq!(metrics.failures(), 0);
+        assert_eq!(metrics.errors(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_records_failure_metric_on_4xx_5xx_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(
+            metrics.failures(),
+            1,
+            "Failure metric must be incremented for HTTP error"
+        );
+        assert_eq!(metrics.successes(), 0);
+        assert_eq!(metrics.errors(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_records_error_metric_on_network_failure() {
+        // Use a port that is not listening to simulate a connection error
+        let url = "http://127.0.0.1:19999/webhook".to_string();
+        let config = merged_config_with(vec![NotificationEndpoint {
+            url,
+            secret: "S".to_string(),
+            events: vec!["repository.created".to_string()],
+            active: true,
+            timeout_seconds: 1, // Short timeout
+            description: None,
+        }]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = TrackingMetrics::new();
+
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            !results[0].success,
+            "Network failure should produce a failed result"
+        );
+        assert!(
+            results[0].status_code.is_none(),
+            "No HTTP status for network error"
+        );
+        assert!(results[0].error_message.is_some());
+        assert_eq!(
+            metrics.errors(),
+            1,
+            "Error metric must be incremented for network failure"
+        );
+        assert_eq!(metrics.successes(), 0);
+        assert_eq!(metrics.failures(), 0);
+    }
 }

@@ -8,6 +8,55 @@ use std::collections::HashMap;
 
 use crate::{RepositoryCreationRequest, RepositoryCreationResult};
 
+/// Configuration context for event notification delivery after repository creation.
+///
+/// Bundles the parameters required for background event notification delivery,
+/// reducing the number of arguments callers must pass to [`crate::create_repository`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use repo_roller_core::event_publisher::EventNotificationContext;
+/// use repo_roller_core::event_secrets::EnvironmentSecretResolver;
+/// use repo_roller_core::event_metrics::PrometheusEventMetrics;
+/// use std::sync::Arc;
+///
+/// let context = EventNotificationContext::new(
+///     "deployment-system",
+///     Arc::new(EnvironmentSecretResolver::new()),
+///     Arc::new(PrometheusEventMetrics::new(&prometheus::Registry::new())),
+/// );
+/// ```
+pub struct EventNotificationContext {
+    /// Identifier for who or what triggered the repository creation (e.g., username, system name).
+    pub created_by: String,
+    /// Resolver for webhook endpoint secrets (e.g., HMAC signing keys).
+    pub secret_resolver: std::sync::Arc<dyn crate::event_secrets::SecretResolver>,
+    /// Metrics collector for tracking event delivery outcomes.
+    pub metrics: std::sync::Arc<dyn crate::event_metrics::EventMetrics>,
+}
+
+impl EventNotificationContext {
+    /// Create a new event notification context.
+    ///
+    /// # Arguments
+    ///
+    /// * `created_by` - Name of the user or system triggering repository creation
+    /// * `secret_resolver` - Provider for webhook signing secrets
+    /// * `metrics` - Metrics collector for delivery tracking
+    pub fn new(
+        created_by: impl Into<String>,
+        secret_resolver: std::sync::Arc<dyn crate::event_secrets::SecretResolver>,
+        metrics: std::sync::Arc<dyn crate::event_metrics::EventMetrics>,
+    ) -> Self {
+        Self {
+            created_by: created_by.into(),
+            secret_resolver,
+            metrics,
+        }
+    }
+}
+
 /// Event published when a repository is successfully created.
 ///
 /// See docs/spec/interfaces/event-publisher.md#repositorycreatedevent

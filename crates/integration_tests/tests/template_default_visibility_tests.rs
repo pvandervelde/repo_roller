@@ -93,6 +93,7 @@ async fn test_template_default_private_visibility() -> Result<()> {
     .template(TemplateName::new("template-test-basic")?) // Has default_visibility = "private"
     .build(); // No .with_visibility() call
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -100,6 +101,11 @@ async fn test_template_default_private_visibility() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -175,6 +181,7 @@ async fn test_template_default_public_visibility() -> Result<()> {
     .variables(variables)
     .build(); // No .with_visibility() call
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -182,6 +189,11 @@ async fn test_template_default_public_visibility() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -243,6 +255,7 @@ async fn test_user_preference_overrides_template_default() -> Result<()> {
     .with_visibility(RepositoryVisibility::Public) // User prefers public
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -250,6 +263,11 @@ async fn test_user_preference_overrides_template_default() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -309,6 +327,7 @@ async fn test_no_template_default_uses_system_default() -> Result<()> {
     .template(TemplateName::new("template-test-filtering")?) // No default_visibility
     .build(); // No .with_visibility() call
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -316,6 +335,11 @@ async fn test_no_template_default_uses_system_default() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
