@@ -1953,6 +1953,11 @@ mod http_delivery_tests {
         assert_eq!(metrics.successes(), 1, "Success metric must be incremented");
         assert_eq!(metrics.failures(), 0);
         assert_eq!(metrics.errors(), 0);
+        assert_eq!(
+            metrics.active_tasks.load(Ordering::Relaxed),
+            0,
+            "active_tasks must be 0 after function returns (net-zero)"
+        );
     }
 
     #[tokio::test]
@@ -1984,6 +1989,11 @@ mod http_delivery_tests {
         );
         assert_eq!(metrics.successes(), 0);
         assert_eq!(metrics.errors(), 0);
+        assert_eq!(
+            metrics.active_tasks.load(Ordering::Relaxed),
+            0,
+            "active_tasks must be 0 after function returns (net-zero)"
+        );
     }
 
     #[tokio::test]
@@ -2028,5 +2038,540 @@ mod http_delivery_tests {
         );
         assert_eq!(metrics.successes(), 0);
         assert_eq!(metrics.failures(), 0);
+        assert_eq!(
+            metrics.active_tasks.load(Ordering::Relaxed),
+            0,
+            "active_tasks must be 0 after function returns (net-zero)"
+        );
+    }
+
+    // ── Active Task Tracking Tests ────────────────────────────────────────────
+
+    /// Metrics mock that also records the peak active-task count so we can
+    /// verify that increment AND decrement are both called (not just that the
+    /// net result is zero, which would also be true if neither was called).
+    struct PeakTrackingMetrics {
+        active_now: AtomicI64,
+        peak_active: AtomicI64,
+        increment_calls: AtomicU64,
+        decrement_calls: AtomicU64,
+        successes: AtomicU64,
+        failures: AtomicU64,
+        errors: AtomicU64,
+    }
+
+    impl PeakTrackingMetrics {
+        fn new() -> Self {
+            Self {
+                active_now: AtomicI64::new(0),
+                peak_active: AtomicI64::new(0),
+                increment_calls: AtomicU64::new(0),
+                decrement_calls: AtomicU64::new(0),
+                successes: AtomicU64::new(0),
+                failures: AtomicU64::new(0),
+                errors: AtomicU64::new(0),
+            }
+        }
+
+        fn final_active(&self) -> i64 {
+            self.active_now.load(Ordering::SeqCst)
+        }
+
+        fn peak_active(&self) -> i64 {
+            self.peak_active.load(Ordering::SeqCst)
+        }
+
+        fn increment_call_count(&self) -> u64 {
+            self.increment_calls.load(Ordering::Relaxed)
+        }
+
+        fn decrement_call_count(&self) -> u64 {
+            self.decrement_calls.load(Ordering::Relaxed)
+        }
+    }
+
+    impl EventMetrics for PeakTrackingMetrics {
+        fn record_delivery_success(&self, _: &str, _: u64) {
+            self.successes.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_delivery_failure(&self, _: &str, _: u16) {
+            self.failures.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_delivery_error(&self, _: &str) {
+            self.errors.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn increment_active_tasks(&self) {
+            let new_val = self.active_now.fetch_add(1, Ordering::SeqCst) + 1;
+            self.increment_calls.fetch_add(1, Ordering::Relaxed);
+            // Update peak
+            let mut peak = self.peak_active.load(Ordering::SeqCst);
+            while new_val > peak {
+                match self.peak_active.compare_exchange(
+                    peak,
+                    new_val,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => break,
+                    Err(x) => peak = x,
+                }
+            }
+        }
+
+        fn decrement_active_tasks(&self) {
+            self.active_now.fetch_sub(1, Ordering::SeqCst);
+            self.decrement_calls.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_active_tasks_incremented_and_decremented_on_success() {
+        // Arrange
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = PeakTrackingMetrics::new();
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Assert: net-zero and evidence that it actually transitioned through 1
+        assert_eq!(
+            metrics.final_active(),
+            0,
+            "active_tasks must be 0 after function returns"
+        );
+        assert_eq!(
+            metrics.peak_active(),
+            1,
+            "active_tasks must have reached 1 during execution"
+        );
+        assert_eq!(
+            metrics.increment_call_count(),
+            1,
+            "increment called exactly once"
+        );
+        assert_eq!(
+            metrics.decrement_call_count(),
+            1,
+            "decrement called exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_active_tasks_net_zero_when_no_endpoints_configured() {
+        // Arrange: empty config → early-ish return after collecting 0 endpoints
+        let config = config_manager::MergedConfiguration::new();
+        let resolver = MockSecretResolver::with("unused", "key");
+        let metrics = PeakTrackingMetrics::new();
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Assert
+        assert_eq!(
+            metrics.final_active(),
+            0,
+            "active_tasks must be 0 after function returns (no endpoints)"
+        );
+        assert_eq!(
+            metrics.peak_active(),
+            1,
+            "active_tasks must have peaked at 1 even with no endpoints"
+        );
+        assert_eq!(
+            metrics.increment_call_count(),
+            1,
+            "increment called exactly once"
+        );
+        assert_eq!(
+            metrics.decrement_call_count(),
+            1,
+            "decrement called exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_active_tasks_net_zero_on_http_failure() {
+        // Arrange
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let config = merged_config_with(vec![make_endpoint(server.uri(), "S")]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = PeakTrackingMetrics::new();
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Assert
+        assert_eq!(
+            metrics.final_active(),
+            0,
+            "active_tasks must be 0 after HTTP failure"
+        );
+        assert_eq!(metrics.peak_active(), 1, "must have peaked at 1");
+        assert_eq!(metrics.increment_call_count(), 1);
+        assert_eq!(metrics.decrement_call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_active_tasks_net_zero_on_network_error() {
+        // Arrange: closed port → connection error
+        let config = merged_config_with(vec![NotificationEndpoint {
+            url: "http://127.0.0.1:19998/webhook".to_string(),
+            secret: "S".to_string(),
+            events: vec!["repository.created".to_string()],
+            active: true,
+            timeout_seconds: 1,
+            description: None,
+        }]);
+        let resolver = MockSecretResolver::with("S", "key");
+        let metrics = PeakTrackingMetrics::new();
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Assert
+        assert_eq!(
+            metrics.final_active(),
+            0,
+            "active_tasks must be 0 after network error"
+        );
+        assert_eq!(metrics.peak_active(), 1, "must have peaked at 1");
+        assert_eq!(metrics.increment_call_count(), 1);
+        assert_eq!(metrics.decrement_call_count(), 1);
+    }
+}
+
+/// Tests for logging output from publish_repository_created.
+///
+/// These tests verify that correct log levels and messages are emitted
+/// at each stage of event delivery.
+#[cfg(test)]
+mod logging_tests {
+    use super::*;
+    use crate::{
+        ContentStrategy, EventMetrics, OrganizationName, RepositoryCreationRequest,
+        RepositoryCreationResult, RepositoryName, SecretResolutionError, SecretResolver, Timestamp,
+    };
+    use config_manager::{NotificationEndpoint, NotificationsConfig};
+    use std::collections::HashMap;
+    use tracing_test::traced_test;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    struct NoOpMetrics;
+
+    impl EventMetrics for NoOpMetrics {
+        fn record_delivery_success(&self, _: &str, _: u64) {}
+        fn record_delivery_failure(&self, _: &str, _: u16) {}
+        fn record_delivery_error(&self, _: &str) {}
+        fn increment_active_tasks(&self) {}
+        fn decrement_active_tasks(&self) {}
+    }
+
+    struct FixedSecretResolver(String);
+
+    #[async_trait::async_trait]
+    impl SecretResolver for FixedSecretResolver {
+        async fn resolve_secret(&self, _: &str) -> Result<String, SecretResolutionError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    struct AlwaysFailResolver;
+
+    #[async_trait::async_trait]
+    impl SecretResolver for AlwaysFailResolver {
+        async fn resolve_secret(&self, r: &str) -> Result<String, SecretResolutionError> {
+            Err(SecretResolutionError::NotFound {
+                reference: r.to_string(),
+            })
+        }
+    }
+
+    fn make_config(url: &str) -> config_manager::MergedConfiguration {
+        let mut config = config_manager::MergedConfiguration::new();
+        config.notifications = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: url.to_string(),
+                secret: "secret-ref".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+        config
+    }
+
+    fn test_request() -> RepositoryCreationRequest {
+        RepositoryCreationRequest {
+            name: RepositoryName::new("log-test-repo").unwrap(),
+            owner: OrganizationName::new("test-org").unwrap(),
+            template: None,
+            variables: HashMap::new(),
+            visibility: None,
+            content_strategy: ContentStrategy::Empty,
+        }
+    }
+
+    fn test_result() -> RepositoryCreationResult {
+        RepositoryCreationResult {
+            repository_url: "https://github.com/test-org/log-test-repo".to_string(),
+            repository_id: "R_logtest".to_string(),
+            created_at: Timestamp::now(),
+            default_branch: "main".to_string(),
+        }
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_event_publishing_at_info_level() {
+        // Arrange: empty config (no endpoints), enough to trigger the initial log
+        let config = config_manager::MergedConfiguration::new();
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &AlwaysFailResolver,
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: INFO log emitted when publishing begins
+        assert!(
+            logs_contain("Publishing repository creation event"),
+            "Expected INFO 'Publishing repository creation event' log"
+        );
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_no_matching_endpoints_at_info_level() {
+        // Arrange: empty config
+        let config = config_manager::MergedConfiguration::new();
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &AlwaysFailResolver,
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: INFO log emitted when no endpoints found
+        assert!(
+            logs_contain("No matching notification endpoints"),
+            "Expected INFO 'No matching notification endpoints' log"
+        );
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_delivery_success_at_info_level() {
+        // Arrange
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let config = make_config(&server.uri());
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &FixedSecretResolver("signing-key".to_string()),
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: INFO log on successful delivery
+        assert!(
+            logs_contain("Event delivery successful"),
+            "Expected INFO 'Event delivery successful' log"
+        );
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_delivery_failure_at_warn_level() {
+        // Arrange
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let config = make_config(&server.uri());
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &FixedSecretResolver("signing-key".to_string()),
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: WARN log on HTTP error response
+        assert!(
+            logs_contain("Event delivery failed with HTTP error"),
+            "Expected WARN 'Event delivery failed with HTTP error' log"
+        );
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_network_error_at_warn_level() {
+        // Arrange: closed port
+        let mut config = config_manager::MergedConfiguration::new();
+        config.notifications = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "http://127.0.0.1:19997/webhook".to_string(),
+                secret: "s".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 1,
+                description: None,
+            }],
+        };
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &FixedSecretResolver("key".to_string()),
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: WARN log on network error
+        assert!(
+            logs_contain("Event delivery failed with network error"),
+            "Expected WARN 'Event delivery failed with network error' log"
+        );
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_secret_resolution_failure_at_warn_level() {
+        // Arrange: endpoint configured but secret resolver will fail
+        let mut config = config_manager::MergedConfiguration::new();
+        config.notifications = NotificationsConfig {
+            outbound_webhooks: vec![NotificationEndpoint {
+                url: "https://example.com/webhook".to_string(),
+                secret: "missing-secret".to_string(),
+                events: vec!["repository.created".to_string()],
+                active: true,
+                timeout_seconds: 5,
+                description: None,
+            }],
+        };
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &AlwaysFailResolver,
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: WARN log when secret resolution fails
+        assert!(
+            logs_contain("Secret resolution failed"),
+            "Expected WARN 'Secret resolution failed, skipping endpoint' log"
+        );
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_logs_delivery_summary_at_info_level() {
+        // Arrange: successful delivery to verify summary log
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let config = make_config(&server.uri());
+
+        // Act
+        publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &FixedSecretResolver("key".to_string()),
+            &NoOpMetrics,
+        )
+        .await;
+
+        // Assert: final summary log emitted
+        assert!(
+            logs_contain("Event delivery complete"),
+            "Expected INFO 'Event delivery complete' summary log"
+        );
     }
 }

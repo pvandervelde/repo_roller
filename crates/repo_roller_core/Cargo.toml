@@ -33,5 +33,5 @@ uuid = { version = "1.0", features = ["serde", "v4"] }
 walkdir = "2.5"
 
 [dev-dependencies]
+tracing-test = "0.2"
 wiremock = "=0.6.5"
-

@@ -6,7 +6,7 @@ use super::*;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 // Mock implementation for testing
-#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
+#[allow(dead_code)]
 pub struct MockEventMetrics {
     pub successes: AtomicU64,
     pub failures: AtomicU64,
@@ -14,7 +14,7 @@ pub struct MockEventMetrics {
     pub active_tasks: AtomicI64,
 }
 
-#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
+#[allow(dead_code)]
 impl MockEventMetrics {
     pub fn new() -> Self {
         Self {

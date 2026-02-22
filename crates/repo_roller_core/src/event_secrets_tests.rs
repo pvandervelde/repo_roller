@@ -7,12 +7,12 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 // Mock implementation for testing
-#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
+#[allow(dead_code)]
 pub struct MockSecretResolver {
     secrets: HashMap<String, String>,
 }
 
-#[allow(dead_code)] // TODO(task-17.7): Remove when implementing publish_repository_created tests
+#[allow(dead_code)]
 impl MockSecretResolver {
     pub fn with_secrets(secrets: HashMap<String, String>) -> Self {
         Self { secrets }
