@@ -71,6 +71,13 @@
 //!     repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry)
 //! );
 //!
+//! // Bundle event notification parameters
+//! let event_context = repo_roller_core::event_publisher::EventNotificationContext::new(
+//!     "user@example.com",
+//!     secret_resolver,
+//!     metrics,
+//! );
+//!
 //! // Create the repository
 //! match create_repository(
 //!     request,
@@ -79,9 +86,7 @@
 //!     ".reporoller", // Metadata repository name
 //!     visibility_policy_provider,
 //!     environment_detector,
-//!     "user@example.com",
-//!     secret_resolver,
-//!     metrics,
+//!     event_context,
 //! ).await {
 //!     Ok(result) => {
 //!         println!("Repository created successfully:");
@@ -351,6 +356,12 @@ mod integration_tests;
 ///     MetadataProviderConfig::explicit(".reporoller")
 /// );
 ///
+/// let event_context = repo_roller_core::event_publisher::EventNotificationContext::new(
+///     "user@example.com",
+///     std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new()),
+///     std::sync::Arc::new(repo_roller_core::event_metrics::PrometheusEventMetrics::new(&prometheus::Registry::new())),
+/// );
+///
 /// match create_repository(
 ///     request,
 ///     &metadata_provider,
@@ -358,9 +369,7 @@ mod integration_tests;
 ///     ".reporoller",
 ///     visibility_policy_provider,
 ///     environment_detector,
-///     "user@example.com",
-///     std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new()),
-///     std::sync::Arc::new(repo_roller_core::event_metrics::PrometheusEventMetrics::new(&prometheus::Registry::new())),
+///     event_context,
 /// ).await {
 ///     Ok(result) => {
 ///         println!("Created: {}", result.repository_url);
@@ -531,6 +540,12 @@ async fn create_github_repository(
 /// let secret_resolver = std::sync::Arc::new(event_secrets::EnvironmentSecretResolver::new());
 /// let metrics_registry = prometheus::Registry::new();
 /// let metrics = std::sync::Arc::new(event_metrics::PrometheusEventMetrics::new(&metrics_registry));
+///
+/// let event_context = repo_roller_core::event_publisher::EventNotificationContext::new(
+///     "user@example.com",
+///     secret_resolver,
+///     metrics,
+/// );
 ///
 /// let result = create_repository(
 ///     request,
@@ -813,8 +828,6 @@ pub async fn create_repository(
             "Spawning background task for event notifications"
         );
 
-        metrics_clone.increment_active_tasks();
-
         let delivery_results = publish_repository_created(
             &result_clone,
             &request_clone,
@@ -824,8 +837,6 @@ pub async fn create_repository(
             metrics_clone.as_ref(),
         )
         .await;
-
-        metrics_clone.decrement_active_tasks();
 
         // Log summary
         let success_count = delivery_results.iter().filter(|r| r.success).count();

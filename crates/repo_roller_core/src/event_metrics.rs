@@ -1,6 +1,57 @@
 // GENERATED FROM: docs/spec/interfaces/event-metrics.md
 // Metrics recording abstraction for event delivery observability
 
+//! Event delivery metrics abstraction and implementations.
+//!
+//! This module provides the [`EventMetrics`] trait and two implementations:
+//! - [`PrometheusEventMetrics`]: production Prometheus-backed metrics
+//! - [`NoOpEventMetrics`]: zero-overhead no-op for testing or disabled monitoring
+//!
+//! # Prometheus Dashboard Queries
+//!
+//! The following PromQL queries can be used to build dashboards:
+//!
+//! **Delivery success rate (5 min window)**:
+//! ```promql
+//! rate(notification_delivery_successes_total[5m])
+//!   /
+//! rate(notification_delivery_attempts_total[5m])
+//! ```
+//!
+//! **Delivery failure rate (5 min window)**:
+//! ```promql
+//! rate(notification_delivery_failures_total[5m])
+//!   /
+//! rate(notification_delivery_attempts_total[5m])
+//! ```
+//!
+//! **Average delivery latency (5 min window)**:
+//! ```promql
+//! rate(notification_delivery_duration_seconds_sum[5m])
+//!   /
+//! rate(notification_delivery_duration_seconds_count[5m])
+//! ```
+//!
+//! **P95 delivery latency (5 min window)**:
+//! ```promql
+//! histogram_quantile(0.95,
+//!   rate(notification_delivery_duration_seconds_bucket[5m])
+//! )
+//! ```
+//!
+//! **Active background notification tasks**:
+//! ```promql
+//! notification_active_tasks
+//! ```
+//!
+//! # Recommended Grafana Panels
+//!
+//! - **Success Rate**: single stat + graph (`notification_delivery_successes_total`)
+//! - **Failure Rate**: single stat + graph (`notification_delivery_failures_total`)
+//! - **Delivery Attempts**: counter graph (`notification_delivery_attempts_total`)
+//! - **Latency Percentiles**: P50, P95, P99 from `notification_delivery_duration_seconds`
+//! - **Active Tasks**: gauge (`notification_active_tasks`)
+
 /// Abstraction for recording event delivery metrics.
 ///
 /// Implementations record metrics to various backends (Prometheus, StatsD, etc.).

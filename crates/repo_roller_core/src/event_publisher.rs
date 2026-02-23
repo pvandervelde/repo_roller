@@ -302,6 +302,9 @@ pub async fn publish_repository_created(
 ) -> Vec<DeliveryResult> {
     use tracing::{error, info, warn};
 
+    // Track this background task in the active-task gauge for the duration of the call.
+    metrics.increment_active_tasks();
+
     // Step 1: Create the event payload
     let event =
         RepositoryCreatedEvent::from_result_and_request(result, request, merged_config, created_by);
@@ -315,6 +318,7 @@ pub async fn publish_repository_created(
                 error = %e,
                 "Failed to serialize event to JSON"
             );
+            metrics.decrement_active_tasks();
             return Vec::new();
         }
     };
@@ -349,6 +353,7 @@ pub async fn publish_repository_created(
             event_id = %event.event_id,
             "No matching notification endpoints configured"
         );
+        metrics.decrement_active_tasks();
         return Vec::new();
     }
 
@@ -467,6 +472,7 @@ pub async fn publish_repository_created(
         "Event delivery complete"
     );
 
+    metrics.decrement_active_tasks();
     results
 }
 
