@@ -34,6 +34,20 @@ ignore = [
     # - We control all Docker images used in tests (no untrusted tar files)
     # - Migration to astral-tokio-tar tracked for future release
     "RUSTSEC-2025-0111",
+
+    # Crate:     protobuf
+    # Version:   2.28.0
+    # Title:     Crash due to uncontrolled recursion in protobuf crate
+    # Date:      2024-12-12
+    # ID:        RUSTSEC-2024-0437
+    # URL:       https://rustsec.org/advisories/RUSTSEC-2024-0437
+    # Solution:  Upgrade to >=3.7.2 (requires prometheus >=0.14)
+    #
+    # Ignoring because prometheus 0.13 is used exclusively for metrics collection
+    # and exposition (Prometheus text format). We never parse protobuf-encoded input
+    # from untrusted sources, so the vulnerable recursion path is not reachable.
+    # Tracked for upgrade when a prometheus release drops the protobuf 2.x dependency.
+    "RUSTSEC-2024-0437",
 ]
 # informational_warnings = ["unmaintained"] # warn for categories of informational advisories
 # severity_threshold = "low" # CVSS severity ("none", "low", "medium", "high", "critical")
