@@ -83,6 +83,7 @@ ignore = [
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained. Indirect dependency via serial_test (dev dependency only). serial_test is test-only dependency for environment variable isolation, no production impact." },
     { id = "RUSTSEC-2024-0384", reason = "instant crate is unmaintained. Indirect dependency via wiremock (dev dependency only). Wiremock is test-only dependency, no production impact." },
     { id = "RUSTSEC-2025-0111", reason = "tokio-tar vulnerability via testcontainers (dev dependency only). We control all Docker images used in tests. Tracked for migration to astral-tokio-tar." },
+    { id = "RUSTSEC-2024-0437", reason = "protobuf 2.x vulnerability via prometheus 0.13. We use prometheus for metrics collection and exposition only — we never parse protobuf-encoded input from untrusted sources. Tracked for upgrade when a prometheus release drops the protobuf 2.x dependency." },
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained. Indirect dependency via bollard/testcontainers (dev dependency only). Migration to rustls-pki-types tracked." },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
