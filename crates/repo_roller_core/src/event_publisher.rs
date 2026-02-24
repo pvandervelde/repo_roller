@@ -332,15 +332,29 @@ pub async fn publish_repository_created(
         "Publishing repository creation event"
     );
 
-    // Step 3: Get endpoints from merged config (no deduplication needed - already done in merge)
-    let endpoints = &merged_config.notifications.outbound_webhooks;
-
-    // Filter for active endpoints that accept this event type
+    // Step 3: Collect matching endpoints from merged config.
+    // Deduplicate on (url, sorted_events) so an endpoint appearing at multiple
+    // configuration levels (org + team) is only delivered to once.
     let event_type = "repository.created";
-    let matching_endpoints: Vec<&NotificationEndpoint> = endpoints
-        .iter()
-        .filter(|endpoint| endpoint.active && endpoint.accepts_event(event_type))
-        .collect();
+    let mut seen: std::collections::HashSet<(String, Vec<String>)> =
+        std::collections::HashSet::new();
+    let mut matching_endpoints: Vec<&NotificationEndpoint> = Vec::new();
+
+    for endpoint in &merged_config.notifications.outbound_webhooks {
+        // accepts_event checks the active flag and event-type match
+        if !endpoint.accepts_event(event_type) {
+            continue;
+        }
+
+        // Deduplicate: same URL + same event set at different config levels should
+        // only be delivered to once
+        let mut sorted_events = endpoint.events.clone();
+        sorted_events.sort();
+        let key = (endpoint.url.clone(), sorted_events);
+        if seen.insert(key) {
+            matching_endpoints.push(endpoint);
+        }
+    }
 
     info!(
         event_id = %event.event_id,
@@ -359,7 +373,8 @@ pub async fn publish_repository_created(
 
     // Step 4: Deliver to each endpoint sequentially
     let mut results = Vec::new();
-    let client = reqwest::Client::new();
+    // Reuse a shared client across all publish calls to allow connection-pool reuse.
+    let client = shared_http_client();
 
     for endpoint in matching_endpoints {
         let start_time = std::time::Instant::now();
@@ -383,7 +398,10 @@ pub async fn publish_repository_created(
         let request_builder = client
             .post(&endpoint.url)
             .header("Content-Type", "application/json")
-            .header("User-Agent", "RepoRoller/1.0")
+            .header(
+                "User-Agent",
+                concat!("RepoRoller/", env!("CARGO_PKG_VERSION")),
+            )
             .timeout(std::time::Duration::from_secs(
                 endpoint.timeout_seconds as u64,
             ))
@@ -584,6 +602,13 @@ pub fn collect_notification_endpoints(
     }
 
     endpoints
+}
+
+/// Returns a process-wide shared `reqwest::Client` to allow connection-pool reuse
+/// across concurrent repository-creation background tasks.
+fn shared_http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new)
 }
 
 #[cfg(test)]

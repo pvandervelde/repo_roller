@@ -823,7 +823,6 @@ pub async fn create_repository(
 
     tokio::spawn(async move {
         info!(
-            event_id = "background-task",
             repository = %request_clone.name,
             "Spawning background task for event notifications"
         );

@@ -448,4 +448,60 @@ mod filesystem_resolver_tests {
         assert!(result.is_ok(), "Should resolve with base_path joining");
         assert_eq!(result.unwrap(), secret_value);
     }
+
+    #[tokio::test]
+    async fn test_filesystem_resolver_rejects_absolute_path() {
+        // Arrange
+        let temp_dir = TempDir::new().unwrap();
+        let resolver = FilesystemSecretResolver::new(temp_dir.path());
+
+        // Act: supply an absolute path as secret_ref
+        #[cfg(unix)]
+        let result = resolver.resolve_secret("/etc/passwd").await;
+        #[cfg(windows)]
+        let result = resolver
+            .resolve_secret("C:\\Windows\\System32\\drivers\\etc\\hosts")
+            .await;
+
+        // Assert: must be rejected as AccessDenied before any filesystem access
+        assert!(
+            matches!(result, Err(SecretResolutionError::AccessDenied { .. })),
+            "Absolute path must be rejected: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_resolver_rejects_parent_traversal() {
+        // Arrange
+        let temp_dir = TempDir::new().unwrap();
+        let resolver = FilesystemSecretResolver::new(temp_dir.path());
+
+        // Act: supply a path that tries to escape the base directory
+        let result = resolver.resolve_secret("../secret").await;
+
+        // Assert: must be rejected before any filesystem access
+        assert!(
+            matches!(result, Err(SecretResolutionError::AccessDenied { .. })),
+            "Parent-directory traversal must be rejected: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_resolver_rejects_nested_traversal() {
+        // Arrange
+        let temp_dir = TempDir::new().unwrap();
+        let resolver = FilesystemSecretResolver::new(temp_dir.path());
+
+        // Act: nested traversal attempt
+        let result = resolver.resolve_secret("subdir/../../etc/passwd").await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(SecretResolutionError::AccessDenied { .. })),
+            "Nested directory traversal must be rejected: {:?}",
+            result
+        );
+    }
 }

@@ -720,17 +720,15 @@ mod signature_tests {
         // Act
         let signature = compute_hmac_sha256(payload, secret);
 
-        // Assert: Verify it's a valid signature format
-        // (We can't hardcode expected value as it depends on implementation,
-        // but we verify consistency and format)
-        assert!(signature.starts_with("sha256="));
-        assert_eq!(signature.len(), 71);
-
-        // Verify it's lowercase hex
-        let hex_part = &signature[7..];
-        assert!(
-            hex_part.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')),
-            "Hex should be lowercase"
+        // Assert: Known HMAC-SHA256 reference value.
+        // Verified externally:
+        //   PowerShell: [System.Security.Cryptography.HMACSHA256]::new(
+        //     [Text.Encoding]::UTF8.GetBytes("secret-key")
+        //   ).ComputeHash([Text.Encoding]::UTF8.GetBytes("test message")) | % { $_.ToString("x2") } ) -join ""
+        //   => 9a0eb7d4647a82cf2785df52d1e605fb531beb1f270c8215c8ffb3ff31a993b4
+        assert_eq!(
+            signature,
+            "sha256=9a0eb7d4647a82cf2785df52d1e605fb531beb1f270c8215c8ffb3ff31a993b4"
         );
     }
 
@@ -1654,7 +1652,10 @@ mod http_delivery_tests {
         // Mount a mock that requires both headers to be present — if headers are wrong, expect(1) fails
         Mock::given(method("POST"))
             .and(header("content-type", "application/json"))
-            .and(header("user-agent", "RepoRoller/1.0"))
+            .and(header(
+                "user-agent",
+                concat!("RepoRoller/", env!("CARGO_PKG_VERSION")),
+            ))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&server)
@@ -2284,6 +2285,49 @@ mod http_delivery_tests {
         assert_eq!(metrics.peak_active(), 1, "must have peaked at 1");
         assert_eq!(metrics.increment_call_count(), 1);
         assert_eq!(metrics.decrement_call_count(), 1);
+    }
+
+    // ── Deduplication Tests ───────────────────────────────────────────────────
+
+    /// Regression: endpoint configured at both org and team level must only
+    /// receive one delivery, not two.
+    #[tokio::test]
+    async fn test_publish_deduplicates_endpoints_from_merged_config() {
+        // Arrange: same URL + same events appearing twice in the merged list
+        // (simulates org-level + team-level both defining the same endpoint)
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1) // must be called exactly once despite two entries
+            .mount(&server)
+            .await;
+
+        let duplicate_endpoint = make_endpoint(server.uri(), "MY_SECRET");
+        // Put the same endpoint twice – as merge_notifications would do when
+        // the same endpoint appears in both org and team configuration.
+        let config = merged_config_with(vec![duplicate_endpoint.clone(), duplicate_endpoint]);
+        let resolver = MockSecretResolver::with("MY_SECRET", "signing-key");
+        let metrics = TrackingMetrics::new();
+
+        // Act
+        let results = publish_repository_created(
+            &test_result(),
+            &test_request(),
+            &config,
+            "test-user",
+            &resolver,
+            &metrics,
+        )
+        .await;
+
+        // Assert: exactly one delivery result, not two
+        assert_eq!(
+            results.len(),
+            1,
+            "Duplicate endpoint must be delivered to only once"
+        );
+        assert!(results[0].success);
+        server.verify().await; // wiremock asserts expect(1) was satisfied
     }
 }
 

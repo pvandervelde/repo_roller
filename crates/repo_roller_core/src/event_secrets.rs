@@ -133,6 +133,19 @@ impl FilesystemSecretResolver {
 #[async_trait]
 impl SecretResolver for FilesystemSecretResolver {
     async fn resolve_secret(&self, secret_ref: &str) -> Result<String, SecretResolutionError> {
+        // Reject absolute paths and path traversal components (e.g. /etc/passwd, ../secret)
+        // PathBuf::join replaces the base entirely when given an absolute path.
+        let probe = std::path::Path::new(secret_ref);
+        if probe.is_absolute()
+            || probe
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(SecretResolutionError::AccessDenied {
+                reference: secret_ref.to_string(),
+            });
+        }
+
         // Join base_path with secret_ref
         let full_path = self.base_path.join(secret_ref);
 
