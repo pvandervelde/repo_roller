@@ -65,6 +65,28 @@ This document defines the responsibilities of each component using Responsibilit
 - **Security Guardian**: Prevents security violations during processing
 - **Validator**: Ensures template and variable correctness
 
+### EventPublisher
+
+**Responsibilities:**
+
+- **Knows**: Configured notification endpoints across all hierarchy levels, webhook signature signing algorithms, event payload schemas, delivery timeouts
+- **Does**: Publishes repository events to external webhook endpoints, signs requests with HMAC-SHA256, spawns asynchronous delivery tasks, logs delivery results, emits delivery metrics
+
+**Collaborators:**
+
+- **ConfigurationManager** (loads notification endpoint configuration from org/team/template levels)
+- **SecretsManager** (resolves secret references for webhook signing)
+- **HttpClient** (sends webhook HTTP POST requests)
+- **MetricsCollector** (records delivery success/failure metrics)
+- **ObservabilityLogger** (logs delivery attempts and results)
+
+**Roles:**
+
+- **Event Broadcaster**: Publishes repository lifecycle events to external systems
+- **Security Manager**: Signs webhook requests to enable authenticity verification
+- **Reliability Monitor**: Tracks delivery success rates and logs failures
+- **Non-Blocking Worker**: Ensures event delivery never blocks repository creation
+
 ## Application Services
 
 ### AuthenticationService
@@ -283,7 +305,21 @@ This document defines the responsibilities of each component using Responsibilit
 4. **Template Processing**: TemplateProcessor transforms template content with variables
 5. **Repository Creation**: GitHubRepository creates repository via GitHub API
 6. **Configuration Application**: GitHubRepository applies resolved configuration to repository
-7. **Result Reporting**: User interface returns success/failure response to user
+7. **Event Publishing**: EventPublisher asynchronously sends notifications to configured webhook endpoints
+8. **Result Reporting**: User interface returns success/failure response to user
+
+### Event Notification Workflow
+
+1. **Event Trigger**: RepositoryCreationOrchestrator successfully completes repository creation
+2. **Event Construction**: Event payload built with complete repository metadata
+3. **Endpoint Discovery**: EventPublisher loads notification endpoints from all configuration levels (org/team/template)
+4. **Endpoint Deduplication**: Duplicate endpoints removed based on URL + event type combination
+5. **Background Task Spawn**: Asynchronous delivery task spawned (non-blocking)
+6. **Secret Resolution**: Webhook secrets resolved from secret store for each endpoint
+7. **Request Signing**: HTTP requests signed with HMAC-SHA256 using resolved secrets
+8. **HTTP Delivery**: POST requests sent to each endpoint with signed payloads
+9. **Result Logging**: All delivery attempts logged with success/failure status
+10. **Metrics Emission**: Delivery metrics recorded for monitoring and alerting
 
 ### Configuration Resolution Workflow
 

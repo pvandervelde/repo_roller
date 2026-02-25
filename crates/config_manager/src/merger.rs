@@ -44,6 +44,7 @@
 //!     variables: None,
 //!     default_visibility: None,
 //!     templating: None,
+//!     notifications: None,
 //! };
 //!
 //! // Merge configurations with precedence rules
@@ -65,7 +66,7 @@ use crate::{
     repository_type_config::RepositoryTypeConfig,
     settings::{
         BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
-        PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+        NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
     },
     team_config::TeamConfig,
     template_config::TemplateConfig as NewTemplateConfig,
@@ -109,6 +110,7 @@ use crate::{
 ///     variables: None,
 ///     default_visibility: None,
 ///     templating: None,
+///     notifications: None,
 /// };
 ///
 /// // Merge with all configuration levels
@@ -190,6 +192,7 @@ impl ConfigurationMerger {
     ///     variables: None,
     ///     default_visibility: None,
     ///     templating: None,
+    ///     notifications: None,
     /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
@@ -315,6 +318,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::Global,
             ));
         }
+        if let Some(notifications) = &global.notifications {
+            source_updates.extend(self.merge_notifications(
+                &mut merged.notifications,
+                notifications,
+                ConfigurationSource::Global,
+            ));
+        }
     }
 
     /// Applies repository type-specific overrides.
@@ -414,6 +424,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::RepositoryType,
             ));
         }
+        if let Some(notifications) = &repo_type.notifications {
+            source_updates.extend(self.merge_notifications(
+                &mut merged.notifications,
+                notifications,
+                ConfigurationSource::RepositoryType,
+            ));
+        }
 
         Ok(())
     }
@@ -507,6 +524,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::Team,
             ));
         }
+        if let Some(notifications) = &team.notifications {
+            source_updates.extend(self.merge_notifications(
+                &mut merged.notifications,
+                notifications,
+                ConfigurationSource::Team,
+            ));
+        }
 
         Ok(())
     }
@@ -594,6 +618,13 @@ impl ConfigurationMerger {
             source_updates.extend(self.merge_rulesets(
                 &mut merged.rulesets,
                 rulesets,
+                ConfigurationSource::Template,
+            ));
+        }
+        if let Some(notifications) = &template.notifications {
+            source_updates.extend(self.merge_notifications(
+                &mut merged.notifications,
+                notifications,
                 ConfigurationSource::Template,
             ));
         }
@@ -1138,6 +1169,25 @@ impl ConfigurationMerger {
         if settings.restrict_pushes.is_some() {
             source_updates.push(("branch_protection.restrict_pushes".to_string(), source));
         }
+    }
+
+    /// Merges notification configurations additively.
+    ///
+    /// All outbound webhook endpoints from all sources are combined.
+    fn merge_notifications(
+        &self,
+        target: &mut NotificationsConfig,
+        notifications: &NotificationsConfig,
+        source: ConfigurationSource,
+    ) -> Vec<(String, ConfigurationSource)> {
+        let mut source_updates = Vec::new();
+
+        for endpoint in &notifications.outbound_webhooks {
+            target.outbound_webhooks.push(endpoint.clone());
+            source_updates.push(("notifications.outbound_webhooks".to_string(), source));
+        }
+
+        source_updates
     }
 }
 

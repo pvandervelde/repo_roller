@@ -10,6 +10,11 @@ pub struct TestVisibilityProviders {
     pub environment_detector: Arc<GitHubApiEnvironmentDetector>,
 }
 
+pub struct TestEventNotificationProviders {
+    pub secret_resolver: Arc<dyn repo_roller_core::event_secrets::SecretResolver>,
+    pub metrics: Arc<dyn repo_roller_core::event_metrics::EventMetrics>,
+}
+
 pub async fn create_visibility_providers(
     installation_token: &str,
     metadata_repo: &str,
@@ -31,4 +36,22 @@ pub async fn create_visibility_providers(
         visibility_policy_provider,
         environment_detector,
     })
+}
+
+/// Creates event notification providers for integration tests.
+///
+/// Returns a new set of providers with:
+/// - `EnvironmentSecretResolver` for secret resolution
+/// - `PrometheusEventMetrics` with a new registry
+pub fn create_event_notification_providers() -> TestEventNotificationProviders {
+    let secret_resolver =
+        Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new());
+    let metrics_registry = prometheus::Registry::new();
+    let metrics =
+        Arc::new(repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry));
+
+    TestEventNotificationProviders {
+        secret_resolver,
+        metrics,
+    }
 }

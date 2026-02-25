@@ -43,6 +43,7 @@ impl TemplateRepository for MockTemplateRepository {
             rulesets: None,
             default_visibility: None,
             templating: None,
+            notifications: None,
         })
     }
 
@@ -496,6 +497,7 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             rulesets: None,
             default_visibility: None,
             templating: None,
+            notifications: None,
         })
     }
 

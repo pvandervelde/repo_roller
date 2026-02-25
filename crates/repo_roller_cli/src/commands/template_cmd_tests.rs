@@ -167,6 +167,7 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         github_apps: None,
         rulesets: None,
         templating: None,
+        notifications: None,
     }
 }
 
@@ -221,6 +222,7 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         github_apps: None,
         rulesets: None,
         templating: None,
+        notifications: None,
     }
 }
 

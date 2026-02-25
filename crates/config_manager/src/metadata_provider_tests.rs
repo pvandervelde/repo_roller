@@ -247,6 +247,7 @@ mod mock_provider {
                 custom_properties: None,
                 rulesets: None,
                 repository_visibility: None,
+                notifications: None,
             })
         }
 

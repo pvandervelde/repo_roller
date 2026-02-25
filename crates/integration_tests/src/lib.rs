@@ -19,7 +19,10 @@ pub use verification::{
     ConfigurationVerification, ExpectedBranchProtection, ExpectedConfiguration,
     ExpectedRepositorySettings,
 };
-pub use visibility_helpers::{create_visibility_providers, TestVisibilityProviders};
+pub use visibility_helpers::{
+    create_event_notification_providers, create_visibility_providers,
+    TestEventNotificationProviders, TestVisibilityProviders,
+};
 
 // Re-export test_utils functions
 pub use test_utils::{cleanup_test_repository, generate_test_repo_name, get_workflow_context};

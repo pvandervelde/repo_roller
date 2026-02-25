@@ -95,6 +95,7 @@ async fn test_create_private_repository_explicit() -> Result<()> {
     .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -102,6 +103,11 @@ async fn test_create_private_repository_explicit() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -162,6 +168,7 @@ async fn test_create_public_repository_explicit() -> Result<()> {
     .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -169,6 +176,11 @@ async fn test_create_public_repository_explicit() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -229,6 +241,7 @@ async fn test_create_repository_default_visibility() -> Result<()> {
     .build();
 
     // Execute repository creation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -236,6 +249,11 @@ async fn test_create_repository_default_visibility() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -314,6 +332,7 @@ async fn test_concurrent_visibility_resolution() -> Result<()> {
     .build(); // No visibility (defaults to Private)
 
     // Execute all three concurrently
+    let event_providers = integration_tests::create_event_notification_providers();
     let (_result_1, _result_2, _result_3) = tokio::try_join!(
         create_repository(
             request_1,
@@ -322,6 +341,11 @@ async fn test_concurrent_visibility_resolution() -> Result<()> {
             ".reporoller",
             policy_provider.clone(),
             env_detector.clone(),
+            repo_roller_core::EventNotificationContext::new(
+                "integration-test",
+                event_providers.secret_resolver.clone(),
+                event_providers.metrics.clone(),
+            ),
         ),
         create_repository(
             request_2,
@@ -330,6 +354,11 @@ async fn test_concurrent_visibility_resolution() -> Result<()> {
             ".reporoller",
             policy_provider.clone(),
             env_detector.clone(),
+            repo_roller_core::EventNotificationContext::new(
+                "integration-test",
+                event_providers.secret_resolver.clone(),
+                event_providers.metrics.clone(),
+            ),
         ),
         create_repository(
             request_3,
@@ -338,6 +367,11 @@ async fn test_concurrent_visibility_resolution() -> Result<()> {
             ".reporoller",
             policy_provider,
             env_detector,
+            repo_roller_core::EventNotificationContext::new(
+                "integration-test",
+                event_providers.secret_resolver.clone(),
+                event_providers.metrics.clone(),
+            ),
         ),
     )?;
 

@@ -463,6 +463,7 @@ fn test_serialize_round_trip() {
         rulesets: None,
         default_visibility: None,
         templating: None,
+        notifications: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -492,6 +493,7 @@ fn test_clone_creates_independent_copy() {
         rulesets: None,
         default_visibility: None,
         templating: None,
+        notifications: None,
     };
 
     let cloned = config.clone();
@@ -519,6 +521,7 @@ fn test_debug_format() {
         rulesets: None,
         default_visibility: None,
         templating: None,
+        notifications: None,
     };
 
     let debug_str = format!("{:?}", config);
@@ -663,6 +666,7 @@ fn test_template_config_visibility_serialization() {
         rulesets: None,
         default_visibility: Some(crate::visibility::RepositoryVisibility::Private),
         templating: None,
+        notifications: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -699,6 +703,7 @@ fn test_template_config_none_visibility_not_serialized() {
         rulesets: None,
         default_visibility: None,
         templating: None,
+        notifications: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -937,6 +942,7 @@ fn test_template_config_serialization_with_templating() {
             include_patterns: vec!["**/*.rs".to_string()],
             exclude_patterns: vec!["target/**".to_string()],
         }),
+        notifications: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");

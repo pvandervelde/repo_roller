@@ -15,6 +15,7 @@ This guide explains how to configure RepoRoller using the hierarchical configura
 - [Pull Request Settings](#pull-request-settings)
 - [Labels Configuration](#labels-configuration)
 - [Webhooks Configuration](#webhooks-configuration)
+- [Outbound Notification Webhooks](#outbound-notification-webhooks)
 - [Repository Rulesets](#repository-rulesets)
 - [Override Controls](#override-controls)
 - [Examples](#examples)
@@ -195,6 +196,37 @@ events = ["push", "pull_request"]
 active = true
 insecure_ssl = false
 ```
+
+## Outbound Notification Webhooks
+
+RepoRoller can send signed outbound webhook notifications to external systems when
+repositories are created. These are **separate** from repository webhooks above — they are
+called by RepoRoller itself, not by GitHub.
+
+Configuration is stored in `notifications.toml` files within the metadata repository and
+accumulated across the configuration hierarchy:
+
+```toml
+# global/notifications.toml — active for every repository creation
+[[outbound_webhooks]]
+url             = "https://monitoring.example.com/hooks/repo-created"
+secret          = "REPOROLLER_WEBHOOK_SECRET"
+events          = ["repository.created"]
+timeout_seconds = 10
+description     = "Central monitoring system"
+```
+
+| Field            | Required | Default | Description                                        |
+|------------------|----------|---------|----------------------------------------------------|
+| `url`            | ✅       | –       | Endpoint URL — must use `https://`                 |
+| `secret`         | ✅       | –       | Environment variable name holding the signing key  |
+| `events`         | ✅       | –       | Event types: `["repository.created"]` or `["*"]`  |
+| `active`         | ❌       | `true`  | Set `false` to temporarily disable                 |
+| `timeout_seconds`| ❌       | `5`     | Per-request timeout (1–30 seconds)                 |
+| `description`    | ❌       | –       | Human-readable description                         |
+
+For the complete reference including event payload schema, HMAC signing, secret management,
+and deployment patterns, see [docs/notifications.md](notifications.md).
 
 ## Repository Rulesets
 
@@ -537,5 +569,6 @@ required_checks = [
 ## Additional Resources
 
 - [GitHub Rulesets Documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
+- [Outbound Notification Webhooks Guide](notifications.md)
 - [Organization Repository Settings Design](docs/spec/design/organization-repository-settings.md)
 - [Configuration Interfaces](docs/spec/interfaces/configuration-interfaces.md)

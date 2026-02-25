@@ -1,0 +1,27 @@
+# Org-level outbound webhook notification configuration.
+#
+# Defines webhook endpoints that receive notifications when RepoRoller creates
+# repositories. These endpoints are active for all repository creations in the
+# organization unless overridden at the team or template level.
+#
+# Format: notifications.toml
+# Location: .reporoller/global/notifications.toml in the metadata repository
+#
+# Note: This file is part of the integration test metadata. Endpoints are set to
+# active = false to prevent test runs from attempting real webhook deliveries.
+
+[[outbound_webhooks]]
+url = "https://monitoring.example.com/hooks/repo-created"
+secret = "REPOROLLER_ORG_WEBHOOK_SECRET"
+events = ["repository.created"]
+active = false
+timeout_seconds = 10
+description = "Central monitoring system (disabled in test environment)"
+
+[[outbound_webhooks]]
+url = "https://audit.example.com/hooks/all-events"
+secret = "REPOROLLER_AUDIT_WEBHOOK_SECRET"
+events = ["*"]
+active = false
+timeout_seconds = 30
+description = "Audit log receiver for all events (disabled in test environment)"

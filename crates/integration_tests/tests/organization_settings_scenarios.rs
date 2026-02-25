@@ -68,6 +68,7 @@ async fn test_organization_settings_with_global_defaults() -> Result<()> {
     .build();
 
     // Create repository
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -75,6 +76,11 @@ async fn test_organization_settings_with_global_defaults() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -163,6 +169,7 @@ async fn test_team_configuration_overrides() -> Result<()> {
     .build();
 
     // Create repository
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -170,6 +177,11 @@ async fn test_team_configuration_overrides() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -255,6 +267,7 @@ async fn test_repository_type_configuration() -> Result<()> {
     .build();
 
     // Create repository
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -262,6 +275,11 @@ async fn test_repository_type_configuration() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -349,6 +367,7 @@ async fn test_configuration_hierarchy_merging() -> Result<()> {
     .build();
 
     // Create repository
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         providers.metadata_provider.as_ref(),
@@ -356,6 +375,11 @@ async fn test_configuration_hierarchy_merging() -> Result<()> {
         ".reporoller-test",
         providers.visibility_policy_provider.clone(),
         providers.environment_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -461,6 +485,7 @@ async fn test_complete_organization_settings_workflow() -> Result<()> {
         .build();
 
         // Create repository
+        let event_providers = integration_tests::create_event_notification_providers();
         let result = create_repository(
             request,
             providers.metadata_provider.as_ref(),
@@ -468,6 +493,11 @@ async fn test_complete_organization_settings_workflow() -> Result<()> {
             ".reporoller-test",
             providers.visibility_policy_provider.clone(),
             providers.environment_detector.clone(),
+            repo_roller_core::EventNotificationContext::new(
+                "integration-test",
+                event_providers.secret_resolver.clone(),
+                event_providers.metrics.clone(),
+            ),
         )
         .await;
 

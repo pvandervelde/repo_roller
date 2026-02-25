@@ -96,6 +96,7 @@ async fn test_required_policy_enforces_visibility() -> Result<()> {
     .build();
 
     // This should fail due to policy violation
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -103,6 +104,11 @@ async fn test_required_policy_enforces_visibility() -> Result<()> {
         ".reporoller-required",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -149,6 +155,7 @@ async fn test_required_policy_allows_compliant_visibility() -> Result<()> {
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -156,6 +163,11 @@ async fn test_required_policy_allows_compliant_visibility() -> Result<()> {
         ".reporoller-required",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -217,6 +229,7 @@ async fn test_restricted_policy_blocks_prohibited_visibility() -> Result<()> {
     .build();
 
     // This should fail due to policy restriction
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -224,6 +237,11 @@ async fn test_restricted_policy_blocks_prohibited_visibility() -> Result<()> {
         ".reporoller-restricted",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -270,6 +288,7 @@ async fn test_restricted_policy_allows_permitted_visibility() -> Result<()> {
     .with_visibility(RepositoryVisibility::Private)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = create_repository(
         request,
         metadata_provider.as_ref(),
@@ -277,6 +296,11 @@ async fn test_restricted_policy_allows_permitted_visibility() -> Result<()> {
         ".reporoller-restricted",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -338,6 +362,7 @@ async fn test_unrestricted_policy_allows_all_visibilities() -> Result<()> {
     .with_visibility(RepositoryVisibility::Public)
     .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result_pub = create_repository(
         request_pub,
         metadata_provider.as_ref(),
@@ -345,6 +370,11 @@ async fn test_unrestricted_policy_allows_all_visibilities() -> Result<()> {
         ".reporoller",
         policy_provider.clone(),
         env_detector.clone(),
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 
@@ -366,6 +396,11 @@ async fn test_unrestricted_policy_allows_all_visibilities() -> Result<()> {
         ".reporoller",
         policy_provider,
         env_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await?;
 

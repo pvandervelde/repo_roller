@@ -38,7 +38,7 @@
 
 use crate::settings::{
     BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+    NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use std::collections::HashMap;
 
@@ -95,6 +95,12 @@ pub struct MergedConfiguration {
     /// Merged from all sources (additive - all rulesets from all sources).
     pub rulesets: Vec<RulesetConfig>,
 
+    /// Outbound event notification endpoints.
+    ///
+    /// Merged from all sources (additive - all endpoints from all sources).
+    /// These webhooks receive notifications when RepoRoller performs operations.
+    pub notifications: NotificationsConfig,
+
     /// Source trace tracking which configuration source provided each setting.
     ///
     /// Used for auditing, debugging, and understanding configuration precedence.
@@ -117,6 +123,9 @@ impl MergedConfiguration {
             environments: Vec::new(),
             github_apps: Vec::new(),
             rulesets: Vec::new(),
+            notifications: NotificationsConfig {
+                outbound_webhooks: Vec::new(),
+            },
             source_trace: ConfigurationSourceTrace::new(),
         }
     }

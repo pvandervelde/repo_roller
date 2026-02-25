@@ -38,6 +38,9 @@ tracing-subscriber.workspace = true
 # Time handling
 chrono.workspace = true
 
+# Metrics
+prometheus = "0.13"
+
 # UUID for request IDs
 uuid.workspace = true
 

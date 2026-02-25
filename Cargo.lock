@@ -495,6 +495,7 @@ dependencies = [
  "tokio",
  "toml 0.9.8",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -729,6 +730,7 @@ dependencies = [
  "block-buffer",
  "const-oid",
  "crypto-common",
+ "subtle",
 ]
 
 [[package]]
@@ -1221,6 +1223,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest",
+]
+
+[[package]]
 name = "home"
 version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1654,12 +1665,16 @@ dependencies = [
  "clap",
  "config_manager",
  "github_client",
+ "hex",
+ "hmac",
+ "prometheus",
  "regex",
  "repo_roller_cli",
  "repo_roller_core",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "template_engine",
  "test_cleanup",
@@ -2419,6 +2434,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
+
+[[package]]
 name = "quote"
 version = "1.0.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2598,6 +2634,7 @@ dependencies = [
  "github_client",
  "http-body-util",
  "hyper 1.7.0",
+ "prometheus",
  "repo_roller_core",
  "serde",
  "serde_json",
@@ -2628,6 +2665,7 @@ dependencies = [
  "github_client",
  "keyring",
  "octocrab",
+ "prometheus",
  "regex",
  "repo_roller_core",
  "serde",
@@ -2651,17 +2689,24 @@ dependencies = [
  "config_manager",
  "git2",
  "github_client",
+ "hex",
+ "hmac",
+ "prometheus",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "std_prelude",
  "temp-dir",
  "template_engine",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+ "tracing-test",
  "url",
  "uuid",
  "walkdir",
+ "wiremock 0.6.5",
 ]
 
 [[package]]
@@ -3916,6 +3961,27 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracing-test"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19a4c448db514d4f24c5ddb9f73f2ee71bfb24c526cf0c570ba142d1119e0051"
+dependencies = [
+ "tracing-core",
+ "tracing-subscriber",
+ "tracing-test-macro",
+]
+
+[[package]]
+name = "tracing-test-macro"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad06847b7afb65c7866a36664b75c40b895e318cea4f71299f013fb22965329d"
+dependencies = [
+ "quote",
+ "syn 2.0.108",
 ]
 
 [[package]]

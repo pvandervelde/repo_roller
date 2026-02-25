@@ -239,6 +239,19 @@ pub async fn create_repository(
         github_client::GitHubApiEnvironmentDetector::new(github_octocrab),
     );
 
+    // Create event notification dependencies
+    let secret_resolver =
+        std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new());
+    let metrics_registry = prometheus::Registry::new();
+    let metrics = std::sync::Arc::new(
+        repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry),
+    );
+    let event_context = repo_roller_core::EventNotificationContext::new(
+        "cli-user", // TODO: Get actual user from auth context
+        secret_resolver,
+        metrics,
+    );
+
     // Use the new function with dependency injection
     repo_roller_core::create_repository(
         request,
@@ -247,6 +260,7 @@ pub async fn create_repository(
         &config.organization.metadata_repository_name,
         visibility_policy_provider,
         environment_detector,
+        event_context,
     )
     .await
 }

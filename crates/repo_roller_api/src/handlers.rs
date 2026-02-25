@@ -147,6 +147,19 @@ pub async fn create_repository(
         github_client::GitHubApiEnvironmentDetector::new(github_octocrab),
     );
 
+    // Create event notification dependencies
+    let secret_resolver =
+        std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new());
+    let metrics_registry = prometheus::Registry::new();
+    let metrics = std::sync::Arc::new(
+        repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry),
+    );
+    let event_context = repo_roller_core::EventNotificationContext::new(
+        "api-user", // TODO: Extract from authenticated user context
+        secret_resolver,
+        metrics,
+    );
+
     // Call domain service to create repository
     let result = repo_roller_core::create_repository(
         domain_request,
@@ -155,6 +168,7 @@ pub async fn create_repository(
         &state.metadata_repository_name,
         visibility_policy_provider,
         environment_detector,
+        event_context,
     )
     .await?; // ApiError::from(RepoRollerError) converts automatically
 

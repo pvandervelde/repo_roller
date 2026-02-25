@@ -399,6 +399,14 @@ impl IntegrationTestRunner {
         let environment_detector =
             std::sync::Arc::new(github_client::GitHubApiEnvironmentDetector::new(octocrab));
 
+        // Create event notification providers
+        let event_providers = crate::create_event_notification_providers();
+        let event_context = repo_roller_core::EventNotificationContext::new(
+            "test-runner",
+            event_providers.secret_resolver,
+            event_providers.metrics,
+        );
+
         // Step 5: Call the repository creation function
         info!(scenario = ?scenario, repo_name = test_repo.name, "Creating repository via RepoRoller");
 
@@ -409,6 +417,7 @@ impl IntegrationTestRunner {
             metadata_repo_name,
             visibility_policy_provider,
             environment_detector,
+            event_context,
         )
         .await;
 

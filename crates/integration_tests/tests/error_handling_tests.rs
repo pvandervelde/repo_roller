@@ -58,6 +58,7 @@ async fn test_metadata_repository_not_found() -> Result<()> {
         .template(TemplateName::new("template-test-basic")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         metadata_provider.as_ref(),
@@ -65,6 +66,11 @@ async fn test_metadata_repository_not_found() -> Result<()> {
         ".definitely-does-not-exist",
         visibility_policy_provider,
         environment_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -141,6 +147,7 @@ async fn test_template_repository_not_found() -> Result<()> {
     let environment_detector = Arc::new(GitHubApiEnvironmentDetector::new(octocrab));
 
     // Attempt to create repository with non-existent template
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         metadata_provider.as_ref(),
@@ -148,6 +155,11 @@ async fn test_template_repository_not_found() -> Result<()> {
         ".reporoller-test",
         visibility_policy_provider,
         environment_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 
@@ -217,6 +229,7 @@ async fn test_malformed_template_toml() -> Result<()> {
         .template(TemplateName::new("template-test-invalid")?)
         .build();
 
+    let event_providers = integration_tests::create_event_notification_providers();
     let result = repo_roller_core::create_repository(
         request,
         metadata_provider.as_ref(),
@@ -224,6 +237,11 @@ async fn test_malformed_template_toml() -> Result<()> {
         ".reporoller-test",
         visibility_policy_provider,
         environment_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
     )
     .await;
 

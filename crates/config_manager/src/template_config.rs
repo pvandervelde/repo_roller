@@ -59,8 +59,8 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::{
-    BranchProtectionSettings, EnvironmentConfig, GitHubAppConfig, LabelConfig, PullRequestSettings,
-    RepositorySettings, RulesetConfig, WebhookConfig,
+    BranchProtectionSettings, EnvironmentConfig, GitHubAppConfig, LabelConfig, NotificationsConfig,
+    PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
@@ -268,6 +268,13 @@ pub struct TemplateConfig {
     /// are processed (except `.reporoller/` which is always excluded).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub templating: Option<TemplatingConfig>,
+
+    /// Outbound event notification configuration (additive).
+    ///
+    /// Template-specific webhook endpoints for event notifications.
+    /// Combined with global, repository type, and team notifications.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<NotificationsConfig>,
 }
 
 /// Template metadata providing information about the template.
