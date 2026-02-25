@@ -134,6 +134,9 @@ mod webhook_manager;
 // Ruleset management operations
 mod ruleset_manager;
 
+// Permission types and domain model
+pub mod permissions;
+
 // Event publishing operations
 pub mod event_publisher;
 
@@ -224,6 +227,13 @@ pub use label_manager::{ApplyLabelsResult, LabelManager};
 pub use webhook_manager::{ApplyWebhooksResult, WebhookManager};
 // Re-exported from ruleset_manager module
 pub use ruleset_manager::{ApplyRulesetsResult, RulesetManager};
+// Re-exported from permissions module
+pub use permissions::{
+    AccessLevel, GitHubPermissionLevel, OrganizationPermissionPolicies, PermissionCondition,
+    PermissionDuration, PermissionError, PermissionGrant, PermissionHierarchy, PermissionRequest,
+    PermissionScope, PermissionType, RepositoryContext, RepositoryTypePermissions,
+    TemplatePermissions, UserPermissionRequests,
+};
 // Re-exported from event_publisher module
 pub use event_publisher::{
     collect_notification_endpoints, compute_hmac_sha256, publish_repository_created,

@@ -301,6 +301,9 @@ pub enum RepoRollerError {
 
     #[error("System error: {0}")]
     System(#[from] SystemError),
+
+    #[error("Permission error: {0}")]
+    Permission(#[from] crate::permissions::PermissionError),
 }
 
 #[allow(dead_code)] // Will be used in Task 1.8.3+

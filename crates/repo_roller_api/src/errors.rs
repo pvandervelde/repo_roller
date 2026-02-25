@@ -267,6 +267,16 @@ fn convert_reporoller_error(error: &RepoRollerError) -> (StatusCode, ErrorRespon
         RepoRollerError::Template(e) => convert_template_error(e),
         RepoRollerError::GitHub(e) => convert_github_error(e),
         RepoRollerError::System(e) => convert_system_error(e),
+        RepoRollerError::Permission(e) => (
+            StatusCode::FORBIDDEN,
+            ErrorResponse {
+                error: ErrorDetails {
+                    code: "PermissionError".to_string(),
+                    message: e.to_string(),
+                    details: None,
+                },
+            },
+        ),
     }
 }
 
