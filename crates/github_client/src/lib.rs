@@ -23,6 +23,7 @@ pub mod installation;
 pub mod label;
 pub mod repository;
 pub mod ruleset;
+pub mod team;
 pub mod user;
 pub mod webhook;
 
@@ -39,6 +40,7 @@ pub use ruleset::{
     RepositoryRuleset, RequiredStatusChecksParameters, Rule, RulesetConditions, RulesetEnforcement,
     RulesetTarget, StatusCheck,
 };
+pub use team::{Team, TeamMember};
 pub use user::User;
 pub use webhook::{
     CreateWebhookParams, UpdateWebhookParams, Webhook, WebhookDetails, WebhookEvent,
@@ -810,6 +812,177 @@ impl GitHubClient {
     /// ```
     pub fn new(client: Octocrab) -> Self {
         Self { client }
+    }
+
+    /// Lists all teams in the given GitHub organization.
+    ///
+    /// Paginates through all pages (100 items per page) and returns the complete list.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization login name.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing all [`Team`] records for the organization, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ApiError`] on GitHub API failure, or [`Error::InvalidResponse`]
+    /// if the response cannot be parsed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let teams = client.list_organization_teams("my-org").await?;
+    ///     println!("Found {} teams", teams.len());
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org))]
+    pub async fn list_organization_teams(&self, org: &str) -> Result<Vec<Team>, Error> {
+        todo!("implement list_organization_teams")
+    }
+
+    /// Lists all members of a specific team in a GitHub organization.
+    ///
+    /// Paginates through all pages (100 items per page) and returns the complete list.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization login name.
+    /// * `team_slug` - The URL-safe team slug.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing all [`TeamMember`] records for the team, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ApiError`] on GitHub API failure, or [`Error::NotFound`] if
+    /// the team does not exist, or [`Error::InvalidResponse`] for parse failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let members = client.get_team_members("my-org", "backend-engineers").await?;
+    ///     println!("Found {} members", members.len());
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug))]
+    pub async fn get_team_members(
+        &self,
+        org: &str,
+        team_slug: &str,
+    ) -> Result<Vec<TeamMember>, Error> {
+        todo!("implement get_team_members")
+    }
+
+    /// Adds a team to a repository with the specified permission level.
+    ///
+    /// Uses the GitHub Teams API `PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`
+    /// endpoint. If the team already has access, the permission level is updated.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization that owns both the team and the repository.
+    /// * `team_slug` - The URL-safe team slug.
+    /// * `repo` - The repository name.
+    /// * `permission` - The GitHub permission string (e.g., "push", "pull", "admin").
+    ///   Use [`repo_roller_core::permissions::GitHubPermissionLevel::as_str`] to obtain
+    ///   the correct string from an [`repo_roller_core::permissions::AccessLevel`].
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ApiError`] if the API call fails or the team/repository does not exist.
+    ///
+    /// # Notes
+    ///
+    /// GitHub returns 204 No Content on success. The mock server should return 200 with
+    /// an empty JSON body `{}` to avoid octocrab deserialization failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     client.add_team_to_repository("my-org", "backend-engineers", "my-repo", "push").await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo = %repo, permission = %permission))]
+    pub async fn add_team_to_repository(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        todo!("implement add_team_to_repository")
+    }
+
+    /// Updates the permission level for a team that already has access to a repository.
+    ///
+    /// Uses the same GitHub Teams API endpoint as [`add_team_to_repository`]:
+    /// `PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`.
+    /// This is a semantically distinct method for updating existing permissions,
+    /// delegating to the same underlying API operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization that owns both the team and the repository.
+    /// * `team_slug` - The URL-safe team slug.
+    /// * `repo_owner` - The owner of the repository (may differ from `org` for forks).
+    /// * `repo` - The repository name.
+    /// * `permission` - The updated GitHub permission string (e.g., "push", "maintain", "admin").
+    ///   Use [`repo_roller_core::permissions::GitHubPermissionLevel::as_str`] to obtain
+    ///   the correct string.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] if the team or repository does not exist.
+    /// Returns [`Error::ApiError`] for other API failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     client.set_team_repository_permission("my-org", "backend-engineers", "my-org", "my-repo", "maintain").await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo_owner = %repo_owner, repo = %repo, permission = %permission))]
+    pub async fn set_team_repository_permission(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo_owner: &str,
+        repo: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        todo!("implement set_team_repository_permission")
     }
 }
 

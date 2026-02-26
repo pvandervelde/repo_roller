@@ -958,3 +958,476 @@ async fn test_list_directory_contents_rate_limit() {
 // NOTE: Direct octocrab.get/post/patch/delete tests removed due to mock server
 // incompatibility with GitHub App authentication. These methods will be tested
 // via integration tests against real GitHub API.
+
+// ============================================================================
+// Team API Method Tests
+// ============================================================================
+
+/// Test listing organization teams with a single page of results.
+#[tokio::test]
+async fn test_list_organization_teams_returns_all_teams() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+
+    // First page returns 2 teams; second page (empty) ends pagination.
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 1, "slug": "backend", "name": "Backend", "description": "The backend team"},
+            {"id": 2, "slug": "frontend", "name": "Frontend", "description": null}
+        ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_organization_teams(org).await;
+
+    if let Err(e) = &result {
+        eprintln!("list_organization_teams error: {e:?}");
+    }
+    let teams = result.expect("Expected Ok result");
+    assert_eq!(teams.len(), 2);
+    assert_eq!(teams[0].slug, "backend");
+    assert_eq!(teams[0].name, "Backend");
+    assert_eq!(teams[0].description, Some("The backend team".to_string()));
+    assert_eq!(teams[1].slug, "frontend");
+    assert!(teams[1].description.is_none());
+}
+
+/// Test that list_organization_teams paginates across multiple pages.
+#[tokio::test]
+async fn test_list_organization_teams_paginates_multiple_pages() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+
+    // Page 1: 2 teams
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 1, "slug": "alpha", "name": "Alpha"},
+            {"id": 2, "slug": "beta",  "name": "Beta"}
+        ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    // Page 2: 1 team
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 3, "slug": "gamma", "name": "Gamma"}
+        ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    // Page 3 (empty): ends pagination
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_organization_teams(org).await;
+
+    if let Err(e) = &result {
+        eprintln!("list_organization_teams pagination error: {e:?}");
+    }
+    let teams = result.expect("Expected Ok result for pagination");
+    assert_eq!(teams.len(), 3, "Should have collected teams from all pages");
+    assert_eq!(teams[0].slug, "alpha");
+    assert_eq!(teams[1].slug, "beta");
+    assert_eq!(teams[2].slug, "gamma");
+}
+
+/// Test that list_organization_teams returns an empty vec when the org has no teams.
+#[tokio::test]
+async fn test_list_organization_teams_returns_empty_when_no_teams() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_organization_teams(org).await;
+
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_empty(), "Expected empty team list");
+}
+
+/// Test that list_organization_teams returns an error on API failure.
+#[tokio::test]
+async fn test_list_organization_teams_returns_error_on_api_failure() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_organization_teams(org).await;
+
+    assert!(result.is_err(), "Expected error on API failure");
+}
+
+/// Test listing team members with a single page of results.
+#[tokio::test]
+async fn test_get_team_members_returns_all_members() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "backend-engineers";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 101, "login": "alice"},
+            {"id": 102, "login": "bob"},
+            {"id": 103, "login": "carol"}
+        ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.get_team_members(org, team_slug).await;
+
+    if let Err(e) = &result {
+        eprintln!("get_team_members error: {e:?}");
+    }
+    let members = result.expect("Expected Ok result");
+    assert_eq!(members.len(), 3);
+    assert_eq!(members[0].login, "alice");
+    assert_eq!(members[1].login, "bob");
+    assert_eq!(members[2].login, "carol");
+}
+
+/// Test that get_team_members paginates across multiple pages.
+#[tokio::test]
+async fn test_get_team_members_paginates_multiple_pages() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "large-team";
+
+    // Page 1: 2 members
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 1, "login": "user1"},
+            {"id": 2, "login": "user2"}
+        ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    // Page 2: 1 member
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 3, "login": "user3"}
+        ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    // Page 3 (empty): ends pagination
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.get_team_members(org, team_slug).await;
+
+    if let Err(e) = &result {
+        eprintln!("get_team_members pagination error: {e:?}");
+    }
+    let members = result.expect("Expected Ok result for pagination");
+    assert_eq!(
+        members.len(),
+        3,
+        "Should have collected members from all pages"
+    );
+}
+
+/// Test that get_team_members returns an empty vec when the team has no members.
+#[tokio::test]
+async fn test_get_team_members_returns_empty_when_no_members() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "empty-team";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.get_team_members(org, team_slug).await;
+
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_empty(), "Expected empty member list");
+}
+
+/// Test that get_team_members returns an error when the team does not exist (404).
+#[tokio::test]
+async fn test_get_team_members_returns_error_on_not_found() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "nonexistent-team";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/orgs/{org}/teams/{team_slug}/members")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.get_team_members(org, team_slug).await;
+
+    assert!(result.is_err(), "Expected error for non-existent team");
+}
+
+/// Test that add_team_to_repository succeeds on 204 No Content (mocked as 200 + {}).
+#[tokio::test]
+async fn test_add_team_to_repository_succeeds() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "backend-engineers";
+    let repo = "my-service";
+    let permission = "push";
+
+    // GitHub returns 204 No Content; mock as 200 + {} to avoid octocrab deserialization error.
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{org}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .add_team_to_repository(org, team_slug, repo, permission)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("add_team_to_repository error: {e:?}");
+    }
+    assert!(result.is_ok(), "Expected Ok on successful team addition");
+}
+
+/// Test that add_team_to_repository returns an error on API failure.
+#[tokio::test]
+async fn test_add_team_to_repository_returns_error_on_api_failure() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "backend-engineers";
+    let repo = "my-service";
+    let permission = "push";
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{org}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Unprocessable Entity",
+            "errors": [{"message": "Invalid permission level"}]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .add_team_to_repository(org, team_slug, repo, permission)
+        .await;
+
+    assert!(result.is_err(), "Expected error on API failure");
+}
+
+/// Test that set_team_repository_permission succeeds (updates an existing permission).
+#[tokio::test]
+async fn test_set_team_repository_permission_succeeds() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "backend-engineers";
+    let repo_owner = "test-org";
+    let repo = "my-service";
+    let permission = "maintain";
+
+    // Same endpoint as add_team_to_repository; GitHub returns 204 → mock as 200 + {}.
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_team_repository_permission(org, team_slug, repo_owner, repo, permission)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("set_team_repository_permission error: {e:?}");
+    }
+    assert!(
+        result.is_ok(),
+        "Expected Ok on successful permission update"
+    );
+}
+
+/// Test that set_team_repository_permission returns an error when the team/repo does not exist (404).
+#[tokio::test]
+async fn test_set_team_repository_permission_returns_error_on_not_found() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "nonexistent-team";
+    let repo_owner = "test-org";
+    let repo = "my-service";
+    let permission = "push";
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_team_repository_permission(org, team_slug, repo_owner, repo, permission)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Expected error for non-existent team or repository"
+    );
+}
