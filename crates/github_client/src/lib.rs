@@ -16,6 +16,7 @@ pub use errors::Error;
 
 // Domain-specific modules
 pub mod branch_protection;
+pub mod collaborator;
 pub mod contents;
 pub mod environment;
 pub mod environment_detector;
@@ -29,6 +30,7 @@ pub mod webhook;
 
 // Re-export types for convenient access
 pub use branch_protection::BranchProtection;
+pub use collaborator::Collaborator;
 pub use contents::{EntryType, TreeEntry};
 pub use environment::{GitHubEnvironmentDetector, PlanLimitations};
 pub use environment_detector::GitHubApiEnvironmentDetector;
@@ -1238,6 +1240,104 @@ impl GitHubClient {
                 }
             },
         }
+    }
+
+    /// Lists all collaborators (individuals with direct access) for a repository.
+    ///
+    /// Paginates through all pages using `per_page=100`.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner (user or organisation) of the repository.
+    /// * `repo`  - The repository name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidResponse`] if the API response cannot be parsed.
+    pub async fn list_repository_collaborators(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<Collaborator>, Error> {
+        todo!()
+    }
+
+    /// Adds a collaborator to a repository with the given permission level, or
+    /// updates an existing collaborator's permission.
+    ///
+    /// Uses `PUT /repos/{owner}/{repo}/collaborators/{username}`.
+    /// GitHub returns 204 (already a collaborator) or 201 (invitation sent).
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`      - The repository owner.
+    /// * `repo`       - The repository name.
+    /// * `username`   - The GitHub login of the user to add.
+    /// * `permission` - Permission level: `pull`, `triage`, `push`, `maintain`, or `admin`.
+    ///
+    /// # Errors
+    ///
+    /// * [`Error::NotFound`]        – Repository does not exist.
+    /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
+    /// * [`Error::InvalidResponse`] – Network or parse failure.
+    pub async fn add_repository_collaborator(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _username: &str,
+        _permission: &str,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Updates the permission level of an existing repository collaborator.
+    ///
+    /// Delegates to [`Self::add_repository_collaborator`] since GitHub uses the
+    /// same `PUT` endpoint for both adding and updating collaborators.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`      - The repository owner.
+    /// * `repo`       - The repository name.
+    /// * `username`   - The GitHub login of the collaborator.
+    /// * `permission` - New permission level.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::add_repository_collaborator`].
+    pub async fn set_collaborator_permission(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _username: &str,
+        _permission: &str,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Removes a collaborator from a repository.
+    ///
+    /// Uses `DELETE /repos/{owner}/{repo}/collaborators/{username}`.
+    /// GitHub returns 204 on success.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`    - The repository owner.
+    /// * `repo`     - The repository name.
+    /// * `username` - The GitHub login of the collaborator to remove.
+    ///
+    /// # Errors
+    ///
+    /// * [`Error::NotFound`]        – Repository or collaborator does not exist.
+    /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
+    /// * [`Error::InvalidResponse`] – Network or parse failure.
+    pub async fn remove_repository_collaborator(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _username: &str,
+    ) -> Result<(), Error> {
+        todo!()
     }
 }
 

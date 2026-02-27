@@ -1431,3 +1431,338 @@ async fn test_set_team_repository_permission_returns_error_on_not_found() {
         "Expected error for non-existent team or repository"
     );
 }
+
+// --- Collaborator Method Tests ---
+
+/// Test that list_repository_collaborators returns all collaborators from a single page.
+#[tokio::test]
+async fn test_list_repository_collaborators_returns_all_collaborators() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/collaborators")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 1, "login": "alice"},
+            {"id": 2, "login": "bob"}
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_repository_collaborators(owner, repo).await;
+
+    if let Err(e) = &result {
+        eprintln!("list_repository_collaborators error: {e:?}");
+    }
+    let collaborators = result.unwrap();
+    assert_eq!(collaborators.len(), 2);
+    assert_eq!(collaborators[0].login, "alice");
+    assert_eq!(collaborators[1].login, "bob");
+}
+
+/// Test that list_repository_collaborators paginates when multiple pages exist.
+#[tokio::test]
+async fn test_list_repository_collaborators_paginates_multiple_pages() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "big-project";
+
+    // Page 1: full page of 1 item (small per_page for test simplicity)
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/collaborators")))
+        .and(wiremock::matchers::query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 10, "login": "user10"}
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    // Page 2: empty → signals end of pagination
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/collaborators")))
+        .and(wiremock::matchers::query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_repository_collaborators(owner, repo).await;
+
+    let collaborators = result.unwrap();
+    assert_eq!(collaborators.len(), 1);
+    assert_eq!(collaborators[0].login, "user10");
+}
+
+/// Test that list_repository_collaborators returns an empty Vec when the repository has no collaborators.
+#[tokio::test]
+async fn test_list_repository_collaborators_returns_empty_when_none() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "empty-project";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/collaborators")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_repository_collaborators(owner, repo).await;
+
+    assert!(result.unwrap().is_empty());
+}
+
+/// Test that list_repository_collaborators returns an error on API failure.
+#[tokio::test]
+async fn test_list_repository_collaborators_returns_error_on_api_failure() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/collaborators")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client.list_repository_collaborators(owner, repo).await;
+
+    assert!(result.is_err(), "Expected error on API failure");
+}
+
+/// Test that add_repository_collaborator succeeds (GitHub returns 204, mocked as 200 + {}).
+#[tokio::test]
+async fn test_add_repository_collaborator_succeeds() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let username = "newcollab";
+    let permission = "push";
+
+    // GitHub returns 204 No Content; mock as 200 + {} to avoid octocrab deserialization error.
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .add_repository_collaborator(owner, repo, username, permission)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("add_repository_collaborator error: {e:?}");
+    }
+    assert!(result.is_ok(), "Expected Ok on successful collaborator add");
+}
+
+/// Test that add_repository_collaborator returns NotFound when the repository does not exist.
+#[tokio::test]
+async fn test_add_repository_collaborator_returns_not_found_for_missing_repo() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "nonexistent-repo";
+    let username = "someone";
+    let permission = "push";
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .add_repository_collaborator(owner, repo, username, permission)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Expected error for non-existent repository"
+    );
+    assert!(
+        matches!(result.unwrap_err(), Error::NotFound),
+        "Expected NotFound error"
+    );
+}
+
+/// Test that set_collaborator_permission succeeds (delegates to same PUT endpoint).
+#[tokio::test]
+async fn test_set_collaborator_permission_succeeds() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let username = "existingcollab";
+    let permission = "maintain";
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .set_collaborator_permission(owner, repo, username, permission)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("set_collaborator_permission error: {e:?}");
+    }
+    assert!(
+        result.is_ok(),
+        "Expected Ok on successful permission update"
+    );
+}
+
+/// Test that remove_repository_collaborator succeeds (GitHub returns 204, mocked as 200 + {}).
+#[tokio::test]
+async fn test_remove_repository_collaborator_succeeds() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let username = "leavingcollab";
+
+    // GitHub returns 204 No Content; mock as 200 + {} to keep octocrab happy.
+    Mock::given(method("DELETE"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .remove_repository_collaborator(owner, repo, username)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("remove_repository_collaborator error: {e:?}");
+    }
+    assert!(
+        result.is_ok(),
+        "Expected Ok on successful collaborator removal"
+    );
+}
+
+/// Test that remove_repository_collaborator returns an error when the repository or collaborator is not found.
+#[tokio::test]
+async fn test_remove_repository_collaborator_returns_not_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "nonexistent-repo";
+    let username = "ghostuser";
+
+    Mock::given(method("DELETE"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .remove_repository_collaborator(owner, repo, username)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Expected error for non-existent repository"
+    );
+    assert!(
+        matches!(result.unwrap_err(), Error::NotFound),
+        "Expected NotFound error"
+    );
+}
