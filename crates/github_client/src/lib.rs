@@ -845,7 +845,89 @@ impl GitHubClient {
     /// ```
     #[instrument(skip(self), fields(org = %org))]
     pub async fn list_organization_teams(&self, org: &str) -> Result<Vec<Team>, Error> {
-        todo!("implement list_organization_teams")
+        info!(org = org, "Listing organization teams");
+
+        let mut all_teams: Vec<Team> = Vec::new();
+        let mut page: u32 = 1;
+        let per_page: u32 = 100;
+
+        loop {
+            let route = format!("/orgs/{org}/teams?per_page={per_page}&page={page}");
+            let result: OctocrabResult<Vec<serde_json::Value>> =
+                self.client.get(&route, None::<&()>).await;
+
+            match result {
+                Ok(items) => {
+                    if items.is_empty() {
+                        debug!(
+                            org = org,
+                            page = page,
+                            "No more teams — pagination complete"
+                        );
+                        break;
+                    }
+
+                    let page_count = items.len();
+                    for item in items {
+                        match serde_json::from_value::<Team>(item) {
+                            Ok(team) => all_teams.push(team),
+                            Err(e) => {
+                                error!(
+                                    org = org,
+                                    page = page,
+                                    "Failed to deserialize team from API response: {}",
+                                    e
+                                );
+                                return Err(Error::InvalidResponse);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        org = org,
+                        page = page,
+                        count = page_count,
+                        "Retrieved page of teams"
+                    );
+                    page += 1;
+                }
+                Err(e) => match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        eprintln!(
+                                "DIAGNOSTIC: GitHub API error listing teams for {org}: status={}, message={}",
+                                source.status_code, source.message
+                            );
+                        error!(
+                            org = org,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing organization teams"
+                        );
+                        log_octocrab_error("Failed to list organization teams", e);
+                        return Err(Error::ApiError());
+                    }
+                    _ => {
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error listing teams for {org}: error={e}"
+                        );
+                        error!(
+                            org = org,
+                            error = %e,
+                            "Non-GitHub error listing organization teams"
+                        );
+                        log_octocrab_error("Failed to list organization teams", e);
+                        return Err(Error::InvalidResponse);
+                    }
+                },
+            }
+        }
+
+        info!(
+            org = org,
+            count = all_teams.len(),
+            "Successfully retrieved all organization teams"
+        );
+        Ok(all_teams)
     }
 
     /// Lists all members of a specific team in a GitHub organization.
@@ -884,7 +966,102 @@ impl GitHubClient {
         org: &str,
         team_slug: &str,
     ) -> Result<Vec<TeamMember>, Error> {
-        todo!("implement get_team_members")
+        info!(org = org, team_slug = team_slug, "Listing team members");
+
+        let mut all_members: Vec<TeamMember> = Vec::new();
+        let mut page: u32 = 1;
+        let per_page: u32 = 100;
+
+        loop {
+            let route =
+                format!("/orgs/{org}/teams/{team_slug}/members?per_page={per_page}&page={page}");
+            let result: OctocrabResult<Vec<serde_json::Value>> =
+                self.client.get(&route, None::<&()>).await;
+
+            match result {
+                Ok(items) => {
+                    if items.is_empty() {
+                        debug!(
+                            org = org,
+                            team_slug = team_slug,
+                            page = page,
+                            "No more members — pagination complete"
+                        );
+                        break;
+                    }
+
+                    let page_count = items.len();
+                    for item in items {
+                        match serde_json::from_value::<TeamMember>(item) {
+                            Ok(member) => all_members.push(member),
+                            Err(e) => {
+                                error!(
+                                    org = org,
+                                    team_slug = team_slug,
+                                    page = page,
+                                    "Failed to deserialize team member from API response: {}",
+                                    e
+                                );
+                                return Err(Error::InvalidResponse);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        org = org,
+                        team_slug = team_slug,
+                        page = page,
+                        count = page_count,
+                        "Retrieved page of team members"
+                    );
+                    page += 1;
+                }
+                Err(e) => match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            error!(org = org, team_slug = team_slug, "Team not found");
+                            log_octocrab_error("Team not found", e);
+                            return Err(Error::NotFound);
+                        }
+
+                        eprintln!(
+                                "DIAGNOSTIC: GitHub API error listing members for {org}/{team_slug}: status={}, message={}",
+                                source.status_code, source.message
+                            );
+                        error!(
+                            org = org,
+                            team_slug = team_slug,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing team members"
+                        );
+                        log_octocrab_error("Failed to list team members", e);
+                        return Err(Error::ApiError());
+                    }
+                    _ => {
+                        eprintln!(
+                                "DIAGNOSTIC: Non-GitHub error listing members for {org}/{team_slug}: error={e}"
+                            );
+                        error!(
+                            org = org,
+                            team_slug = team_slug,
+                            error = %e,
+                            "Non-GitHub error listing team members"
+                        );
+                        log_octocrab_error("Failed to list team members", e);
+                        return Err(Error::InvalidResponse);
+                    }
+                },
+            }
+        }
+
+        info!(
+            org = org,
+            team_slug = team_slug,
+            count = all_members.len(),
+            "Successfully retrieved all team members"
+        );
+        Ok(all_members)
     }
 
     /// Adds a team to a repository with the specified permission level.
@@ -933,7 +1110,10 @@ impl GitHubClient {
         repo: &str,
         permission: &str,
     ) -> Result<(), Error> {
-        todo!("implement add_team_to_repository")
+        // add_team_to_repository and set_team_repository_permission use the same
+        // GitHub endpoint; the org is also the repo owner for org repositories.
+        self.set_team_repository_permission(org, team_slug, org, repo, permission)
+            .await
     }
 
     /// Updates the permission level for a team that already has access to a repository.
@@ -982,7 +1162,82 @@ impl GitHubClient {
         repo: &str,
         permission: &str,
     ) -> Result<(), Error> {
-        todo!("implement set_team_repository_permission")
+        info!(
+            org = org,
+            team_slug = team_slug,
+            repo_owner = repo_owner,
+            repo = repo,
+            permission = permission,
+            "Setting team repository permission"
+        );
+
+        let route = format!("/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}");
+        let body = serde_json::json!({ "permission": permission });
+
+        // GitHub returns 204 No Content on success; use Option<serde_json::Value>
+        // to handle both 204 (real GitHub) and 200 + {} (wiremock tests) gracefully.
+        let result: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(route, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    org = org,
+                    team_slug = team_slug,
+                    repo_owner = repo_owner,
+                    repo = repo,
+                    permission = permission,
+                    "Successfully set team repository permission"
+                );
+                Ok(())
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            org = org,
+                            team_slug = team_slug,
+                            repo_owner = repo_owner,
+                            repo = repo,
+                            "Team or repository not found when setting permission"
+                        );
+                        log_octocrab_error("Team or repository not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    eprintln!(
+                            "DIAGNOSTIC: GitHub API error setting team permission for {org}/{team_slug} on {repo_owner}/{repo}: status={}, message={}",
+                            source.status_code, source.message
+                        );
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error setting team repository permission"
+                    );
+                    log_octocrab_error("Failed to set team repository permission", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error setting team permission for {org}/{team_slug} on {repo_owner}/{repo}: error={e}"
+                        );
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        error = %e,
+                        "Non-GitHub error setting team repository permission"
+                    );
+                    log_octocrab_error("Failed to set team repository permission", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
     }
 }
 
