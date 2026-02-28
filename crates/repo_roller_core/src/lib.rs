@@ -137,6 +137,9 @@ mod ruleset_manager;
 // Permission types and domain model
 pub mod permissions;
 
+// Policy engine for permission evaluation
+pub mod policy_engine;
+
 // Event publishing operations
 pub mod event_publisher;
 
