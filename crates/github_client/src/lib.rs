@@ -1254,12 +1254,106 @@ impl GitHubClient {
     /// # Errors
     ///
     /// Returns [`Error::InvalidResponse`] if the API response cannot be parsed.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
     pub async fn list_repository_collaborators(
         &self,
-        _owner: &str,
-        _repo: &str,
+        owner: &str,
+        repo: &str,
     ) -> Result<Vec<Collaborator>, Error> {
-        todo!()
+        info!(
+            owner = owner,
+            repo = repo,
+            "Listing repository collaborators"
+        );
+
+        let mut all_collaborators: Vec<Collaborator> = Vec::new();
+        let mut page: u32 = 1;
+        let per_page: u32 = 100;
+
+        loop {
+            let route =
+                format!("/repos/{owner}/{repo}/collaborators?per_page={per_page}&page={page}");
+            let result: OctocrabResult<Vec<serde_json::Value>> =
+                self.client.get(&route, None::<&()>).await;
+
+            match result {
+                Ok(items) => {
+                    if items.is_empty() {
+                        debug!(
+                            owner = owner,
+                            repo = repo,
+                            page = page,
+                            "No more collaborators — pagination complete"
+                        );
+                        break;
+                    }
+
+                    let page_count = items.len();
+                    for item in items {
+                        match serde_json::from_value::<Collaborator>(item) {
+                            Ok(collaborator) => all_collaborators.push(collaborator),
+                            Err(e) => {
+                                error!(
+                                    owner = owner,
+                                    repo = repo,
+                                    page = page,
+                                    "Failed to deserialize collaborator from API response: {}",
+                                    e
+                                );
+                                return Err(Error::InvalidResponse);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        owner = owner,
+                        repo = repo,
+                        page = page,
+                        count = page_count,
+                        "Retrieved page of collaborators"
+                    );
+                    page += 1;
+                }
+                Err(e) => match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        eprintln!(
+                            "DIAGNOSTIC: GitHub API error listing collaborators for {owner}/{repo}: status={}, message={}",
+                            source.status_code, source.message
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing repository collaborators"
+                        );
+                        log_octocrab_error("Failed to list repository collaborators", e);
+                        return Err(Error::ApiError());
+                    }
+                    _ => {
+                        eprintln!(
+                            "DIAGNOSTIC: Non-GitHub error listing collaborators for {owner}/{repo}: error={e}"
+                        );
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            error = %e,
+                            "Non-GitHub error listing repository collaborators"
+                        );
+                        log_octocrab_error("Failed to list repository collaborators", e);
+                        return Err(Error::InvalidResponse);
+                    }
+                },
+            }
+        }
+
+        info!(
+            owner = owner,
+            repo = repo,
+            count = all_collaborators.len(),
+            "Successfully retrieved all repository collaborators"
+        );
+        Ok(all_collaborators)
     }
 
     /// Adds a collaborator to a repository with the given permission level, or
@@ -1280,14 +1374,84 @@ impl GitHubClient {
     /// * [`Error::NotFound`]        – Repository does not exist.
     /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
     /// * [`Error::InvalidResponse`] – Network or parse failure.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username, permission = %permission))]
     pub async fn add_repository_collaborator(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _username: &str,
-        _permission: &str,
+        owner: &str,
+        repo: &str,
+        username: &str,
+        permission: &str,
     ) -> Result<(), Error> {
-        todo!()
+        info!(
+            owner = owner,
+            repo = repo,
+            username = username,
+            permission = permission,
+            "Adding repository collaborator"
+        );
+
+        let route = format!("/repos/{owner}/{repo}/collaborators/{username}");
+        let body = serde_json::json!({ "permission": permission });
+
+        // GitHub returns 201 (invitation sent) or 204 (already a collaborator).
+        // Use Option<serde_json::Value> so octocrab handles both gracefully.
+        let result: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(route, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    username = username,
+                    "Successfully added repository collaborator"
+                );
+                Ok(())
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Repository not found when adding collaborator"
+                        );
+                        log_octocrab_error("Repository not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    eprintln!(
+                        "DIAGNOSTIC: GitHub API error adding collaborator {username} to {owner}/{repo}: status={}, message={}",
+                        source.status_code, source.message
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error adding repository collaborator"
+                    );
+                    log_octocrab_error("Failed to add repository collaborator", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    eprintln!(
+                        "DIAGNOSTIC: Non-GitHub error adding collaborator {username} to {owner}/{repo}: error={e}"
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        error = %e,
+                        "Non-GitHub error adding repository collaborator"
+                    );
+                    log_octocrab_error("Failed to add repository collaborator", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
     }
 
     /// Updates the permission level of an existing repository collaborator.
@@ -1305,14 +1469,17 @@ impl GitHubClient {
     /// # Errors
     ///
     /// Same as [`Self::add_repository_collaborator`].
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username, permission = %permission))]
     pub async fn set_collaborator_permission(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _username: &str,
-        _permission: &str,
+        owner: &str,
+        repo: &str,
+        username: &str,
+        permission: &str,
     ) -> Result<(), Error> {
-        todo!()
+        // GitHub uses the same PUT endpoint for adding and updating collaborators.
+        self.add_repository_collaborator(owner, repo, username, permission)
+            .await
     }
 
     /// Removes a collaborator from a repository.
@@ -1331,13 +1498,81 @@ impl GitHubClient {
     /// * [`Error::NotFound`]        – Repository or collaborator does not exist.
     /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
     /// * [`Error::InvalidResponse`] – Network or parse failure.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username))]
     pub async fn remove_repository_collaborator(
         &self,
-        _owner: &str,
-        _repo: &str,
-        _username: &str,
+        owner: &str,
+        repo: &str,
+        username: &str,
     ) -> Result<(), Error> {
-        todo!()
+        info!(
+            owner = owner,
+            repo = repo,
+            username = username,
+            "Removing repository collaborator"
+        );
+
+        let route = format!("/repos/{owner}/{repo}/collaborators/{username}");
+
+        // GitHub returns 204 No Content on success.
+        // Use Option<serde_json::Value> so octocrab handles both 204 and 200 + {} gracefully.
+        let result: OctocrabResult<Option<serde_json::Value>> =
+            self.client.delete(route, None::<&()>).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    username = username,
+                    "Successfully removed repository collaborator"
+                );
+                Ok(())
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Repository or collaborator not found when removing"
+                        );
+                        log_octocrab_error("Repository or collaborator not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    eprintln!(
+                        "DIAGNOSTIC: GitHub API error removing collaborator {username} from {owner}/{repo}: status={}, message={}",
+                        source.status_code, source.message
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error removing repository collaborator"
+                    );
+                    log_octocrab_error("Failed to remove repository collaborator", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    eprintln!(
+                        "DIAGNOSTIC: Non-GitHub error removing collaborator {username} from {owner}/{repo}: error={e}"
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        error = %e,
+                        "Non-GitHub error removing repository collaborator"
+                    );
+                    log_octocrab_error("Failed to remove repository collaborator", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
     }
 }
 

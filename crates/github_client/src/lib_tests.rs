@@ -1441,12 +1441,20 @@ async fn test_list_repository_collaborators_returns_all_collaborators() {
     let owner = "test-org";
     let repo = "my-service";
 
+    // First page returns 2 collaborators; second page (empty) ends pagination.
     Mock::given(method("GET"))
         .and(path(format!("/repos/{owner}/{repo}/collaborators")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
             {"id": 1, "login": "alice"},
             {"id": 2, "login": "bob"}
         ])))
+        .up_to_n_times(1)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/collaborators")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
         .mount(&mock_server)
         .await;
 
