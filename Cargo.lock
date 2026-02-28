@@ -2691,6 +2691,7 @@ dependencies = [
  "github_client",
  "hex",
  "hmac",
+ "octocrab",
  "prometheus",
  "reqwest",
  "serde",

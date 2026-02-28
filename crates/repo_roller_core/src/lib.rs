@@ -140,6 +140,9 @@ pub mod permissions;
 // Policy engine for permission evaluation
 pub mod policy_engine;
 
+// Permission manager for orchestrating permission application
+pub mod permission_manager;
+
 // Event publishing operations
 pub mod event_publisher;
 
