@@ -21,9 +21,12 @@
 //!
 //! See `docs/spec/design/multi-level-permissions.md` for the full spec.
 
+use tracing::instrument;
+
 use crate::permissions::{
-    OrganizationPermissionPolicies, PermissionDuration, PermissionGrant, PermissionHierarchy,
-    PermissionRequest, PermissionType, RepositoryTypePermissions, TemplatePermissions,
+    AccessLevel, OrganizationPermissionPolicies, PermissionDuration, PermissionGrant,
+    PermissionHierarchy, PermissionRequest, PermissionType, RepositoryTypePermissions,
+    TemplatePermissions,
 };
 
 pub use crate::permissions::PermissionError;
@@ -147,13 +150,57 @@ impl PolicyEngine {
     ///   type config.
     /// - [`PermissionError::TemplateRequirementConflict`] — the template
     ///   requires a permission that org policy disallows.
-    #[allow(dead_code)] // remove when todo!() is replaced
+    #[instrument(skip(self, hierarchy), fields(
+        requestor = %request.requestor,
+        emergency_access = request.emergency_access,
+        repository = %request.repository_context.repository,
+        organization = %request.repository_context.organization
+    ))]
     pub fn evaluate_permission_request(
         &self,
-        _request: &PermissionRequest,
-        _hierarchy: &PermissionHierarchy,
+        request: &PermissionRequest,
+        hierarchy: &PermissionHierarchy,
     ) -> Result<PermissionEvaluationResult, PermissionError> {
-        todo!()
+        // Step 1: Organization baseline — enforce floor (baseline) and ceiling (restrictions).
+        self.validate_organization_baseline(
+            &request.requested_permissions,
+            &hierarchy.organization_policies,
+        )?;
+
+        // Step 2: Repository type — reject any permission using a restricted type.
+        if let Some(type_perms) = &hierarchy.repository_type_permissions {
+            self.validate_repository_type_permissions(&request.requested_permissions, type_perms)?;
+        }
+
+        // Step 3: Template — detect conflicts between template requirements and org restrictions.
+        if let Some(template) = &hierarchy.template_permissions {
+            self.validate_template_permissions(template, &hierarchy.organization_policies)?;
+        }
+
+        // Step 4: User permission validation — user requests vs. org restrictions (explicit step
+        // for traceability; structurally overlaps with step 1 but is a distinct evaluation pass).
+        self.validate_user_permissions(
+            &request.requested_permissions,
+            &hierarchy.organization_policies,
+        )?;
+
+        // Step 5: Emergency access gate — route to RequiresApproval before granting anything.
+        if request.emergency_access {
+            return Ok(PermissionEvaluationResult::RequiresApproval {
+                reason: "Emergency access requests require explicit approval before \
+                         permissions can be applied"
+                    .to_string(),
+                restricted_permissions: request.requested_permissions.clone(),
+            });
+        }
+
+        // Step 6: Merge all hierarchy layers and approve.
+        let granted_permissions = self.merge_permissions(hierarchy, &request.requested_permissions);
+
+        Ok(PermissionEvaluationResult::Approved {
+            granted_permissions,
+            effective_duration: request.duration,
+        })
     }
 
     /// Validates that requested permissions respect the organization's
@@ -166,13 +213,41 @@ impl PolicyEngine {
     ///   any requested permission with the same `permission_type` and `scope`
     ///   must be at or above the requirement's `level` →
     ///   [`PermissionError::BelowBaseline`].
-    #[allow(dead_code)]
     fn validate_organization_baseline(
         &self,
-        _requested: &[PermissionGrant],
-        _policies: &OrganizationPermissionPolicies,
+        requested: &[PermissionGrant],
+        policies: &OrganizationPermissionPolicies,
     ) -> Result<(), PermissionError> {
-        todo!()
+        for req in requested {
+            // Ceiling check: must not exceed the restriction maximum for this type+scope.
+            for restriction in &policies.restrictions {
+                if restriction.permission_type == req.permission_type
+                    && restriction.scope == req.scope
+                    && req.level > restriction.level
+                {
+                    return Err(PermissionError::ExceedsOrganizationLimits {
+                        permission_type: req.permission_type,
+                        level: req.level,
+                        maximum_allowed: restriction.level,
+                    });
+                }
+            }
+
+            // Floor check: must not fall below the baseline level for this type+scope.
+            for baseline in &policies.baseline_requirements {
+                if baseline.permission_type == req.permission_type
+                    && baseline.scope == req.scope
+                    && req.level < baseline.level
+                {
+                    return Err(PermissionError::BelowBaseline {
+                        permission_type: req.permission_type,
+                        level: req.level,
+                        minimum_required: baseline.level,
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Validates that no requested permission uses a permission type that the
@@ -182,13 +257,21 @@ impl PolicyEngine {
     /// Any request using one returns
     /// [`PermissionError::ExceedsOrganizationLimits`] with
     /// `maximum_allowed: AccessLevel::None`.
-    #[allow(dead_code)]
     fn validate_repository_type_permissions(
         &self,
-        _requested: &[PermissionGrant],
-        _type_perms: &RepositoryTypePermissions,
+        requested: &[PermissionGrant],
+        type_perms: &RepositoryTypePermissions,
     ) -> Result<(), PermissionError> {
-        todo!()
+        for req in requested {
+            if self.is_restricted_type(req.permission_type, type_perms) {
+                return Err(PermissionError::ExceedsOrganizationLimits {
+                    permission_type: req.permission_type,
+                    level: req.level,
+                    maximum_allowed: AccessLevel::None,
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Validates that template-required permissions do not conflict with
@@ -198,13 +281,25 @@ impl PolicyEngine {
     /// whether the organization's restrictions would forbid it.  If a
     /// template requires a permission that org policy disallows, it returns
     /// [`PermissionError::TemplateRequirementConflict`].
-    #[allow(dead_code)]
     fn validate_template_permissions(
         &self,
-        _template: &TemplatePermissions,
-        _policies: &OrganizationPermissionPolicies,
+        template: &TemplatePermissions,
+        policies: &OrganizationPermissionPolicies,
     ) -> Result<(), PermissionError> {
-        todo!()
+        for required in &template.required_permissions {
+            for restriction in &policies.restrictions {
+                if restriction.permission_type == required.permission_type
+                    && restriction.scope == required.scope
+                    && required.level > restriction.level
+                {
+                    return Err(PermissionError::TemplateRequirementConflict {
+                        permission_type: required.permission_type,
+                        level: required.level,
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Validates user-requested permissions against organization restrictions.
@@ -212,13 +307,29 @@ impl PolicyEngine {
     /// This is semantically equivalent to the ceiling half of
     /// [`Self::validate_organization_baseline`] but is a distinct step to
     /// make the evaluation flow explicit.
-    #[allow(dead_code)]
     fn validate_user_permissions(
         &self,
-        _requested: &[PermissionGrant],
-        _policies: &OrganizationPermissionPolicies,
+        requested: &[PermissionGrant],
+        policies: &OrganizationPermissionPolicies,
     ) -> Result<(), PermissionError> {
-        todo!()
+        // Check user-requested permissions against org restrictions (ceiling only).
+        // This is an explicit step to make the evaluation flow traceable; it overlaps
+        // structurally with the ceiling half of validate_organization_baseline.
+        for req in requested {
+            for restriction in &policies.restrictions {
+                if restriction.permission_type == req.permission_type
+                    && restriction.scope == req.scope
+                    && req.level > restriction.level
+                {
+                    return Err(PermissionError::ExceedsOrganizationLimits {
+                        permission_type: req.permission_type,
+                        level: req.level,
+                        maximum_allowed: restriction.level,
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Assembles the final effective permission list by merging all hierarchy
@@ -232,23 +343,55 @@ impl PolicyEngine {
     ///
     /// Deduplication is by equality (`PartialEq`): the first occurrence of an
     /// identical [`PermissionGrant`] wins; subsequent duplicates are skipped.
-    #[allow(dead_code)]
     fn merge_permissions(
         &self,
-        _hierarchy: &PermissionHierarchy,
-        _requested: &[PermissionGrant],
+        hierarchy: &PermissionHierarchy,
+        requested: &[PermissionGrant],
     ) -> Vec<PermissionGrant> {
-        todo!()
+        let mut merged: Vec<PermissionGrant> = Vec::new();
+
+        // Layer 1: Organization baseline requirements (guaranteed minimums).
+        for perm in &hierarchy.organization_policies.baseline_requirements {
+            if !merged.contains(perm) {
+                merged.push(perm.clone());
+            }
+        }
+
+        // Layer 2: Repository type required permissions.
+        if let Some(type_perms) = &hierarchy.repository_type_permissions {
+            for perm in &type_perms.required_permissions {
+                if !merged.contains(perm) {
+                    merged.push(perm.clone());
+                }
+            }
+        }
+
+        // Layer 3: Template required permissions.
+        if let Some(template) = &hierarchy.template_permissions {
+            for perm in &template.required_permissions {
+                if !merged.contains(perm) {
+                    merged.push(perm.clone());
+                }
+            }
+        }
+
+        // Layer 4: User-requested permissions.
+        for perm in requested {
+            if !merged.contains(perm) {
+                merged.push(perm.clone());
+            }
+        }
+
+        merged
     }
 
     /// Checks whether a `permission_type` appears in the list of restricted
     /// types for a repository type configuration.
-    #[allow(dead_code)]
     fn is_restricted_type(
         &self,
-        _permission_type: PermissionType,
-        _type_perms: &RepositoryTypePermissions,
+        permission_type: PermissionType,
+        type_perms: &RepositoryTypePermissions,
     ) -> bool {
-        todo!()
+        type_perms.restricted_types.contains(&permission_type)
     }
 }
