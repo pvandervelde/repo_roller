@@ -1,4 +1,4 @@
-// Tests for content_providers module
+﻿// Tests for content_providers module
 // See specs/interfaces/content-providers.md for complete specification
 
 use super::*;
@@ -55,6 +55,7 @@ fn create_test_template_config() -> config_manager::TemplateConfig {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     }
 }
 

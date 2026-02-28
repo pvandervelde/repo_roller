@@ -1,4 +1,4 @@
-//! Tests for template configuration.
+﻿//! Tests for template configuration.
 
 use super::*;
 
@@ -464,6 +464,7 @@ fn test_serialize_round_trip() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -494,6 +495,7 @@ fn test_clone_creates_independent_copy() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     };
 
     let cloned = config.clone();
@@ -522,6 +524,7 @@ fn test_debug_format() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     };
 
     let debug_str = format!("{:?}", config);
@@ -667,6 +670,7 @@ fn test_template_config_visibility_serialization() {
         default_visibility: Some(crate::visibility::RepositoryVisibility::Private),
         templating: None,
         notifications: None,
+        permissions: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -704,6 +708,7 @@ fn test_template_config_none_visibility_not_serialized() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -943,6 +948,7 @@ fn test_template_config_serialization_with_templating() {
             exclude_patterns: vec!["target/**".to_string()],
         }),
         notifications: None,
+        permissions: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -961,4 +967,44 @@ fn test_template_config_serialization_with_templating() {
         parsed.templating.as_ref().unwrap().exclude_patterns.len(),
         1
     );
+}
+
+// -- Permission constraints field ----------------------------------------------
+
+#[test]
+fn test_deserialize_with_permissions_required() {
+    let toml = r#"
+        [template]
+        name = "my-template"
+        description = "A template"
+        author = "Test"
+        tags = []
+
+        [[permissions.required]]
+        permission_type = "push"
+        level = "write"
+        scope = "team"
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    let perms = config.permissions.expect("permissions present");
+    let required = perms.required.expect("required present");
+    assert_eq!(required.len(), 1);
+    assert_eq!(required[0].permission_type, "push");
+    assert_eq!(required[0].level, "write");
+    assert_eq!(required[0].scope, "team");
+}
+
+#[test]
+fn test_deserialize_without_permissions_gives_none() {
+    let toml = r#"
+        [template]
+        name = "my-template"
+        description = "A template"
+        author = "Test"
+        tags = []
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.permissions.is_none());
 }

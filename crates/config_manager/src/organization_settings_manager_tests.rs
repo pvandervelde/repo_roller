@@ -1,4 +1,4 @@
-//! Tests for organization settings manager.
+﻿//! Tests for organization settings manager.
 
 use super::*;
 use crate::{
@@ -44,6 +44,7 @@ impl TemplateRepository for MockTemplateRepository {
             default_visibility: None,
             templating: None,
             notifications: None,
+            permissions: None,
         })
     }
 
@@ -498,6 +499,7 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             default_visibility: None,
             templating: None,
             notifications: None,
+            permissions: None,
         })
     }
 

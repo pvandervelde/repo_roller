@@ -404,3 +404,92 @@ fn permission_error_template_requirement_conflict_carries_context() {
         "Error message should mention template: {msg}"
     );
 }
+
+//  TryFrom config conversion tests
+
+#[cfg(test)]
+mod tryfrom_tests {
+    use super::*;
+    use config_manager::settings::{
+        OrganizationPermissionPoliciesConfig, PermissionGrantConfig,
+        RepositoryTypePermissionsConfig, TemplatePermissionsConfig,
+    };
+
+    fn make_grant(permission_type: &str, level: &str, scope: &str) -> PermissionGrantConfig {
+        PermissionGrantConfig {
+            permission_type: permission_type.to_string(),
+            level: level.to_string(),
+            scope: scope.to_string(),
+        }
+    }
+
+    #[test]
+    fn permission_grant_converts_push_write_team() {
+        let cfg = make_grant("push", "write", "team");
+        let _grant = PermissionGrant::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn permission_grant_converts_pull_read_user() {
+        let cfg = make_grant("pull", "read", "user");
+        let _grant = PermissionGrant::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn permission_grant_converts_admin_admin_repository() {
+        let cfg = make_grant("admin", "admin", "repository");
+        let _grant = PermissionGrant::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn org_policies_converts_baseline_and_restrictions() {
+        let cfg = OrganizationPermissionPoliciesConfig {
+            baseline: Some(vec![make_grant("push", "write", "team")]),
+            restrictions: Some(vec![make_grant("admin", "admin", "repository")]),
+        };
+        let _policies =
+            OrganizationPermissionPolicies::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn org_policies_converts_none_baseline_and_restrictions() {
+        let cfg = OrganizationPermissionPoliciesConfig {
+            baseline: None,
+            restrictions: None,
+        };
+        let _policies =
+            OrganizationPermissionPolicies::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn repo_type_perms_converts_required_and_restricted() {
+        let cfg = RepositoryTypePermissionsConfig {
+            required: Some(vec![make_grant("push", "write", "team")]),
+            restricted_types: Some(vec!["admin".to_string()]),
+        };
+        let _perms = RepositoryTypePermissions::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn repo_type_perms_converts_empty() {
+        let cfg = RepositoryTypePermissionsConfig {
+            required: None,
+            restricted_types: None,
+        };
+        let _perms = RepositoryTypePermissions::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn template_perms_converts_required() {
+        let cfg = TemplatePermissionsConfig {
+            required: Some(vec![make_grant("push", "write", "team")]),
+        };
+        let _perms = TemplatePermissions::try_from(&cfg).expect("conversion succeeds");
+    }
+
+    #[test]
+    fn template_perms_converts_none_required() {
+        let cfg = TemplatePermissionsConfig { required: None };
+        let _perms = TemplatePermissions::try_from(&cfg).expect("conversion succeeds");
+    }
+}

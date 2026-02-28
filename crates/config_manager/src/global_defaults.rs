@@ -143,6 +143,26 @@ pub struct GlobalDefaults {
     /// timeout_seconds = 5
     /// ```
     pub notifications: Option<NotificationsConfig>,
+
+    /// Organization-wide permission policies (optional).
+    ///
+    /// Defines the floor (`baseline`) and ceiling (`restrictions`) for
+    /// all repositories in the organization.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[permissions.baseline]]
+    /// permission_type = "pull"
+    /// level = "read"
+    /// scope = "repository"
+    ///
+    /// [[permissions.restrictions]]
+    /// permission_type = "admin"
+    /// level = "maintain"
+    /// scope = "user"
+    /// ```
+    pub permissions: Option<OrganizationPermissionPoliciesConfig>,
 }
 
 #[cfg(test)]

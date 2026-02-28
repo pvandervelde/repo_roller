@@ -128,3 +128,40 @@ fn test_empty_config_deserializes() {
     let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
     assert!(defaults.repository.is_none());
 }
+
+// ── Permission policy field ────────────────────────────────────────────────────
+
+#[test]
+fn test_deserialize_with_permissions_baseline_and_restrictions() {
+    let toml = r#"
+        [[permissions.baseline]]
+        permission_type = "pull"
+        level = "read"
+        scope = "repository"
+
+        [[permissions.restrictions]]
+        permission_type = "admin"
+        level = "maintain"
+        scope = "user"
+    "#;
+
+    let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
+    let perms = defaults.permissions.expect("permissions present");
+    let baseline = perms.baseline.expect("baseline present");
+    assert_eq!(baseline.len(), 1);
+    assert_eq!(baseline[0].permission_type, "pull");
+    let restrictions = perms.restrictions.expect("restrictions present");
+    assert_eq!(restrictions.len(), 1);
+    assert_eq!(restrictions[0].permission_type, "admin");
+}
+
+#[test]
+fn test_deserialize_without_permissions_gives_none() {
+    let toml = r#"
+        [repository]
+        issues = { value = true, override_allowed = true }
+    "#;
+
+    let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
+    assert!(defaults.permissions.is_none());
+}

@@ -474,3 +474,42 @@ pub enum PermissionError {
         level: AccessLevel,
     },
 }
+
+//  Configuration conversions
+
+use config_manager::settings::{
+    OrganizationPermissionPoliciesConfig, PermissionConfigError, PermissionGrantConfig,
+    RepositoryTypePermissionsConfig, TemplatePermissionsConfig,
+};
+
+impl TryFrom<&PermissionGrantConfig> for PermissionGrant {
+    type Error = PermissionConfigError;
+
+    fn try_from(_value: &PermissionGrantConfig) -> Result<Self, Self::Error> {
+        todo!("implement PermissionGrant TryFrom conversion")
+    }
+}
+
+impl TryFrom<&OrganizationPermissionPoliciesConfig> for OrganizationPermissionPolicies {
+    type Error = PermissionConfigError;
+
+    fn try_from(_value: &OrganizationPermissionPoliciesConfig) -> Result<Self, Self::Error> {
+        todo!("implement OrganizationPermissionPolicies TryFrom conversion")
+    }
+}
+
+impl TryFrom<&RepositoryTypePermissionsConfig> for RepositoryTypePermissions {
+    type Error = PermissionConfigError;
+
+    fn try_from(_value: &RepositoryTypePermissionsConfig) -> Result<Self, Self::Error> {
+        todo!("implement RepositoryTypePermissions TryFrom conversion")
+    }
+}
+
+impl TryFrom<&TemplatePermissionsConfig> for TemplatePermissions {
+    type Error = PermissionConfigError;
+
+    fn try_from(_value: &TemplatePermissionsConfig) -> Result<Self, Self::Error> {
+        todo!("implement TemplatePermissions TryFrom conversion")
+    }
+}

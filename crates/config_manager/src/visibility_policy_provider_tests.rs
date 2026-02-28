@@ -1,4 +1,4 @@
-//! Tests for visibility policy provider.
+﻿//! Tests for visibility policy provider.
 //!
 //! Verifies policy loading, parsing, caching, and error handling for
 //! organization visibility policies.
@@ -41,6 +41,7 @@ impl MockMetadataProvider {
             rulesets: None,
             repository_visibility: None, // No policy = unrestricted
             notifications: None,
+            permissions: None,
         };
 
         Self {
@@ -76,6 +77,7 @@ impl MockMetadataProvider {
                     .map(|v| v.iter().map(|s| s.to_string()).collect()),
             }),
             notifications: None,
+            permissions: None,
         };
 
         self.config_data = Some(defaults);

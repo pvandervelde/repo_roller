@@ -355,6 +355,7 @@ impl OrganizationSettingsManager {
                 default_visibility: None,
                 templating: None,
                 notifications: None,
+                permissions: None,
             }
         } else {
             match self
@@ -389,6 +390,7 @@ impl OrganizationSettingsManager {
                         default_visibility: None,
                         templating: None,
                         notifications: None,
+                        permissions: None,
                     }
                 }
                 Err(e) => {

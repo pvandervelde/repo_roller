@@ -1,4 +1,4 @@
-//! Tests for template configuration loading.
+﻿//! Tests for template configuration loading.
 //!
 //! Tests the TemplateLoader and TemplateRepository trait implementations.
 
@@ -84,6 +84,7 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     }
 }
 

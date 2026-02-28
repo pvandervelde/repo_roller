@@ -60,7 +60,8 @@
 
 use crate::settings::{
     BranchProtectionSettings, EnvironmentConfig, GitHubAppConfig, LabelConfig, NotificationsConfig,
-    PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+    PullRequestSettings, RepositorySettings, RulesetConfig, TemplatePermissionsConfig,
+    WebhookConfig,
 };
 use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
@@ -275,6 +276,22 @@ pub struct TemplateConfig {
     /// Combined with global, repository type, and team notifications.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notifications: Option<NotificationsConfig>,
+
+    /// Template permission requirements (optional).
+    ///
+    /// Defines permissions required by this template that must be present
+    /// for the template to function correctly.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[permissions.required]]
+    /// permission_type = "push"
+    /// level = "write"
+    /// scope = "team"
+    /// ```
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<TemplatePermissionsConfig>,
 }
 
 /// Template metadata providing information about the template.

@@ -1,4 +1,4 @@
-// Unit tests for repo_roller_core
+﻿// Unit tests for repo_roller_core
 // Covers create_repository success and error paths with isolated mock dependencies
 
 use super::*;
@@ -600,6 +600,7 @@ async fn test_create_repository_type_conversion() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
     };
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);
