@@ -475,41 +475,161 @@ pub enum PermissionError {
     },
 }
 
-//  Configuration conversions
+// ── Configuration conversions ─────────────────────────────────────────────────
 
 use config_manager::settings::{
     OrganizationPermissionPoliciesConfig, PermissionConfigError, PermissionGrantConfig,
     RepositoryTypePermissionsConfig, TemplatePermissionsConfig,
 };
 
+/// Parses a lowercase permission-type string into a [`PermissionType`].
+fn parse_permission_type(s: &str) -> Result<PermissionType, PermissionConfigError> {
+    match s {
+        "pull" => Ok(PermissionType::Pull),
+        "triage" => Ok(PermissionType::Triage),
+        "push" => Ok(PermissionType::Push),
+        "maintain" => Ok(PermissionType::Maintain),
+        "admin" => Ok(PermissionType::Admin),
+        _ => Err(PermissionConfigError::InvalidPermissionType(s.to_string())),
+    }
+}
+
+/// Parses a lowercase access-level string into an [`AccessLevel`].
+fn parse_access_level(s: &str) -> Result<AccessLevel, PermissionConfigError> {
+    match s {
+        "none" => Ok(AccessLevel::None),
+        "read" => Ok(AccessLevel::Read),
+        "triage" => Ok(AccessLevel::Triage),
+        "write" => Ok(AccessLevel::Write),
+        "maintain" => Ok(AccessLevel::Maintain),
+        "admin" => Ok(AccessLevel::Admin),
+        _ => Err(PermissionConfigError::InvalidLevel(s.to_string())),
+    }
+}
+
+/// Parses a lowercase scope string into a [`PermissionScope`].
+fn parse_permission_scope(s: &str) -> Result<PermissionScope, PermissionConfigError> {
+    match s {
+        "repository" => Ok(PermissionScope::Repository),
+        "team" => Ok(PermissionScope::Team),
+        "user" => Ok(PermissionScope::User),
+        "github_app" => Ok(PermissionScope::GitHubApp),
+        _ => Err(PermissionConfigError::InvalidScope(s.to_string())),
+    }
+}
+
 impl TryFrom<&PermissionGrantConfig> for PermissionGrant {
     type Error = PermissionConfigError;
 
-    fn try_from(_value: &PermissionGrantConfig) -> Result<Self, Self::Error> {
-        todo!("implement PermissionGrant TryFrom conversion")
+    /// Converts a TOML-deserialized [`PermissionGrantConfig`] into a domain
+    /// [`PermissionGrant`].
+    ///
+    /// Grants produced from config have no conditions and no expiration; those
+    /// are runtime-only fields.
+    ///
+    /// # Errors
+    ///
+    /// - [`PermissionConfigError::InvalidPermissionType`] — unrecognised `permission_type`.
+    /// - [`PermissionConfigError::InvalidLevel`] — unrecognised `level`.
+    /// - [`PermissionConfigError::InvalidScope`] — unrecognised `scope`.
+    fn try_from(value: &PermissionGrantConfig) -> Result<Self, Self::Error> {
+        Ok(PermissionGrant {
+            permission_type: parse_permission_type(&value.permission_type)?,
+            level: parse_access_level(&value.level)?,
+            scope: parse_permission_scope(&value.scope)?,
+            conditions: vec![],
+            expiration: None,
+        })
     }
 }
 
 impl TryFrom<&OrganizationPermissionPoliciesConfig> for OrganizationPermissionPolicies {
     type Error = PermissionConfigError;
 
-    fn try_from(_value: &OrganizationPermissionPoliciesConfig) -> Result<Self, Self::Error> {
-        todo!("implement OrganizationPermissionPolicies TryFrom conversion")
+    /// Converts TOML-deserialized organization permission policy config into
+    /// the domain [`OrganizationPermissionPolicies`] type.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the first [`PermissionConfigError`] from any nested grant conversion.
+    fn try_from(value: &OrganizationPermissionPoliciesConfig) -> Result<Self, Self::Error> {
+        let baseline_requirements = value
+            .baseline
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(PermissionGrant::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let restrictions = value
+            .restrictions
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(PermissionGrant::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(OrganizationPermissionPolicies {
+            baseline_requirements,
+            restrictions,
+        })
     }
 }
 
 impl TryFrom<&RepositoryTypePermissionsConfig> for RepositoryTypePermissions {
     type Error = PermissionConfigError;
 
-    fn try_from(_value: &RepositoryTypePermissionsConfig) -> Result<Self, Self::Error> {
-        todo!("implement RepositoryTypePermissions TryFrom conversion")
+    /// Converts TOML-deserialized repository-type permission config into the
+    /// domain [`RepositoryTypePermissions`] type.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the first [`PermissionConfigError`] from any nested grant or
+    /// restricted-type string conversion.
+    fn try_from(value: &RepositoryTypePermissionsConfig) -> Result<Self, Self::Error> {
+        let required_permissions = value
+            .required
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(PermissionGrant::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let restricted_types = value
+            .restricted_types
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(|s| parse_permission_type(s))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(RepositoryTypePermissions {
+            required_permissions,
+            restricted_types,
+        })
     }
 }
 
 impl TryFrom<&TemplatePermissionsConfig> for TemplatePermissions {
     type Error = PermissionConfigError;
 
-    fn try_from(_value: &TemplatePermissionsConfig) -> Result<Self, Self::Error> {
-        todo!("implement TemplatePermissions TryFrom conversion")
+    /// Converts TOML-deserialized template permission config into the domain
+    /// [`TemplatePermissions`] type.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the first [`PermissionConfigError`] from any nested grant conversion.
+    fn try_from(value: &TemplatePermissionsConfig) -> Result<Self, Self::Error> {
+        let required_permissions = value
+            .required
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(PermissionGrant::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(TemplatePermissions {
+            required_permissions,
+        })
     }
 }

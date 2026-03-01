@@ -81,12 +81,8 @@ pub enum PermissionConfigError {
 
 // ── Accepted string constants ─────────────────────────────────────────────────
 
-// Will be used by validate() implementations in Phase 2.
-#[allow(dead_code)]
 const VALID_PERMISSION_TYPES: &[&str] = &["pull", "triage", "push", "maintain", "admin"];
-#[allow(dead_code)]
 const VALID_LEVELS: &[&str] = &["none", "read", "triage", "write", "maintain", "admin"];
-#[allow(dead_code)]
 const VALID_SCOPES: &[&str] = &["repository", "team", "user", "github_app"];
 
 // ── PermissionGrantConfig ─────────────────────────────────────────────────────
@@ -166,7 +162,18 @@ impl PermissionGrantConfig {
     /// assert!(bad_type.validate().is_err());
     /// ```
     pub fn validate(&self) -> Result<(), PermissionConfigError> {
-        todo!("Implement PermissionGrantConfig::validate")
+        if !VALID_PERMISSION_TYPES.contains(&self.permission_type.as_str()) {
+            return Err(PermissionConfigError::InvalidPermissionType(
+                self.permission_type.clone(),
+            ));
+        }
+        if !VALID_LEVELS.contains(&self.level.as_str()) {
+            return Err(PermissionConfigError::InvalidLevel(self.level.clone()));
+        }
+        if !VALID_SCOPES.contains(&self.scope.as_str()) {
+            return Err(PermissionConfigError::InvalidScope(self.scope.clone()));
+        }
+        Ok(())
     }
 }
 
@@ -225,7 +232,17 @@ impl OrganizationPermissionPoliciesConfig {
     ///
     /// Returns the first [`PermissionConfigError`] encountered.
     pub fn validate(&self) -> Result<(), PermissionConfigError> {
-        todo!("Implement OrganizationPermissionPoliciesConfig::validate")
+        if let Some(baseline) = &self.baseline {
+            for grant in baseline {
+                grant.validate()?;
+            }
+        }
+        if let Some(restrictions) = &self.restrictions {
+            for grant in restrictions {
+                grant.validate()?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -289,7 +306,19 @@ impl RepositoryTypePermissionsConfig {
     /// - Any error from [`PermissionGrantConfig::validate`] applied to
     ///   entries in `required`.
     pub fn validate(&self) -> Result<(), PermissionConfigError> {
-        todo!("Implement RepositoryTypePermissionsConfig::validate")
+        if let Some(required) = &self.required {
+            for grant in required {
+                grant.validate()?;
+            }
+        }
+        if let Some(restricted_types) = &self.restricted_types {
+            for t in restricted_types {
+                if !VALID_PERMISSION_TYPES.contains(&t.as_str()) {
+                    return Err(PermissionConfigError::InvalidPermissionType(t.clone()));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -339,6 +368,11 @@ impl TemplatePermissionsConfig {
     ///
     /// Returns the first [`PermissionConfigError`] encountered.
     pub fn validate(&self) -> Result<(), PermissionConfigError> {
-        todo!("Implement TemplatePermissionsConfig::validate")
+        if let Some(required) = &self.required {
+            for grant in required {
+                grant.validate()?;
+            }
+        }
+        Ok(())
     }
 }
