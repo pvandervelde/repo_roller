@@ -143,6 +143,9 @@ pub mod policy_engine;
 // Permission manager for orchestrating permission application
 pub mod permission_manager;
 
+// Structured audit logging for permission decisions
+pub mod permission_audit_logger;
+
 // Event publishing operations
 pub mod event_publisher;
 

@@ -32,6 +32,7 @@ use std::collections::HashMap;
 use github_client::GitHubClient;
 use tracing::{info, instrument, warn};
 
+use crate::permission_audit_logger::PermissionAuditLogger;
 use crate::permissions::{
     AccessLevel, GitHubPermissionLevel, PermissionGrant, PermissionHierarchy, PermissionRequest,
 };
@@ -185,6 +186,10 @@ impl Default for ApplyPermissionsResult {
 /// # }
 /// ```
 pub struct PermissionManager {
+    /// Structured audit logger for recording permission decisions.
+    /// Wired into apply_repository_permissions in the 12.7 implementation phase.
+    #[allow(dead_code)]
+    audit_logger: PermissionAuditLogger,
     /// GitHub client for applying permissions via the GitHub API.
     github_client: GitHubClient,
     /// Policy engine for validating permission requests against the hierarchy.
@@ -212,6 +217,7 @@ impl PermissionManager {
     /// ```
     pub fn new(github_client: GitHubClient, policy_engine: PolicyEngine) -> Self {
         Self {
+            audit_logger: PermissionAuditLogger::new(),
             github_client,
             policy_engine,
         }
