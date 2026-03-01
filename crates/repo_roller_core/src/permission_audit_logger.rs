@@ -2,7 +2,7 @@
 //!
 //! This module provides [`PermissionAuditLogger`], a stateless component that
 //! emits structured [`tracing`] events for every significant permission
-//! decision. Events use the `"repo_roller::permission_audit"` target so they
+//! decision. Events use the `"repo_roller_core::permission_audit"` target so they
 //! can be independently routed or filtered by the application's tracing
 //! subscriber (e.g. written to a separate audit log file in JSON format).
 //!
@@ -26,13 +26,15 @@
 //!
 //! Audit events are emitted via `tracing`. To capture them as JSON, configure
 //! the application's tracing subscriber with a JSON formatter and filter on
-//! target `"repo_roller::permission_audit"`:
+//! target `"repo_roller_core::permission_audit"`:
 //!
 //! ```text
-//! RUST_LOG="repo_roller::permission_audit=debug" ./repo_roller_api
+//! RUST_LOG="repo_roller_core::permission_audit=debug" ./repo_roller_api
 //! ```
 //!
 //! See `docs/spec/design/multi-level-permissions.md` for the full specification.
+
+use tracing::{info, warn};
 
 use crate::permission_manager::ApplyPermissionsResult;
 use crate::permissions::{PermissionError, PermissionRequest};
@@ -122,10 +124,44 @@ impl PermissionAuditLogger {
     /// ```
     pub fn log_policy_evaluation(
         &self,
-        _request: &PermissionRequest,
-        _result: &PermissionEvaluationResult,
+        request: &PermissionRequest,
+        result: &PermissionEvaluationResult,
     ) {
-        todo!("implement log_policy_evaluation")
+        let org = request.repository_context.organization.as_str();
+        let repo = request.repository_context.repository.as_str();
+        match result {
+            PermissionEvaluationResult::Approved {
+                granted_permissions,
+                ..
+            } => {
+                info!(
+                    target: "repo_roller_core::permission_audit",
+                    organization = %org,
+                    repository = %repo,
+                    requestor = %request.requestor,
+                    emergency_access = request.emergency_access,
+                    outcome = "approved",
+                    grant_count = granted_permissions.len(),
+                    "Permission request approved",
+                );
+            }
+            PermissionEvaluationResult::RequiresApproval {
+                reason,
+                restricted_permissions,
+            } => {
+                warn!(
+                    target: "repo_roller_core::permission_audit",
+                    organization = %org,
+                    repository = %repo,
+                    requestor = %request.requestor,
+                    emergency_access = request.emergency_access,
+                    outcome = "requires_approval",
+                    reason = %reason,
+                    restricted_count = restricted_permissions.len(),
+                    "Permission request requires approval",
+                );
+            }
+        }
     }
 
     /// Logs a hard policy denial returned by the
@@ -171,8 +207,19 @@ impl PermissionAuditLogger {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn log_policy_denied(&self, _request: &PermissionRequest, _error: &PermissionError) {
-        todo!("implement log_policy_denied")
+    pub fn log_policy_denied(&self, request: &PermissionRequest, error: &PermissionError) {
+        let org = request.repository_context.organization.as_str();
+        let repo = request.repository_context.repository.as_str();
+        warn!(
+            target: "repo_roller_core::permission_audit",
+            organization = %org,
+            repository = %repo,
+            requestor = %request.requestor,
+            emergency_access = request.emergency_access,
+            outcome = "denied",
+            error = %error,
+            "Permission request denied by policy",
+        );
     }
 
     /// Logs the successful completion of GitHub permission application.
@@ -217,9 +264,26 @@ impl PermissionAuditLogger {
     /// ```
     pub fn log_permissions_applied(
         &self,
-        _request: &PermissionRequest,
-        _result: &ApplyPermissionsResult,
+        request: &PermissionRequest,
+        result: &ApplyPermissionsResult,
     ) {
-        todo!("implement log_permissions_applied")
+        let org = request.repository_context.organization.as_str();
+        let repo = request.repository_context.repository.as_str();
+        info!(
+            target: "repo_roller_core::permission_audit",
+            organization = %org,
+            repository = %repo,
+            requestor = %request.requestor,
+            emergency_access = request.emergency_access,
+            outcome = "applied",
+            teams_applied = result.teams_applied,
+            teams_skipped = result.teams_skipped,
+            collaborators_applied = result.collaborators_applied,
+            collaborators_removed = result.collaborators_removed,
+            collaborators_skipped = result.collaborators_skipped,
+            failed_teams = result.failed_teams.len(),
+            failed_collaborators = result.failed_collaborators.len(),
+            "Repository permissions applied",
+        );
     }
 }

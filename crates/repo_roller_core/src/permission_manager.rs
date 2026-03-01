@@ -187,8 +187,6 @@ impl Default for ApplyPermissionsResult {
 /// ```
 pub struct PermissionManager {
     /// Structured audit logger for recording permission decisions.
-    /// Wired into apply_repository_permissions in the 12.7 implementation phase.
-    #[allow(dead_code)]
     audit_logger: PermissionAuditLogger,
     /// GitHub client for applying permissions via the GitHub API.
     github_client: GitHubClient,
@@ -280,9 +278,19 @@ impl PermissionManager {
         );
 
         // ── Step 1: Policy evaluation ─────────────────────────────────────────
-        let eval_result = self
+        let eval_result = match self
             .policy_engine
-            .evaluate_permission_request(request, hierarchy)?;
+            .evaluate_permission_request(request, hierarchy)
+        {
+            Ok(r) => r,
+            Err(e) => {
+                self.audit_logger.log_policy_denied(request, &e);
+                return Err(PermissionManagerError::PolicyDenied(e));
+            }
+        };
+
+        self.audit_logger
+            .log_policy_evaluation(request, &eval_result);
 
         if let PermissionEvaluationResult::RequiresApproval {
             reason,
@@ -484,6 +492,8 @@ impl PermissionManager {
             failed_collaborators = result.failed_collaborators.len(),
             "Permission application complete"
         );
+
+        self.audit_logger.log_permissions_applied(request, &result);
 
         Ok(result)
     }
