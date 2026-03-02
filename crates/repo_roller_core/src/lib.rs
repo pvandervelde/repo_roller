@@ -146,6 +146,9 @@ pub mod permission_manager;
 // Structured audit logging for permission decisions
 pub mod permission_audit_logger;
 
+// Permission workflow helpers for the repository creation pipeline
+pub mod permission_workflow;
+
 // Event publishing operations
 pub mod event_publisher;
 
