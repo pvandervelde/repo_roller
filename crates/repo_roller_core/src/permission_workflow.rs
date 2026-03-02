@@ -25,7 +25,12 @@
 //! so that future tasks (e.g. adding org-level policy threading or user-requested
 //! permissions from the creation request) can be made by editing only this module.
 
-use crate::permissions::{PermissionHierarchy, PermissionRequest};
+use tracing::warn;
+
+use crate::permissions::{
+    OrganizationPermissionPolicies, PermissionHierarchy, PermissionRequest, RepositoryContext,
+    TemplatePermissions, UserPermissionRequests,
+};
 use crate::{OrganizationName, RepositoryName};
 
 #[cfg(test)]
@@ -67,9 +72,34 @@ mod tests;
 /// assert!(hierarchy.repository_type_permissions.is_none());
 /// ```
 pub fn build_permission_hierarchy(
-    _template: Option<&config_manager::TemplateConfig>,
+    template: Option<&config_manager::TemplateConfig>,
 ) -> PermissionHierarchy {
-    todo!("implement build_permission_hierarchy")
+    // Extract and convert template-level permission requirements.
+    // Conversion errors are non-fatal: log a warning and proceed with no
+    // template permissions rather than blocking repository creation.
+    let template_permissions = template.and_then(|t| t.permissions.as_ref()).and_then(|p| {
+        TemplatePermissions::try_from(p)
+            .map_err(|e| {
+                warn!(
+                    target: "repo_roller_core::permission_workflow",
+                    "Failed to convert template permissions config; \
+                     proceeding with no template-layer constraints: {}",
+                    e
+                );
+            })
+            .ok()
+    });
+
+    PermissionHierarchy {
+        // Org-level policies are not yet threaded through MergedConfiguration;
+        // default() represents an empty policy (no baseline, no restrictions).
+        organization_policies: OrganizationPermissionPolicies::default(),
+        // Repository-type permissions are not yet wired; populated in a future task.
+        repository_type_permissions: None,
+        template_permissions,
+        // User-requested permissions come from RepositoryCreationRequest; added in a future task.
+        user_requested_permissions: UserPermissionRequests::default(),
+    }
 }
 
 /// Builds a [`PermissionRequest`] from repository creation request data.
@@ -103,9 +133,19 @@ pub fn build_permission_hierarchy(
 /// # }
 /// ```
 pub fn build_permission_request(
-    _owner: &OrganizationName,
-    _name: &RepositoryName,
-    _requestor: &str,
+    owner: &OrganizationName,
+    name: &RepositoryName,
+    requestor: &str,
 ) -> PermissionRequest {
-    todo!("implement build_permission_request")
+    PermissionRequest {
+        duration: None,
+        emergency_access: false,
+        justification: "Repository creation workflow".to_string(),
+        repository_context: RepositoryContext {
+            organization: owner.clone(),
+            repository: name.clone(),
+        },
+        requested_permissions: vec![],
+        requestor: requestor.to_string(),
+    }
 }
