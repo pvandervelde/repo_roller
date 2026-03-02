@@ -13,7 +13,7 @@ async-trait = { workspace = true }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 github_client = { path = "../github_client" }
-jsonschema = "0.33"
+jsonschema = "0.44"
 octocrab.workspace = true
 schemars = { version = "1.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
