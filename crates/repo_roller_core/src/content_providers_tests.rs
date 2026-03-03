@@ -30,6 +30,8 @@ fn create_test_request() -> RepositoryCreationRequest {
         variables: HashMap::new(),
         visibility: None,
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     }
 }
 

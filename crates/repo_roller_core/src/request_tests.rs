@@ -1,6 +1,7 @@
 //! Tests for RepositoryCreationRequest
 
 use super::*;
+use crate::permissions::AccessLevel;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -22,6 +23,8 @@ fn test_repository_creation_request_creation() {
         variables: variables.clone(),
         visibility: None,
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     assert_eq!(request.name, name);
@@ -44,6 +47,8 @@ fn test_repository_creation_request_with_variables() {
         variables: variables.clone(),
         visibility: None,
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     assert_eq!(request.variables.len(), 2);
@@ -61,6 +66,8 @@ fn test_repository_creation_request_clone() {
         content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let cloned = request.clone();
@@ -82,6 +89,8 @@ fn test_repository_creation_request_debug() {
         content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let debug_output = format!("{:?}", request);
@@ -107,6 +116,8 @@ fn test_repository_creation_request_type_safety() {
         content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     // Verify we can access the values
@@ -125,6 +136,8 @@ fn test_repository_creation_request_empty_variables() {
         content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     assert!(request.variables.is_empty());
@@ -150,6 +163,8 @@ fn test_repository_creation_request_validates_names() {
         content_strategy: ContentStrategy::Template,
         variables: HashMap::new(),
         visibility: None,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     assert_eq!(request.name.as_str(), "valid-repo");
@@ -743,6 +758,8 @@ fn test_request_empty_strategy_validation() {
         variables: HashMap::new(),
         visibility: None,
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     // Should not panic or error - Empty strategy doesn't require template
@@ -762,6 +779,8 @@ fn test_request_custom_init_strategy_validation() {
             include_readme: true,
             include_gitignore: true,
         },
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     // Should not panic or error - CustomInit strategy doesn't require template
@@ -832,4 +851,132 @@ fn test_builder_custom_init_strategy_with_variables() {
         }
     );
     assert_eq!(request.variables.len(), 1);
+}
+// ============================================================================
+// Teams and Collaborators Tests
+// ============================================================================
+
+/// Test that RepositoryCreationRequest defaults to empty teams and collaborators.
+#[test]
+fn test_request_teams_and_collaborators_default_empty() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .build();
+
+    assert!(request.teams.is_empty());
+    assert!(request.collaborators.is_empty());
+}
+
+/// Test that builder `.teams()` stores the provided map.
+#[test]
+fn test_builder_teams_stored_correctly() {
+    let mut teams = HashMap::new();
+    teams.insert("platform".to_string(), AccessLevel::Write);
+    teams.insert("security".to_string(), AccessLevel::Admin);
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .teams(teams.clone())
+    .build();
+
+    assert_eq!(request.teams.len(), 2);
+    assert_eq!(request.teams.get("platform"), Some(&AccessLevel::Write));
+    assert_eq!(request.teams.get("security"), Some(&AccessLevel::Admin));
+}
+
+/// Test that builder `.collaborators()` stores the provided map.
+#[test]
+fn test_builder_collaborators_stored_correctly() {
+    let mut collaborators = HashMap::new();
+    collaborators.insert("alice".to_string(), AccessLevel::Write);
+    collaborators.insert("bob".to_string(), AccessLevel::Read);
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .collaborators(collaborators.clone())
+    .build();
+
+    assert_eq!(request.collaborators.len(), 2);
+    assert_eq!(
+        request.collaborators.get("alice"),
+        Some(&AccessLevel::Write)
+    );
+    assert_eq!(request.collaborators.get("bob"), Some(&AccessLevel::Read));
+}
+
+/// Test that builder `.teams()` can be chained with other methods.
+#[test]
+fn test_builder_teams_and_collaborators_chained() {
+    let mut teams = HashMap::new();
+    teams.insert("devs".to_string(), AccessLevel::Write);
+
+    let mut collaborators = HashMap::new();
+    collaborators.insert("carol".to_string(), AccessLevel::Maintain);
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("chained-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .teams(teams)
+    .collaborators(collaborators)
+    .build();
+
+    assert_eq!(request.teams.len(), 1);
+    assert_eq!(request.collaborators.len(), 1);
+    assert_eq!(request.teams.get("devs"), Some(&AccessLevel::Write));
+    assert_eq!(
+        request.collaborators.get("carol"),
+        Some(&AccessLevel::Maintain)
+    );
+}
+
+/// Test that AccessLevel::None can be used in teams and collaborators maps.
+///
+/// AccessLevel::None is used to explicitly remove a collaborator if present.
+#[test]
+fn test_builder_access_level_none_in_maps() {
+    let mut collaborators = HashMap::new();
+    collaborators.insert("to-remove".to_string(), AccessLevel::None);
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .collaborators(collaborators)
+    .build();
+
+    assert_eq!(
+        request.collaborators.get("to-remove"),
+        Some(&AccessLevel::None)
+    );
+}
+
+/// Test that teams and collaborators are preserved through clone.
+#[test]
+fn test_request_with_teams_and_collaborators_is_cloneable() {
+    let mut teams = HashMap::new();
+    teams.insert("platform".to_string(), AccessLevel::Write);
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .template(TemplateName::new("rust-library").unwrap())
+    .teams(teams)
+    .build();
+
+    let cloned = request.clone();
+    assert_eq!(cloned.teams.len(), 1);
+    assert_eq!(cloned.teams.get("platform"), Some(&AccessLevel::Write));
 }

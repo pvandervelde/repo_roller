@@ -256,6 +256,8 @@ mod event_construction_tests {
             },
             visibility: Some(RepositoryVisibility::Private),
             content_strategy: ContentStrategy::Template,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -307,6 +309,8 @@ mod event_construction_tests {
             variables: HashMap::new(),
             visibility: Some(RepositoryVisibility::Public),
             content_strategy: ContentStrategy::Empty,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -355,6 +359,8 @@ mod event_construction_tests {
                 include_readme: true,
                 include_gitignore: true,
             },
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -404,6 +410,8 @@ mod event_construction_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Empty,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         // Act
@@ -459,6 +467,8 @@ mod event_construction_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Empty,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         // Act
@@ -497,6 +507,8 @@ mod event_construction_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Empty,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -557,6 +569,8 @@ mod event_construction_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Empty,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -1273,6 +1287,8 @@ mod publish_workflow_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Template,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         }
     }
 
@@ -1520,6 +1536,8 @@ mod http_delivery_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Template,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         }
     }
 
@@ -2401,6 +2419,8 @@ mod logging_tests {
             variables: HashMap::new(),
             visibility: None,
             content_strategy: ContentStrategy::Empty,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         }
     }
 

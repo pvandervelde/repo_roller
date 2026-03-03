@@ -122,6 +122,32 @@ pub struct CreateRepositoryRequest {
     /// Defaults to Template when not specified for backward compatibility.
     #[serde(default)]
     pub content_strategy: ContentStrategy,
+
+    /// Teams to add to the repository with specified access levels.
+    ///
+    /// Maps team slug → permission string (one of `none`, `read`, `triage`,
+    /// `write`, `maintain`, `admin`). Defaults to an empty map.
+    ///
+    /// # Example
+    ///
+    /// ```json
+    /// "teams": { "platform": "write", "security": "admin" }
+    /// ```
+    #[serde(default)]
+    pub teams: HashMap<String, String>,
+
+    /// Individual GitHub users to add as collaborators.
+    ///
+    /// Maps GitHub username → permission string (one of `none`, `read`,
+    /// `triage`, `write`, `maintain`, `admin`). Defaults to an empty map.
+    ///
+    /// # Example
+    ///
+    /// ```json
+    /// "collaborators": { "alice": "write", "bob": "read" }
+    /// ```
+    #[serde(default)]
+    pub collaborators: HashMap<String, String>,
 }
 
 // Translation to domain types is implemented in the translation module

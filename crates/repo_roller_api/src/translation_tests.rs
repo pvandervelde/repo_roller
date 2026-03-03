@@ -20,6 +20,8 @@ fn test_http_to_domain_create_repository_request_valid() {
             ("description".to_string(), "A library".to_string()),
         ]),
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -53,6 +55,8 @@ fn test_http_to_domain_invalid_repository_name() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -73,6 +77,8 @@ fn test_http_to_domain_invalid_organization_name() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -93,6 +99,8 @@ fn test_http_to_domain_invalid_template_name() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -120,6 +128,8 @@ fn test_domain_to_http_create_repository_response() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: repo_roller_core::ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let http_response = domain_repository_creation_result_to_http(domain_result, &http_req);
@@ -155,6 +165,8 @@ fn test_domain_to_http_default_visibility() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: repo_roller_core::ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let http_response = domain_repository_creation_result_to_http(domain_result, &http_req);
@@ -176,6 +188,8 @@ fn test_http_to_domain_empty_variables() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -204,6 +218,8 @@ fn test_http_to_domain_multiple_variables() {
         repository_type: None,
         variables: variables.clone(),
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -239,6 +255,8 @@ fn test_http_to_domain_empty_strategy_without_template() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -265,6 +283,8 @@ fn test_http_to_domain_empty_strategy_with_template() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -295,6 +315,8 @@ fn test_http_to_domain_custom_init_both_files() {
             include_readme: true,
             include_gitignore: true,
         },
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -328,6 +350,8 @@ fn test_http_to_domain_custom_init_with_template() {
             include_readme: true,
             include_gitignore: false,
         },
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -361,6 +385,8 @@ fn test_http_to_domain_template_strategy_requires_template() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Template, // Requires template
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -387,6 +413,8 @@ fn test_http_to_domain_default_content_strategy_with_template() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Template, // Default
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -410,6 +438,8 @@ fn test_http_to_domain_visibility_public() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -433,6 +463,8 @@ fn test_http_to_domain_visibility_private() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -456,6 +488,8 @@ fn test_http_to_domain_visibility_none() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
@@ -479,8 +513,204 @@ fn test_http_to_domain_visibility_invalid() {
         repository_type: None,
         variables: HashMap::new(),
         content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     };
 
     let result = http_create_repository_request_to_domain(http_req);
     assert!(result.is_err());
+}
+
+// ============================================================================
+// Teams and Collaborators Translation Tests
+// ============================================================================
+
+/// Test translation with valid team permission strings produces correct AccessLevel values.
+#[test]
+fn test_http_to_domain_teams_with_valid_permissions() {
+    use repo_roller_core::permissions::AccessLevel;
+    use repo_roller_core::ContentStrategy;
+
+    let mut teams = HashMap::new();
+    teams.insert("platform".to_string(), "write".to_string());
+    teams.insert("security".to_string(), "admin".to_string());
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: Some("rust-library".to_string()),
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams,
+        collaborators: HashMap::new(),
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.teams.len(), 2);
+    assert_eq!(domain_req.teams.get("platform"), Some(&AccessLevel::Write));
+    assert_eq!(domain_req.teams.get("security"), Some(&AccessLevel::Admin));
+}
+
+/// Test translation with valid collaborator permission strings produces correct AccessLevel values.
+#[test]
+fn test_http_to_domain_collaborators_with_valid_permissions() {
+    use repo_roller_core::permissions::AccessLevel;
+    use repo_roller_core::ContentStrategy;
+
+    let mut collaborators = HashMap::new();
+    collaborators.insert("alice".to_string(), "write".to_string());
+    collaborators.insert("bob".to_string(), "read".to_string());
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: Some("rust-library".to_string()),
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators,
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.collaborators.len(), 2);
+    assert_eq!(
+        domain_req.collaborators.get("alice"),
+        Some(&AccessLevel::Write)
+    );
+    assert_eq!(
+        domain_req.collaborators.get("bob"),
+        Some(&AccessLevel::Read)
+    );
+}
+
+/// Test translation fails with an invalid team permission string.
+#[test]
+fn test_http_to_domain_teams_invalid_permission_returns_error() {
+    use repo_roller_core::ContentStrategy;
+
+    let mut teams = HashMap::new();
+    teams.insert("devs".to_string(), "superuser".to_string());
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams,
+        collaborators: HashMap::new(),
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(
+        result.is_err(),
+        "Expected Err for invalid team permission, got Ok"
+    );
+}
+
+/// Test translation fails with an invalid collaborator permission string.
+#[test]
+fn test_http_to_domain_collaborators_invalid_permission_returns_error() {
+    use repo_roller_core::ContentStrategy;
+
+    let mut collaborators = HashMap::new();
+    collaborators.insert("charlie".to_string(), "owner".to_string());
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators,
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(
+        result.is_err(),
+        "Expected Err for invalid collaborator permission, got Ok"
+    );
+}
+
+/// Test translation with absent teams/collaborators fields yields empty maps in the domain type.
+#[test]
+fn test_http_to_domain_empty_teams_and_collaborators_yields_empty_maps() {
+    use repo_roller_core::ContentStrategy;
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: Some("rust-library".to_string()),
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let domain_req = result.unwrap();
+    assert!(domain_req.teams.is_empty());
+    assert!(domain_req.collaborators.is_empty());
+}
+
+/// Test translation supports all valid AccessLevel variants for teams.
+#[test]
+fn test_http_to_domain_teams_all_valid_access_levels() {
+    use repo_roller_core::permissions::AccessLevel;
+    use repo_roller_core::ContentStrategy;
+
+    let mut teams = HashMap::new();
+    teams.insert("t-none".to_string(), "none".to_string());
+    teams.insert("t-read".to_string(), "read".to_string());
+    teams.insert("t-triage".to_string(), "triage".to_string());
+    teams.insert("t-write".to_string(), "write".to_string());
+    teams.insert("t-maintain".to_string(), "maintain".to_string());
+    teams.insert("t-admin".to_string(), "admin".to_string());
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams,
+        collaborators: HashMap::new(),
+    };
+
+    let result = http_create_repository_request_to_domain(http_req);
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.teams.get("t-none"), Some(&AccessLevel::None));
+    assert_eq!(domain_req.teams.get("t-read"), Some(&AccessLevel::Read));
+    assert_eq!(domain_req.teams.get("t-triage"), Some(&AccessLevel::Triage));
+    assert_eq!(domain_req.teams.get("t-write"), Some(&AccessLevel::Write));
+    assert_eq!(
+        domain_req.teams.get("t-maintain"),
+        Some(&AccessLevel::Maintain)
+    );
+    assert_eq!(domain_req.teams.get("t-admin"), Some(&AccessLevel::Admin));
 }
