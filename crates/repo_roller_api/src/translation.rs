@@ -9,9 +9,11 @@ use crate::{
     models::{request::*, response::*},
 };
 
+use std::collections::HashMap;
+
 use repo_roller_core::{
-    OrganizationName, RepositoryCreationRequest, RepositoryCreationRequestBuilder,
-    RepositoryCreationResult, RepositoryName, TemplateName,
+    permissions::AccessLevel, OrganizationName, RepositoryCreationRequest,
+    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName, TemplateName,
 };
 
 /// Convert HTTP CreateRepositoryRequest to domain RepositoryCreationRequest.
@@ -80,6 +82,50 @@ pub fn http_create_repository_request_to_domain(
         None
     };
 
+    // Parse teams: HashMap<String, String> → HashMap<String, AccessLevel>
+    let teams: HashMap<String, AccessLevel> = http_req
+        .teams
+        .into_iter()
+        .map(|(slug, perm_str)| {
+            let level: AccessLevel = serde_json::from_value(serde_json::Value::String(
+                perm_str.clone(),
+            ))
+            .map_err(|_| {
+                ApiError::validation_error(
+                    "teams",
+                    format!(
+                        "Invalid permission '{}' for team '{}'. \
+                             Must be one of: none, read, triage, write, maintain, admin",
+                        perm_str, slug
+                    ),
+                )
+            })?;
+            Ok((slug, level))
+        })
+        .collect::<Result<_, ApiError>>()?;
+
+    // Parse collaborators: HashMap<String, String> → HashMap<String, AccessLevel>
+    let collaborators: HashMap<String, AccessLevel> = http_req
+        .collaborators
+        .into_iter()
+        .map(|(username, perm_str)| {
+            let level: AccessLevel = serde_json::from_value(serde_json::Value::String(
+                perm_str.clone(),
+            ))
+            .map_err(|_| {
+                ApiError::validation_error(
+                    "collaborators",
+                    format!(
+                        "Invalid permission '{}' for collaborator '{}'. \
+                             Must be one of: none, read, triage, write, maintain, admin",
+                        perm_str, username
+                    ),
+                )
+            })?;
+            Ok((username, level))
+        })
+        .collect::<Result<_, ApiError>>()?;
+
     // Build the domain request using builder pattern
     let mut builder = if let Some(tmpl) = template {
         RepositoryCreationRequestBuilder::new(name, owner).template(tmpl)
@@ -99,6 +145,9 @@ pub fn http_create_repository_request_to_domain(
     for (key, value) in http_req.variables {
         builder = builder.variable(key, value);
     }
+
+    // Add teams and collaborators
+    builder = builder.teams(teams).collaborators(collaborators);
 
     Ok(builder.build())
 }

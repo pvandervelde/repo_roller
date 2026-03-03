@@ -612,8 +612,6 @@ async fn apply_post_creation_settings(
     // Permission errors are non-fatal: the repository already exists and is
     // usable; log a warning rather than failing the entire creation.
     {
-        use std::collections::HashMap;
-
         let permission_manager = crate::permission_manager::PermissionManager::new(
             installation_repo_client.clone(),
             crate::policy_engine::PolicyEngine::new(),
@@ -624,10 +622,9 @@ async fn apply_post_creation_settings(
             &request.name,
             requestor,
         );
-        // Teams and collaborators will be populated from the creation request
-        // in a future task; for now they are empty.
-        let teams: HashMap<String, AccessLevel> = HashMap::new();
-        let collaborators: HashMap<String, AccessLevel> = HashMap::new();
+        // Teams and collaborators come from the creation request fields.
+        let teams = request.teams.clone();
+        let collaborators = request.collaborators.clone();
 
         match permission_manager
             .apply_repository_permissions(
