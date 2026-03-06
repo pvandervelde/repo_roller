@@ -30,10 +30,11 @@ use auth_handler::UserAuthenticationService;
 use clap::Args;
 use keyring::Entry;
 use repo_roller_core::{
-    ContentStrategy, OrganizationName, RepoRollerResult, RepositoryCreationRequest,
-    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName, TemplateName,
+    permissions::AccessLevel, ContentStrategy, OrganizationName, RepoRollerResult,
+    RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
+    RepositoryName, TemplateName,
 };
-use std::{fs, future::Future};
+use std::{collections::HashMap, fs, future::Future};
 use tracing::{debug, error, info};
 
 #[cfg(test)]
@@ -150,6 +151,26 @@ pub struct CreateArgs {
     /// Implies CustomInit content strategy.
     #[arg(long, conflicts_with = "empty")]
     pub init_gitignore: bool,
+
+    /// Assign a team to the repository with a specific permission level (repeatable).
+    ///
+    /// Format: `TEAM_SLUG:PERMISSION` where PERMISSION is one of:
+    /// `none`, `read`, `triage`, `write`, `maintain`, `admin`
+    ///
+    /// May be repeated to assign multiple teams:
+    /// `--team platform:write --team security:admin`
+    #[arg(long = "team", value_name = "SLUG:PERMISSION")]
+    pub teams: Vec<String>,
+
+    /// Add a collaborator to the repository with a specific permission level (repeatable).
+    ///
+    /// Format: `USERNAME:PERMISSION` where PERMISSION is one of:
+    /// `none`, `read`, `triage`, `write`, `maintain`, `admin`
+    ///
+    /// May be repeated to add multiple collaborators:
+    /// `--collaborator alice:write --collaborator bob:read`
+    #[arg(long = "collaborator", value_name = "USERNAME:PERMISSION")]
+    pub collaborators: Vec<String>,
 }
 
 /// Creates a repository using the default application configuration and authentication.
@@ -480,6 +501,62 @@ where
     }
     // If no special flags, default strategy (Template) is used
 
+    // Parse --team entries (format: SLUG:PERMISSION)
+    let teams: HashMap<String, AccessLevel> = options
+        .teams
+        .iter()
+        .map(|entry| {
+            let parts: Vec<&str> = entry.splitn(2, ':').collect();
+            if parts.len() != 2 {
+                return Err(Error::InvalidArguments(format!(
+                    "Invalid --team format '{}'. Expected SLUG:PERMISSION (e.g. platform:write)",
+                    entry
+                )));
+            }
+            let slug = parts[0].to_string();
+            let perm_str = parts[1].to_string();
+            let level: AccessLevel =
+                serde_json::from_value(serde_json::Value::String(perm_str.clone())).map_err(
+                    |_| {
+                        Error::InvalidArguments(format!(
+                        "Invalid permission '{}' for team '{}'. Must be one of: none, read, triage, write, maintain, admin",
+                        perm_str, slug
+                    ))
+                    },
+                )?;
+            Ok((slug, level))
+        })
+        .collect::<Result<_, Error>>()?;
+
+    // Parse --collaborator entries (format: USERNAME:PERMISSION)
+    let collaborators: HashMap<String, AccessLevel> = options
+        .collaborators
+        .iter()
+        .map(|entry| {
+            let parts: Vec<&str> = entry.splitn(2, ':').collect();
+            if parts.len() != 2 {
+                return Err(Error::InvalidArguments(format!(
+                    "Invalid --collaborator format '{}'. Expected USERNAME:PERMISSION (e.g. alice:write)",
+                    entry
+                )));
+            }
+            let username = parts[0].to_string();
+            let perm_str = parts[1].to_string();
+            let level: AccessLevel =
+                serde_json::from_value(serde_json::Value::String(perm_str.clone())).map_err(
+                    |_| {
+                        Error::InvalidArguments(format!(
+                        "Invalid permission '{}' for collaborator '{}'. Must be one of: none, read, triage, write, maintain, admin",
+                        perm_str, username
+                    ))
+                    },
+                )?;
+            Ok((username, level))
+        })
+        .collect::<Result<_, Error>>()?;
+
+    builder = builder.teams(teams).collaborators(collaborators);
+
     let req = builder.build();
 
     // Call repository creation and convert RepoRollerError to CLI Error
@@ -508,10 +585,15 @@ pub struct CreateCommandOptions<'a> {
     pub init_readme: bool,
     /// Include a .gitignore file in the new repository.
     pub init_gitignore: bool,
+    /// Team slug → permission string pairs provided via `--team SLUG:PERMISSION` flags.
+    pub teams: &'a [String],
+    /// Username → permission string pairs provided via `--collaborator USERNAME:PERMISSION` flags.
+    pub collaborators: &'a [String],
 }
 
 impl<'a> CreateCommandOptions<'a> {
     /// Creates new CreateCommandOptions from individual CLI arguments.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: &'a Option<String>,
         name: &'a Option<String>,
@@ -520,6 +602,8 @@ impl<'a> CreateCommandOptions<'a> {
         empty: bool,
         init_readme: bool,
         init_gitignore: bool,
+        teams: &'a [String],
+        collaborators: &'a [String],
     ) -> Self {
         Self {
             config,
@@ -529,6 +613,8 @@ impl<'a> CreateCommandOptions<'a> {
             empty,
             init_readme,
             init_gitignore,
+            teams,
+            collaborators,
         }
     }
 }
