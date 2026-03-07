@@ -68,7 +68,10 @@ struct PermissionTestConfig {
     /// Slug of an existing team in the test org (e.g. `developers`).
     team_slug: String,
     /// GitHub username of a user to add/remove as a direct collaborator.
-    collaborator_username: String,
+    ///
+    /// `None` when `TEST_COLLABORATOR_USERNAME` is not set; collaborator tests
+    /// skip gracefully rather than failing.
+    collaborator_username: Option<String>,
 }
 
 impl PermissionTestConfig {
@@ -82,12 +85,13 @@ impl PermissionTestConfig {
             )
         })?;
 
-        let collaborator_username = std::env::var("TEST_COLLABORATOR_USERNAME").map_err(|_| {
-            anyhow::anyhow!(
-                "TEST_COLLABORATOR_USERNAME environment variable not set. \
-                 Provide the GitHub username of a user to use as test collaborator."
-            )
-        })?;
+        // Optional — collaborator tests skip when this is absent.
+        let collaborator_username = std::env::var("TEST_COLLABORATOR_USERNAME").ok();
+        if collaborator_username.is_none() {
+            tracing::warn!(
+                "TEST_COLLABORATOR_USERNAME not set — collaborator integration tests will be skipped"
+            );
+        }
 
         Ok(Self {
             base,
@@ -272,6 +276,10 @@ async fn test_collaborator_permission_applied_to_repository() -> Result<()> {
     info!("Running test_collaborator_permission_applied_to_repository");
 
     let config = PermissionTestConfig::from_env()?;
+    let Some(collaborator_username) = config.collaborator_username.clone() else {
+        tracing::warn!("Skipping test_collaborator_permission_applied_to_repository: TEST_COLLABORATOR_USERNAME not set");
+        return Ok(());
+    };
     let (github_client, permission_manager) = create_test_dependencies(&config).await?;
 
     let repo_name = create_test_repo(&github_client, &config.base.test_org, "collab-apply").await?;
@@ -280,7 +288,7 @@ async fn test_collaborator_permission_applied_to_repository() -> Result<()> {
     let hierarchy = empty_hierarchy();
     let teams: HashMap<String, AccessLevel> = HashMap::new();
     let collaborators: HashMap<String, AccessLevel> =
-        [(config.collaborator_username.clone(), AccessLevel::Read)].into();
+        [(collaborator_username.clone(), AccessLevel::Read)].into();
 
     let apply_result = permission_manager
         .apply_repository_permissions(
@@ -320,11 +328,11 @@ async fn test_collaborator_permission_applied_to_repository() -> Result<()> {
     let collaborators_list = list_result?;
     let found = collaborators_list
         .iter()
-        .any(|c| c.login.to_lowercase() == config.collaborator_username.to_lowercase());
+        .any(|c| c.login.to_lowercase() == collaborator_username.to_lowercase());
     assert!(
         found,
         "Collaborator '{}' not found in repository collaborators list: {:?}",
-        config.collaborator_username,
+        collaborator_username,
         collaborators_list
             .iter()
             .map(|c| &c.login)
@@ -347,6 +355,10 @@ async fn test_permission_application_is_idempotent() -> Result<()> {
     info!("Running test_permission_application_is_idempotent");
 
     let config = PermissionTestConfig::from_env()?;
+    let Some(collaborator_username) = config.collaborator_username.clone() else {
+        tracing::warn!("Skipping test_permission_application_is_idempotent: TEST_COLLABORATOR_USERNAME not set");
+        return Ok(());
+    };
     let (github_client, permission_manager) = create_test_dependencies(&config).await?;
 
     let repo_name = create_test_repo(&github_client, &config.base.test_org, "idempotent").await?;
@@ -355,7 +367,7 @@ async fn test_permission_application_is_idempotent() -> Result<()> {
     let hierarchy = empty_hierarchy();
     let teams: HashMap<String, AccessLevel> = HashMap::new();
     let collaborators: HashMap<String, AccessLevel> =
-        [(config.collaborator_username.clone(), AccessLevel::Write)].into();
+        [(collaborator_username.clone(), AccessLevel::Write)].into();
 
     // First application — should add the collaborator.
     let first_result = permission_manager
@@ -425,6 +437,10 @@ async fn test_collaborator_removed_when_access_level_none() -> Result<()> {
     info!("Running test_collaborator_removed_when_access_level_none");
 
     let config = PermissionTestConfig::from_env()?;
+    let Some(collaborator_username) = config.collaborator_username.clone() else {
+        tracing::warn!("Skipping test_collaborator_removed_when_access_level_none: TEST_COLLABORATOR_USERNAME not set");
+        return Ok(());
+    };
     let (github_client, permission_manager) = create_test_dependencies(&config).await?;
 
     let repo_name =
@@ -435,14 +451,11 @@ async fn test_collaborator_removed_when_access_level_none() -> Result<()> {
         .add_repository_collaborator(
             &config.base.test_org,
             repo_name.as_ref(),
-            &config.collaborator_username,
+            &collaborator_username,
             "pull",
         )
         .await?;
-    info!(
-        "Added collaborator '{}' directly",
-        config.collaborator_username
-    );
+    info!("Added collaborator '{}' directly", collaborator_username);
 
     // Brief stabilisation.
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -452,7 +465,7 @@ async fn test_collaborator_removed_when_access_level_none() -> Result<()> {
     let teams: HashMap<String, AccessLevel> = HashMap::new();
     // AccessLevel::None triggers removal for an existing collaborator.
     let collaborators: HashMap<String, AccessLevel> =
-        [(config.collaborator_username.clone(), AccessLevel::None)].into();
+        [(collaborator_username.clone(), AccessLevel::None)].into();
 
     let remove_result = permission_manager
         .apply_repository_permissions(
@@ -489,11 +502,11 @@ async fn test_collaborator_removed_when_access_level_none() -> Result<()> {
     let list = list_after?;
     let still_present = list
         .iter()
-        .any(|c| c.login.to_lowercase() == config.collaborator_username.to_lowercase());
+        .any(|c| c.login.to_lowercase() == collaborator_username.to_lowercase());
     assert!(
         !still_present,
         "Collaborator '{}' should have been removed from the repository",
-        config.collaborator_username,
+        collaborator_username,
     );
 
     info!("✓ test_collaborator_removed_when_access_level_none passed");
@@ -604,6 +617,10 @@ async fn test_team_and_collaborator_applied_together() -> Result<()> {
     info!("Running test_team_and_collaborator_applied_together");
 
     let config = PermissionTestConfig::from_env()?;
+    let Some(collaborator_username) = config.collaborator_username.clone() else {
+        tracing::warn!("Skipping test_team_and_collaborator_applied_together: TEST_COLLABORATOR_USERNAME not set");
+        return Ok(());
+    };
     let (github_client, permission_manager) = create_test_dependencies(&config).await?;
 
     let repo_name = create_test_repo(&github_client, &config.base.test_org, "combined").await?;
@@ -613,7 +630,7 @@ async fn test_team_and_collaborator_applied_together() -> Result<()> {
     let teams: HashMap<String, AccessLevel> =
         [(config.team_slug.clone(), AccessLevel::Triage)].into();
     let collaborators: HashMap<String, AccessLevel> =
-        [(config.collaborator_username.clone(), AccessLevel::Read)].into();
+        [(collaborator_username.clone(), AccessLevel::Read)].into();
 
     let result = permission_manager
         .apply_repository_permissions(
