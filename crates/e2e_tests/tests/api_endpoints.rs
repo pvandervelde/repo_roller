@@ -621,6 +621,434 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
     Ok(())
 }
 
+// ── Permission E2E Tests ──────────────────────────────────────────────────────
+//
+// These tests verify the full permission pipeline through the containerized API:
+//   • org-level default team config → applied to every repo
+//   • template team config          → merged on top of org defaults
+//   • locked entries                → cannot be overridden by requests
+//   • org ceiling                   → caps request access levels
+//
+// Pre-requisites (see tests/create-test-teams.ps1):
+//   - reporoller-test-permissions  (org default: triage; template upgrades to write)
+//   - reporoller-test-security     (org default: admin, locked=true)
+//   - reporoller-test-triage       (template only: triage)
+//
+// Org ceiling (set in tests/metadata/.reporoller/global/defaults.toml):
+//   max_team_access_level         = "maintain"
+//   max_collaborator_access_level = "write"
+
+/// Verify that teams from org config and template config are both applied with
+/// the correct permission levels after repository creation.
+///
+/// Expected outcome for a repo created with `template-test-basic`:
+/// - `reporoller-test-permissions` → `write`  (org default triage, upgraded by template)
+/// - `reporoller-test-security`    → `admin`  (org locked team, preserved)
+/// - `reporoller-test-triage`      → `triage` (template-only team)
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    let repo_name = generate_e2e_test_repo_name("perm-teams-config");
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    // Create with template-test-basic so org-level and template-level teams merge.
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": "template-test-basic",
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private"
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Repository creation should return 201 Created"
+    );
+
+    // Allow GitHub API to process permission assignments.
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+    let verification_client =
+        github_client::GitHubClient::new(github_client::create_token_client(&token)?);
+
+    // reporoller-test-permissions: org config = triage, template upgrades to write.
+    let perm = verification_client
+        .get_team_repository_permission(&org, "reporoller-test-permissions", &org, &repo_name)
+        .await;
+
+    let perm = match perm {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to get team permission: {e}");
+            match container.get_logs().await {
+                Ok(logs) => {
+                    eprintln!("\n========== CONTAINER LOGS (test_e2e_permission_teams_applied_from_config) ==========");
+                    eprintln!("{}", logs);
+                    eprintln!("====================================\n");
+                }
+                Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+            }
+            e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+                .await
+                .ok();
+            return Err(e.into());
+        }
+    };
+
+    assert_eq!(
+        perm,
+        Some("write".to_string()),
+        "reporoller-test-permissions should be 'write' (template upgrade from org triage)"
+    );
+    tracing::info!(
+        "✓ reporoller-test-permissions has 'write' access (upgraded from org default triage)"
+    );
+
+    // reporoller-test-security: locked admin in org config, cannot be altered.
+    let sec_perm = verification_client
+        .get_team_repository_permission(&org, "reporoller-test-security", &org, &repo_name)
+        .await?;
+
+    assert_eq!(
+        sec_perm,
+        Some("admin".to_string()),
+        "reporoller-test-security should be 'admin' (locked org team)"
+    );
+    tracing::info!("✓ reporoller-test-security has 'admin' access (locked org team)");
+
+    // reporoller-test-triage: added by template at triage level.
+    let triage_perm = verification_client
+        .get_team_repository_permission(&org, "reporoller-test-triage", &org, &repo_name)
+        .await?;
+
+    assert_eq!(
+        triage_perm,
+        Some("triage".to_string()),
+        "reporoller-test-triage should be 'triage' (template team)"
+    );
+    tracing::info!("✓ reporoller-test-triage has 'triage' access (from template config)");
+
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+    container.stop().await?;
+    Ok(())
+}
+
+/// Verify that a team permission requested above the org ceiling is capped at the
+/// ceiling instead of being rejected.
+///
+/// The org ceiling is `max_team_access_level = "maintain"`.
+/// A request for `admin` on `reporoller-test-triage` should result in `maintain`.
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    let repo_name = generate_e2e_test_repo_name("perm-ceiling");
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    // No template — only request teams are tested here.
+    // Request admin for reporoller-test-triage; org ceiling is maintain.
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private",
+        "teams": {
+            "reporoller-test-triage": "admin"
+        }
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Repository creation should return 201 Created (permission capping is silent)"
+    );
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+    let verification_client =
+        github_client::GitHubClient::new(github_client::create_token_client(&token)?);
+
+    let perm = verification_client
+        .get_team_repository_permission(&org, "reporoller-test-triage", &org, &repo_name)
+        .await;
+
+    let perm = match perm {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to get team permission: {e}");
+            match container.get_logs().await {
+                Ok(logs) => {
+                    eprintln!("\n========== CONTAINER LOGS (test_e2e_permission_request_team_capped_at_ceiling) ==========");
+                    eprintln!("{}", logs);
+                    eprintln!("====================================\n");
+                }
+                Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+            }
+            e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+                .await
+                .ok();
+            return Err(e.into());
+        }
+    };
+
+    assert_eq!(
+        perm,
+        Some("maintain".to_string()),
+        "reporoller-test-triage requested 'admin' but org ceiling is 'maintain'; expected 'maintain'"
+    );
+    tracing::info!(
+        "✓ reporoller-test-triage capped at 'maintain' (org ceiling) instead of requested 'admin'"
+    );
+
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+    container.stop().await?;
+    Ok(())
+}
+
+/// Verify that a request attempting to override a locked org team is silently
+/// ignored and the org-configured level is preserved.
+///
+/// `reporoller-test-security` is locked at `admin` in org config.
+/// A request for `write` on that team should leave the team at `admin`.
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    let repo_name = generate_e2e_test_repo_name("perm-locked");
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    // Request 'write' on the locked team; the org config has it at 'admin'.
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private",
+        "teams": {
+            "reporoller-test-security": "write"
+        }
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Repository creation should return 201 Created (lock enforcement is silent)"
+    );
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+    let verification_client =
+        github_client::GitHubClient::new(github_client::create_token_client(&token)?);
+
+    let perm = verification_client
+        .get_team_repository_permission(&org, "reporoller-test-security", &org, &repo_name)
+        .await;
+
+    let perm = match perm {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to get team permission: {e}");
+            match container.get_logs().await {
+                Ok(logs) => {
+                    eprintln!("\n========== CONTAINER LOGS (test_e2e_permission_locked_org_team_preserved) ==========");
+                    eprintln!("{}", logs);
+                    eprintln!("====================================\n");
+                }
+                Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+            }
+            e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+                .await
+                .ok();
+            return Err(e.into());
+        }
+    };
+
+    assert_eq!(
+        perm,
+        Some("admin".to_string()),
+        "reporoller-test-security is locked at 'admin'; request for 'write' must be ignored"
+    );
+    tracing::info!(
+        "✓ reporoller-test-security retained 'admin' (locked org team, request for 'write' ignored)"
+    );
+
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+    container.stop().await?;
+    Ok(())
+}
+
+/// Verify that a collaborator added via the API request is assigned with the
+/// correct permission, respecting the org's collaborator ceiling.
+///
+/// The org ceiling is `max_collaborator_access_level = "write"`.
+/// A request for `admin` on the collaborator should result in `write`.
+///
+/// Requires `TEST_COLLABORATOR_USERNAME` environment variable; skipped if absent.
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_permission_collaborator_applied_from_request() -> Result<()> {
+    let collaborator_username = match std::env::var("TEST_COLLABORATOR_USERNAME") {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            tracing::info!(
+                "⚠ Skipping test_e2e_permission_collaborator_applied_from_request: \
+                 TEST_COLLABORATOR_USERNAME not set"
+            );
+            return Ok(());
+        }
+    };
+
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    let repo_name = generate_e2e_test_repo_name("perm-collab");
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    // Request 'admin' for the collaborator; org ceiling for collaborators is 'write'.
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private",
+        "collaborators": {
+            &collaborator_username: "admin"
+        }
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Repository creation should return 201 Created"
+    );
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+    let verification_client =
+        github_client::GitHubClient::new(github_client::create_token_client(&token)?);
+
+    let perm = verification_client
+        .get_collaborator_permission(&org, &repo_name, &collaborator_username)
+        .await;
+
+    let perm = match perm {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to get collaborator permission: {e}");
+            match container.get_logs().await {
+                Ok(logs) => {
+                    eprintln!("\n========== CONTAINER LOGS (test_e2e_permission_collaborator_applied_from_request) ==========");
+                    eprintln!("{}", logs);
+                    eprintln!("====================================\n");
+                }
+                Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+            }
+            e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+                .await
+                .ok();
+            return Err(e.into());
+        }
+    };
+
+    assert_eq!(
+        perm, "write",
+        "Collaborator requested 'admin' but org ceiling is 'write'; expected 'write'"
+    );
+    tracing::info!(
+        "✓ Collaborator {} was assigned 'write' (org ceiling applied to requested 'admin')",
+        collaborator_username
+    );
+
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+    container.stop().await?;
+    Ok(())
+}
 /// Test creating a repository with custom init (both files) through containerized API.
 ///
 /// Verifies:

@@ -726,8 +726,7 @@ fn test_ppp_request_team_capped_at_org_ceiling() {
 
     // Ceiling is "maintain"; request asks for "admin".
     let request = [("new-team", AccessLevel::Admin)];
-    let result =
-        merge_access_map_with_policy(&config, &locked, Some("maintain"), &request, "team");
+    let result = merge_access_map_with_policy(&config, &locked, Some("maintain"), &request, "team");
 
     assert_eq!(
         result.get("new-team"),
@@ -757,4 +756,3 @@ fn test_ppp_ceiling_does_not_affect_config_entries() {
         "Config-established entries must not be affected by the ceiling"
     );
 }
-

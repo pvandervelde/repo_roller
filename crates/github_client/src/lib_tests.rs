@@ -1432,6 +1432,207 @@ async fn test_set_team_repository_permission_returns_error_on_not_found() {
     );
 }
 
+// --- get_team_repository_permission Tests ---
+
+/// Test that get_team_repository_permission returns the role when the team has access.
+#[tokio::test]
+async fn test_get_team_repository_permission_returns_role_when_access_exists() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "platform-team";
+    let repo_owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 1296269,
+            "name": "my-service",
+            "role_name": "maintain"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_team_repository_permission(org, team_slug, repo_owner, repo)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("get_team_repository_permission error: {e:?}");
+    }
+    assert!(result.is_ok(), "Expected Ok for team with access");
+    assert_eq!(
+        result.unwrap(),
+        Some("maintain".to_string()),
+        "Expected 'maintain' role_name"
+    );
+}
+
+/// Test that get_team_repository_permission returns None when team has no access (404).
+#[tokio::test]
+async fn test_get_team_repository_permission_returns_none_when_no_access() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "unknown-team";
+    let repo_owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_team_repository_permission(org, team_slug, repo_owner, repo)
+        .await;
+
+    assert!(result.is_ok(), "Expected Ok(None) for team without access");
+    assert_eq!(
+        result.unwrap(),
+        None,
+        "Expected None when team has no repo access (404)"
+    );
+}
+
+/// Test that get_team_repository_permission returns an error on non-404 API failure.
+#[tokio::test]
+async fn test_get_team_repository_permission_returns_error_on_api_failure() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "platform-team";
+    let repo_owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_team_repository_permission(org, team_slug, repo_owner, repo)
+        .await;
+
+    assert!(result.is_err(), "Expected Err on non-404 API failure");
+}
+
+// --- get_collaborator_permission Tests ---
+
+/// Test that get_collaborator_permission returns the role when the collaborator exists.
+#[tokio::test]
+async fn test_get_collaborator_permission_returns_role_for_existing_collaborator() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let username = "alice";
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}/permission"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "permission": "write",
+            "role_name": "write",
+            "user": { "id": 42, "login": "alice" }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_collaborator_permission(owner, repo, username)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("get_collaborator_permission error: {e:?}");
+    }
+    assert!(result.is_ok(), "Expected Ok for existing collaborator");
+    assert_eq!(result.unwrap(), "write", "Expected 'write' role_name");
+}
+
+/// Test that get_collaborator_permission returns NotFound when user is not a collaborator.
+#[tokio::test]
+async fn test_get_collaborator_permission_returns_not_found_for_non_collaborator() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let username = "unknown-user";
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/collaborators/{username}/permission"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_collaborator_permission(owner, repo, username)
+        .await;
+
+    assert!(
+        matches!(result, Err(Error::NotFound)),
+        "Expected NotFound error when user is not a collaborator"
+    );
+}
+
 // --- Collaborator Method Tests ---
 
 /// Test that list_repository_collaborators returns all collaborators from a single page.

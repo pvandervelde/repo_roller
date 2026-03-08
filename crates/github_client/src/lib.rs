@@ -1242,6 +1242,249 @@ impl GitHubClient {
         }
     }
 
+    /// Gets the permission level that a specific team holds on a repository.
+    ///
+    /// Uses `GET /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`.
+    /// GitHub responds with 200 + a repository object (including `role_name`) when
+    /// the team manages the repository, or 404 when it does not.
+    ///
+    /// # Arguments
+    ///
+    /// * `org`        – The GitHub organisation that owns the team.
+    /// * `team_slug`  – URL-safe team slug (e.g. `"platform-engineers"`).
+    /// * `repo_owner` – Owner of the repository; usually the same as `org`.
+    /// * `repo`       – Repository name.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(role_name))` – The team has access; `role_name` is the GitHub
+    ///   permission-level string: `"admin"`, `"maintain"`, `"write"`, `"triage"`, or `"read"`.
+    /// * `Ok(None)` – The team has no access to this repository (HTTP 404).
+    /// * `Err(…)` – Any other GitHub API error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let level = client
+    ///         .get_team_repository_permission("my-org", "platform-team", "my-org", "my-repo")
+    ///         .await?;
+    ///     match level {
+    ///         Some(l) => println!("Team permission: {l}"),
+    ///         None    => println!("Team has no access"),
+    ///     }
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo_owner = %repo_owner, repo = %repo))]
+    pub async fn get_team_repository_permission(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo_owner: &str,
+        repo: &str,
+    ) -> Result<Option<String>, Error> {
+        info!(
+            org = org,
+            team_slug = team_slug,
+            repo_owner = repo_owner,
+            repo = repo,
+            "Getting team repository permission"
+        );
+
+        let route = format!("/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}");
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(value) => {
+                let role_name = value
+                    .get("role_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                info!(
+                    org = org,
+                    team_slug = team_slug,
+                    repo = repo,
+                    ?role_name,
+                    "Successfully retrieved team repository permission"
+                );
+                Ok(role_name)
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        debug!(
+                            org = org,
+                            team_slug = team_slug,
+                            repo = repo,
+                            "Team does not have access to repository (404)"
+                        );
+                        return Ok(None);
+                    }
+
+                    eprintln!(
+                        "DIAGNOSTIC: GitHub API error getting team permission for {org}/{team_slug} on {repo_owner}/{repo}: status={}, message={}",
+                        source.status_code, source.message
+                    );
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error getting team repository permission"
+                    );
+                    log_octocrab_error("Failed to get team repository permission", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    eprintln!(
+                        "DIAGNOSTIC: Non-GitHub error getting team permission for {org}/{team_slug} on {repo_owner}/{repo}: error={e}"
+                    );
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        error = %e,
+                        "Non-GitHub error getting team repository permission"
+                    );
+                    log_octocrab_error("Failed to get team repository permission", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
+    /// Gets the permission level that a specific collaborator holds on a repository.
+    ///
+    /// Uses `GET /repos/{owner}/{repo}/collaborators/{username}/permission`.
+    /// GitHub responds with 200 + an object containing a `role_name` field.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`    – The repository owner (user or organisation).
+    /// * `repo`     – The repository name.
+    /// * `username` – The GitHub login of the collaborator.
+    ///
+    /// # Returns
+    ///
+    /// The `role_name` string from GitHub: `"admin"`, `"maintain"`, `"write"`,
+    /// `"triage"`, or `"read"`.
+    ///
+    /// # Errors
+    ///
+    /// * [`Error::NotFound`]        – The user is not a collaborator (HTTP 404).
+    /// * [`Error::ApiError`]        – Other GitHub API errors.
+    /// * [`Error::InvalidResponse`] – Network or parse failure.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let level = client
+    ///         .get_collaborator_permission("my-org", "my-repo", "alice")
+    ///         .await?;
+    ///     println!("Collaborator permission: {level}");
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username))]
+    pub async fn get_collaborator_permission(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> Result<String, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            username = username,
+            "Getting collaborator permission"
+        );
+
+        let route = format!("/repos/{owner}/{repo}/collaborators/{username}/permission");
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(value) => {
+                let role_name = value
+                    .get("role_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Missing 'role_name' field in collaborator permission response"
+                        );
+                        Error::InvalidResponse
+                    })?;
+
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    username = username,
+                    role_name = %role_name,
+                    "Successfully retrieved collaborator permission"
+                );
+                Ok(role_name)
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Collaborator not found (404)"
+                        );
+                        log_octocrab_error("Collaborator not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    eprintln!(
+                        "DIAGNOSTIC: GitHub API error getting collaborator permission for {owner}/{repo}/{username}: status={}, message={}",
+                        source.status_code, source.message
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error getting collaborator permission"
+                    );
+                    log_octocrab_error("Failed to get collaborator permission", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    eprintln!(
+                        "DIAGNOSTIC: Non-GitHub error getting collaborator permission for {owner}/{repo}/{username}: error={e}"
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        error = %e,
+                        "Non-GitHub error getting collaborator permission"
+                    );
+                    log_octocrab_error("Failed to get collaborator permission", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
     /// Lists all collaborators (individuals with direct access) for a repository.
     ///
     /// Paginates through all pages using `per_page=100`.
