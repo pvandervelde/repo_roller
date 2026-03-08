@@ -526,6 +526,27 @@ fn convert_configuration_error(
                 org, template
             ),
         ),
+        ConfigurationError::PermissionDemotionNotAllowed {
+            identifier,
+            context,
+            current_level,
+            attempted_level,
+        } => (
+            StatusCode::FORBIDDEN,
+            "PermissionDemotionNotAllowed",
+            format!(
+                "Cannot demote '{}' in {}: current level '{}' cannot be replaced by '{}'.",
+                identifier, context, current_level, attempted_level
+            ),
+        ),
+        ConfigurationError::PermissionLockedNotAllowed { identifier, context } => (
+            StatusCode::FORBIDDEN,
+            "PermissionLockedNotAllowed",
+            format!(
+                "Permission for '{}' in {} is locked and cannot be altered.",
+                identifier, context
+            ),
+        ),
     };
 
     (

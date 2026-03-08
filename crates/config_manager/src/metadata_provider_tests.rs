@@ -1,4 +1,4 @@
-﻿//! Tests for metadata repository provider interface and types.
+//! Tests for metadata repository provider interface and types.
 
 use super::*;
 use chrono::Utc;
@@ -249,6 +249,8 @@ mod mock_provider {
                 repository_visibility: None,
                 notifications: None,
                 permissions: None,
+                default_teams: None,
+                default_collaborators: None,
             })
         }
 

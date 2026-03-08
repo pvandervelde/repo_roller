@@ -42,6 +42,8 @@ fn minimal_template() -> TemplateConfig {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 

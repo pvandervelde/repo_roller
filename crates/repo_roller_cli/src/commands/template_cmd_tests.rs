@@ -1,4 +1,4 @@
-﻿//! Tests for template commands.
+//! Tests for template commands.
 //!
 //! These tests verify the template inspection and validation command implementations.
 
@@ -169,6 +169,8 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 
@@ -225,6 +227,8 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 

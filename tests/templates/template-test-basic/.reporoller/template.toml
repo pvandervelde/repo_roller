@@ -24,3 +24,9 @@ content_type = "json"
 active = true
 events = ["issues", "issue_comment"]
 secret = "template-basic-webhook-secret-456"
+
+# Template-specific teams (merged with org-level default_teams).
+# 'reporoller-test-triage' is created by tests/create-test-teams.ps1.
+[[teams]]
+slug = "reporoller-test-triage"
+access_level = "triage"

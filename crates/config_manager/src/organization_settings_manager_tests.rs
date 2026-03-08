@@ -1,4 +1,4 @@
-﻿//! Tests for organization settings manager.
+//! Tests for organization settings manager.
 
 use super::*;
 use crate::{
@@ -45,6 +45,8 @@ impl TemplateRepository for MockTemplateRepository {
             templating: None,
             notifications: None,
             permissions: None,
+            teams: None,
+            collaborators: None,
         })
     }
 
@@ -500,6 +502,8 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             templating: None,
             notifications: None,
             permissions: None,
+            teams: None,
+            collaborators: None,
         })
     }
 
@@ -631,5 +635,509 @@ async fn test_resolve_configuration_with_empty_template_preserves_standard_label
     assert!(
         merged.labels.contains_key("bug"),
         "Standard labels should be preserved when no template is provided"
+    );
+}
+// ============================================================================
+// Permission Protection Tests
+// ============================================================================
+
+/// A configurable mock metadata provider for permission protection tests.
+/// Returns GlobalDefaults pre-loaded with specific teams, collaborators, and
+/// permission policies.
+struct PermissionTestMetadataProvider {
+    global_defaults: GlobalDefaults,
+}
+
+impl PermissionTestMetadataProvider {
+    fn new(global_defaults: GlobalDefaults) -> Self {
+        Self { global_defaults }
+    }
+}
+
+#[async_trait]
+impl MetadataRepositoryProvider for PermissionTestMetadataProvider {
+    async fn discover_metadata_repository(
+        &self,
+        _organization: &str,
+    ) -> ConfigurationResult<MetadataRepository> {
+        Ok(MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: "repo-config".to_string(),
+            discovery_method: crate::metadata_provider::DiscoveryMethod::ConfigurationBased {
+                repository_name: "repo-config".to_string(),
+            },
+            last_updated: chrono::Utc::now(),
+        })
+    }
+
+    async fn load_global_defaults(
+        &self,
+        _repository: &MetadataRepository,
+    ) -> ConfigurationResult<GlobalDefaults> {
+        Ok(self.global_defaults.clone())
+    }
+
+    async fn list_templates(&self, _org: &str) -> ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn load_template_configuration(
+        &self,
+        _org: &str,
+        _template_name: &str,
+    ) -> ConfigurationResult<crate::template_config::TemplateConfig> {
+        Err(ConfigurationError::FileNotFound {
+            path: "template.toml".to_string(),
+        })
+    }
+
+    async fn load_team_configuration(
+        &self,
+        _repository: &MetadataRepository,
+        _team_name: &str,
+    ) -> ConfigurationResult<Option<TeamConfig>> {
+        Ok(None)
+    }
+
+    async fn load_repository_type_configuration(
+        &self,
+        _repository: &MetadataRepository,
+        _repository_type: &str,
+    ) -> ConfigurationResult<Option<RepositoryTypeConfig>> {
+        Ok(None)
+    }
+
+    async fn load_standard_labels(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<std::collections::HashMap<String, crate::settings::LabelConfig>> {
+        Ok(std::collections::HashMap::new())
+    }
+
+    async fn validate_repository_structure(
+        &self,
+        _repository: &MetadataRepository,
+    ) -> ConfigurationResult<()> {
+        Ok(())
+    }
+
+    async fn list_available_repository_types(
+        &self,
+        _repository: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<Vec<crate::settings::WebhookConfig>> {
+        Ok(vec![])
+    }
+}
+
+/// A configurable mock template repository for permission protection tests.
+/// Returns a TemplateConfig pre-loaded with specific teams and collaborators.
+#[derive(Debug, Clone)]
+struct PermissionTestTemplateRepository {
+    teams: Option<Vec<crate::settings::DefaultTeamConfig>>,
+    collaborators: Option<Vec<crate::settings::DefaultCollaboratorConfig>>,
+}
+
+impl PermissionTestTemplateRepository {
+    fn with_teams(teams: Vec<crate::settings::DefaultTeamConfig>) -> Self {
+        Self {
+            teams: Some(teams),
+            collaborators: None,
+        }
+    }
+
+    fn with_collaborators(collabs: Vec<crate::settings::DefaultCollaboratorConfig>) -> Self {
+        Self {
+            teams: None,
+            collaborators: Some(collabs),
+        }
+    }
+}
+
+#[async_trait]
+impl TemplateRepository for PermissionTestTemplateRepository {
+    async fn load_template_config(
+        &self,
+        _org: &str,
+        template_name: &str,
+    ) -> ConfigurationResult<TemplateConfig> {
+        Ok(TemplateConfig {
+            template: crate::template_config::TemplateMetadata {
+                name: template_name.to_string(),
+                description: "Permission test template".to_string(),
+                author: "test".to_string(),
+                tags: vec![],
+            },
+            repository_type: None,
+            variables: None,
+            repository: None,
+            pull_requests: None,
+            branch_protection: None,
+            labels: None,
+            webhooks: None,
+            environments: None,
+            github_apps: None,
+            rulesets: None,
+            default_visibility: None,
+            templating: None,
+            notifications: None,
+            permissions: None,
+            teams: self.teams.clone(),
+            collaborators: self.collaborators.clone(),
+        })
+    }
+
+    async fn template_exists(&self, _org: &str, _template_name: &str) -> ConfigurationResult<bool> {
+        Ok(true)
+    }
+}
+
+// --- Team protection tests ---
+
+/// Verify that a template attempting to change a globally-locked team returns
+/// PermissionLockedNotAllowed.
+#[tokio::test]
+async fn test_resolve_configuration_template_cannot_alter_locked_global_team() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultTeamConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_teams: Some(vec![DefaultTeamConfig {
+            slug: "security-ops".to_string(),
+            access_level: "admin".to_string(),
+            locked: true,
+        }]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    let template_repo = Arc::new(PermissionTestTemplateRepository::with_teams(vec![
+        DefaultTeamConfig {
+            slug: "security-ops".to_string(),
+            access_level: "write".to_string(), // Any change to a locked team is forbidden.
+            locked: false,
+        },
+    ]));
+    let manager = OrganizationSettingsManager::new(
+        provider,
+        Arc::new(crate::TemplateLoader::new(template_repo)),
+    );
+    let context = crate::ConfigurationContext::new("test-org", "my-template");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(
+        result.is_err(),
+        "Should fail when altering a locked global team"
+    );
+    assert!(
+        matches!(
+            result.unwrap_err(),
+            ConfigurationError::PermissionLockedNotAllowed { .. }
+        ),
+        "Error must be PermissionLockedNotAllowed"
+    );
+}
+
+/// Verify that a template trying to demote a non-locked global team returns
+/// PermissionDemotionNotAllowed.
+#[tokio::test]
+async fn test_resolve_configuration_template_cannot_demote_global_team() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultTeamConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_teams: Some(vec![DefaultTeamConfig {
+            slug: "backend-team".to_string(),
+            access_level: "write".to_string(),
+            locked: false,
+        }]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    let template_repo = Arc::new(PermissionTestTemplateRepository::with_teams(vec![
+        DefaultTeamConfig {
+            slug: "backend-team".to_string(),
+            access_level: "read".to_string(), // Demotion: write → read.
+            locked: false,
+        },
+    ]));
+    let manager = OrganizationSettingsManager::new(
+        provider,
+        Arc::new(crate::TemplateLoader::new(template_repo)),
+    );
+    let context = crate::ConfigurationContext::new("test-org", "my-template");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_err(), "Should fail on team demotion");
+    assert!(
+        matches!(
+            result.unwrap_err(),
+            ConfigurationError::PermissionDemotionNotAllowed { .. }
+        ),
+        "Error must be PermissionDemotionNotAllowed"
+    );
+}
+
+/// Verify that a template can upgrade a team already established in global defaults.
+#[tokio::test]
+async fn test_resolve_configuration_template_can_upgrade_global_team() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultTeamConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_teams: Some(vec![DefaultTeamConfig {
+            slug: "frontend-team".to_string(),
+            access_level: "read".to_string(),
+            locked: false,
+        }]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    let template_repo = Arc::new(PermissionTestTemplateRepository::with_teams(vec![
+        DefaultTeamConfig {
+            slug: "frontend-team".to_string(),
+            access_level: "write".to_string(), // Upgrade: read → write.
+            locked: false,
+        },
+    ]));
+    let manager = OrganizationSettingsManager::new(
+        provider,
+        Arc::new(crate::TemplateLoader::new(template_repo)),
+    );
+    let context = crate::ConfigurationContext::new("test-org", "my-template");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_ok(), "Upgrade should succeed");
+    let merged = result.unwrap();
+    assert_eq!(
+        merged.teams.get("frontend-team").map(|s| s.as_str()),
+        Some("write"),
+        "Team should be upgraded to write"
+    );
+}
+
+/// Verify that globally-locked teams appear in merged.locked_teams.
+#[tokio::test]
+async fn test_resolve_configuration_locked_global_team_is_in_merged_locked_teams() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultTeamConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_teams: Some(vec![
+            DefaultTeamConfig {
+                slug: "security-ops".to_string(),
+                access_level: "admin".to_string(),
+                locked: true,
+            },
+            DefaultTeamConfig {
+                slug: "regular-team".to_string(),
+                access_level: "write".to_string(),
+                locked: false,
+            },
+        ]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    // Use an empty template (no teams) to avoid lock conflicts.
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
+    let context = crate::ConfigurationContext::new("test-org", "");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_ok(), "Resolution should succeed");
+    let merged = result.unwrap();
+    assert!(
+        merged.locked_teams.contains("security-ops"),
+        "Globally-locked team must be in locked_teams"
+    );
+    assert!(
+        !merged.locked_teams.contains("regular-team"),
+        "Non-locked team must not be in locked_teams"
+    );
+}
+
+/// Verify that a template-locked team is added to merged.locked_teams.
+#[tokio::test]
+async fn test_resolve_configuration_template_locked_team_is_in_merged_locked_teams() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultTeamConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_teams: Some(vec![DefaultTeamConfig {
+            slug: "ops-team".to_string(),
+            access_level: "write".to_string(),
+            locked: false,
+        }]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    // Template keeps the same level but marks the team as locked.
+    let template_repo = Arc::new(PermissionTestTemplateRepository::with_teams(vec![
+        DefaultTeamConfig {
+            slug: "ops-team".to_string(),
+            access_level: "write".to_string(), // Same level – not a demotion.
+            locked: true,                      // Template marks it locked for future levels.
+        },
+    ]));
+    let manager = OrganizationSettingsManager::new(
+        provider,
+        Arc::new(crate::TemplateLoader::new(template_repo)),
+    );
+    let context = crate::ConfigurationContext::new("test-org", "my-template");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_ok(), "Resolution should succeed");
+    let merged = result.unwrap();
+    assert!(
+        merged.locked_teams.contains("ops-team"),
+        "Template-locked team must be in locked_teams"
+    );
+}
+
+// --- Collaborator protection tests ---
+
+/// Verify that a template attempting to change a globally-locked collaborator returns
+/// PermissionLockedNotAllowed.
+#[tokio::test]
+async fn test_resolve_configuration_template_cannot_alter_locked_global_collaborator() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultCollaboratorConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_collaborators: Some(vec![DefaultCollaboratorConfig {
+            username: "owner-bot".to_string(),
+            access_level: "admin".to_string(),
+            locked: true,
+        }]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    let template_repo = Arc::new(PermissionTestTemplateRepository::with_collaborators(vec![
+        DefaultCollaboratorConfig {
+            username: "owner-bot".to_string(),
+            access_level: "read".to_string(),
+            locked: false,
+        },
+    ]));
+    let manager = OrganizationSettingsManager::new(
+        provider,
+        Arc::new(crate::TemplateLoader::new(template_repo)),
+    );
+    let context = crate::ConfigurationContext::new("test-org", "my-template");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(
+        result.is_err(),
+        "Should fail when altering a locked collaborator"
+    );
+    assert!(
+        matches!(
+            result.unwrap_err(),
+            ConfigurationError::PermissionLockedNotAllowed { .. }
+        ),
+        "Error must be PermissionLockedNotAllowed"
+    );
+}
+
+/// Verify that a template trying to demote a collaborator established at global level
+/// returns PermissionDemotionNotAllowed.
+#[tokio::test]
+async fn test_resolve_configuration_template_cannot_demote_global_collaborator() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::DefaultCollaboratorConfig;
+
+    let global_defaults = GlobalDefaults {
+        default_collaborators: Some(vec![DefaultCollaboratorConfig {
+            username: "ci-bot".to_string(),
+            access_level: "write".to_string(),
+            locked: false,
+        }]),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    let template_repo = Arc::new(PermissionTestTemplateRepository::with_collaborators(vec![
+        DefaultCollaboratorConfig {
+            username: "ci-bot".to_string(),
+            access_level: "read".to_string(), // Demotion.
+            locked: false,
+        },
+    ]));
+    let manager = OrganizationSettingsManager::new(
+        provider,
+        Arc::new(crate::TemplateLoader::new(template_repo)),
+    );
+    let context = crate::ConfigurationContext::new("test-org", "my-template");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_err(), "Should fail on collaborator demotion");
+    assert!(
+        matches!(
+            result.unwrap_err(),
+            ConfigurationError::PermissionDemotionNotAllowed { .. }
+        ),
+        "Error must be PermissionDemotionNotAllowed"
+    );
+}
+
+// --- Max access level tests ---
+
+/// Verify that max_team_access_level defined in global permission policies is
+/// propagated into the merged configuration.
+#[tokio::test]
+async fn test_resolve_configuration_max_team_access_level_extracted_into_merged() {
+    use crate::global_defaults::GlobalDefaults;
+    use crate::settings::permissions::OrganizationPermissionPoliciesConfig;
+
+    let global_defaults = GlobalDefaults {
+        permissions: Some(OrganizationPermissionPoliciesConfig {
+            baseline: None,
+            restrictions: None,
+            max_team_access_level: Some("write".to_string()),
+            max_collaborator_access_level: Some("maintain".to_string()),
+        }),
+        ..Default::default()
+    };
+    let provider = Arc::new(PermissionTestMetadataProvider::new(global_defaults));
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
+    let context = crate::ConfigurationContext::new("test-org", "");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_ok(), "Resolution should succeed");
+    let merged = result.unwrap();
+    assert_eq!(
+        merged.max_team_access_level.as_deref(),
+        Some("write"),
+        "max_team_access_level must be propagated from global permissions"
+    );
+    assert_eq!(
+        merged.max_collaborator_access_level.as_deref(),
+        Some("maintain"),
+        "max_collaborator_access_level must be propagated from global permissions"
+    );
+}
+
+/// Verify that when no max levels are configured the merged fields remain None.
+#[tokio::test]
+async fn test_resolve_configuration_max_access_levels_absent_when_not_configured() {
+    let provider = Arc::new(PermissionTestMetadataProvider::new(
+        GlobalDefaults::default(),
+    ));
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
+    let context = crate::ConfigurationContext::new("test-org", "");
+
+    let result = manager.resolve_configuration(&context).await;
+    assert!(result.is_ok(), "Resolution should succeed");
+    let merged = result.unwrap();
+    assert!(
+        merged.max_team_access_level.is_none(),
+        "max_team_access_level should be None when not configured"
+    );
+    assert!(
+        merged.max_collaborator_access_level.is_none(),
+        "max_collaborator_access_level should be None when not configured"
     );
 }

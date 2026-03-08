@@ -175,6 +175,8 @@ fn test_org_policies_validate_ok_when_all_grants_are_valid() {
             level: "admin".to_string(),
             scope: "user".to_string(),
         }]),
+        max_team_access_level: None,
+        max_collaborator_access_level: None,
     };
     assert!(config.validate().is_ok());
 }
@@ -188,6 +190,8 @@ fn test_org_policies_validate_error_on_invalid_baseline_grant() {
             scope: "repository".to_string(),
         }]),
         restrictions: None,
+        max_team_access_level: None,
+        max_collaborator_access_level: None,
     };
     assert!(config.validate().is_err());
 }
@@ -201,6 +205,8 @@ fn test_org_policies_validate_error_on_invalid_restriction_grant() {
             level: "ultramax".to_string(),
             scope: "user".to_string(),
         }]),
+        max_team_access_level: None,
+        max_collaborator_access_level: None,
     };
     assert!(config.validate().is_err());
 }
@@ -314,4 +320,355 @@ fn test_template_perms_validate_error_for_invalid_grant() {
         }]),
     };
     assert!(config.validate().is_err());
+}
+
+// ─── DefaultTeamConfig ───────────────────────────────────────────────────────
+
+#[test]
+fn test_default_team_deserializes_from_toml() {
+    let toml = r#"
+        slug = "platform-team"
+        access_level = "write"
+    "#;
+    let team: DefaultTeamConfig = toml::from_str(toml).expect("valid TOML");
+    assert_eq!(team.slug, "platform-team");
+    assert_eq!(team.access_level, "write");
+}
+
+#[test]
+fn test_default_team_validates_all_valid_levels() {
+    for level in ["read", "triage", "write", "maintain", "admin", "none"] {
+        let team = DefaultTeamConfig {
+            slug: "some-team".to_string(),
+            access_level: level.to_string(),
+            locked: false,
+        };
+        assert!(team.validate().is_ok(), "level '{level}' should be valid");
+    }
+}
+
+#[test]
+fn test_default_team_validate_error_for_invalid_level() {
+    let team = DefaultTeamConfig {
+        slug: "some-team".to_string(),
+        access_level: "superadmin".to_string(),
+        locked: false,
+    };
+    assert!(matches!(
+        team.validate(),
+        Err(PermissionConfigError::InvalidLevel(_))
+    ));
+}
+
+#[test]
+fn test_default_team_validate_error_for_empty_slug() {
+    let team = DefaultTeamConfig {
+        slug: "".to_string(),
+        access_level: "write".to_string(),
+        locked: false,
+    };
+    assert!(matches!(
+        team.validate(),
+        Err(PermissionConfigError::EmptyIdentifier(_))
+    ));
+}
+
+#[test]
+fn test_default_team_validate_error_for_blank_slug() {
+    let team = DefaultTeamConfig {
+        slug: "   ".to_string(),
+        access_level: "write".to_string(),
+        locked: false,
+    };
+    assert!(matches!(
+        team.validate(),
+        Err(PermissionConfigError::EmptyIdentifier(_))
+    ));
+}
+
+#[test]
+fn test_default_team_deserialized_in_array() {
+    let toml = r#"
+        [[teams]]
+        slug = "security-team"
+        access_level = "triage"
+
+        [[teams]]
+        slug = "ops-team"
+        access_level = "maintain"
+    "#;
+    #[derive(serde::Deserialize)]
+    struct Wrapper {
+        teams: Vec<DefaultTeamConfig>,
+    }
+    let wrapper: Wrapper = toml::from_str(toml).expect("valid TOML");
+    assert_eq!(wrapper.teams.len(), 2);
+    assert_eq!(wrapper.teams[0].slug, "security-team");
+    assert_eq!(wrapper.teams[1].access_level, "maintain");
+}
+
+// ─── DefaultCollaboratorConfig ───────────────────────────────────────────────
+
+#[test]
+fn test_default_collaborator_deserializes_from_toml() {
+    let toml = r#"
+        username = "monitoring-bot"
+        access_level = "read"
+    "#;
+    let collab: DefaultCollaboratorConfig = toml::from_str(toml).expect("valid TOML");
+    assert_eq!(collab.username, "monitoring-bot");
+    assert_eq!(collab.access_level, "read");
+}
+
+#[test]
+fn test_default_collaborator_validates_all_valid_levels() {
+    for level in ["read", "triage", "write", "maintain", "admin", "none"] {
+        let collab = DefaultCollaboratorConfig {
+            username: "some-user".to_string(),
+            access_level: level.to_string(),
+            locked: false,
+        };
+        assert!(collab.validate().is_ok(), "level '{level}' should be valid");
+    }
+}
+
+#[test]
+fn test_default_collaborator_validate_error_for_invalid_level() {
+    let collab = DefaultCollaboratorConfig {
+        username: "some-user".to_string(),
+        access_level: "viewer".to_string(),
+        locked: false,
+    };
+    assert!(matches!(
+        collab.validate(),
+        Err(PermissionConfigError::InvalidLevel(_))
+    ));
+}
+
+#[test]
+fn test_default_collaborator_validate_error_for_empty_username() {
+    let collab = DefaultCollaboratorConfig {
+        username: "".to_string(),
+        access_level: "read".to_string(),
+        locked: false,
+    };
+    assert!(matches!(
+        collab.validate(),
+        Err(PermissionConfigError::EmptyIdentifier(_))
+    ));
+}
+
+// ─── DefaultTeamConfig locked field ─────────────────────────────────────────
+
+#[test]
+fn test_default_team_locked_defaults_to_false_when_absent() {
+    let toml = r#"
+        slug = "platform-team"
+        access_level = "write"
+    "#;
+    let team: DefaultTeamConfig = toml::from_str(toml).expect("valid TOML");
+    assert!(!team.locked, "locked should default to false");
+}
+
+#[test]
+fn test_default_team_locked_true_deserializes() {
+    let toml = r#"
+        slug = "security-team"
+        access_level = "triage"
+        locked = true
+    "#;
+    let team: DefaultTeamConfig = toml::from_str(toml).expect("valid TOML");
+    assert_eq!(team.slug, "security-team");
+    assert!(team.locked);
+}
+
+#[test]
+fn test_default_team_locked_false_deserializes() {
+    let toml = r#"
+        slug = "dev-team"
+        access_level = "write"
+        locked = false
+    "#;
+    let team: DefaultTeamConfig = toml::from_str(toml).expect("valid TOML");
+    assert!(!team.locked);
+}
+
+#[test]
+fn test_default_team_locked_round_trips() {
+    let original = DefaultTeamConfig {
+        slug: "ops-team".to_string(),
+        access_level: "maintain".to_string(),
+        locked: true,
+    };
+    let serialized = toml::to_string(&original).expect("serialization failed");
+    let deserialized: DefaultTeamConfig =
+        toml::from_str(&serialized).expect("deserialization failed");
+    assert_eq!(original, deserialized);
+}
+
+#[test]
+fn test_default_team_validate_ignores_locked_field() {
+    // validate() should pass regardless of locked value
+    for locked in [true, false] {
+        let team = DefaultTeamConfig {
+            slug: "some-team".to_string(),
+            access_level: "write".to_string(),
+            locked,
+        };
+        assert!(
+            team.validate().is_ok(),
+            "validate should pass when locked={}",
+            locked
+        );
+    }
+}
+
+// ─── DefaultCollaboratorConfig locked field ──────────────────────────────────
+
+#[test]
+fn test_default_collaborator_locked_defaults_to_false_when_absent() {
+    let toml = r#"
+        username = "bot-user"
+        access_level = "read"
+    "#;
+    let collab: DefaultCollaboratorConfig = toml::from_str(toml).expect("valid TOML");
+    assert!(!collab.locked, "locked should default to false");
+}
+
+#[test]
+fn test_default_collaborator_locked_true_deserializes() {
+    let toml = r#"
+        username = "security-bot"
+        access_level = "read"
+        locked = true
+    "#;
+    let collab: DefaultCollaboratorConfig = toml::from_str(toml).expect("valid TOML");
+    assert!(collab.locked);
+}
+
+#[test]
+fn test_default_collaborator_locked_round_trips() {
+    let original = DefaultCollaboratorConfig {
+        username: "audit-bot".to_string(),
+        access_level: "triage".to_string(),
+        locked: true,
+    };
+    let serialized = toml::to_string(&original).expect("serialization failed");
+    let deserialized: DefaultCollaboratorConfig =
+        toml::from_str(&serialized).expect("deserialization failed");
+    assert_eq!(original, deserialized);
+}
+
+// ─── OrganizationPermissionPoliciesConfig – max access levels ────────────────
+
+#[test]
+fn test_org_perm_config_max_team_access_level_deserializes() {
+    let toml = r#"
+        max_team_access_level = "maintain"
+    "#;
+    let config: OrganizationPermissionPoliciesConfig = toml::from_str(toml).expect("valid TOML");
+    assert_eq!(config.max_team_access_level.as_deref(), Some("maintain"));
+}
+
+#[test]
+fn test_org_perm_config_max_collaborator_access_level_deserializes() {
+    let toml = r#"
+        max_collaborator_access_level = "write"
+    "#;
+    let config: OrganizationPermissionPoliciesConfig = toml::from_str(toml).expect("valid TOML");
+    assert_eq!(
+        config.max_collaborator_access_level.as_deref(),
+        Some("write")
+    );
+}
+
+#[test]
+fn test_org_perm_config_max_levels_absent_defaults_to_none() {
+    let toml = r#""#;
+    let config: OrganizationPermissionPoliciesConfig = toml::from_str(toml).expect("valid TOML");
+    assert!(config.max_team_access_level.is_none());
+    assert!(config.max_collaborator_access_level.is_none());
+}
+
+#[test]
+fn test_org_perm_config_validate_valid_max_levels() {
+    let config = OrganizationPermissionPoliciesConfig {
+        baseline: None,
+        restrictions: None,
+        max_team_access_level: Some("maintain".to_string()),
+        max_collaborator_access_level: Some("write".to_string()),
+    };
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_org_perm_config_validate_invalid_max_team_level() {
+    let config = OrganizationPermissionPoliciesConfig {
+        baseline: None,
+        restrictions: None,
+        max_team_access_level: Some("superuser".to_string()),
+        max_collaborator_access_level: None,
+    };
+    let err = config.validate().unwrap_err();
+    assert!(
+        matches!(err, PermissionConfigError::InvalidLevel(ref s) if s == "superuser"),
+        "Expected InvalidLevel(\"superuser\"), got: {err}"
+    );
+}
+
+#[test]
+fn test_org_perm_config_validate_invalid_max_collab_level() {
+    let config = OrganizationPermissionPoliciesConfig {
+        baseline: None,
+        restrictions: None,
+        max_team_access_level: None,
+        max_collaborator_access_level: Some("owner".to_string()),
+    };
+    let err = config.validate().unwrap_err();
+    assert!(
+        matches!(err, PermissionConfigError::InvalidLevel(ref s) if s == "owner"),
+        "Expected InvalidLevel(\"owner\"), got: {err}"
+    );
+}
+
+// ─── access_level_order ──────────────────────────────────────────────────────
+
+#[test]
+fn test_access_level_order_returns_none_for_unknown() {
+    assert_eq!(access_level_order("superuser"), None);
+    assert_eq!(access_level_order(""), None);
+    assert_eq!(access_level_order("WRITE"), None); // case-sensitive
+}
+
+#[test]
+fn test_access_level_order_all_valid_levels_ordered() {
+    let levels = ["none", "read", "triage", "write", "maintain", "admin"];
+    let orders: Vec<u8> = levels
+        .iter()
+        .map(|l| access_level_order(l).unwrap())
+        .collect();
+    for window in orders.windows(2) {
+        assert!(
+            window[0] < window[1],
+            "Expected strict ordering but got {:?}",
+            orders
+        );
+    }
+}
+
+#[test]
+fn test_access_level_order_admin_is_highest() {
+    assert_eq!(access_level_order("admin"), Some(5));
+}
+
+#[test]
+fn test_access_level_order_none_is_lowest() {
+    assert_eq!(access_level_order("none"), Some(0));
+}
+
+#[test]
+fn test_access_level_order_comparisons() {
+    assert!(access_level_order("write") > access_level_order("read"));
+    assert!(access_level_order("maintain") > access_level_order("triage"));
+    assert!(access_level_order("admin") > access_level_order("maintain"));
 }

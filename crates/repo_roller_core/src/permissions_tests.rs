@@ -446,6 +446,8 @@ mod tryfrom_tests {
         let cfg = OrganizationPermissionPoliciesConfig {
             baseline: Some(vec![make_grant("push", "write", "team")]),
             restrictions: Some(vec![make_grant("admin", "admin", "repository")]),
+            max_team_access_level: None,
+            max_collaborator_access_level: None,
         };
         let _policies =
             OrganizationPermissionPolicies::try_from(&cfg).expect("conversion succeeds");
@@ -456,6 +458,8 @@ mod tryfrom_tests {
         let cfg = OrganizationPermissionPoliciesConfig {
             baseline: None,
             restrictions: None,
+            max_team_access_level: None,
+            max_collaborator_access_level: None,
         };
         let _policies =
             OrganizationPermissionPolicies::try_from(&cfg).expect("conversion succeeds");
@@ -491,5 +495,43 @@ mod tryfrom_tests {
     fn template_perms_converts_none_required() {
         let cfg = TemplatePermissionsConfig { required: None };
         let _perms = TemplatePermissions::try_from(&cfg).expect("conversion succeeds");
+    }
+}
+
+// ── AccessLevel::TryFrom<&str> tests ──────────────────────────────────────────
+
+#[cfg(test)]
+mod access_level_try_from_str_tests {
+    use super::*;
+
+    #[test]
+    fn parses_all_valid_levels() {
+        let cases = [
+            ("none", AccessLevel::None),
+            ("read", AccessLevel::Read),
+            ("triage", AccessLevel::Triage),
+            ("write", AccessLevel::Write),
+            ("maintain", AccessLevel::Maintain),
+            ("admin", AccessLevel::Admin),
+        ];
+        for (s, expected) in cases {
+            assert_eq!(
+                AccessLevel::try_from(s).unwrap(),
+                expected,
+                "Failed for '{s}'"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_string() {
+        assert!(AccessLevel::try_from("superuser").is_err());
+        assert!(AccessLevel::try_from("").is_err());
+        assert!(AccessLevel::try_from("READ").is_err()); // case-sensitive
+    }
+
+    #[test]
+    fn write_parses_to_write() {
+        assert_eq!(AccessLevel::try_from("write").unwrap(), AccessLevel::Write);
     }
 }

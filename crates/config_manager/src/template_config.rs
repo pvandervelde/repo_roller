@@ -292,6 +292,43 @@ pub struct TemplateConfig {
     /// ```
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<TemplatePermissionsConfig>,
+
+    /// Teams to automatically assign to repositories created from this template.
+    ///
+    /// Every repository created from this template will have these teams
+    /// added with the specified access levels. Org-level `default_teams` are
+    /// applied first; template teams are merged in additively (template wins
+    /// for the same team slug).
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[teams]]
+    /// slug = "platform-team"
+    /// access_level = "write"
+    ///
+    /// [[teams]]
+    /// slug = "security-team"
+    /// access_level = "triage"
+    /// ```
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teams: Option<Vec<crate::settings::DefaultTeamConfig>>,
+
+    /// Individual collaborators to automatically assign to repositories created
+    /// from this template.
+    ///
+    /// Org-level `default_collaborators` are applied first; template collaborators
+    /// are merged additively (template wins for the same username).
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[collaborators]]
+    /// username = "code-owner"
+    /// access_level = "write"
+    /// ```
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collaborators: Option<Vec<crate::settings::DefaultCollaboratorConfig>>,
 }
 
 /// Template metadata providing information about the template.

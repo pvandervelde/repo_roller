@@ -77,6 +77,12 @@ pub enum PermissionConfigError {
     /// Valid values: `"repository"`, `"team"`, `"user"`, `"github_app"`.
     #[error("Invalid scope '{0}'; expected one of: repository, team, user, github_app")]
     InvalidScope(String),
+
+    /// A required identifier field was empty or blank.
+    ///
+    /// The field name is included to identify which field was empty.
+    #[error("'{0}' must not be empty")]
+    EmptyIdentifier(String),
 }
 
 // ── Accepted string constants ─────────────────────────────────────────────────
@@ -84,7 +90,36 @@ pub enum PermissionConfigError {
 const VALID_PERMISSION_TYPES: &[&str] = &["pull", "triage", "push", "maintain", "admin"];
 const VALID_LEVELS: &[&str] = &["none", "read", "triage", "write", "maintain", "admin"];
 const VALID_SCOPES: &[&str] = &["repository", "team", "user", "github_app"];
+// ── Access level ordering ─────────────────────────────────────────────────────
 
+/// Returns the numeric precedence of a valid access-level string.
+///
+/// Levels are ordered from lowest (`"none"` → 0) to highest (`"admin"` → 5).
+/// Returns `None` when the input is not a recognised level.
+///
+/// This is used in `config_manager` (which does not depend on `repo_roller_core`)
+/// to compare access levels without converting to the domain `AccessLevel` enum.
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::settings::permissions::access_level_order;
+///
+/// assert!(access_level_order("write") > access_level_order("read"));
+/// assert_eq!(access_level_order("admin"), Some(5));
+/// assert_eq!(access_level_order("unknown"), None);
+/// ```
+pub fn access_level_order(level: &str) -> Option<u8> {
+    match level {
+        "none" => Some(0),
+        "read" => Some(1),
+        "triage" => Some(2),
+        "write" => Some(3),
+        "maintain" => Some(4),
+        "admin" => Some(5),
+        _ => None,
+    }
+}
 // ── PermissionGrantConfig ─────────────────────────────────────────────────────
 
 /// TOML-deserializable representation of a single permission grant.
@@ -223,10 +258,46 @@ pub struct OrganizationPermissionPoliciesConfig {
     /// Maximum permissions allowed; requests exceeding these are denied (ceiling).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restrictions: Option<Vec<PermissionGrantConfig>>,
+
+    /// Maximum access level that any repository creation request may grant to a
+    /// **team**.
+    ///
+    /// When set, any request that attempts to grant a team an access level above
+    /// this ceiling will be capped to this value (with a warning).  Set this to
+    /// `"maintain"` to prevent requests from granting `"admin"` to teams, for
+    /// example.
+    ///
+    /// Valid values: `"none"`, `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
+    ///
+    /// # TOML Example
+    ///
+    /// ```toml
+    /// [permissions]
+    /// max_team_access_level = "maintain"
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_team_access_level: Option<String>,
+
+    /// Maximum access level that any repository creation request may grant to an
+    /// individual **collaborator**.
+    ///
+    /// Requests attempting to exceed this ceiling are capped (with a warning).
+    ///
+    /// Valid values: `"none"`, `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
+    ///
+    /// # TOML Example
+    ///
+    /// ```toml
+    /// [permissions]
+    /// max_collaborator_access_level = "write"
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_collaborator_access_level: Option<String>,
 }
 
 impl OrganizationPermissionPoliciesConfig {
-    /// Validates all nested [`PermissionGrantConfig`] entries.
+    /// Validates all nested [`PermissionGrantConfig`] entries and the new
+    /// `max_team_access_level` / `max_collaborator_access_level` strings.
     ///
     /// # Errors
     ///
@@ -240,6 +311,16 @@ impl OrganizationPermissionPoliciesConfig {
         if let Some(restrictions) = &self.restrictions {
             for grant in restrictions {
                 grant.validate()?;
+            }
+        }
+        if let Some(max_team) = &self.max_team_access_level {
+            if !VALID_LEVELS.contains(&max_team.as_str()) {
+                return Err(PermissionConfigError::InvalidLevel(max_team.clone()));
+            }
+        }
+        if let Some(max_collab) = &self.max_collaborator_access_level {
+            if !VALID_LEVELS.contains(&max_collab.as_str()) {
+                return Err(PermissionConfigError::InvalidLevel(max_collab.clone()));
             }
         }
         Ok(())
@@ -317,6 +398,196 @@ impl RepositoryTypePermissionsConfig {
                     return Err(PermissionConfigError::InvalidPermissionType(t.clone()));
                 }
             }
+        }
+        Ok(())
+    }
+}
+
+// ── DefaultTeamConfig ─────────────────────────────────────────────────────────
+
+/// TOML-deserializable configuration for a default team to assign to repositories.
+///
+/// Used in `GlobalDefaults` (via `default_teams`) and in `TemplateConfig` (via `teams`)
+/// to specify teams that are automatically given access to every repository created
+/// at that configuration level.
+///
+/// # TOML Examples
+///
+/// In `defaults.toml`:
+/// ```toml
+/// [[default_teams]]
+/// slug = "security-team"
+/// access_level = "triage"
+///
+/// [[default_teams]]
+/// slug = "ops-team"
+/// access_level = "maintain"
+/// ```
+///
+/// In `template.toml`:
+/// ```toml
+/// [[teams]]
+/// slug = "platform-team"
+/// access_level = "write"
+/// ```
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::settings::permissions::DefaultTeamConfig;
+///
+/// let team = DefaultTeamConfig {
+///     slug: "security-team".to_string(),
+///     access_level: "triage".to_string(),
+///     locked: false,
+/// };
+/// assert!(team.validate().is_ok());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefaultTeamConfig {
+    /// GitHub team slug within the organization.
+    ///
+    /// Must be a non-empty string matching the GitHub team's slug
+    /// (lowercase, hyphens permitted).
+    pub slug: String,
+
+    /// Access level to grant to the team.
+    ///
+    /// Valid values: `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
+    /// Use `"none"` to explicitly remove a team that may have been added at a
+    /// lower precedence level.
+    pub access_level: String,
+
+    /// Whether this team entry is locked and cannot be altered by lower-precedence
+    /// configuration levels or by the creation request.
+    ///
+    /// When `true`:
+    /// - An org-level locked team cannot be overridden or demoted by a template or request.
+    /// - A template-level locked team cannot be overridden or demoted by a request.
+    ///
+    /// Defaults to `false` when the field is absent from TOML.
+    ///
+    /// # TOML Example
+    ///
+    /// ```toml
+    /// [[default_teams]]
+    /// slug = "security-team"
+    /// access_level = "triage"
+    /// locked = true
+    /// ```
+    #[serde(default)]
+    pub locked: bool,
+}
+
+impl DefaultTeamConfig {
+    /// Validates `slug` (non-empty) and `access_level` (recognised value).
+    ///
+    /// # Errors
+    ///
+    /// - [`PermissionConfigError::InvalidLevel`] – unrecognised `access_level`.
+    /// - [`PermissionConfigError::EmptyIdentifier`] – empty `slug`.
+    pub fn validate(&self) -> Result<(), PermissionConfigError> {
+        if self.slug.trim().is_empty() {
+            return Err(PermissionConfigError::EmptyIdentifier("slug".to_string()));
+        }
+        if !VALID_LEVELS.contains(&self.access_level.as_str()) {
+            return Err(PermissionConfigError::InvalidLevel(
+                self.access_level.clone(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+// ── DefaultCollaboratorConfig ─────────────────────────────────────────────────
+
+/// TOML-deserializable configuration for a default collaborator to assign to repositories.
+///
+/// Used in `GlobalDefaults` (via `default_collaborators`) and in `TemplateConfig`
+/// (via `collaborators`) to specify individual GitHub users that are automatically
+/// added as direct collaborators to every repository created at that configuration
+/// level.
+///
+/// # TOML Examples
+///
+/// In `defaults.toml`:
+/// ```toml
+/// [[default_collaborators]]
+/// username = "security-bot"
+/// access_level = "read"
+/// ```
+///
+/// In `template.toml`:
+/// ```toml
+/// [[collaborators]]
+/// username = "code-owner"
+/// access_level = "write"
+/// ```
+///
+/// # Examples
+///
+/// ```rust
+/// use config_manager::settings::permissions::DefaultCollaboratorConfig;
+///
+/// let collab = DefaultCollaboratorConfig {
+///     username: "monitoring-bot".to_string(),
+///     access_level: "read".to_string(),
+///     locked: false,
+/// };
+/// assert!(collab.validate().is_ok());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefaultCollaboratorConfig {
+    /// GitHub username of the collaborator.
+    ///
+    /// Must be non-empty. The user must already exist on GitHub and, if the
+    /// repository is inside an organization, may need to accept an invitation.
+    pub username: String,
+
+    /// Access level to grant to the collaborator.
+    ///
+    /// Valid values: `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
+    /// Use `"none"` to explicitly remove a collaborator.
+    pub access_level: String,
+
+    /// Whether this collaborator entry is locked and cannot be altered by
+    /// lower-precedence configuration levels or by the creation request.
+    ///
+    /// When `true`:
+    /// - An org-level locked collaborator cannot be overridden or demoted by a template or request.
+    /// - A template-level locked collaborator cannot be overridden or demoted by a request.
+    ///
+    /// Defaults to `false` when the field is absent from TOML.
+    ///
+    /// # TOML Example
+    ///
+    /// ```toml
+    /// [[default_collaborators]]
+    /// username = "security-bot"
+    /// access_level = "read"
+    /// locked = true
+    /// ```
+    #[serde(default)]
+    pub locked: bool,
+}
+
+impl DefaultCollaboratorConfig {
+    /// Validates `username` (non-empty) and `access_level` (recognised value).
+    ///
+    /// # Errors
+    ///
+    /// - [`PermissionConfigError::InvalidLevel`] – unrecognised `access_level`.
+    /// - [`PermissionConfigError::EmptyIdentifier`] – empty `username`.
+    pub fn validate(&self) -> Result<(), PermissionConfigError> {
+        if self.username.trim().is_empty() {
+            return Err(PermissionConfigError::EmptyIdentifier(
+                "username".to_string(),
+            ));
+        }
+        if !VALID_LEVELS.contains(&self.access_level.as_str()) {
+            return Err(PermissionConfigError::InvalidLevel(
+                self.access_level.clone(),
+            ));
         }
         Ok(())
     }

@@ -28,6 +28,7 @@ pub use github_app::GitHubAppConfig;
 pub use label::LabelConfig;
 pub use notifications::{NotificationEndpoint, NotificationsConfig};
 pub use permissions::{
+    access_level_order, DefaultCollaboratorConfig, DefaultTeamConfig,
     OrganizationPermissionPoliciesConfig, PermissionConfigError, PermissionGrantConfig,
     RepositoryTypePermissionsConfig, TemplatePermissionsConfig,
 };

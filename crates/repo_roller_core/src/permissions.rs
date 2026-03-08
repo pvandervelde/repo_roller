@@ -507,6 +507,32 @@ fn parse_access_level(s: &str) -> Result<AccessLevel, PermissionConfigError> {
     }
 }
 
+impl TryFrom<&str> for AccessLevel {
+    type Error = PermissionConfigError;
+
+    /// Parses a lowercase access-level string into an [`AccessLevel`].
+    ///
+    /// Accepts the same values as the TOML configuration format:
+    /// `"none"`, `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PermissionConfigError::InvalidLevel`] for unrecognised input.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repo_roller_core::permissions::AccessLevel;
+    ///
+    /// assert_eq!(AccessLevel::try_from("write").unwrap(), AccessLevel::Write);
+    /// assert_eq!(AccessLevel::try_from("admin").unwrap(), AccessLevel::Admin);
+    /// assert!(AccessLevel::try_from("unknown").is_err());
+    /// ```
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        parse_access_level(s)
+    }
+}
+
 /// Parses a lowercase scope string into a [`PermissionScope`].
 fn parse_permission_scope(s: &str) -> Result<PermissionScope, PermissionConfigError> {
     match s {

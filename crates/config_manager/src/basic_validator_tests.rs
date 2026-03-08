@@ -1,4 +1,4 @@
-﻿//! Tests for BasicConfigurationValidator.
+//! Tests for BasicConfigurationValidator.
 
 use super::*;
 use crate::{
@@ -586,6 +586,8 @@ async fn test_validate_template_config_integration() {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = validator

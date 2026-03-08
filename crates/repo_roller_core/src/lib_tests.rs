@@ -1,4 +1,4 @@
-﻿// Unit tests for repo_roller_core
+// Unit tests for repo_roller_core
 // Covers create_repository success and error paths with isolated mock dependencies
 
 use super::*;
@@ -601,6 +601,8 @@ async fn test_create_repository_type_conversion() {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);
@@ -953,4 +955,181 @@ fn test_extract_config_variables_none_values() {
         variables.get("config_wiki_enabled"),
         Some(&"false".to_string())
     );
+}
+
+// ─── merge_access_map_with_policy ─────────────────────────────────────────────
+
+/// Convenience helper: build a HashMap<String,String> from (&str, &str) pairs.
+fn str_map(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// Convenience helper: build a HashSet<String> from &[&str].
+fn str_set(items: &[&str]) -> std::collections::HashSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+/// Verify that config entries without any request overrides are included as-is.
+#[test]
+fn test_merge_policy_config_only_entries_preserved() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("team-a", "write"), ("team-b", "read")]);
+    let result = merge_access_map_with_policy(&config, &str_set(&[]), None, &[], "team");
+
+    assert_eq!(result.get("team-a"), Some(&AccessLevel::Write));
+    assert_eq!(result.get("team-b"), Some(&AccessLevel::Read));
+}
+
+/// Verify that a request can add a new entry not present in config.
+#[test]
+fn test_merge_policy_request_adds_new_entry() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("team-a", "read")]);
+    let request = [("new-team", AccessLevel::Triage)];
+    let result = merge_access_map_with_policy(&config, &str_set(&[]), None, &request, "team");
+
+    assert_eq!(result.get("new-team"), Some(&AccessLevel::Triage));
+    assert_eq!(result.get("team-a"), Some(&AccessLevel::Read));
+}
+
+/// Verify that a request can upgrade (promote) an existing config entry.
+#[test]
+fn test_merge_policy_request_can_upgrade_config_entry() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("team-a", "read")]);
+    let request = [("team-a", AccessLevel::Write)];
+    let result = merge_access_map_with_policy(&config, &str_set(&[]), None, &request, "team");
+
+    assert_eq!(result.get("team-a"), Some(&AccessLevel::Write));
+}
+
+/// Verify that a request cannot demote an existing config entry (no-demotion rule).
+#[test]
+fn test_merge_policy_request_cannot_demote_config_entry() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("team-a", "maintain")]);
+    let request = [("team-a", AccessLevel::Read)];
+    let result = merge_access_map_with_policy(&config, &str_set(&[]), None, &request, "team");
+
+    // Must keep config level, not the requested demotion.
+    assert_eq!(result.get("team-a"), Some(&AccessLevel::Maintain));
+}
+
+/// Verify that a locked entry is not altered by a request.
+#[test]
+fn test_merge_policy_locked_entry_not_altered_by_request() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("locked-team", "write")]);
+    let locked = str_set(&["locked-team"]);
+    let request = [("locked-team", AccessLevel::Admin)];
+    let result = merge_access_map_with_policy(&config, &locked, None, &request, "team");
+
+    // Must remain at config level despite the upgrade attempt.
+    assert_eq!(result.get("locked-team"), Some(&AccessLevel::Write));
+}
+
+/// Verify that a locked entry that does NOT exist in config is accepted from the request.
+#[test]
+fn test_merge_policy_locked_entry_absent_from_config_accepts_request() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[]);
+    let locked = str_set(&["ghost-team"]);
+    let request = [("ghost-team", AccessLevel::Triage)];
+    let result = merge_access_map_with_policy(&config, &locked, None, &request, "team");
+
+    assert_eq!(result.get("ghost-team"), Some(&AccessLevel::Triage));
+}
+
+/// Verify that a request entry exceeding the org ceiling is capped at the ceiling.
+#[test]
+fn test_merge_policy_request_capped_at_ceiling() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[]);
+    let request = [("new-team", AccessLevel::Admin)];
+    let result =
+        merge_access_map_with_policy(&config, &str_set(&[]), Some("write"), &request, "team");
+
+    assert_eq!(result.get("new-team"), Some(&AccessLevel::Write));
+}
+
+/// Verify that a request entry at exactly the ceiling is accepted unchanged.
+#[test]
+fn test_merge_policy_request_at_ceiling_is_accepted() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[]);
+    let request = [("new-team", AccessLevel::Write)];
+    let result =
+        merge_access_map_with_policy(&config, &str_set(&[]), Some("write"), &request, "team");
+
+    assert_eq!(result.get("new-team"), Some(&AccessLevel::Write));
+}
+
+/// Verify that ceiling does not affect config entries (ceiling applies to request entries only).
+#[test]
+fn test_merge_policy_ceiling_does_not_affect_config_entries() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("team-a", "admin")]);
+    let result = merge_access_map_with_policy(&config, &str_set(&[]), Some("write"), &[], "team");
+
+    // Config entry with admin must remain even though ceiling is "write".
+    assert_eq!(result.get("team-a"), Some(&AccessLevel::Admin));
+}
+
+/// Verify ceiling + no-demotion interact correctly: after cap, if capped level is
+/// still below config level the demotion rule fires and the config value wins.
+#[test]
+fn test_merge_policy_ceiling_then_no_demotion_preserves_higher_config_level() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    // Config has "maintain", ceiling is "write", request asks for "admin".
+    // After capping: "write". "write" < "maintain" → demotion rule → keep "maintain".
+    let config = str_map(&[("team-a", "maintain")]);
+    let request = [("team-a", AccessLevel::Admin)];
+    let result =
+        merge_access_map_with_policy(&config, &str_set(&[]), Some("write"), &request, "team");
+
+    assert_eq!(result.get("team-a"), Some(&AccessLevel::Maintain));
+}
+
+/// Verify that an invalid config level string is skipped gracefully.
+#[test]
+fn test_merge_policy_invalid_config_level_is_skipped() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let config = str_map(&[("team-bad", "ultramax"), ("team-ok", "read")]);
+    let result = merge_access_map_with_policy(&config, &str_set(&[]), None, &[], "team");
+
+    // Invalid entry silently dropped; valid entry preserved.
+    assert!(!result.contains_key("team-bad"));
+    assert_eq!(result.get("team-ok"), Some(&AccessLevel::Read));
+}
+
+/// Verify that an invalid ceiling string is treated as no ceiling (warning, not error).
+#[test]
+fn test_merge_policy_invalid_ceiling_treated_as_no_ceiling() {
+    use crate::{merge_access_map_with_policy, permissions::AccessLevel};
+
+    let request = [("new-team", AccessLevel::Admin)];
+    let result = merge_access_map_with_policy(
+        &str_map(&[]),
+        &str_set(&[]),
+        Some("not_a_level"),
+        &request,
+        "team",
+    );
+
+    // Ceiling is invalid, so no ceiling applied; Admin request accepted as-is.
+    assert_eq!(result.get("new-team"), Some(&AccessLevel::Admin));
 }

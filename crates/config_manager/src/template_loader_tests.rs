@@ -1,4 +1,4 @@
-﻿//! Tests for template configuration loading.
+//! Tests for template configuration loading.
 //!
 //! Tests the TemplateLoader and TemplateRepository trait implementations.
 
@@ -85,6 +85,8 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 

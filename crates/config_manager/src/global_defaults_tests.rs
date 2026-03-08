@@ -165,3 +165,73 @@ fn test_deserialize_without_permissions_gives_none() {
     let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
     assert!(defaults.permissions.is_none());
 }
+
+// ── Default teams and collaborators ───────────────────────────────────────────
+
+#[test]
+fn test_deserialize_with_default_teams() {
+    let toml = r#"
+        [[default_teams]]
+        slug = "security-team"
+        access_level = "triage"
+
+        [[default_teams]]
+        slug = "ops-team"
+        access_level = "maintain"
+    "#;
+
+    let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
+    let teams = defaults.default_teams.expect("default_teams present");
+    assert_eq!(teams.len(), 2);
+    assert_eq!(teams[0].slug, "security-team");
+    assert_eq!(teams[0].access_level, "triage");
+    assert_eq!(teams[1].slug, "ops-team");
+    assert_eq!(teams[1].access_level, "maintain");
+}
+
+#[test]
+fn test_deserialize_with_default_collaborators() {
+    let toml = r#"
+        [[default_collaborators]]
+        username = "monitoring-bot"
+        access_level = "read"
+    "#;
+
+    let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
+    let collabs = defaults
+        .default_collaborators
+        .expect("default_collaborators present");
+    assert_eq!(collabs.len(), 1);
+    assert_eq!(collabs[0].username, "monitoring-bot");
+    assert_eq!(collabs[0].access_level, "read");
+}
+
+#[test]
+fn test_deserialize_without_default_teams_gives_none() {
+    let toml = r#"
+        [repository]
+        issues = { value = true, override_allowed = true }
+    "#;
+
+    let defaults: GlobalDefaults = toml::from_str(toml).expect("Failed to deserialize");
+    assert!(defaults.default_teams.is_none());
+    assert!(defaults.default_collaborators.is_none());
+}
+
+#[test]
+fn test_serialize_round_trip_includes_default_teams() {
+    use crate::settings::DefaultTeamConfig;
+
+    let defaults = GlobalDefaults {
+        default_teams: Some(vec![DefaultTeamConfig {
+            slug: "platform-team".to_string(),
+            access_level: "write".to_string(),
+            locked: false,
+        }]),
+        ..Default::default()
+    };
+
+    let toml = toml::to_string(&defaults).expect("Failed to serialize");
+    let back: GlobalDefaults = toml::from_str(&toml).expect("Failed to deserialize");
+    assert_eq!(defaults, back);
+}

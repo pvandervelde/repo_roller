@@ -163,6 +163,41 @@ pub struct GlobalDefaults {
     /// scope = "user"
     /// ```
     pub permissions: Option<OrganizationPermissionPoliciesConfig>,
+
+    /// Default teams to assign to every repository in the organization.
+    ///
+    /// Teams listed here are automatically added to all repositories created
+    /// in the organization, using the specified access level. These defaults
+    /// can be supplemented (but not overridden) by template-level team entries.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[default_teams]]
+    /// slug = "security-team"
+    /// access_level = "triage"
+    ///
+    /// [[default_teams]]
+    /// slug = "ops-team"
+    /// access_level = "maintain"
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_teams: Option<Vec<crate::settings::DefaultTeamConfig>>,
+
+    /// Default collaborators to assign to every repository in the organization.
+    ///
+    /// Individual GitHub users listed here are automatically added as direct
+    /// collaborators to all repositories created in the organization.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[default_collaborators]]
+    /// username = "security-bot"
+    /// access_level = "read"
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_collaborators: Option<Vec<crate::settings::DefaultCollaboratorConfig>>,
 }
 
 #[cfg(test)]

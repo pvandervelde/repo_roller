@@ -356,6 +356,8 @@ impl OrganizationSettingsManager {
                 templating: None,
                 notifications: None,
                 permissions: None,
+                teams: None,
+                collaborators: None,
             }
         } else {
             match self
@@ -391,6 +393,8 @@ impl OrganizationSettingsManager {
                         templating: None,
                         notifications: None,
                         permissions: None,
+                        teams: None,
+                        collaborators: None,
                     }
                 }
                 Err(e) => {
@@ -472,6 +476,146 @@ impl OrganizationSettingsManager {
                 "Configuration has {} webhooks after merging",
                 merged.webhooks.len()
             );
+        }
+
+        // Step 6.7: Merge default teams from global defaults and template.
+        //
+        // Rules (highest → lowest precedence within this step):
+        //  a. Globally-locked teams cannot be altered by the template.
+        //  b. Templates may not demote a team set at global level; only upgrades are permitted.
+        //  c. All locked teams (global or template) are recorded in `merged.locked_teams`.
+        debug!("Merging default teams into configuration");
+        use crate::settings::permissions::access_level_order;
+        let mut globally_locked_teams: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        if let Some(global_teams) = &global_defaults.default_teams {
+            for team in global_teams {
+                merged
+                    .teams
+                    .entry(team.slug.clone())
+                    .or_insert_with(|| team.access_level.clone());
+                if team.locked {
+                    globally_locked_teams.insert(team.slug.clone());
+                    merged.locked_teams.insert(team.slug.clone());
+                }
+            }
+        }
+        if let Some(template_teams) = &template_config.teams {
+            for team in template_teams {
+                // Rule (a): globally-locked teams cannot be altered.
+                if globally_locked_teams.contains(&team.slug) {
+                    return Err(
+                        crate::errors::ConfigurationError::PermissionLockedNotAllowed {
+                            identifier: team.slug.clone(),
+                            context: "org".to_string(),
+                        },
+                    );
+                }
+                // Rule (b): template cannot demote a team set at global level.
+                if let Some(current_level) = merged.teams.get(&team.slug) {
+                    let current_order = access_level_order(current_level.as_str());
+                    let attempted_order = access_level_order(team.access_level.as_str());
+                    if let (Some(cur), Some(att)) = (current_order, attempted_order) {
+                        if att < cur {
+                            return Err(
+                                crate::errors::ConfigurationError::PermissionDemotionNotAllowed {
+                                    identifier: team.slug.clone(),
+                                    context: "org".to_string(),
+                                    current_level: current_level.clone(),
+                                    attempted_level: team.access_level.clone(),
+                                },
+                            );
+                        }
+                    }
+                }
+                // Template overrides (upgrades) global for the same slug.
+                merged
+                    .teams
+                    .insert(team.slug.clone(), team.access_level.clone());
+                // Rule (c): propagate template-level locks.
+                if team.locked {
+                    merged.locked_teams.insert(team.slug.clone());
+                }
+            }
+        }
+        if !merged.teams.is_empty() {
+            info!(
+                "Configuration has {} default teams after merging ({} locked)",
+                merged.teams.len(),
+                merged.locked_teams.len()
+            );
+        }
+
+        // Step 6.8: Merge default collaborators from global defaults and template.
+        //
+        // Same protection rules as Step 6.7 but for individual collaborators.
+        debug!("Merging default collaborators into configuration");
+        let mut globally_locked_collabs: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        if let Some(global_collabs) = &global_defaults.default_collaborators {
+            for collab in global_collabs {
+                merged
+                    .collaborators
+                    .entry(collab.username.clone())
+                    .or_insert_with(|| collab.access_level.clone());
+                if collab.locked {
+                    globally_locked_collabs.insert(collab.username.clone());
+                    merged.locked_collaborators.insert(collab.username.clone());
+                }
+            }
+        }
+        if let Some(template_collabs) = &template_config.collaborators {
+            for collab in template_collabs {
+                if globally_locked_collabs.contains(&collab.username) {
+                    return Err(
+                        crate::errors::ConfigurationError::PermissionLockedNotAllowed {
+                            identifier: collab.username.clone(),
+                            context: "org".to_string(),
+                        },
+                    );
+                }
+                if let Some(current_level) = merged.collaborators.get(&collab.username) {
+                    let current_order = access_level_order(current_level.as_str());
+                    let attempted_order = access_level_order(collab.access_level.as_str());
+                    if let (Some(cur), Some(att)) = (current_order, attempted_order) {
+                        if att < cur {
+                            return Err(
+                                crate::errors::ConfigurationError::PermissionDemotionNotAllowed {
+                                    identifier: collab.username.clone(),
+                                    context: "org".to_string(),
+                                    current_level: current_level.clone(),
+                                    attempted_level: collab.access_level.clone(),
+                                },
+                            );
+                        }
+                    }
+                }
+                merged
+                    .collaborators
+                    .insert(collab.username.clone(), collab.access_level.clone());
+                if collab.locked {
+                    merged.locked_collaborators.insert(collab.username.clone());
+                }
+            }
+        }
+        if !merged.collaborators.is_empty() {
+            info!(
+                "Configuration has {} default collaborators after merging ({} locked)",
+                merged.collaborators.len(),
+                merged.locked_collaborators.len()
+            );
+        }
+
+        // Step 6.9: Extract org-wide maximum access ceilings from global permissions.
+        if let Some(perm_config) = &global_defaults.permissions {
+            if let Some(max_team) = &perm_config.max_team_access_level {
+                merged.max_team_access_level = Some(max_team.clone());
+                debug!("Org max team access level: {}", max_team);
+            }
+            if let Some(max_collab) = &perm_config.max_collaborator_access_level {
+                merged.max_collaborator_access_level = Some(max_collab.clone());
+                debug!("Org max collaborator access level: {}", max_collab);
+            }
         }
 
         // Step 7: Validate merged configuration

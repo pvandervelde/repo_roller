@@ -622,9 +622,40 @@ async fn apply_post_creation_settings(
             &request.name,
             requestor,
         );
-        // Teams and collaborators come from the creation request fields.
-        let teams = request.teams.clone();
-        let collaborators = request.collaborators.clone();
+        // Teams and collaborators are merged from two sources:
+        //   1. Org/template config (merged_config.teams / .collaborators) – baseline
+        //   2. Explicit request fields (request.teams / .collaborators)    – highest precedence
+        //
+        // Policy rules applied during merge (request overrides are subject to):
+        //   • Locked entries (merged_config.locked_teams) cannot be altered by the request.
+        //   • Config-established entries cannot be demoted (only upgraded) by the request.
+        //   • No request entry may exceed merged_config.max_team_access_level (capped).
+        let teams: std::collections::HashMap<String, crate::permissions::AccessLevel> =
+            merge_access_map_with_policy(
+                &merged_config.teams,
+                &merged_config.locked_teams,
+                merged_config.max_team_access_level.as_deref(),
+                request
+                    .teams
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), *v))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                "team",
+            );
+        let collaborators: std::collections::HashMap<String, crate::permissions::AccessLevel> =
+            merge_access_map_with_policy(
+                &merged_config.collaborators,
+                &merged_config.locked_collaborators,
+                merged_config.max_collaborator_access_level.as_deref(),
+                request
+                    .collaborators
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), *v))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                "collaborator",
+            );
 
         match permission_manager
             .apply_repository_permissions(
@@ -655,6 +686,132 @@ async fn apply_post_creation_settings(
     }
 
     Ok(())
+}
+
+/// Merges a config-derived access map with request-supplied overrides, enforcing
+/// three protection rules:
+///
+/// 1. **Locked entries** — identifiers in `locked` cannot be altered by any request entry.
+///    The config value is preserved and a warning is logged.
+/// 2. **No demotion** — request entries that would *reduce* the access level of a
+///    config-established identifier are silently skipped (with a warning).
+/// 3. **Max-level ceiling** — if `max_level_str` is `Some`, request entries that exceed
+///    that ceiling are capped at the ceiling value (with a warning).
+///
+/// # Arguments
+///
+/// * `config_entries`  – Config-derived identifiers (`HashMap<String, String>`).
+/// * `locked`          – Set of identifiers that must not be changed by requests.
+/// * `max_level_str`   – Optional ceiling level string; entries exceeding it are capped.
+/// * `request_entries` – `(&str, AccessLevel)` pairs from the creation request.
+/// * `kind`            – Human-readable label used in warning messages (`"team"` or
+///   `"collaborator"`).
+///
+/// # Returns
+///
+/// A `HashMap<String, AccessLevel>` with the fully resolved access map.
+pub(crate) fn merge_access_map_with_policy(
+    config_entries: &std::collections::HashMap<String, String>,
+    locked: &std::collections::HashSet<String>,
+    max_level_str: Option<&str>,
+    request_entries: &[(&str, crate::permissions::AccessLevel)],
+    kind: &str,
+) -> std::collections::HashMap<String, crate::permissions::AccessLevel> {
+    // Parse and collect config entries; skip entries with unrecognised level strings.
+    let mut map: std::collections::HashMap<String, crate::permissions::AccessLevel> =
+        config_entries
+            .iter()
+            .filter_map(|(id, level_str)| {
+                crate::permissions::AccessLevel::try_from(level_str.as_str())
+                    .map(|level| (id.clone(), level))
+                    .map_err(|e| {
+                        warn!(
+                            kind,
+                            identifier = id.as_str(),
+                            level = level_str.as_str(),
+                            "Ignoring invalid access level for default {} from config: {}",
+                            kind,
+                            e
+                        );
+                    })
+                    .ok()
+            })
+            .collect();
+
+    // Parse the ceiling once; if the string is invalid, ignore the ceiling with a warning.
+    let ceiling: Option<crate::permissions::AccessLevel> = max_level_str.and_then(|s| {
+        crate::permissions::AccessLevel::try_from(s)
+            .map_err(|e| {
+                warn!(
+                    kind,
+                    ceiling = s,
+                    "Ignoring invalid max_{}_access_level from org config: {}",
+                    kind,
+                    e
+                );
+            })
+            .ok()
+    });
+
+    for (id, mut requested_level) in request_entries.iter().copied() {
+        let id_owned = id.to_string();
+
+        // Rule 1 – locked entry must not be changed.
+        if locked.contains(&id_owned) {
+            if let std::collections::hash_map::Entry::Vacant(e) = map.entry(id_owned) {
+                // Locked but not in config yet (unusual). Accept request value.
+                e.insert(requested_level);
+            } else {
+                warn!(
+                    kind,
+                    identifier = id,
+                    "Request tried to alter locked {} '{}'; ignoring request entry",
+                    kind,
+                    id
+                );
+            }
+            continue;
+        }
+
+        // Rule 3 – cap at ceiling before comparing against existing level.
+        if let Some(cap) = ceiling {
+            if requested_level > cap {
+                warn!(
+                    kind,
+                    identifier = id,
+                    requested = ?requested_level,
+                    ceiling = ?cap,
+                    "Request {} level for '{}' exceeds org ceiling; capping at {:?}",
+                    kind,
+                    id,
+                    cap
+                );
+                requested_level = cap;
+            }
+        }
+
+        // Rule 2 – no demotion: request cannot lower a config-established level.
+        if let Some(&existing_level) = map.get(&id_owned) {
+            if requested_level < existing_level {
+                warn!(
+                    kind,
+                    identifier = id,
+                    existing = ?existing_level,
+                    requested = ?requested_level,
+                    "Request tried to demote {} '{}' from {:?} to {:?}; ignoring",
+                    kind,
+                    id,
+                    existing_level,
+                    requested_level
+                );
+                continue;
+            }
+        }
+
+        map.insert(id_owned, requested_level);
+    }
+
+    map
 }
 
 /// Spawns a background task that delivers `RepositoryCreatedEvent` notifications

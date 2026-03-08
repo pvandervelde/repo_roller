@@ -1,4 +1,4 @@
-﻿//! Tests for ruleset merging in configuration merger.
+//! Tests for ruleset merging in configuration merger.
 
 use super::*;
 use crate::settings::ruleset::{
@@ -29,6 +29,8 @@ fn create_test_template() -> NewTemplateConfig {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 
@@ -210,6 +212,8 @@ fn test_merge_template_rulesets() {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -313,6 +317,8 @@ fn test_merge_all_levels_rulesets() {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -382,6 +388,8 @@ fn test_merge_empty_rulesets() {
         templating: None,
         notifications: None,
         permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);

@@ -101,6 +101,55 @@ pub struct MergedConfiguration {
     /// These webhooks receive notifications when RepoRoller performs operations.
     pub notifications: NotificationsConfig,
 
+    /// Teams to assign to the repository (team slug → access level string).
+    ///
+    /// Merged from org-level `default_teams` and template-level `teams`.
+    /// Template entries win for the same slug.  The caller (CLI / API) may
+    /// further override or supplement these by extending the map before
+    /// applying permissions.
+    ///
+    /// Access level values: `"read"`, `"triage"`, `"write"`, `"maintain"`,
+    /// `"admin"`, or `"none"` (explicit removal).
+    pub teams: HashMap<String, String>,
+
+    /// Direct collaborators to assign to the repository (username → access level string).
+    ///
+    /// Merged from org-level `default_collaborators` and template-level
+    /// `collaborators`.  Template entries win for the same username.
+    ///
+    /// Access level values: `"read"`, `"triage"`, `"write"`, `"maintain"`,
+    /// `"admin"`, or `"none"` (explicit removal).
+    pub collaborators: HashMap<String, String>,
+
+    /// Team slugs whose access level is locked and must not be altered by
+    /// any lower-precedence level (templates or requests).
+    ///
+    /// Populated from `locked = true` entries in `default_teams`
+    /// (org level) and `teams` (template level).  The creation request
+    /// must not change the access level of these teams.
+    pub locked_teams: std::collections::HashSet<String>,
+
+    /// Collaborator usernames whose access level is locked and must not be
+    /// altered by any lower-precedence level.
+    ///
+    /// Populated from `locked = true` entries in `default_collaborators`
+    /// (org level) and `collaborators` (template level).
+    pub locked_collaborators: std::collections::HashSet<String>,
+
+    /// Organisation-wide ceiling for the access level that a creation request
+    /// may grant to a **team**.
+    ///
+    /// When `Some`, any request trying to set a team access level above this
+    /// value is capped at this value (with a warning logged).  Comes from
+    /// `[permissions].max_team_access_level` in `defaults.toml`.
+    pub max_team_access_level: Option<String>,
+
+    /// Organisation-wide ceiling for the access level that a creation request
+    /// may grant to an individual **collaborator**.
+    ///
+    /// Same semantics as `max_team_access_level` but for collaborators.
+    pub max_collaborator_access_level: Option<String>,
+
     /// Source trace tracking which configuration source provided each setting.
     ///
     /// Used for auditing, debugging, and understanding configuration precedence.
@@ -126,6 +175,12 @@ impl MergedConfiguration {
             notifications: NotificationsConfig {
                 outbound_webhooks: Vec::new(),
             },
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
+            locked_teams: std::collections::HashSet::new(),
+            locked_collaborators: std::collections::HashSet::new(),
+            max_team_access_level: None,
+            max_collaborator_access_level: None,
             source_trace: ConfigurationSourceTrace::new(),
         }
     }
