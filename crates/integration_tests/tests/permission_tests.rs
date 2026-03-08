@@ -663,3 +663,98 @@ async fn test_team_and_collaborator_applied_together() -> Result<()> {
     info!("✓ test_team_and_collaborator_applied_together passed");
     Ok(())
 }
+
+// ── Protection-policy tests (no GitHub required) ─────────────────────────────
+
+/// Verify that a locked config entry is NOT altered by a request that tries to
+/// change it.  The config-established level is preserved.
+///
+/// These tests exercise `merge_access_map_with_policy` directly without hitting
+/// GitHub infrastructure — they do not need the `#[ignore]` guard.
+#[test]
+fn test_ppp_locked_entry_not_altered_by_request() {
+    use repo_roller_core::{merge_access_map_with_policy, permissions::AccessLevel};
+    use std::collections::{HashMap, HashSet};
+
+    let config: HashMap<String, String> = [("security-ops".to_string(), "admin".to_string())]
+        .into_iter()
+        .collect();
+    let locked: HashSet<String> = ["security-ops".to_string()].into_iter().collect();
+
+    // Request tries to lower security-ops from admin to write (change on a locked entry).
+    let request = [("security-ops", AccessLevel::Write)];
+    let result = merge_access_map_with_policy(&config, &locked, None, &request, "team");
+
+    assert_eq!(
+        result.get("security-ops"),
+        Some(&AccessLevel::Admin),
+        "Locked entry must keep config level despite request trying to change it"
+    );
+}
+
+/// Verify that a config-established entry CANNOT be demoted by a request.
+/// The higher config level is preserved.
+#[test]
+fn test_ppp_config_entry_cannot_be_demoted_by_request() {
+    use repo_roller_core::{merge_access_map_with_policy, permissions::AccessLevel};
+    use std::collections::{HashMap, HashSet};
+
+    let config: HashMap<String, String> = [("platform".to_string(), "maintain".to_string())]
+        .into_iter()
+        .collect();
+    let locked: HashSet<String> = HashSet::new();
+
+    // Request tries to demote platform from maintain to read.
+    let request = [("platform", AccessLevel::Read)];
+    let result = merge_access_map_with_policy(&config, &locked, None, &request, "team");
+
+    assert_eq!(
+        result.get("platform"),
+        Some(&AccessLevel::Maintain),
+        "Demotion attempt must be ignored; config level preserved"
+    );
+}
+
+/// Verify that a request entry exceeding the org ceiling is capped, not rejected.
+#[test]
+fn test_ppp_request_team_capped_at_org_ceiling() {
+    use repo_roller_core::{merge_access_map_with_policy, permissions::AccessLevel};
+    use std::collections::{HashMap, HashSet};
+
+    let config: HashMap<String, String> = HashMap::new();
+    let locked: HashSet<String> = HashSet::new();
+
+    // Ceiling is "maintain"; request asks for "admin".
+    let request = [("new-team", AccessLevel::Admin)];
+    let result =
+        merge_access_map_with_policy(&config, &locked, Some("maintain"), &request, "team");
+
+    assert_eq!(
+        result.get("new-team"),
+        Some(&AccessLevel::Maintain),
+        "Request level exceeding ceiling must be capped at ceiling"
+    );
+}
+
+/// Verify that a config entry above the ceiling is NOT capped — the ceiling
+/// only applies to request entries.
+#[test]
+fn test_ppp_ceiling_does_not_affect_config_entries() {
+    use repo_roller_core::{merge_access_map_with_policy, permissions::AccessLevel};
+    use std::collections::{HashMap, HashSet};
+
+    let config: HashMap<String, String> = [("security-ops".to_string(), "admin".to_string())]
+        .into_iter()
+        .collect();
+    let locked: HashSet<String> = HashSet::new();
+
+    // Ceiling is "write", but the config entry is "admin" (legitimately above ceiling).
+    let result = merge_access_map_with_policy(&config, &locked, Some("write"), &[], "team");
+
+    assert_eq!(
+        result.get("security-ops"),
+        Some(&AccessLevel::Admin),
+        "Config-established entries must not be affected by the ceiling"
+    );
+}
+

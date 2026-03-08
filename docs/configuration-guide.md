@@ -17,6 +17,7 @@ This guide explains how to configure RepoRoller using the hierarchical configura
 - [Webhooks Configuration](#webhooks-configuration)
 - [Outbound Notification Webhooks](#outbound-notification-webhooks)
 - [Repository Rulesets](#repository-rulesets)
+- [Teams and Collaborators](#teams-and-collaborators)
 - [Override Controls](#override-controls)
 - [Examples](#examples)
 
@@ -385,6 +386,133 @@ Result:      All four rulesets are applied to the repository
 **Note:** If rulesets with the same name are defined at different levels, they will create
 separate independent rulesets (not merged). A warning will be logged when duplicate names
 are detected.
+
+## Teams and Collaborators
+
+RepoRoller can automatically assign GitHub teams and collaborators to every repository
+created within an organization. These are configured using `[[default_teams]]` and
+`[[default_collaborators]]` entries in the metadata repository.
+
+### Basic Assignment
+
+```toml
+# global/defaults.toml
+
+# Every repository in the org gets this team at triage level.
+[[default_teams]]
+slug         = "reporoller-test-permissions"
+access_level = "triage"
+
+# Every repository gets this service account as a read-only collaborator.
+[[default_collaborators]]
+username     = "ci-bot"
+access_level = "read"
+```
+
+Valid `access_level` values: `"none"`, `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
+
+Entries in `[[teams]]` inside a template (`.reporoller/template.toml`) are merged with
+the global `[[default_teams]]` list. Template entries can **upgrade** (but not downgrade)
+an existing org-level entry's access level.
+
+### Protection Policies
+
+Three protection mechanisms guard org-defined entries from being altered by templates or
+individual creation requests.
+
+#### 1. Locked Entries
+
+Set `locked = true` to prevent **any** change to that entry by a template or request:
+
+```toml
+[[default_teams]]
+slug         = "security-ops"
+access_level = "admin"
+locked       = true   # Templates and requests cannot change this entry
+```
+
+If a template attempts to change a locked org entry, **configuration resolution fails**
+with `PermissionLockedNotAllowed` — the repository is not created. If a creation request
+attempts to change it at runtime, the change is silently skipped with a warning.
+
+#### 2. No-Demotion Rule
+
+Without the `locked` flag, templates and requests may only **upgrade**, never **downgrade**,
+an existing entry's level:
+
+```toml
+[[default_teams]]
+slug         = "platform"
+access_level = "write"
+# locked = false (default) — templates can raise to maintain/admin, not lower
+```
+
+A template that tries to lower `write` → `read` will fail configuration resolution with
+`PermissionDemotionNotAllowed`. A request that tries the same at runtime is silently
+ignored (the `write` level is kept).
+
+#### 3. Maximum Level Ceiling
+
+Apply an org-wide ceiling on what a request may **grant**:
+
+```toml
+[permissions]
+max_team_access_level         = "maintain"  # requests cannot grant teams above maintain
+max_collaborator_access_level = "write"     # requests cannot grant collaborators above write
+```
+
+Request entries that exceed the ceiling are **capped** at the ceiling value with a warning.
+Note: config-established entries (from global defaults or templates) are **not** subject to
+the ceiling — they may legitimately sit above it.
+
+#### Enforcement Summary
+
+| Phase              | Rule              | Outcome                                        |
+|--------------------|-------------------|------------------------------------------------|
+| Config-resolution  | Locked entry      | Hard error — repository creation blocked       |
+| Config-resolution  | Demotion          | Hard error — repository creation blocked       |
+| Request            | Locked entry      | Soft — skip with `WARN`, preserve config level |
+| Request            | Demotion          | Soft — skip with `WARN`, preserve config level |
+| Request            | Exceeds ceiling   | Soft — cap at ceiling with `WARN`              |
+
+### Complete Example
+
+```toml
+# global/defaults.toml
+
+[[default_teams]]
+slug         = "security-ops"
+access_level = "admin"
+locked       = true           # Immutable — security team always has admin
+
+[[default_teams]]
+slug         = "platform"
+access_level = "write"
+                              # Not locked — templates can upgrade but not demote
+
+[[default_collaborators]]
+username     = "ci-service-account"
+access_level = "read"
+locked       = true           # Service account level is fixed
+
+[permissions]
+max_team_access_level         = "maintain"
+max_collaborator_access_level = "write"
+```
+
+```toml
+# .reporoller/template.toml
+
+# OK: upgrades platform team from write → maintain
+[[teams]]
+slug         = "platform"
+access_level = "maintain"
+
+# ERROR at config-resolution time: tries to change locked security-ops entry
+# [[teams]]
+# slug         = "security-ops"
+# access_level = "write"      ← PermissionLockedNotAllowed
+```
 
 ## Override Controls
 

@@ -156,6 +156,93 @@ impl PolicyEngine {
 }
 ```
 
+### Default Team and Collaborator Protection Policies
+
+Beyond the `PolicyEngine` grant-type hierarchy, the system enforces three additional
+protection rules on the named team/collaborator access maps that are built during
+repository creation. These rules operate on the `DefaultTeamConfig` / `DefaultCollaboratorConfig`
+entries defined in `GlobalDefaults` and template configuration, and are enforced at two
+distinct phases.
+
+#### Configuration Fields
+
+```toml
+# global/defaults.toml — per-entry lock flag
+
+[[default_teams]]
+slug         = "security-ops"
+access_level = "admin"
+locked       = true      # Template and request entries CANNOT change this entry
+
+[[default_teams]]
+slug         = "platform"
+access_level = "write"
+locked       = false     # Default — lower levels may upgrade (but not downgrade)
+
+# Ceiling: requests may not grant teams higher than "maintain"
+[permissions]
+max_team_access_level         = "maintain"
+max_collaborator_access_level = "write"
+```
+
+#### Rule 1 — Locked Entries
+
+When `locked = true` on a `DefaultTeamConfig` or `DefaultCollaboratorConfig`:
+
+- **Config-resolution phase (hard error)**: A template-level entry that attempts to
+  change the access level of a globally locked team/collaborator causes
+  `ConfigurationError::PermissionLockedNotAllowed`. Configuration resolution fails and
+  the repository is not created.
+- **Request phase (soft enforcement)**: A request that attempts to change the access
+  level of a locked entry is silently skipped; the config-established level is preserved
+  and a `WARN` tracing event is emitted.
+
+#### Rule 2 — No Demotion
+
+Config-established team/collaborator entries (from global defaults or templates) can only
+have their access level *upgraded* by entries at a lower precedence level:
+
+- **Config-resolution phase (hard error)**: A template entry that would lower the access
+  level of an existing globally-defined team/collaborator causes
+  `ConfigurationError::PermissionDemotionNotAllowed`. Configuration resolution fails.
+- **Request phase (soft enforcement)**: A request entry that would lower an
+  already-established access level is skipped; the higher level is preserved and a
+  `WARN` event is emitted.
+
+#### Rule 3 — Maximum Level Ceiling
+
+`OrganizationPermissionPoliciesConfig.max_team_access_level` and
+`max_collaborator_access_level` define an upper bound on what a request may grant:
+
+- **Request phase only (soft enforcement)**: Request entries exceeding the ceiling are
+  *capped* at the ceiling value; a `WARN` event is emitted. Config-established entries
+  are not affected by the ceiling — they may legitimately sit above it.
+
+#### Enforcement Summary
+
+| Phase              | Rule              | Outcome                      |
+|--------------------|-------------------|------------------------------|
+| Config-resolution  | Locked entry      | Hard error (`PermissionLockedNotAllowed`) |
+| Config-resolution  | Demotion          | Hard error (`PermissionDemotionNotAllowed`) |
+| Request            | Locked entry      | Soft: skip + `WARN`          |
+| Request            | Demotion          | Soft: skip + `WARN`          |
+| Request            | Exceeds ceiling   | Soft: cap at ceiling + `WARN` |
+
+#### Implementation Reference
+
+- `config_manager::settings::permissions::access_level_order` — string-based level
+  comparator used in config_manager (no dependency on `repo_roller_core::AccessLevel`).
+- `config_manager::errors::ConfigurationError::PermissionLockedNotAllowed` — hard error.
+- `config_manager::errors::ConfigurationError::PermissionDemotionNotAllowed` — hard error.
+- `config_manager::MergedConfiguration.locked_teams` / `.locked_collaborators` —
+  protection metadata propagated downstream.
+- `config_manager::MergedConfiguration.max_team_access_level` /
+  `.max_collaborator_access_level` — ceiling propagated downstream.
+- `repo_roller_core::merge_access_map_with_policy` — request-phase enforcement; applies
+  all three rules and returns the resolved access map.
+
+---
+
 ### Organization Permission Policies
 
 Organizations define comprehensive permission policies:

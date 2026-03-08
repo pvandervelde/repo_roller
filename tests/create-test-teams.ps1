@@ -13,6 +13,7 @@
     Teams created:
     - reporoller-test-permissions  Permissions integration test team
     - reporoller-test-triage       Triage-level integration test team
+    - reporoller-test-security     Security/locked team used to verify permission-protection policies
 
     After running this script:
     1. Set TEST_TEAM_SLUG=reporoller-test-permissions in your CI/CD environment
@@ -79,6 +80,12 @@ $Teams = @(
         Name        = "reporoller-test-triage"
         Slug        = "reporoller-test-triage"
         Description = "Triage-level integration test team for RepoRoller permission system tests"
+        Privacy     = "closed"
+    },
+    @{
+        Name        = "reporoller-test-security"
+        Slug        = "reporoller-test-security"
+        Description = "Locked security team used to verify permission-protection policies in RepoRoller"
         Privacy     = "closed"
     }
 )

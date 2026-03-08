@@ -710,7 +710,7 @@ async fn apply_post_creation_settings(
 /// # Returns
 ///
 /// A `HashMap<String, AccessLevel>` with the fully resolved access map.
-pub(crate) fn merge_access_map_with_policy(
+pub fn merge_access_map_with_policy(
     config_entries: &std::collections::HashMap<String, String>,
     locked: &std::collections::HashSet<String>,
     max_level_str: Option<&str>,
