@@ -18,6 +18,7 @@ This guide explains how to configure RepoRoller using the hierarchical configura
 - [Outbound Notification Webhooks](#outbound-notification-webhooks)
 - [Repository Rulesets](#repository-rulesets)
 - [Teams and Collaborators](#teams-and-collaborators)
+- [Permission Audit Logging](#permission-audit-logging)
 - [Override Controls](#override-controls)
 - [Examples](#examples)
 
@@ -390,20 +391,20 @@ are detected.
 ## Teams and Collaborators
 
 RepoRoller can automatically assign GitHub teams and collaborators to every repository
-created within an organization. These are configured using `[[default_teams]]` and
-`[[default_collaborators]]` entries in the metadata repository.
+created within an organization, using entries from the metadata repository and from the
+creation request itself.
 
-### Basic Assignment
+### Assignment
 
 ```toml
 # global/defaults.toml
 
-# Every repository in the org gets this team at triage level.
+# Added to every repository at triage level.
 [[default_teams]]
 slug         = "reporoller-test-permissions"
 access_level = "triage"
 
-# Every repository gets this service account as a read-only collaborator.
+# Service account added as read-only collaborator.
 [[default_collaborators]]
 username     = "ci-bot"
 access_level = "read"
@@ -411,71 +412,89 @@ access_level = "read"
 
 Valid `access_level` values: `"none"`, `"read"`, `"triage"`, `"write"`, `"maintain"`, `"admin"`.
 
-Entries in `[[teams]]` inside a template (`.reporoller/template.toml`) are merged with
-the global `[[default_teams]]` list. Template entries can **upgrade** (but not downgrade)
-an existing org-level entry's access level.
+### Merge Algorithm
 
-### Protection Policies
+Team and collaborator entries are collected from four sources, in order of increasing
+precedence:
 
-Three protection mechanisms guard org-defined entries from being altered by templates or
-individual creation requests.
+```
+1. Global defaults   global/defaults.toml        [[default_teams]] / [[default_collaborators]]
+2. Repository type   types/{type}/config.toml    [[default_teams]]
+3. Template          .reporoller/template.toml   [[teams]] / [[collaborators]]
+4. Request           API / CLI call              teams: {slug: level} / collaborators: {user: level}
+```
 
-#### 1. Locked Entries
+| Level | Locked-entry violation | Demotion attempt       | Exceeds ceiling      |
+|-------|------------------------|------------------------|----------------------|
+| 1–3   | Hard error (blocked)   | Hard error (blocked)   | N/A                  |
+| 4     | Skipped + `WARN`       | Skipped + `WARN`       | Capped + `WARN`      |
 
-Set `locked = true` to prevent **any** change to that entry by a template or request:
+**Algorithm (applied once per flag):**
+
+1. Load global defaults into the access map; record `locked = true` flags.
+2. For each type/template entry: hard-error on locked entries or demotions; otherwise add
+   or upgrade.
+3. For each request entry: skip (warn) on locked entries or demotions; cap (warn) if the
+   level exceeds the org ceiling; otherwise add or upgrade.
+4. Apply the resolved map to GitHub.
+
+```
+Level      Teams in map after merge
+──────────────────────────────────────────────────────────
+Global     security-ops=admin(locked), platform=write
+Type       (none)
+Template   platform upgraded → maintain
+Request    backend-team=write added; security-ops change skipped (WARN)
+──────────────────────────────────────────────────────────
+Final      security-ops=admin, platform=maintain, backend-team=write
+```
+
+### Protection Rules
+
+#### Locked Entries
+
+Set `locked = true` on any default entry to make it immutable. No template or request may
+change its level:
 
 ```toml
 [[default_teams]]
 slug         = "security-ops"
 access_level = "admin"
-locked       = true   # Templates and requests cannot change this entry
+locked       = true
 ```
 
-If a template attempts to change a locked org entry, **configuration resolution fails**
-with `PermissionLockedNotAllowed` — the repository is not created. If a creation request
-attempts to change it at runtime, the change is silently skipped with a warning.
+At config-resolution time (layers 1–3) a locked-entry violation fails with
+`PermissionLockedNotAllowed` and the repository is not created. At request time (layer 4)
+the change is silently skipped with a `WARN` log.
 
-#### 2. No-Demotion Rule
+#### No-Demotion Rule
 
-Without the `locked` flag, templates and requests may only **upgrade**, never **downgrade**,
-an existing entry's level:
+Entries without `locked = true` may be upgraded but never downgraded by a higher layer:
 
 ```toml
 [[default_teams]]
 slug         = "platform"
 access_level = "write"
-# locked = false (default) — templates can raise to maintain/admin, not lower
+# Templates may raise this to maintain/admin; they may not lower it.
 ```
 
-A template that tries to lower `write` → `read` will fail configuration resolution with
-`PermissionDemotionNotAllowed`. A request that tries the same at runtime is silently
-ignored (the `write` level is kept).
+A config-level demotion fails with `PermissionDemotionNotAllowed`. A request-level
+demotion is silently skipped with a `WARN` log.
 
-#### 3. Maximum Level Ceiling
+#### Access Level Ceiling
 
-Apply an org-wide ceiling on what a request may **grant**:
+Cap what a **request** may grant. Config-established entries (global / type / template) are
+not subject to the ceiling.
 
 ```toml
 [permissions]
-max_team_access_level         = "maintain"  # requests cannot grant teams above maintain
-max_collaborator_access_level = "write"     # requests cannot grant collaborators above write
+max_team_access_level         = "maintain"
+max_collaborator_access_level = "write"
 ```
 
-Request entries that exceed the ceiling are **capped** at the ceiling value with a warning.
-Note: config-established entries (from global defaults or templates) are **not** subject to
-the ceiling — they may legitimately sit above it.
+A request that exceeds the ceiling is capped at the ceiling value with a `WARN` log.
 
-#### Enforcement Summary
-
-| Phase              | Rule              | Outcome                                        |
-|--------------------|-------------------|------------------------------------------------|
-| Config-resolution  | Locked entry      | Hard error — repository creation blocked       |
-| Config-resolution  | Demotion          | Hard error — repository creation blocked       |
-| Request            | Locked entry      | Soft — skip with `WARN`, preserve config level |
-| Request            | Demotion          | Soft — skip with `WARN`, preserve config level |
-| Request            | Exceeds ceiling   | Soft — cap at ceiling with `WARN`              |
-
-### Complete Example
+### Configuration Example
 
 ```toml
 # global/defaults.toml
@@ -483,17 +502,17 @@ the ceiling — they may legitimately sit above it.
 [[default_teams]]
 slug         = "security-ops"
 access_level = "admin"
-locked       = true           # Immutable — security team always has admin
+locked       = true           # Never changes
 
 [[default_teams]]
 slug         = "platform"
 access_level = "write"
-                              # Not locked — templates can upgrade but not demote
+                              # Templates may upgrade; requests may not demote
 
 [[default_collaborators]]
 username     = "ci-service-account"
 access_level = "read"
-locked       = true           # Service account level is fixed
+locked       = true
 
 [permissions]
 max_team_access_level         = "maintain"
@@ -503,15 +522,201 @@ max_collaborator_access_level = "write"
 ```toml
 # .reporoller/template.toml
 
-# OK: upgrades platform team from write → maintain
+# Upgrade platform for repositories that use this template.
 [[teams]]
 slug         = "platform"
 access_level = "maintain"
 
-# ERROR at config-resolution time: tries to change locked security-ops entry
+# This would be a hard error at config-resolution time — commented out for illustration.
 # [[teams]]
 # slug         = "security-ops"
-# access_level = "write"      ← PermissionLockedNotAllowed
+# access_level = "write"   ← PermissionLockedNotAllowed
+```
+
+### Common Scenarios
+
+#### Security team always has admin, regardless of template or request
+
+```toml
+[[default_teams]]
+slug         = "security-ops"
+access_level = "admin"
+locked       = true
+```
+
+Any template or request that modifies `security-ops` is blocked (hard error) or silently
+ignored (request), respectively.
+
+---
+
+#### Platform team gets an elevated level for a specific template
+
+```toml
+# global/defaults.toml
+[[default_teams]]
+slug         = "platform"
+access_level = "write"     # baseline for most repos
+
+# .reporoller/template.toml
+[[teams]]
+slug         = "platform"
+access_level = "maintain"  # elevated for repos of this type
+```
+
+Repositories created with this template grant `platform` team `maintain`. Other
+repositories grant `write`. A subsequent request cannot demote the team back to `write`.
+
+---
+
+#### Request tries to grant admin; org ceiling blocks it
+
+```toml
+[permissions]
+max_team_access_level = "maintain"
+```
+
+A creation request includes `teams: {"new-team": "admin"}`. RepoRoller caps the level at
+`maintain` and logs:
+
+```
+WARN repo_roller_core: team_permission_capped slug="new-team" requested="admin" capped_at="maintain"
+```
+
+---
+
+#### Request tries to demote a template-established level
+
+The template grants `platform` team `maintain`. The creation request includes
+`teams: {"platform": "read"}`. The demotion is skipped and `platform` retains `maintain`:
+
+```
+WARN repo_roller_core: team_permission_demotion_skipped slug="platform" current="maintain" requested="read"
+```
+
+## Permission Audit Logging
+
+RepoRoller emits structured audit events via the [`tracing`](https://docs.rs/tracing)
+framework for every significant permission decision. These events are routed through the
+standard application tracing subscriber, which means they can be filtered, formatted as
+JSON, and written to a dedicated audit sink.
+
+### Enabling Audit Logs
+
+Filter on the `repo_roller_core::permission_audit` target to capture only audit events:
+
+```bash
+# Text output — development
+RUST_LOG="repo_roller_core::permission_audit=info" ./repo_roller_api
+
+# JSON output — production / SIEM ingestion (requires a JSON tracing subscriber,
+# e.g. tracing-subscriber with the json feature and EnvFilter)
+RUST_LOG="repo_roller_core::permission_audit=info,warn=info" ./repo_roller_api
+```
+
+### Audit Event Reference
+
+All events share these common structured fields:
+
+| Field            | Type    | Description                                            |
+|------------------|---------|--------------------------------------------------------|
+| `organization`   | string  | GitHub organization name                               |
+| `repository`     | string  | Repository name                                        |
+| `requestor`      | string  | GitHub username of the caller                          |
+| `emergency_access` | bool  | Whether emergency-access bypass was requested          |
+| `outcome`        | string  | Event-specific value (see below)                       |
+
+#### `outcome = "approved"` (INFO)
+
+Emitted when the policy engine auto-approves a permission request.
+
+Additional fields:
+
+| Field         | Type | Description                            |
+|---------------|------|----------------------------------------|
+| `grant_count` | u64  | Number of permission grants produced   |
+
+#### `outcome = "requires_approval"` (WARN)
+
+Emitted when the policy engine determines the request needs manual approval.
+
+Additional fields:
+
+| Field               | Type   | Description                                        |
+|---------------------|--------|----------------------------------------------------|
+| `reason`            | string | Human-readable reason for the approval requirement |
+| `restricted_count`  | u64    | Number of restricted permission grants             |
+
+#### `outcome = "denied"` (WARN)
+
+Emitted when the policy engine returns a hard error (`PermissionError`).
+
+Additional fields:
+
+| Field   | Type   | Description                          |
+|---------|--------|--------------------------------------|
+| `error` | string | Error description from `PermissionError::Display` |
+
+#### `outcome = "applied"` (INFO)
+
+Emitted after repository permissions are successfully applied to GitHub.
+
+Additional fields:
+
+| Field                   | Type | Description                                       |
+|-------------------------|------|---------------------------------------------------|
+| `teams_applied`         | u64  | Teams added or updated                            |
+| `teams_skipped`         | u64  | Teams unchanged (already at correct level)        |
+| `collaborators_applied` | u64  | Collaborators added or updated                    |
+| `collaborators_removed` | u64  | Collaborators removed (access set to `none`)      |
+| `collaborators_skipped` | u64  | Collaborators unchanged                           |
+| `failed_teams`          | u64  | Teams that failed to apply (GitHub API errors)    |
+| `failed_collaborators`  | u64  | Collaborators that failed to apply                |
+
+### Example JSON Audit Event
+
+With a JSON tracing subscriber (`tracing-subscriber` + `tracing-bunyan-formatter` or
+similar):
+
+```json
+{
+  "timestamp": "2024-03-15T10:42:07.123456Z",
+  "level": "INFO",
+  "target": "repo_roller_core::permission_audit",
+  "message": "Repository permissions applied",
+  "organization": "my-org",
+  "repository": "my-new-repo",
+  "requestor": "jsmith",
+  "emergency_access": false,
+  "outcome": "applied",
+  "teams_applied": 3,
+  "teams_skipped": 1,
+  "collaborators_applied": 0,
+  "collaborators_removed": 0,
+  "collaborators_skipped": 0,
+  "failed_teams": 0,
+  "failed_collaborators": 0
+}
+```
+
+### Protection Policy Audit Events
+
+When a protection policy is triggered during request-phase enforcement, a `WARN` event is
+emitted via the same target. Protection events are emitted by the core library itself
+(not the audit logger) and include:
+
+| Event message                           | Trigger                                               |
+|-----------------------------------------|-------------------------------------------------------|
+| `team_permission_locked_skip`           | Locked team entry in request — level preserved        |
+| `team_permission_demotion_skipped`      | Team demotion attempt in request — level preserved    |
+| `team_permission_capped`                | Team level exceeds org ceiling — capped               |
+| `collaborator_permission_locked_skip`   | Locked collaborator entry in request — level preserved |
+| `collaborator_permission_demotion_skipped` | Collaborator demotion attempt — level preserved    |
+| `collaborator_permission_capped`        | Collaborator level exceeds ceiling — capped           |
+
+These can be filtered alongside audit events using the same target:
+
+```bash
+RUST_LOG="repo_roller_core::permission_audit=warn" ./repo_roller_api
 ```
 
 ## Override Controls
