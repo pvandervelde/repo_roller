@@ -274,7 +274,7 @@ Write-Host "  # Set as Actions secrets (done separately — contain sensitive da
 Write-Host "  GITHUB_APP_ID=<your-app-id>" -ForegroundColor White
 Write-Host "  GITHUB_APP_PRIVATE_KEY=<pem-contents-without-newlines>" -ForegroundColor White
 Write-Host ""
-Write-Host "  # Set as Actions variables by this script on $SourceRepo:" -ForegroundColor Gray
+Write-Host "  # Set as Actions variables by this script on ${SourceRepo}:" -ForegroundColor Gray
 Write-Host "  TEST_ORG=$Organization                        (set manually — org name)" -ForegroundColor White
 Write-Host "  TEST_TEAM_SLUG=$primaryTeamSlug" -ForegroundColor Yellow
 Write-Host "  TEST_COLLABORATOR_USERNAME=$CollaboratorUsername" -ForegroundColor Yellow
