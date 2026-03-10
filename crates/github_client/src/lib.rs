@@ -1,4 +1,4 @@
-//! Crate for interacting with the GitHub REST API.
+﻿//! Crate for interacting with the GitHub REST API.
 //!
 //! This crate provides a client for making authenticated requests to GitHub,
 //! authenticating as a GitHub App using its ID and private key.
@@ -238,10 +238,6 @@ impl GitHubClient {
                         Err(Error::ApiError())
                     }
                     _ => {
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error getting repository {}/{}: error={}",
-                            owner, repo, e
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -529,8 +525,6 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
-                        eprintln!("DIAGNOSTIC: GitHub API error listing directory {} in {}/{}: status={}, message={}",
-                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = %owner,
                             repo = %repo,
@@ -544,10 +538,6 @@ impl GitHubClient {
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error listing directory {} in {}/{}: error={}",
-                            path, owner, repo, e
-                        );
                         error!(
                             owner = %owner,
                             repo = %repo,
@@ -749,8 +739,6 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
-                        eprintln!("DIAGNOSTIC: GitHub API error getting file {} in {}/{}: status={}, message={}",
-                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = owner,
                             repo = repo,
@@ -764,10 +752,6 @@ impl GitHubClient {
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error getting file {} in {}/{}: error={}",
-                            path, owner, repo, e
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -895,10 +879,6 @@ impl GitHubClient {
                 }
                 Err(e) => match &e {
                     octocrab::Error::GitHub { source, .. } => {
-                        eprintln!(
-                                "DIAGNOSTIC: GitHub API error listing teams for {org}: status={}, message={}",
-                                source.status_code, source.message
-                            );
                         error!(
                             org = org,
                             status_code = %source.status_code,
@@ -909,9 +889,6 @@ impl GitHubClient {
                         return Err(Error::ApiError());
                     }
                     _ => {
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error listing teams for {org}: error={e}"
-                        );
                         error!(
                             org = org,
                             error = %e,
@@ -1026,10 +1003,6 @@ impl GitHubClient {
                             return Err(Error::NotFound);
                         }
 
-                        eprintln!(
-                                "DIAGNOSTIC: GitHub API error listing members for {org}/{team_slug}: status={}, message={}",
-                                source.status_code, source.message
-                            );
                         error!(
                             org = org,
                             team_slug = team_slug,
@@ -1041,9 +1014,6 @@ impl GitHubClient {
                         return Err(Error::ApiError());
                     }
                     _ => {
-                        eprintln!(
-                                "DIAGNOSTIC: Non-GitHub error listing members for {org}/{team_slug}: error={e}"
-                            );
                         error!(
                             org = org,
                             team_slug = team_slug,
@@ -1207,10 +1177,6 @@ impl GitHubClient {
                         return Err(Error::NotFound);
                     }
 
-                    eprintln!(
-                            "DIAGNOSTIC: GitHub API error setting team permission for {org}/{team_slug} on {repo_owner}/{repo}: status={}, message={}",
-                            source.status_code, source.message
-                        );
                     error!(
                         org = org,
                         team_slug = team_slug,
@@ -1224,9 +1190,6 @@ impl GitHubClient {
                     Err(Error::ApiError())
                 }
                 _ => {
-                    eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error setting team permission for {org}/{team_slug} on {repo_owner}/{repo}: error={e}"
-                        );
                     error!(
                         org = org,
                         team_slug = team_slug,
@@ -1326,10 +1289,6 @@ impl GitHubClient {
                         return Ok(None);
                     }
 
-                    eprintln!(
-                        "DIAGNOSTIC: GitHub API error getting team permission for {org}/{team_slug} on {repo_owner}/{repo}: status={}, message={}",
-                        source.status_code, source.message
-                    );
                     error!(
                         org = org,
                         team_slug = team_slug,
@@ -1343,9 +1302,6 @@ impl GitHubClient {
                     Err(Error::ApiError())
                 }
                 _ => {
-                    eprintln!(
-                        "DIAGNOSTIC: Non-GitHub error getting team permission for {org}/{team_slug} on {repo_owner}/{repo}: error={e}"
-                    );
                     error!(
                         org = org,
                         team_slug = team_slug,
@@ -1452,10 +1408,6 @@ impl GitHubClient {
                         return Err(Error::NotFound);
                     }
 
-                    eprintln!(
-                        "DIAGNOSTIC: GitHub API error getting collaborator permission for {owner}/{repo}/{username}: status={}, message={}",
-                        source.status_code, source.message
-                    );
                     error!(
                         owner = owner,
                         repo = repo,
@@ -1468,9 +1420,6 @@ impl GitHubClient {
                     Err(Error::ApiError())
                 }
                 _ => {
-                    eprintln!(
-                        "DIAGNOSTIC: Non-GitHub error getting collaborator permission for {owner}/{repo}/{username}: error={e}"
-                    );
                     error!(
                         owner = owner,
                         repo = repo,
@@ -1559,10 +1508,6 @@ impl GitHubClient {
                 }
                 Err(e) => match &e {
                     octocrab::Error::GitHub { source, .. } => {
-                        eprintln!(
-                            "DIAGNOSTIC: GitHub API error listing collaborators for {owner}/{repo}: status={}, message={}",
-                            source.status_code, source.message
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -1574,9 +1519,6 @@ impl GitHubClient {
                         return Err(Error::ApiError());
                     }
                     _ => {
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error listing collaborators for {owner}/{repo}: error={e}"
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -1664,10 +1606,6 @@ impl GitHubClient {
                         return Err(Error::NotFound);
                     }
 
-                    eprintln!(
-                        "DIAGNOSTIC: GitHub API error adding collaborator {username} to {owner}/{repo}: status={}, message={}",
-                        source.status_code, source.message
-                    );
                     error!(
                         owner = owner,
                         repo = repo,
@@ -1680,9 +1618,6 @@ impl GitHubClient {
                     Err(Error::ApiError())
                 }
                 _ => {
-                    eprintln!(
-                        "DIAGNOSTIC: Non-GitHub error adding collaborator {username} to {owner}/{repo}: error={e}"
-                    );
                     error!(
                         owner = owner,
                         repo = repo,
@@ -1785,10 +1720,6 @@ impl GitHubClient {
                         return Err(Error::NotFound);
                     }
 
-                    eprintln!(
-                        "DIAGNOSTIC: GitHub API error removing collaborator {username} from {owner}/{repo}: status={}, message={}",
-                        source.status_code, source.message
-                    );
                     error!(
                         owner = owner,
                         repo = repo,
@@ -1801,9 +1732,6 @@ impl GitHubClient {
                     Err(Error::ApiError())
                 }
                 _ => {
-                    eprintln!(
-                        "DIAGNOSTIC: Non-GitHub error removing collaborator {username} from {owner}/{repo}: error={e}"
-                    );
                     error!(
                         owner = owner,
                         repo = repo,
@@ -1945,10 +1873,6 @@ impl RepositoryClient for GitHubClient {
                 Ok(default_branch)
             }
             Err(e) => {
-                eprintln!(
-                    "DIAGNOSTIC: Error getting org {} default branch: error={}",
-                    org_name, e
-                );
                 error!(
                     org_name = org_name,
                     "Failed to get organization information: {}", e
@@ -2047,10 +1971,6 @@ impl RepositoryClient for GitHubClient {
             Ok(response) => {
                 // Parse the response array of {property_name, value} objects
                 let properties = response.as_array().ok_or_else(|| {
-                    eprintln!(
-                        "DIAGNOSTIC: Custom properties response is not an array for {}/{}",
-                        owner, repo
-                    );
                     error!("Custom properties response is not an array");
                     Error::InvalidResponse
                 })?;
@@ -2072,10 +1992,6 @@ impl RepositoryClient for GitHubClient {
                 Ok(property_map)
             }
             Err(e) => {
-                eprintln!(
-                    "DIAGNOSTIC: Error getting custom properties for {}/{}: error={}",
-                    owner, repo, e
-                );
                 log_octocrab_error("Failed to get custom properties", e);
                 Err(Error::InvalidResponse)
             }
@@ -2104,10 +2020,6 @@ impl RepositoryClient for GitHubClient {
                 // Match on the error type to provide detailed diagnostics
                 match &e {
                     octocrab::Error::GitHub { source, .. } => {
-                        eprintln!(
-                            "DIAGNOSTIC: GitHub API error listing labels for {}/{}: status={}, message={}",
-                            owner, repo, source.status_code, source.message
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -2119,10 +2031,6 @@ impl RepositoryClient for GitHubClient {
                         Err(Error::ApiError())
                     }
                     _ => {
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error listing labels for {}/{}: error={}",
-                            owner, repo, e
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -2192,19 +2100,11 @@ impl RepositoryClient for GitHubClient {
                             Ok(())
                         }
                         Err(update_e) => {
-                            eprintln!(
-                                "DIAGNOSTIC: Error updating label {} in {}/{}: error={}",
-                                name, owner, repo, update_e
-                            );
                             log_octocrab_error("Failed to update existing label", update_e);
                             Err(Error::InvalidResponse)
                         }
                     }
                 } else {
-                    eprintln!(
-                        "DIAGNOSTIC: Error creating label {} in {}/{}: error={}",
-                        name, owner, repo, e
-                    );
                     log_octocrab_error("Failed to create label", e);
                     Err(Error::InvalidResponse)
                 }
@@ -2504,20 +2404,12 @@ impl RepositoryClient for GitHubClient {
 
         let route = format!("/repos/{}/{}/rulesets", owner, repo);
 
-        // First get as serde_json::Value to log the raw response
+        // Fetch as serde_json::Value first so we can include a body sample in
+        // deserialization error messages.
         let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
 
         match result {
             Ok(json_value) => {
-                let json_str = serde_json::to_string_pretty(&json_value)
-                    .unwrap_or_else(|_| format!("{:?}", json_value));
-                eprintln!(
-                    "[GITHUB_CLIENT DEBUG] list_repository_rulesets response for {}/{}:",
-                    owner, repo
-                );
-                eprintln!("[GITHUB_CLIENT DEBUG] Body: {}", json_str);
-
-                // Now try to deserialize into our type
                 match serde_json::from_value::<Vec<RepositoryRuleset>>(json_value.clone()) {
                     Ok(rulesets) => {
                         info!(
@@ -2526,48 +2418,24 @@ impl RepositoryClient for GitHubClient {
                             count = rulesets.len(),
                             "Successfully retrieved rulesets"
                         );
-                        if rulesets.is_empty() {
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] Repository has no rulesets (empty array)"
-                            );
-                        } else {
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] Successfully deserialized {} rulesets",
-                                rulesets.len()
-                            );
-                        }
                         Ok(rulesets)
                     }
                     Err(e) => {
+                        let body_sample = serde_json::to_string(&json_value)
+                            .unwrap_or_else(|_| format!("{:?}", json_value));
                         error!(
                             owner = owner,
                             repo = repo,
                             route = &route,
                             error = ?e,
-                            body_sample = &json_str[..json_str.len().min(500)],
+                            body_sample = &body_sample[..body_sample.len().min(500)],
                             "Failed to deserialize rulesets response"
                         );
-                        eprintln!("[GITHUB_CLIENT DEBUG] Deserialization error: {:?}", e);
-                        eprintln!("[GITHUB_CLIENT DEBUG] This means the JSON structure doesn't match Vec<RepositoryRuleset>");
-                        eprintln!("[GITHUB_CLIENT DEBUG] Check if response is an error object instead of an array");
-
-                        // Try to see if it's an error response
-                        if let Some(message) = json_value.get("message") {
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] Response contains 'message' field: {:?}",
-                                message
-                            );
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] This looks like a GitHub error response"
-                            );
-                        }
-
                         Err(Error::InvalidResponse)
                     }
                 }
             }
             Err(e) => {
-                // Check what kind of error this is
                 match &e {
                     octocrab::Error::GitHub { source, .. } => {
                         error!(
@@ -2579,20 +2447,6 @@ impl RepositoryClient for GitHubClient {
                             documentation = %source.documentation_url.as_deref().unwrap_or("N/A"),
                             "GitHub API error when listing rulesets"
                         );
-                        eprintln!("\n[GITHUB_CLIENT ERROR] GitHub API returned error:");
-                        eprintln!("[GITHUB_CLIENT ERROR] Status: {}", source.status_code);
-                        eprintln!("[GITHUB_CLIENT ERROR] Message: {}", source.message);
-                        eprintln!("[GITHUB_CLIENT ERROR] URL: {}", route);
-                        eprintln!("[GITHUB_CLIENT ERROR] This likely means:");
-                        if source.status_code.as_u16() == 404 {
-                            eprintln!("[GITHUB_CLIENT ERROR]   - Repository doesn't exist yet (timing issue)");
-                            eprintln!("[GITHUB_CLIENT ERROR]   - Rulesets endpoint not available for this repo");
-                        } else if source.status_code.as_u16() == 403 {
-                            eprintln!("[GITHUB_CLIENT ERROR]   - Insufficient permissions (need 'administration:read')");
-                            eprintln!(
-                                "[GITHUB_CLIENT ERROR]   - GitHub App doesn't have ruleset access"
-                            );
-                        }
                     }
                     _ => {
                         error!(
@@ -2602,7 +2456,6 @@ impl RepositoryClient for GitHubClient {
                             error = ?e,
                             "Failed to make request to list repository rulesets"
                         );
-                        eprintln!("\n[GITHUB_CLIENT ERROR] Unexpected error type: {:?}", e);
                     }
                 }
                 log_octocrab_error("Failed to list rulesets", e);

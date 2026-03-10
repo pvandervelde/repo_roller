@@ -427,8 +427,9 @@ async fn test_new_collaborator_is_added() {
 }
 
 #[tokio::test]
-async fn test_existing_collaborator_is_skipped() {
-    // When the collaborator is already listed, the manager must skip the add call.
+async fn test_existing_collaborator_permission_is_updated() {
+    // When the collaborator already exists, the manager must call the PUT endpoint
+    // to update their permission level (idempotent upsert — same endpoint as add).
     let server = MockServer::start().await;
 
     Mock::given(method("GET"))
@@ -444,6 +445,15 @@ async fn test_existing_collaborator_is_skipped() {
     Mock::given(method("GET"))
         .and(path("/repos/my-org/my-repo/collaborators"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&server)
+        .await;
+
+    // GitHub's PUT endpoint returns 204 No Content when updating an existing
+    // collaborator's permission. Use 200 with matching body to work around
+    // octocrab's optional-deserialisation quirks in the test harness.
+    Mock::given(method("PUT"))
+        .and(path("/repos/my-org/my-repo/collaborators/alice"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .mount(&server)
         .await;
 
@@ -465,10 +475,13 @@ async fn test_existing_collaborator_is_skipped() {
         .await
         .expect("should succeed");
 
-    assert_eq!(result.collaborators_applied, 0);
-    assert_eq!(result.collaborators_skipped, 1);
+    assert_eq!(result.collaborators_applied, 1);
+    assert_eq!(result.collaborators_skipped, 0);
     assert!(result.is_success());
-    assert!(!result.has_changes(), "Skip is not a change");
+    assert!(
+        result.has_changes(),
+        "Updating a collaborator permission is a change"
+    );
 }
 
 #[tokio::test]

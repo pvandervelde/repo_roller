@@ -21,9 +21,12 @@
 //! - **Teams**: `add_team_to_repository` uses a PUT endpoint on GitHub — safe to call
 //!   multiple times. `AccessLevel::None` on teams is logged as a warning and skipped
 //!   (a remove-team API endpoint is not yet exposed by `GitHubClient`).
-//! - **Collaborators**: Existing collaborators (any permission level) are skipped for
-//!   add/update operations to avoid unnecessary API calls. When `AccessLevel::None`
-//!   is requested, the collaborator is removed if present; otherwise skipped.
+//! - **Collaborators**: The GitHub `PUT /repos/{owner}/{repo}/collaborators/{username}`
+//!   endpoint is idempotent — it adds the collaborator when they are new and updates
+//!   their permission level when they already exist. The manager always calls this
+//!   endpoint (for any non-`None` level) so that permission changes are applied on
+//!   subsequent idempotent runs. When `AccessLevel::None` is requested, the
+//!   collaborator is removed if present; otherwise skipped.
 //!
 //! See `docs/spec/design/multi-level-permissions.md` for the full specification.
 
@@ -100,7 +103,8 @@ pub struct ApplyPermissionsResult {
     pub collaborators_applied: u32,
     /// Number of collaborators successfully removed.
     pub collaborators_removed: u32,
-    /// Number of collaborator permissions skipped (already present, or `None` on non-member).
+    /// Number of collaborator operations skipped (`None` requested for a non-member, or
+    /// `None` team access level).
     pub collaborators_skipped: u32,
     /// Team slugs whose permission application failed.
     pub failed_teams: Vec<String>,
@@ -429,27 +433,23 @@ impl PermissionManager {
                 continue;
             }
 
-            if is_existing {
-                info!(
-                    owner = owner,
-                    repo = repo,
-                    username = username.as_str(),
-                    "Collaborator already exists, skipping add"
-                );
-                result.collaborators_skipped += 1;
-                continue;
-            }
-
             let permission_str = GitHubPermissionLevel::from(*access_level)
                 .as_str()
                 .to_string();
 
+            // The GitHub PUT endpoint is idempotent: it adds the collaborator when
+            // they are new and updates their permission level when they already
+            // exist. Always call it so that permission upgrades are applied on
+            // subsequent idempotent runs (e.g. re-applying config to a repo that
+            // already has collaborators at a lower level).
+            let action = if is_existing { "Updating" } else { "Adding" };
             info!(
                 owner = owner,
                 repo = repo,
                 username = username.as_str(),
                 permission = permission_str.as_str(),
-                "Adding collaborator"
+                "{} collaborator permission",
+                action
             );
 
             match self
@@ -463,7 +463,7 @@ impl PermissionManager {
                         repo = repo,
                         username = username.as_str(),
                         permission = permission_str.as_str(),
-                        "Collaborator added"
+                        "Collaborator permission applied"
                     );
                     result.collaborators_applied += 1;
                 }
@@ -473,7 +473,7 @@ impl PermissionManager {
                         repo = repo,
                         username = username.as_str(),
                         error = ?e,
-                        "Failed to add collaborator"
+                        "Failed to apply collaborator permission"
                     );
                     result.failed_collaborators.push(username.clone());
                 }

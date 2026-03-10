@@ -622,6 +622,14 @@ async fn apply_post_creation_settings(
             &request.name,
             requestor,
         );
+        // NOTE: `hierarchy` carries empty `organization_policies` and
+        // `user_requested_permissions` because org-level policies are not yet
+        // threaded through `MergedConfiguration`. The `PolicyEngine::evaluate_permission_request`
+        // call below therefore evaluates an empty request against an empty policy and
+        // is effectively a no-op today. The real permission-merge enforcement lives in
+        // `merge_access_map_with_policy` (called immediately below). The PolicyEngine
+        // path is future infrastructure intended to replace that merge once org policies
+        // are properly wired up. Until then, do not add policy logic inside the engine.
         // Teams and collaborators are merged from two sources:
         //   1. Org/template config (merged_config.teams / .collaborators) – baseline
         //   2. Explicit request fields (request.teams / .collaborators)    – highest precedence
@@ -756,24 +764,23 @@ pub fn merge_access_map_with_policy(
     for (id, mut requested_level) in request_entries.iter().copied() {
         let id_owned = id.to_string();
 
-        // Rule 1 – locked entry must not be changed.
+        // Rule 1 – locked entry must not be changed by a request.
+        // Note: `locked` is populated only from entries already present in
+        // `config_entries`, so the map entry is always Occupied here.
+        // A locked entry must never accept an arbitrary request value.
         if locked.contains(&id_owned) {
-            if let std::collections::hash_map::Entry::Vacant(e) = map.entry(id_owned) {
-                // Locked but not in config yet (unusual). Accept request value.
-                e.insert(requested_level);
-            } else {
-                warn!(
-                    kind,
-                    identifier = id,
-                    "Request tried to alter locked {} '{}'; ignoring request entry",
-                    kind,
-                    id
-                );
-            }
+            warn!(
+                kind,
+                identifier = id,
+                "Request tried to alter locked {} '{}'; ignoring request entry",
+                kind,
+                id
+            );
             continue;
         }
 
-        // Rule 3 – cap at ceiling before comparing against existing level.
+        // Apply ceiling (Rule 3 in the spec) before the no-demotion check so that
+        // we compare the already-capped level against the config-established level.
         if let Some(cap) = ceiling {
             if requested_level > cap {
                 warn!(
@@ -790,7 +797,8 @@ pub fn merge_access_map_with_policy(
             }
         }
 
-        // Rule 2 – no demotion: request cannot lower a config-established level.
+        // No-demotion (Rule 2 in the spec): a request cannot lower a
+        // config-established level (checked against the already-capped value).
         if let Some(&existing_level) = map.get(&id_owned) {
             if requested_level < existing_level {
                 warn!(

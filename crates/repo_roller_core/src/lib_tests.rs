@@ -1036,9 +1036,13 @@ fn test_merge_policy_locked_entry_not_altered_by_request() {
     assert_eq!(result.get("locked-team"), Some(&AccessLevel::Write));
 }
 
-/// Verify that a locked entry that does NOT exist in config is accepted from the request.
+/// Verify that a locked entry that does NOT exist in config is still ignored when
+/// a request tries to set it. In production this combination (locked but not in config)
+/// is unreachable because `locked` is only populated from entries that already appear
+/// in `config_entries`. The correct safe behaviour is to always ignore requests for
+/// locked identifiers regardless.
 #[test]
-fn test_merge_policy_locked_entry_absent_from_config_accepts_request() {
+fn test_merge_policy_locked_entry_absent_from_config_ignores_request() {
     use crate::{merge_access_map_with_policy, permissions::AccessLevel};
 
     let config = str_map(&[]);
@@ -1046,7 +1050,8 @@ fn test_merge_policy_locked_entry_absent_from_config_accepts_request() {
     let request = [("ghost-team", AccessLevel::Triage)];
     let result = merge_access_map_with_policy(&config, &locked, None, &request, "team");
 
-    assert_eq!(result.get("ghost-team"), Some(&AccessLevel::Triage));
+    // The request value must NOT be inserted for a locked identifier.
+    assert_eq!(result.get("ghost-team"), None);
 }
 
 /// Verify that a request entry exceeding the org ceiling is capped at the ceiling.
