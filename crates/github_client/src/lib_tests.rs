@@ -1519,6 +1519,51 @@ async fn test_get_team_repository_permission_returns_none_when_no_access() {
     );
 }
 
+/// Test that get_team_repository_permission returns Ok(None) on empty body (e.g. 200/204 with no JSON).
+///
+/// This covers the edge case where GitHub returns an empty response body,
+/// which normally produces a serde EOF error. The function treats this as
+/// "no permission recorded" rather than a hard failure.
+#[tokio::test]
+async fn test_get_team_repository_permission_returns_none_on_empty_body() {
+    let mock_server = MockServer::start().await;
+    let org = "test-org";
+    let team_slug = "platform-team";
+    let repo_owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
+        )))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_team_repository_permission(org, team_slug, repo_owner, repo)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Expected Ok(None) for empty-body response, got: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap(),
+        None,
+        "Expected None when response body is empty"
+    );
+}
+
 /// Test that get_team_repository_permission returns an error on non-404 API failure.
 #[tokio::test]
 async fn test_get_team_repository_permission_returns_error_on_api_failure() {

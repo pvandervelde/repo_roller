@@ -1318,7 +1318,24 @@ impl GitHubClient {
                     log_octocrab_error("Failed to get team repository permission", e);
                     Err(Error::ApiError())
                 }
+                // An empty body (HTTP 200/204 with no JSON) produces an EOF serde error.
+                // Treat this as "no access recorded yet" rather than a hard failure.
+                octocrab::Error::Json { source, .. } if source.inner().is_eof() => {
+                    warn!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo = repo,
+                        "Empty body from team permission check — treating as no access"
+                    );
+                    Ok(None)
+                }
                 _ => {
+                    // Use eprintln! so this is captured in test output even without a
+                    // tracing subscriber, making E2E diagnosis easier.
+                    eprintln!(
+                        "[get_team_repository_permission] Non-GitHub error: org={org} \
+                         team={team_slug} repo={repo} error={e}"
+                    );
                     error!(
                         org = org,
                         team_slug = team_slug,
