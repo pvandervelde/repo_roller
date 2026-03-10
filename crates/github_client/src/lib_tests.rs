@@ -1279,7 +1279,7 @@ async fn test_get_team_members_returns_error_on_not_found() {
     assert!(result.is_err(), "Expected error for non-existent team");
 }
 
-/// Test that add_team_to_repository succeeds on 204 No Content (mocked as 200 + {}).
+/// Test that add_team_to_repository succeeds on 204 No Content.
 #[tokio::test]
 async fn test_add_team_to_repository_succeeds() {
     let mock_server = MockServer::start().await;
@@ -1288,12 +1288,12 @@ async fn test_add_team_to_repository_succeeds() {
     let repo = "my-service";
     let permission = "push";
 
-    // GitHub returns 204 No Content; mock as 200 + {} to avoid octocrab deserialization error.
+    // GitHub returns 204 No Content with an empty body on success.
     Mock::given(method("PUT"))
         .and(path(format!(
             "/orgs/{org}/teams/{team_slug}/repos/{org}/{repo}"
         )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .respond_with(ResponseTemplate::new(204))
         .mount(&mock_server)
         .await;
 
@@ -1362,12 +1362,12 @@ async fn test_set_team_repository_permission_succeeds() {
     let repo = "my-service";
     let permission = "maintain";
 
-    // Same endpoint as add_team_to_repository; GitHub returns 204 → mock as 200 + {}.
+    // GitHub returns 204 No Content on success (empty body).
     Mock::given(method("PUT"))
         .and(path(format!(
             "/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}"
         )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .respond_with(ResponseTemplate::new(204))
         .mount(&mock_server)
         .await;
 

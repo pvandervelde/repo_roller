@@ -1146,8 +1146,11 @@ impl GitHubClient {
         let route = format!("/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}");
         let body = serde_json::json!({ "permission": permission });
 
-        // GitHub returns 204 No Content on success; use Option<serde_json::Value>
-        // to handle both 204 (real GitHub) and 200 + {} (wiremock tests) gracefully.
+        // GitHub returns 204 No Content on success — empty body, no JSON.
+        // octocrab tries to deserialise the body regardless of status code; an
+        // empty body produces `serde_json::Error::is_eof() == true`.  Intercept
+        // that variant and treat it as success before falling through to real
+        // error handling.
         let result: OctocrabResult<Option<serde_json::Value>> =
             self.client.put(route, Some(&body)).await;
 
@@ -1160,6 +1163,20 @@ impl GitHubClient {
                     repo = repo,
                     permission = permission,
                     "Successfully set team repository permission"
+                );
+                Ok(())
+            }
+            // 204 No Content — GitHub returns an empty body on success.  octocrab
+            // fails to parse it as JSON; `inner().is_eof()` distinguishes this from a
+            // genuinely malformed payload.
+            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
+                info!(
+                    org = org,
+                    team_slug = team_slug,
+                    repo_owner = repo_owner,
+                    repo = repo,
+                    permission = permission,
+                    "Successfully set team repository permission (204 No Content)"
                 );
                 Ok(())
             }
