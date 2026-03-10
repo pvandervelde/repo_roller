@@ -12,8 +12,8 @@
 //!   1. Evaluate request via PolicyEngine (pure, no I/O)
 //!   2. If RequiresApproval → return PermissionManagerError::RequiresApproval
 //!   3. Apply team permissions via GitHubClient  (idempotent upsert)
-//!   4. Apply collaborator permissions via GitHubClient (idempotent; skips
-//!      existing collaborators for add, removes for AccessLevel::None)
+//!   4. Apply collaborator permissions via GitHubClient (idempotent PUT for
+//!      non-None; membership check + remove for AccessLevel::None)
 //! ```
 //!
 //! ## Idempotency
@@ -25,8 +25,9 @@
 //!   endpoint is idempotent — it adds the collaborator when they are new and updates
 //!   their permission level when they already exist. The manager always calls this
 //!   endpoint (for any non-`None` level) so that permission changes are applied on
-//!   subsequent idempotent runs. When `AccessLevel::None` is requested, the
-//!   collaborator is removed if present; otherwise skipped.
+//!   subsequent idempotent runs. When `AccessLevel::None` is requested the existing
+//!   collaborator list is fetched (one API call) to decide whether to remove or skip;
+//!   when no `None` entries are present the list fetch is skipped entirely.
 //!
 //! See `docs/spec/design/multi-level-permissions.md` for the full specification.
 
@@ -175,8 +176,10 @@ impl Default for ApplyPermissionsResult {
 ///
 /// - **Teams**: Applied via PUT (idempotent at the GitHub API level).
 ///   `AccessLevel::None` is skipped with a warning.
-/// - **Collaborators**: Existing collaborators are skipped. `AccessLevel::None`
-///   triggers removal when the collaborator is present; non-present entries are skipped.
+/// - **Collaborators**: Applied via idempotent PUT for non-`None` levels.
+///   `AccessLevel::None` triggers removal when the collaborator is present;
+///   non-present entries are skipped. The existing-collaborator list is fetched
+///   only when at least one `None` entry is present.
 ///
 /// # Examples
 ///
@@ -239,9 +242,13 @@ impl PermissionManager {
     ///
     /// ## Idempotency
     ///
-    /// Existing repository collaborators are detected via
-    /// `list_repository_collaborators` and skipped. Team permissions always
-    /// use a PUT-based upsert (idempotent at the GitHub API level).
+    /// Team permissions use a PUT-based upsert — calling the endpoint
+    /// multiple times is safe. Collaborator permissions also use PUT (idempotent),
+    /// so existing collaborators are always updated to the requested level rather
+    /// than skipped. The existing-member list (`list_repository_collaborators`) is
+    /// fetched only when at least one collaborator entry carries
+    /// [`AccessLevel::None`], since that is the only case where membership needs
+    /// to be checked before deciding to remove or skip.
     ///
     /// # Arguments
     ///
@@ -262,7 +269,8 @@ impl PermissionManager {
     /// - [`PermissionManagerError::PolicyDenied`] — policy engine rejected the request.
     /// - [`PermissionManagerError::RequiresApproval`] — request requires human approval.
     /// - [`PermissionManagerError::GitHubError`] — GitHub API error while listing
-    ///   collaborators (team and per-collaborator failures are counted, not returned).
+    ///   collaborators for `AccessLevel::None` checks (team and per-collaborator
+    ///   failures are counted in the result, not returned as errors).
     #[instrument(skip(self, request, hierarchy, teams, collaborators), fields(owner = %owner, repo = %repo))]
     pub async fn apply_repository_permissions(
         &self,
@@ -371,11 +379,14 @@ impl PermissionManager {
         }
 
         // ── Step 3: Apply collaborator permissions ────────────────────────────
-        // Fetch existing collaborators only when needed to support idempotency;
-        // skip the API call entirely when no collaborators are requested.
-        let existing_logins: Vec<String> = if collaborators.is_empty() {
-            Vec::new()
-        } else {
+        // The existing-collaborator list is only needed to decide whether an
+        // `AccessLevel::None` request should trigger a removal (collaborator is
+        // present) or be silently skipped (collaborator is absent).
+        // The PUT endpoint used for non-None levels is idempotent and does not
+        // require a membership check, so we skip the API call entirely when no
+        // collaborator entry has `AccessLevel::None`.
+        let has_none_entry = collaborators.values().any(|l| *l == AccessLevel::None);
+        let existing_logins: Vec<String> = if has_none_entry {
             self.github_client
                 .list_repository_collaborators(owner, repo)
                 .await
@@ -383,6 +394,8 @@ impl PermissionManager {
                 .into_iter()
                 .map(|c| c.login)
                 .collect()
+        } else {
+            Vec::new()
         };
 
         for (username, access_level) in collaborators {

@@ -385,15 +385,10 @@ async fn test_team_api_error_is_recorded_as_failure() {
 
 #[tokio::test]
 async fn test_new_collaborator_is_added() {
+    // The collaborator list (GET .../collaborators) is NOT fetched when no
+    // AccessLevel::None entry is present — PUT is idempotent and handles both
+    // new and existing collaborators without a membership pre-check.
     let server = MockServer::start().await;
-
-    // Empty collaborators list (first page only, no Link header → pagination stops).
-    Mock::given(method("GET"))
-        .and(path("/repos/my-org/my-repo/collaborators"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
 
     // Add collaborator endpoint.
     Mock::given(method("PUT"))
@@ -428,25 +423,10 @@ async fn test_new_collaborator_is_added() {
 
 #[tokio::test]
 async fn test_existing_collaborator_permission_is_updated() {
-    // When the collaborator already exists, the manager must call the PUT endpoint
-    // to update their permission level (idempotent upsert — same endpoint as add).
+    // The collaborator list is NOT fetched for non-None levels — the idempotent
+    // PUT endpoint handles both new and existing collaborators without a
+    // membership pre-check. GitHub returns 200 (or 204) for updates.
     let server = MockServer::start().await;
-
-    Mock::given(method("GET"))
-        .and(path("/repos/my-org/my-repo/collaborators"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            { "id": 1, "login": "alice" }
-        ])))
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
-
-    // Fallback empty page so pagination stops cleanly.
-    Mock::given(method("GET"))
-        .and(path("/repos/my-org/my-repo/collaborators"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .mount(&server)
-        .await;
 
     // GitHub's PUT endpoint returns 204 No Content when updating an existing
     // collaborator's permission. Use 200 with matching body to work around
@@ -621,7 +601,9 @@ async fn test_collaborator_api_error_is_recorded_as_failure() {
 #[tokio::test]
 async fn test_list_collaborators_error_returns_github_error() {
     // When `list_repository_collaborators` fails, the whole call returns
-    // PermissionManagerError::GitHubError.
+    // PermissionManagerError::GitHubError.  The list is only fetched when at
+    // least one collaborator carries AccessLevel::None (removal check), so use
+    // None here to trigger the fetch path.
     let server = MockServer::start().await;
 
     Mock::given(method("GET"))
@@ -634,7 +616,7 @@ async fn test_list_collaborators_error_returns_github_error() {
     let manager = PermissionManager::new(client, PolicyEngine::new());
 
     let mut collaborators = HashMap::new();
-    collaborators.insert("dave".to_string(), AccessLevel::Read);
+    collaborators.insert("dave".to_string(), AccessLevel::None);
 
     let result = manager
         .apply_repository_permissions(

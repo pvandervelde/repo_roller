@@ -717,6 +717,22 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
         }
     };
 
+    if perm.is_none() {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!(
+                    "\n========== CONTAINER LOGS (reporoller-test-permissions is None) =========="
+                );
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+        }
+        e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+            .await
+            .ok();
+        panic!("reporoller-test-permissions should be 'write' (template upgrade from org triage), got None — see container logs above");
+    }
     assert_eq!(
         perm,
         Some("write".to_string()),
@@ -731,6 +747,22 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
         .get_team_repository_permission(&org, "reporoller-test-security", &org, &repo_name)
         .await?;
 
+    if sec_perm.is_none() {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!(
+                    "\n========== CONTAINER LOGS (reporoller-test-security is None) =========="
+                );
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+        }
+        e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+            .await
+            .ok();
+        panic!("reporoller-test-security should be 'admin' (locked org team), got None — see container logs above");
+    }
     assert_eq!(
         sec_perm,
         Some("admin".to_string()),
@@ -743,6 +775,22 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
         .get_team_repository_permission(&org, "reporoller-test-triage", &org, &repo_name)
         .await?;
 
+    if triage_perm.is_none() {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!(
+                    "\n========== CONTAINER LOGS (reporoller-test-triage is None) =========="
+                );
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+        }
+        e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+            .await
+            .ok();
+        panic!("reporoller-test-triage should be 'triage' (template team), got None — see container logs above");
+    }
     assert_eq!(
         triage_perm,
         Some("triage".to_string()),
@@ -835,6 +883,20 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
         }
     };
 
+    if perm.is_none() {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (reporoller-test-triage is None in ceiling test) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+        }
+        e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+            .await
+            .ok();
+        panic!("reporoller-test-triage should be 'maintain' (ceiling-capped from admin), got None — see container logs above");
+    }
     assert_eq!(
         perm,
         Some("maintain".to_string()),
@@ -850,9 +912,6 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
     container.stop().await?;
     Ok(())
 }
-
-/// Verify that a request attempting to override a locked org team is silently
-/// ignored and the org-configured level is preserved.
 ///
 /// `reporoller-test-security` is locked at `admin` in org config.
 /// A request for `write` on that team should leave the team at `admin`.
@@ -928,6 +987,20 @@ async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
         }
     };
 
+    if perm.is_none() {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (reporoller-test-security is None in locked test) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(log_err) => tracing::warn!("Failed to capture container logs: {}", log_err),
+        }
+        e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+            .await
+            .ok();
+        panic!("reporoller-test-security should be 'admin' (locked at admin, request for write ignored), got None — see container logs above");
+    }
     assert_eq!(
         perm,
         Some("admin".to_string()),
