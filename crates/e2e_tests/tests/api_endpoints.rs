@@ -47,6 +47,42 @@ async fn get_github_installation_token() -> Result<String> {
     Ok(token)
 }
 
+/// Poll `get_team_repository_permission` until the assignment propagates on GitHub's backend
+/// or the retry budget is exhausted.
+///
+/// GitHub team permission assignments are eventually-consistent: the `PUT
+/// teams/{slug}/repos/{owner}/{repo}` endpoint returns `204 No Content` immediately, but the
+/// corresponding `GET` endpoint may return `404` for several seconds while the assignment
+/// propagates. This helper retries every 3 s for up to `max_attempts` attempts so that E2E
+/// tests remain reliable without an arbitrary fixed sleep.
+async fn poll_team_permission(
+    client: &github_client::GitHubClient,
+    org: &str,
+    team_slug: &str,
+    repo_name: &str,
+    max_attempts: u32,
+) -> anyhow::Result<Option<String>> {
+    for attempt in 1..=max_attempts {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        match client
+            .get_team_repository_permission(org, team_slug, org, repo_name)
+            .await
+        {
+            Ok(Some(perm)) => return Ok(Some(perm)),
+            Ok(None) => {
+                tracing::debug!(
+                    attempt,
+                    max_attempts,
+                    team = team_slug,
+                    "Team permission not yet visible; waiting for GitHub propagation"
+                );
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(None)
+}
+
 /// Test creating an empty repository without template through containerized API.
 ///
 /// Verifies:
@@ -687,16 +723,19 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
         "Repository creation should return 201 Created"
     );
 
-    // Allow GitHub API to process permission assignments.
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
     let verification_client =
         github_client::GitHubClient::new(github_client::create_token_client(&token)?);
 
     // reporoller-test-permissions: org config = triage, template upgrades to write.
-    let perm = verification_client
-        .get_team_repository_permission(&org, "reporoller-test-permissions", &org, &repo_name)
-        .await;
+    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    let perm = poll_team_permission(
+        &verification_client,
+        &org,
+        "reporoller-test-permissions",
+        &repo_name,
+        10,
+    )
+    .await;
 
     let perm = match perm {
         Ok(p) => p,
@@ -713,7 +752,7 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
             e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
                 .await
                 .ok();
-            return Err(e.into());
+            return Err(e);
         }
     };
 
@@ -743,9 +782,15 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
     );
 
     // reporoller-test-security: locked admin in org config, cannot be altered.
-    let sec_perm = verification_client
-        .get_team_repository_permission(&org, "reporoller-test-security", &org, &repo_name)
-        .await?;
+    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    let sec_perm = poll_team_permission(
+        &verification_client,
+        &org,
+        "reporoller-test-security",
+        &repo_name,
+        10,
+    )
+    .await?;
 
     if sec_perm.is_none() {
         match container.get_logs().await {
@@ -771,9 +816,15 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
     tracing::info!("✓ reporoller-test-security has 'admin' access (locked org team)");
 
     // reporoller-test-triage: added by template at triage level.
-    let triage_perm = verification_client
-        .get_team_repository_permission(&org, "reporoller-test-triage", &org, &repo_name)
-        .await?;
+    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    let triage_perm = poll_team_permission(
+        &verification_client,
+        &org,
+        "reporoller-test-triage",
+        &repo_name,
+        10,
+    )
+    .await?;
 
     if triage_perm.is_none() {
         match container.get_logs().await {
@@ -855,14 +906,18 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
         "Repository creation should return 201 Created (permission capping is silent)"
     );
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
     let verification_client =
         github_client::GitHubClient::new(github_client::create_token_client(&token)?);
 
-    let perm = verification_client
-        .get_team_repository_permission(&org, "reporoller-test-triage", &org, &repo_name)
-        .await;
+    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    let perm = poll_team_permission(
+        &verification_client,
+        &org,
+        "reporoller-test-triage",
+        &repo_name,
+        10,
+    )
+    .await;
 
     let perm = match perm {
         Ok(p) => p,
@@ -879,7 +934,7 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
             e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
                 .await
                 .ok();
-            return Err(e.into());
+            return Err(e);
         }
     };
 
@@ -959,14 +1014,18 @@ async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
         "Repository creation should return 201 Created (lock enforcement is silent)"
     );
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
     let verification_client =
         github_client::GitHubClient::new(github_client::create_token_client(&token)?);
 
-    let perm = verification_client
-        .get_team_repository_permission(&org, "reporoller-test-security", &org, &repo_name)
-        .await;
+    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    let perm = poll_team_permission(
+        &verification_client,
+        &org,
+        "reporoller-test-security",
+        &repo_name,
+        10,
+    )
+    .await;
 
     let perm = match perm {
         Ok(p) => p,
@@ -983,7 +1042,7 @@ async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
             e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
                 .await
                 .ok();
-            return Err(e.into());
+            return Err(e);
         }
     };
 
