@@ -64,13 +64,21 @@ async fn poll_team_permission(
 ) -> anyhow::Result<Option<String>> {
     for attempt in 1..=max_attempts {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        eprintln!(
+            "[poll_team_permission] attempt {attempt}/{max_attempts} team={team_slug} repo={repo_name}"
+        );
         match client
             .get_team_repository_permission(org, team_slug, org, repo_name)
             .await
         {
-            Ok(Some(perm)) => return Ok(Some(perm)),
+            Ok(Some(perm)) => {
+                eprintln!(
+                    "[poll_team_permission] found permission={perm} team={team_slug} on attempt {attempt}"
+                );
+                return Ok(Some(perm));
+            }
             Ok(None) => {
-                tracing::debug!(
+                tracing::warn!(
                     attempt,
                     max_attempts,
                     team = team_slug,
@@ -80,6 +88,9 @@ async fn poll_team_permission(
             Err(e) => return Err(e.into()),
         }
     }
+    eprintln!(
+        "[poll_team_permission] EXHAUSTED {max_attempts} attempts for team={team_slug} repo={repo_name}"
+    );
     Ok(None)
 }
 
@@ -727,13 +738,13 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
         github_client::GitHubClient::new(github_client::create_token_client(&token)?);
 
     // reporoller-test-permissions: org config = triage, template upgrades to write.
-    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    // Poll for up to 60 s: GitHub team permission assignments are eventually-consistent.
     let perm = poll_team_permission(
         &verification_client,
         &org,
         "reporoller-test-permissions",
         &repo_name,
-        10,
+        20,
     )
     .await;
 
@@ -782,13 +793,13 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
     );
 
     // reporoller-test-security: locked admin in org config, cannot be altered.
-    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    // Poll for up to 60 s: GitHub team permission assignments are eventually-consistent.
     let sec_perm = poll_team_permission(
         &verification_client,
         &org,
         "reporoller-test-security",
         &repo_name,
-        10,
+        20,
     )
     .await?;
 
@@ -816,13 +827,13 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
     tracing::info!("✓ reporoller-test-security has 'admin' access (locked org team)");
 
     // reporoller-test-triage: added by template at triage level.
-    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    // Poll for up to 60 s: GitHub team permission assignments are eventually-consistent.
     let triage_perm = poll_team_permission(
         &verification_client,
         &org,
         "reporoller-test-triage",
         &repo_name,
-        10,
+        20,
     )
     .await?;
 
@@ -909,13 +920,13 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
     let verification_client =
         github_client::GitHubClient::new(github_client::create_token_client(&token)?);
 
-    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    // Poll for up to 60 s: GitHub team permission assignments are eventually-consistent.
     let perm = poll_team_permission(
         &verification_client,
         &org,
         "reporoller-test-triage",
         &repo_name,
-        10,
+        20,
     )
     .await;
 
@@ -1017,13 +1028,13 @@ async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
     let verification_client =
         github_client::GitHubClient::new(github_client::create_token_client(&token)?);
 
-    // Poll for up to 30 s: GitHub team permission assignments are eventually-consistent.
+    // Poll for up to 60 s: GitHub team permission assignments are eventually-consistent.
     let perm = poll_team_permission(
         &verification_client,
         &org,
         "reporoller-test-security",
         &repo_name,
-        10,
+        20,
     )
     .await;
 
