@@ -1599,6 +1599,160 @@ async fn test_get_team_repository_permission_returns_error_on_api_failure() {
     assert!(result.is_err(), "Expected Err on non-404 API failure");
 }
 
+// --- get_repository_team_permission Tests ---
+
+/// Test that get_repository_team_permission returns the role when the team is in the list.
+#[tokio::test]
+async fn test_get_repository_team_permission_returns_role_when_team_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let team_slug = "platform-team";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "id": 1,
+                "slug": "platform-team",
+                "name": "Platform Team",
+                "role_name": "maintain"
+            },
+            {
+                "id": 2,
+                "slug": "security-team",
+                "name": "Security Team",
+                "role_name": "admin"
+            }
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_repository_team_permission(owner, repo, team_slug)
+        .await;
+
+    assert!(result.is_ok(), "Expected Ok for team found in list");
+    assert_eq!(
+        result.unwrap(),
+        Some("maintain".to_string()),
+        "Expected 'maintain' role_name for platform-team"
+    );
+}
+
+/// Test that get_repository_team_permission returns None when the team is not in the list.
+#[tokio::test]
+async fn test_get_repository_team_permission_returns_none_when_team_not_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let team_slug = "unknown-team";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "id": 1,
+                "slug": "platform-team",
+                "name": "Platform Team",
+                "role_name": "write"
+            }
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_repository_team_permission(owner, repo, team_slug)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Expected Ok(None) when team absent from list"
+    );
+    assert_eq!(result.unwrap(), None, "Expected None for unknown-team");
+}
+
+/// Test that get_repository_team_permission returns None when the team list is empty.
+#[tokio::test]
+async fn test_get_repository_team_permission_returns_none_on_empty_list() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let team_slug = "platform-team";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_repository_team_permission(owner, repo, team_slug)
+        .await;
+
+    assert!(result.is_ok(), "Expected Ok(None) for empty team list");
+    assert_eq!(result.unwrap(), None, "Expected None when list is empty");
+}
+
+/// Test that get_repository_team_permission returns an error on API failure.
+#[tokio::test]
+async fn test_get_repository_team_permission_returns_error_on_api_failure() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+    let team_slug = "platform-team";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .get_repository_team_permission(owner, repo, team_slug)
+        .await;
+
+    assert!(result.is_err(), "Expected Err on API failure");
+}
+
 // --- get_collaborator_permission Tests ---
 
 /// Test that get_collaborator_permission returns the role when the collaborator exists.

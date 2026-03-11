@@ -1351,6 +1351,139 @@ impl GitHubClient {
         }
     }
 
+    /// Returns the permission level a specific team holds on a repository by listing
+    /// all teams with access and finding the matching entry.
+    ///
+    /// Uses `GET /repos/{owner}/{repo}/teams` (requires only `metadata:read` on the
+    /// repository, unlike the `/orgs/{org}/teams/{slug}/repos/{owner}/{repo}` endpoint
+    /// which requires the `members:read` organisation permission).
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`     – The repository owner (user or organisation).
+    /// * `repo`      – The repository name.
+    /// * `team_slug` – The slug of the team to look up.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(role_name))` – The team has access; `role_name` is the GitHub permission
+    ///   string: `"admin"`, `"maintain"`, `"write"`, `"triage"`, or `"read"`.
+    /// * `Ok(None)` – The team is not in the repository's team list.
+    /// * `Err(…)` – Any GitHub API or network error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let level = client
+    ///         .get_repository_team_permission("my-org", "my-repo", "platform-team")
+    ///         .await?;
+    ///     match level {
+    ///         Some(l) => println!("Team permission: {l}"),
+    ///         None    => println!("Team has no access"),
+    ///     }
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, team_slug = %team_slug))]
+    pub async fn get_repository_team_permission(
+        &self,
+        owner: &str,
+        repo: &str,
+        team_slug: &str,
+    ) -> Result<Option<String>, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            team_slug = team_slug,
+            "Getting repository team permission via repo teams list"
+        );
+
+        // Use per_page=100; newly created repos will have far fewer teams.
+        let route = format!("/repos/{owner}/{repo}/teams?per_page=100");
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(value) => {
+                let teams = match value.as_array() {
+                    Some(arr) => arr,
+                    None => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            team_slug = team_slug,
+                            "Expected JSON array from /repos/.../teams"
+                        );
+                        return Err(Error::InvalidResponse);
+                    }
+                };
+
+                let role_name = teams
+                    .iter()
+                    .find(|t| {
+                        t.get("slug")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.eq_ignore_ascii_case(team_slug))
+                            .unwrap_or(false)
+                    })
+                    .and_then(|t| t.get("role_name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    team_slug = team_slug,
+                    ?role_name,
+                    "Repository teams list lookup complete"
+                );
+                Ok(role_name)
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        team_slug = team_slug,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error listing repository teams"
+                    );
+                    log_octocrab_error("Failed to list repository teams", e);
+                    Err(Error::ApiError())
+                }
+                octocrab::Error::Json { source, .. } if source.inner().is_eof() => {
+                    // Empty body — treat as empty team list (no access).
+                    warn!(
+                        owner = owner,
+                        repo = repo,
+                        team_slug = team_slug,
+                        "Empty body from /repos/.../teams — treating as no team access"
+                    );
+                    Ok(None)
+                }
+                _ => {
+                    eprintln!(
+                        "[get_repository_team_permission] Non-GitHub error: \
+                         owner={owner} repo={repo} team={team_slug} error={e}"
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        team_slug = team_slug,
+                        error = %e,
+                        "Non-GitHub error listing repository teams"
+                    );
+                    log_octocrab_error("Failed to list repository teams", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
     /// Gets the permission level that a specific collaborator holds on a repository.
     ///
     /// Uses `GET /repos/{owner}/{repo}/collaborators/{username}/permission`.

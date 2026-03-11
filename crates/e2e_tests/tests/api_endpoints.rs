@@ -68,7 +68,7 @@ async fn poll_team_permission(
             "[poll_team_permission] attempt {attempt}/{max_attempts} team={team_slug} repo={repo_name}"
         );
         match client
-            .get_team_repository_permission(org, team_slug, org, repo_name)
+            .get_repository_team_permission(org, repo_name, team_slug)
             .await
         {
             Ok(Some(perm)) => {
