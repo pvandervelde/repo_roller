@@ -2693,6 +2693,7 @@ dependencies = [
  "hmac",
  "octocrab",
  "prometheus",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

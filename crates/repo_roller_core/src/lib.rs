@@ -146,6 +146,10 @@ pub mod permission_manager;
 // Structured audit logging for permission decisions
 pub mod permission_audit_logger;
 
+// Repository naming rules validator
+pub mod naming_validator;
+pub use naming_validator::RepositoryNamingValidator;
+
 // Permission workflow helpers for the repository creation pipeline
 pub mod permission_workflow;
 
@@ -1078,6 +1082,11 @@ pub async fn create_repository(
         metadata_repository_name,
     )
     .await?;
+
+    // Step 4b: Validate the repository name against configured naming rules.
+    RepositoryNamingValidator::new()
+        .validate(request.name.as_str(), &merged_config.naming_rules)
+        .map_err(RepoRollerError::Validation)?;
 
     // Step 5: Resolve repository visibility.
     let visibility_decision = resolve_repository_visibility(

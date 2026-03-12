@@ -198,6 +198,26 @@ pub struct GlobalDefaults {
     /// ```
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_collaborators: Option<Vec<crate::settings::DefaultCollaboratorConfig>>,
+
+    /// Repository naming rules (additive).
+    ///
+    /// Naming rules defined here apply to **all** repositories created in the
+    /// organization.  Rules from all configuration levels are collected
+    /// additively — every rule in the merged set must be satisfied.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[naming_rules]]
+    /// description     = "All repositories must use the org prefix"
+    /// required_prefix = "acme-"
+    ///
+    /// [[naming_rules]]
+    /// description    = "Reserved words must not be used as repo names"
+    /// reserved_words = ["test", "demo", "temp"]
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
 }
 
 #[cfg(test)]

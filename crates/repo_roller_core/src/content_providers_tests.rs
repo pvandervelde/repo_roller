@@ -60,6 +60,7 @@ fn create_test_template_config() -> config_manager::TemplateConfig {
         permissions: None,
         teams: None,
         collaborators: None,
+        naming_rules: None,
     }
 }
 

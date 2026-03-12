@@ -48,6 +48,7 @@
 //!     permissions: None,
 //!     teams: None,
 //!     collaborators: None,
+//!     naming_rules: None,
 //! };
 //!
 //! // Merge configurations with precedence rules
@@ -69,7 +70,8 @@ use crate::{
     repository_type_config::RepositoryTypeConfig,
     settings::{
         BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
-        NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+        NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig, RepositorySettings,
+        RulesetConfig, WebhookConfig,
     },
     team_config::TeamConfig,
     template_config::TemplateConfig as NewTemplateConfig,
@@ -117,6 +119,7 @@ use crate::{
 ///     permissions: None,
 ///     teams: None,
 ///     collaborators: None,
+///     naming_rules: None,
 /// };
 ///
 /// // Merge with all configuration levels
@@ -202,6 +205,7 @@ impl ConfigurationMerger {
     ///     permissions: None,
     ///     teams: None,
     ///     collaborators: None,
+    ///     naming_rules: None,
     /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
@@ -334,6 +338,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::Global,
             ));
         }
+        if let Some(naming_rules) = &global.naming_rules {
+            source_updates.extend(self.merge_naming_rules(
+                &mut merged.naming_rules,
+                naming_rules,
+                ConfigurationSource::Global,
+            ));
+        }
     }
 
     /// Applies repository type-specific overrides.
@@ -440,6 +451,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::RepositoryType,
             ));
         }
+        if let Some(naming_rules) = &repo_type.naming_rules {
+            source_updates.extend(self.merge_naming_rules(
+                &mut merged.naming_rules,
+                naming_rules,
+                ConfigurationSource::RepositoryType,
+            ));
+        }
 
         Ok(())
     }
@@ -540,6 +558,13 @@ impl ConfigurationMerger {
                 ConfigurationSource::Team,
             ));
         }
+        if let Some(naming_rules) = &team.naming_rules {
+            source_updates.extend(self.merge_naming_rules(
+                &mut merged.naming_rules,
+                naming_rules,
+                ConfigurationSource::Team,
+            ));
+        }
 
         Ok(())
     }
@@ -634,6 +659,13 @@ impl ConfigurationMerger {
             source_updates.extend(self.merge_notifications(
                 &mut merged.notifications,
                 notifications,
+                ConfigurationSource::Template,
+            ));
+        }
+        if let Some(naming_rules) = &template.naming_rules {
+            source_updates.extend(self.merge_naming_rules(
+                &mut merged.naming_rules,
+                naming_rules,
                 ConfigurationSource::Template,
             ));
         }
@@ -1041,6 +1073,26 @@ impl ConfigurationMerger {
 
             target.push(ruleset.clone());
             source_updates.push(("rulesets".to_string(), source));
+        }
+
+        source_updates
+    }
+
+    /// Merges naming rules additively.
+    ///
+    /// Naming rules from all levels are simply appended — every rule must be
+    /// satisfied when validating a repository name.
+    fn merge_naming_rules(
+        &self,
+        target: &mut Vec<RepositoryNamingRulesConfig>,
+        rules: &[RepositoryNamingRulesConfig],
+        source: ConfigurationSource,
+    ) -> Vec<(String, ConfigurationSource)> {
+        let mut source_updates = Vec::new();
+
+        for rule in rules {
+            target.push(rule.clone());
+            source_updates.push(("naming_rules".to_string(), source));
         }
 
         source_updates

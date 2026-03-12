@@ -251,6 +251,7 @@ mod mock_provider {
                 permissions: None,
                 default_teams: None,
                 default_collaborators: None,
+                naming_rules: None,
             })
         }
 

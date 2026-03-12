@@ -144,6 +144,21 @@ pub struct TeamConfig {
     /// Team-level webhook endpoints for event notifications.
     /// Combined with global, repository type, and template notifications.
     pub notifications: Option<NotificationsConfig>,
+
+    /// Team-specific repository naming rules (additive).
+    ///
+    /// Naming rules for repositories created by this team.  Combined with
+    /// rules from global, repository type, and template levels.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[naming_rules]]
+    /// description     = "Backend team repos must use the be- prefix"
+    /// required_prefix = "be-"
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
 }
 
 #[cfg(test)]
