@@ -132,6 +132,8 @@ async fn main() {
                 args.empty,
                 args.init_readme,
                 args.init_gitignore,
+                &args.teams,
+                &args.collaborators,
             );
             let result =
                 handle_create_command(options, &ask_user_for_value, create_repository).await;

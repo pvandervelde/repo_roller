@@ -30,6 +30,8 @@ fn create_test_request() -> RepositoryCreationRequest {
         variables: HashMap::new(),
         visibility: None,
         content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
     }
 }
 
@@ -55,6 +57,9 @@ fn create_test_template_config() -> config_manager::TemplateConfig {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 

@@ -2,8 +2,6 @@
 # Pre-commit hook for AI-assisted development
 # Fast checks that run before each commit
 
-set -e
-
 echo "🔍 Running pre-commit checks..."
 
 # Track if any checks fail

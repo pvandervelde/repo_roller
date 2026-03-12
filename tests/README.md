@@ -94,7 +94,54 @@ Use this for:
 - Repository type hierarchies
 - Complex metadata scenarios
 
-#### 3. Repository Cleanup & Inspection
+#### 3. Permission Integration Test Setup
+
+**[create-test-teams.ps1](create-test-teams.ps1)** - Creates GitHub teams required for permission integration tests
+
+```powershell
+# Create test teams in glitchgrove (default collaborator username)
+./tests/create-test-teams.ps1
+
+# Specify the GitHub user to use as test collaborator
+./tests/create-test-teams.ps1 -CollaboratorUsername "some-org-member"
+
+# Use a different organization
+./tests/create-test-teams.ps1 -Organization "myorg" -CollaboratorUsername "test-user"
+
+# Recreate existing teams from scratch
+./tests/create-test-teams.ps1 -Force
+```
+
+Teams created by this script:
+
+| Team slug | Purpose |
+|---|---|
+| `reporoller-test-permissions` | Primary permission integration test team |
+| `reporoller-test-triage` | Triage-level integration test team |
+
+**Required environment variables for permission tests** (`crates/integration_tests/tests/permission_tests.rs`):
+
+```powershell
+# Standard integration test variables (required for all integration tests)
+$env:GITHUB_APP_ID             = "<app-id>"
+$env:GITHUB_APP_PRIVATE_KEY    = "<pem-contents>"
+$env:TEST_ORG                  = "glitchgrove"
+
+# Additional variables required only for permission integration tests
+$env:TEST_TEAM_SLUG            = "reporoller-test-permissions"  # slug of org team created above
+$env:TEST_COLLABORATOR_USERNAME = "<github-username>"           # existing GitHub user in the org
+```
+
+The `TEST_COLLABORATOR_USERNAME` must be an existing GitHub user who can receive repository
+invitations. The invited user is added to test repositories and removed again during cleanup.
+
+**Running permission integration tests** (they are `#[ignore]` by default):
+
+```powershell
+cargo test --test permission_tests -p integration_tests -- --ignored
+```
+
+#### 4. Repository Cleanup & Inspection
 
 **[cleanup-repos.ps1](cleanup-repos.ps1)** - Unified tool for repository cleanup and inspection
 
@@ -244,10 +291,21 @@ Once created, these repositories will be used by:
 
 The integration tests expect these repositories to exist at:
 
-- `https://github.com/{organization}/test-basic`
-- `https://github.com/{organization}/test-variables`
-- `https://github.com/{organization}/test-filtering`
-- `https://github.com/{organization}/test-invalid`
+- `https://github.com/{organization}/template-test-basic`
+- `https://github.com/{organization}/template-test-variables`
+- `https://github.com/{organization}/template-test-filtering`
+- `https://github.com/{organization}/template-test-invalid`
+
+### Permission Integration Tests
+
+`crates/integration_tests/tests/permission_tests.rs` additionally requires:
+
+- Teams created by `./tests/create-test-teams.ps1` to exist in the organization
+- Environment variable `TEST_TEAM_SLUG` set to a valid team slug in the org
+- Environment variable `TEST_COLLABORATOR_USERNAME` set to a GitHub username that can receive repository invitations
+
+Run `./tests/create-test-teams.ps1` once per organization to set these up, then set the
+environment variables in your CI/CD secrets or local environment file.
 
 ## Maintenance
 

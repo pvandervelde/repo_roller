@@ -24,3 +24,17 @@ content_type = "json"
 active = true
 events = ["issues", "issue_comment"]
 secret = "template-basic-webhook-secret-456"
+
+# Template-specific teams (merged with org-level default_teams).
+# 'reporoller-test-triage' is created by tests/create-test-teams.ps1.
+# This entry UPGRADES the 'reporoller-test-triage' team (not present in global
+# defaults, so it is a new entry for this template).
+[[teams]]
+slug = "reporoller-test-triage"
+access_level = "triage"
+
+# This entry attempts to UPGRADE 'reporoller-test-permissions' from the org's
+# 'triage' default to 'write' — valid because it is an upgrade, not a demotion.
+[[teams]]
+slug = "reporoller-test-permissions"
+access_level = "write"

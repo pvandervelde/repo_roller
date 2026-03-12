@@ -1,4 +1,4 @@
-//! Crate for interacting with the GitHub REST API.
+﻿//! Crate for interacting with the GitHub REST API.
 //!
 //! This crate provides a client for making authenticated requests to GitHub,
 //! authenticating as a GitHub App using its ID and private key.
@@ -16,6 +16,7 @@ pub use errors::Error;
 
 // Domain-specific modules
 pub mod branch_protection;
+pub mod collaborator;
 pub mod contents;
 pub mod environment;
 pub mod environment_detector;
@@ -23,11 +24,13 @@ pub mod installation;
 pub mod label;
 pub mod repository;
 pub mod ruleset;
+pub mod team;
 pub mod user;
 pub mod webhook;
 
 // Re-export types for convenient access
 pub use branch_protection::BranchProtection;
+pub use collaborator::Collaborator;
 pub use contents::{EntryType, TreeEntry};
 pub use environment::{GitHubEnvironmentDetector, PlanLimitations};
 pub use environment_detector::GitHubApiEnvironmentDetector;
@@ -39,6 +42,7 @@ pub use ruleset::{
     RepositoryRuleset, RequiredStatusChecksParameters, Rule, RulesetConditions, RulesetEnforcement,
     RulesetTarget, StatusCheck,
 };
+pub use team::{Team, TeamMember};
 pub use user::User;
 pub use webhook::{
     CreateWebhookParams, UpdateWebhookParams, Webhook, WebhookDetails, WebhookEvent,
@@ -234,10 +238,6 @@ impl GitHubClient {
                         Err(Error::ApiError())
                     }
                     _ => {
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error getting repository {}/{}: error={}",
-                            owner, repo, e
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -525,8 +525,6 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
-                        eprintln!("DIAGNOSTIC: GitHub API error listing directory {} in {}/{}: status={}, message={}",
-                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = %owner,
                             repo = %repo,
@@ -540,10 +538,6 @@ impl GitHubClient {
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error listing directory {} in {}/{}: error={}",
-                            path, owner, repo, e
-                        );
                         error!(
                             owner = %owner,
                             repo = %repo,
@@ -745,8 +739,6 @@ impl GitHubClient {
                         }
 
                         // Other GitHub API errors
-                        eprintln!("DIAGNOSTIC: GitHub API error getting file {} in {}/{}: status={}, message={}",
-                            path, owner, repo, source.status_code, source.message);
                         error!(
                             owner = owner,
                             repo = repo,
@@ -760,10 +752,6 @@ impl GitHubClient {
                     }
                     _ => {
                         // Non-GitHub errors (network, parsing, etc.)
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error getting file {} in {}/{}: error={}",
-                            path, owner, repo, e
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -810,6 +798,1130 @@ impl GitHubClient {
     /// ```
     pub fn new(client: Octocrab) -> Self {
         Self { client }
+    }
+
+    /// Lists all teams in the given GitHub organization.
+    ///
+    /// Paginates through all pages (100 items per page) and returns the complete list.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization login name.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing all [`Team`] records for the organization, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ApiError`] on GitHub API failure, or [`Error::InvalidResponse`]
+    /// if the response cannot be parsed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let teams = client.list_organization_teams("my-org").await?;
+    ///     println!("Found {} teams", teams.len());
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org))]
+    pub async fn list_organization_teams(&self, org: &str) -> Result<Vec<Team>, Error> {
+        info!(org = org, "Listing organization teams");
+
+        let mut all_teams: Vec<Team> = Vec::new();
+        let mut page: u32 = 1;
+        let per_page: u32 = 100;
+
+        loop {
+            let route = format!("/orgs/{org}/teams?per_page={per_page}&page={page}");
+            let result: OctocrabResult<Vec<serde_json::Value>> =
+                self.client.get(&route, None::<&()>).await;
+
+            match result {
+                Ok(items) => {
+                    if items.is_empty() {
+                        debug!(
+                            org = org,
+                            page = page,
+                            "No more teams — pagination complete"
+                        );
+                        break;
+                    }
+
+                    let page_count = items.len();
+                    for item in items {
+                        match serde_json::from_value::<Team>(item) {
+                            Ok(team) => all_teams.push(team),
+                            Err(e) => {
+                                error!(
+                                    org = org,
+                                    page = page,
+                                    "Failed to deserialize team from API response: {}",
+                                    e
+                                );
+                                return Err(Error::InvalidResponse);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        org = org,
+                        page = page,
+                        count = page_count,
+                        "Retrieved page of teams"
+                    );
+                    page += 1;
+                }
+                Err(e) => match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        error!(
+                            org = org,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing organization teams"
+                        );
+                        log_octocrab_error("Failed to list organization teams", e);
+                        return Err(Error::ApiError());
+                    }
+                    _ => {
+                        error!(
+                            org = org,
+                            error = %e,
+                            "Non-GitHub error listing organization teams"
+                        );
+                        log_octocrab_error("Failed to list organization teams", e);
+                        return Err(Error::InvalidResponse);
+                    }
+                },
+            }
+        }
+
+        info!(
+            org = org,
+            count = all_teams.len(),
+            "Successfully retrieved all organization teams"
+        );
+        Ok(all_teams)
+    }
+
+    /// Lists all members of a specific team in a GitHub organization.
+    ///
+    /// Paginates through all pages (100 items per page) and returns the complete list.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization login name.
+    /// * `team_slug` - The URL-safe team slug.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing all [`TeamMember`] records for the team, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ApiError`] on GitHub API failure, or [`Error::NotFound`] if
+    /// the team does not exist, or [`Error::InvalidResponse`] for parse failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let members = client.get_team_members("my-org", "backend-engineers").await?;
+    ///     println!("Found {} members", members.len());
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug))]
+    pub async fn get_team_members(
+        &self,
+        org: &str,
+        team_slug: &str,
+    ) -> Result<Vec<TeamMember>, Error> {
+        info!(org = org, team_slug = team_slug, "Listing team members");
+
+        let mut all_members: Vec<TeamMember> = Vec::new();
+        let mut page: u32 = 1;
+        let per_page: u32 = 100;
+
+        loop {
+            let route =
+                format!("/orgs/{org}/teams/{team_slug}/members?per_page={per_page}&page={page}");
+            let result: OctocrabResult<Vec<serde_json::Value>> =
+                self.client.get(&route, None::<&()>).await;
+
+            match result {
+                Ok(items) => {
+                    if items.is_empty() {
+                        debug!(
+                            org = org,
+                            team_slug = team_slug,
+                            page = page,
+                            "No more members — pagination complete"
+                        );
+                        break;
+                    }
+
+                    let page_count = items.len();
+                    for item in items {
+                        match serde_json::from_value::<TeamMember>(item) {
+                            Ok(member) => all_members.push(member),
+                            Err(e) => {
+                                error!(
+                                    org = org,
+                                    team_slug = team_slug,
+                                    page = page,
+                                    "Failed to deserialize team member from API response: {}",
+                                    e
+                                );
+                                return Err(Error::InvalidResponse);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        org = org,
+                        team_slug = team_slug,
+                        page = page,
+                        count = page_count,
+                        "Retrieved page of team members"
+                    );
+                    page += 1;
+                }
+                Err(e) => match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        if source.status_code == http::StatusCode::NOT_FOUND {
+                            error!(org = org, team_slug = team_slug, "Team not found");
+                            log_octocrab_error("Team not found", e);
+                            return Err(Error::NotFound);
+                        }
+
+                        error!(
+                            org = org,
+                            team_slug = team_slug,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing team members"
+                        );
+                        log_octocrab_error("Failed to list team members", e);
+                        return Err(Error::ApiError());
+                    }
+                    _ => {
+                        error!(
+                            org = org,
+                            team_slug = team_slug,
+                            error = %e,
+                            "Non-GitHub error listing team members"
+                        );
+                        log_octocrab_error("Failed to list team members", e);
+                        return Err(Error::InvalidResponse);
+                    }
+                },
+            }
+        }
+
+        info!(
+            org = org,
+            team_slug = team_slug,
+            count = all_members.len(),
+            "Successfully retrieved all team members"
+        );
+        Ok(all_members)
+    }
+
+    /// Adds a team to a repository with the specified permission level.
+    ///
+    /// Uses the GitHub Teams API `PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`
+    /// endpoint. If the team already has access, the permission level is updated.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization that owns both the team and the repository.
+    /// * `team_slug` - The URL-safe team slug.
+    /// * `repo` - The repository name.
+    /// * `permission` - The GitHub permission string (e.g., "push", "pull", "admin").
+    ///   Use [`repo_roller_core::permissions::GitHubPermissionLevel::as_str`] to obtain
+    ///   the correct string from an [`repo_roller_core::permissions::AccessLevel`].
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ApiError`] if the API call fails or the team/repository does not exist.
+    ///
+    /// # Notes
+    ///
+    /// GitHub returns 204 No Content on success. The mock server should return 200 with
+    /// an empty JSON body `{}` to avoid octocrab deserialization failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     client.add_team_to_repository("my-org", "backend-engineers", "my-repo", "push").await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo = %repo, permission = %permission))]
+    pub async fn add_team_to_repository(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        // add_team_to_repository and set_team_repository_permission use the same
+        // GitHub endpoint; the org is also the repo owner for org repositories.
+        self.set_team_repository_permission(org, team_slug, org, repo, permission)
+            .await
+    }
+
+    /// Updates the permission level for a team that already has access to a repository.
+    ///
+    /// Uses the same GitHub Teams API endpoint as [`add_team_to_repository`]:
+    /// `PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`.
+    /// This is a semantically distinct method for updating existing permissions,
+    /// delegating to the same underlying API operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `org` - The organization that owns both the team and the repository.
+    /// * `team_slug` - The URL-safe team slug.
+    /// * `repo_owner` - The owner of the repository (may differ from `org` for forks).
+    /// * `repo` - The repository name.
+    /// * `permission` - The updated GitHub permission string (e.g., "push", "maintain", "admin").
+    ///   Use [`repo_roller_core::permissions::GitHubPermissionLevel::as_str`] to obtain
+    ///   the correct string.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] if the team or repository does not exist.
+    /// Returns [`Error::ApiError`] for other API failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     client.set_team_repository_permission("my-org", "backend-engineers", "my-org", "my-repo", "maintain").await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo_owner = %repo_owner, repo = %repo, permission = %permission))]
+    pub async fn set_team_repository_permission(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo_owner: &str,
+        repo: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        info!(
+            org = org,
+            team_slug = team_slug,
+            repo_owner = repo_owner,
+            repo = repo,
+            permission = permission,
+            "Setting team repository permission"
+        );
+
+        let route = format!("/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}");
+        let body = serde_json::json!({ "permission": permission });
+
+        // GitHub returns 204 No Content on success — empty body, no JSON.
+        // octocrab tries to deserialise the body regardless of status code; an
+        // empty body produces `serde_json::Error::is_eof() == true`.  Intercept
+        // that variant and treat it as success before falling through to real
+        // error handling.
+        let result: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(route, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    org = org,
+                    team_slug = team_slug,
+                    repo_owner = repo_owner,
+                    repo = repo,
+                    permission = permission,
+                    "Successfully set team repository permission"
+                );
+                Ok(())
+            }
+            // 204 No Content — GitHub returns an empty body on success.  octocrab
+            // fails to parse it as JSON; `inner().is_eof()` distinguishes this from a
+            // genuinely malformed payload.
+            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
+                info!(
+                    org = org,
+                    team_slug = team_slug,
+                    repo_owner = repo_owner,
+                    repo = repo,
+                    permission = permission,
+                    "Successfully set team repository permission (204 No Content)"
+                );
+                Ok(())
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            org = org,
+                            team_slug = team_slug,
+                            repo_owner = repo_owner,
+                            repo = repo,
+                            "Team or repository not found when setting permission"
+                        );
+                        log_octocrab_error("Team or repository not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error setting team repository permission"
+                    );
+                    log_octocrab_error("Failed to set team repository permission", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        error = %e,
+                        "Non-GitHub error setting team repository permission"
+                    );
+                    log_octocrab_error("Failed to set team repository permission", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
+    /// Gets the permission level that a specific team holds on a repository.
+    ///
+    /// Uses `GET /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`.
+    /// GitHub responds with 200 + a repository object (including `role_name`) when
+    /// the team manages the repository, or 404 when it does not.
+    ///
+    /// # Arguments
+    ///
+    /// * `org`        – The GitHub organisation that owns the team.
+    /// * `team_slug`  – URL-safe team slug (e.g. `"platform-engineers"`).
+    /// * `repo_owner` – Owner of the repository; usually the same as `org`.
+    /// * `repo`       – Repository name.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(role_name))` – The team has access; `role_name` is the GitHub
+    ///   permission-level string: `"admin"`, `"maintain"`, `"write"`, `"triage"`, or `"read"`.
+    /// * `Ok(None)` – The team has no access to this repository (HTTP 404).
+    /// * `Err(…)` – Any other GitHub API error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let level = client
+    ///         .get_team_repository_permission("my-org", "platform-team", "my-org", "my-repo")
+    ///         .await?;
+    ///     match level {
+    ///         Some(l) => println!("Team permission: {l}"),
+    ///         None    => println!("Team has no access"),
+    ///     }
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo_owner = %repo_owner, repo = %repo))]
+    pub async fn get_team_repository_permission(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo_owner: &str,
+        repo: &str,
+    ) -> Result<Option<String>, Error> {
+        info!(
+            org = org,
+            team_slug = team_slug,
+            repo_owner = repo_owner,
+            repo = repo,
+            "Getting team repository permission"
+        );
+
+        let route = format!("/orgs/{org}/teams/{team_slug}/repos/{repo_owner}/{repo}");
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(value) => {
+                let role_name = value
+                    .get("role_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                info!(
+                    org = org,
+                    team_slug = team_slug,
+                    repo = repo,
+                    ?role_name,
+                    "Successfully retrieved team repository permission"
+                );
+                Ok(role_name)
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        debug!(
+                            org = org,
+                            team_slug = team_slug,
+                            repo = repo,
+                            "Team does not have access to repository (404)"
+                        );
+                        return Ok(None);
+                    }
+
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error getting team repository permission"
+                    );
+                    log_octocrab_error("Failed to get team repository permission", e);
+                    Err(Error::ApiError())
+                }
+                // An empty body (HTTP 200/204 with no JSON) produces an EOF serde error.
+                // Treat this as "no access recorded yet" rather than a hard failure.
+                octocrab::Error::Json { source, .. } if source.inner().is_eof() => {
+                    warn!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo = repo,
+                        "Empty body from team permission check — treating as no access"
+                    );
+                    Ok(None)
+                }
+                _ => {
+                    // Use eprintln! so this is captured in test output even without a
+                    // tracing subscriber, making E2E diagnosis easier.
+                    eprintln!(
+                        "[get_team_repository_permission] Non-GitHub error: org={org} \
+                         team={team_slug} repo={repo} error={e}"
+                    );
+                    error!(
+                        org = org,
+                        team_slug = team_slug,
+                        repo_owner = repo_owner,
+                        repo = repo,
+                        error = %e,
+                        "Non-GitHub error getting team repository permission"
+                    );
+                    log_octocrab_error("Failed to get team repository permission", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
+    /// Returns the permission level a specific team holds on a repository by listing
+    /// all teams with access and finding the matching entry.
+    ///
+    /// Uses `GET /repos/{owner}/{repo}/teams` (requires only `metadata:read` on the
+    /// repository, unlike the `/orgs/{org}/teams/{slug}/repos/{owner}/{repo}` endpoint
+    /// which requires the `members:read` organisation permission).
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`     – The repository owner (user or organisation).
+    /// * `repo`      – The repository name.
+    /// * `team_slug` – The slug of the team to look up.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(role_name))` – The team has access; `role_name` is the GitHub permission
+    ///   string: `"admin"`, `"maintain"`, `"write"`, `"triage"`, or `"read"`.
+    /// * `Ok(None)` – The team is not in the repository's team list.
+    /// * `Err(…)` – Any GitHub API or network error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let level = client
+    ///         .get_repository_team_permission("my-org", "my-repo", "platform-team")
+    ///         .await?;
+    ///     match level {
+    ///         Some(l) => println!("Team permission: {l}"),
+    ///         None    => println!("Team has no access"),
+    ///     }
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, team_slug = %team_slug))]
+    pub async fn get_repository_team_permission(
+        &self,
+        owner: &str,
+        repo: &str,
+        team_slug: &str,
+    ) -> Result<Option<String>, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            team_slug = team_slug,
+            "Getting repository team permission via repo teams list"
+        );
+
+        // Use per_page=100; newly created repos will have far fewer teams.
+        let route = format!("/repos/{owner}/{repo}/teams?per_page=100");
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(value) => {
+                let teams = match value.as_array() {
+                    Some(arr) => arr,
+                    None => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            team_slug = team_slug,
+                            "Expected JSON array from /repos/.../teams"
+                        );
+                        return Err(Error::InvalidResponse);
+                    }
+                };
+
+                // The GET /repos/{owner}/{repo}/teams endpoint returns `permission`
+                // with raw GitHub permission strings ("pull", "push", "triage",
+                // "maintain", "admin"). The `role_name` field is present in the
+                // response but is always null on this endpoint. Normalise the two
+                // legacy names to their human-readable equivalents so callers work
+                // with consistent values regardless of which endpoint was used.
+                let role_name = teams
+                    .iter()
+                    .find(|t| {
+                        t.get("slug")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.eq_ignore_ascii_case(team_slug))
+                            .unwrap_or(false)
+                    })
+                    .and_then(|t| t.get("permission"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| match s {
+                        "pull" => "read",
+                        "push" => "write",
+                        other => other,
+                    })
+                    .map(|s| s.to_string());
+
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    team_slug = team_slug,
+                    ?role_name,
+                    "Repository teams list lookup complete"
+                );
+                Ok(role_name)
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        team_slug = team_slug,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error listing repository teams"
+                    );
+                    log_octocrab_error("Failed to list repository teams", e);
+                    Err(Error::ApiError())
+                }
+                octocrab::Error::Json { source, .. } if source.inner().is_eof() => {
+                    // Empty body — treat as empty team list (no access).
+                    warn!(
+                        owner = owner,
+                        repo = repo,
+                        team_slug = team_slug,
+                        "Empty body from /repos/.../teams — treating as no team access"
+                    );
+                    Ok(None)
+                }
+                _ => {
+                    eprintln!(
+                        "[get_repository_team_permission] Non-GitHub error: \
+                         owner={owner} repo={repo} team={team_slug} error={e}"
+                    );
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        team_slug = team_slug,
+                        error = %e,
+                        "Non-GitHub error listing repository teams"
+                    );
+                    log_octocrab_error("Failed to list repository teams", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
+    /// Gets the permission level that a specific collaborator holds on a repository.
+    ///
+    /// Uses `GET /repos/{owner}/{repo}/collaborators/{username}/permission`.
+    /// GitHub responds with 200 + an object containing a `role_name` field.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`    – The repository owner (user or organisation).
+    /// * `repo`     – The repository name.
+    /// * `username` – The GitHub login of the collaborator.
+    ///
+    /// # Returns
+    ///
+    /// The `role_name` string from GitHub: `"admin"`, `"maintain"`, `"write"`,
+    /// `"triage"`, or `"read"`.
+    ///
+    /// # Errors
+    ///
+    /// * [`Error::NotFound`]        – The user is not a collaborator (HTTP 404).
+    /// * [`Error::ApiError`]        – Other GitHub API errors.
+    /// * [`Error::InvalidResponse`] – Network or parse failure.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use github_client::{GitHubClient, create_app_client};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// #     let octocrab = create_app_client(123456, "...").await?;
+    /// #     let client = GitHubClient::new(octocrab);
+    ///     let level = client
+    ///         .get_collaborator_permission("my-org", "my-repo", "alice")
+    ///         .await?;
+    ///     println!("Collaborator permission: {level}");
+    /// #     Ok(())
+    /// # }
+    /// ```
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username))]
+    pub async fn get_collaborator_permission(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> Result<String, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            username = username,
+            "Getting collaborator permission"
+        );
+
+        let route = format!("/repos/{owner}/{repo}/collaborators/{username}/permission");
+        let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
+
+        match result {
+            Ok(value) => {
+                let role_name = value
+                    .get("role_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Missing 'role_name' field in collaborator permission response"
+                        );
+                        Error::InvalidResponse
+                    })?;
+
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    username = username,
+                    role_name = %role_name,
+                    "Successfully retrieved collaborator permission"
+                );
+                Ok(role_name)
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Collaborator not found (404)"
+                        );
+                        log_octocrab_error("Collaborator not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error getting collaborator permission"
+                    );
+                    log_octocrab_error("Failed to get collaborator permission", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        error = %e,
+                        "Non-GitHub error getting collaborator permission"
+                    );
+                    log_octocrab_error("Failed to get collaborator permission", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
+    /// Lists all collaborators (individuals with direct access) for a repository.
+    ///
+    /// Paginates through all pages using `per_page=100`.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner (user or organisation) of the repository.
+    /// * `repo`  - The repository name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidResponse`] if the API response cannot be parsed.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
+    pub async fn list_repository_collaborators(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<Collaborator>, Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            "Listing repository collaborators"
+        );
+
+        let mut all_collaborators: Vec<Collaborator> = Vec::new();
+        let mut page: u32 = 1;
+        let per_page: u32 = 100;
+
+        loop {
+            let route =
+                format!("/repos/{owner}/{repo}/collaborators?per_page={per_page}&page={page}");
+            let result: OctocrabResult<Vec<serde_json::Value>> =
+                self.client.get(&route, None::<&()>).await;
+
+            match result {
+                Ok(items) => {
+                    if items.is_empty() {
+                        debug!(
+                            owner = owner,
+                            repo = repo,
+                            page = page,
+                            "No more collaborators — pagination complete"
+                        );
+                        break;
+                    }
+
+                    let page_count = items.len();
+                    for item in items {
+                        match serde_json::from_value::<Collaborator>(item) {
+                            Ok(collaborator) => all_collaborators.push(collaborator),
+                            Err(e) => {
+                                error!(
+                                    owner = owner,
+                                    repo = repo,
+                                    page = page,
+                                    "Failed to deserialize collaborator from API response: {}",
+                                    e
+                                );
+                                return Err(Error::InvalidResponse);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        owner = owner,
+                        repo = repo,
+                        page = page,
+                        count = page_count,
+                        "Retrieved page of collaborators"
+                    );
+                    page += 1;
+                }
+                Err(e) => match &e {
+                    octocrab::Error::GitHub { source, .. } => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            status_code = %source.status_code,
+                            message = %source.message,
+                            "GitHub API error listing repository collaborators"
+                        );
+                        log_octocrab_error("Failed to list repository collaborators", e);
+                        return Err(Error::ApiError());
+                    }
+                    _ => {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            error = %e,
+                            "Non-GitHub error listing repository collaborators"
+                        );
+                        log_octocrab_error("Failed to list repository collaborators", e);
+                        return Err(Error::InvalidResponse);
+                    }
+                },
+            }
+        }
+
+        info!(
+            owner = owner,
+            repo = repo,
+            count = all_collaborators.len(),
+            "Successfully retrieved all repository collaborators"
+        );
+        Ok(all_collaborators)
+    }
+
+    /// Adds a collaborator to a repository with the given permission level, or
+    /// updates an existing collaborator's permission.
+    ///
+    /// Uses `PUT /repos/{owner}/{repo}/collaborators/{username}`.
+    /// GitHub returns 204 (already a collaborator) or 201 (invitation sent).
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`      - The repository owner.
+    /// * `repo`       - The repository name.
+    /// * `username`   - The GitHub login of the user to add.
+    /// * `permission` - Permission level: `pull`, `triage`, `push`, `maintain`, or `admin`.
+    ///
+    /// # Errors
+    ///
+    /// * [`Error::NotFound`]        – Repository does not exist.
+    /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
+    /// * [`Error::InvalidResponse`] – Network or parse failure.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username, permission = %permission))]
+    pub async fn add_repository_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            username = username,
+            permission = permission,
+            "Adding repository collaborator"
+        );
+
+        let route = format!("/repos/{owner}/{repo}/collaborators/{username}");
+        let body = serde_json::json!({ "permission": permission });
+
+        // GitHub returns 201 (invitation sent) or 204 (already a collaborator).
+        // Use Option<serde_json::Value> so octocrab handles both gracefully.
+        let result: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(route, Some(&body)).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    username = username,
+                    "Successfully added repository collaborator"
+                );
+                Ok(())
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Repository not found when adding collaborator"
+                        );
+                        log_octocrab_error("Repository not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error adding repository collaborator"
+                    );
+                    log_octocrab_error("Failed to add repository collaborator", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        error = %e,
+                        "Non-GitHub error adding repository collaborator"
+                    );
+                    log_octocrab_error("Failed to add repository collaborator", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
+    }
+
+    /// Updates the permission level of an existing repository collaborator.
+    ///
+    /// Delegates to [`Self::add_repository_collaborator`] since GitHub uses the
+    /// same `PUT` endpoint for both adding and updating collaborators.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`      - The repository owner.
+    /// * `repo`       - The repository name.
+    /// * `username`   - The GitHub login of the collaborator.
+    /// * `permission` - New permission level.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::add_repository_collaborator`].
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username, permission = %permission))]
+    pub async fn set_collaborator_permission(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        // GitHub uses the same PUT endpoint for adding and updating collaborators.
+        self.add_repository_collaborator(owner, repo, username, permission)
+            .await
+    }
+
+    /// Removes a collaborator from a repository.
+    ///
+    /// Uses `DELETE /repos/{owner}/{repo}/collaborators/{username}`.
+    /// GitHub returns 204 on success.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner`    - The repository owner.
+    /// * `repo`     - The repository name.
+    /// * `username` - The GitHub login of the collaborator to remove.
+    ///
+    /// # Errors
+    ///
+    /// * [`Error::NotFound`]        – Repository or collaborator does not exist.
+    /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
+    /// * [`Error::InvalidResponse`] – Network or parse failure.
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username))]
+    pub async fn remove_repository_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> Result<(), Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            username = username,
+            "Removing repository collaborator"
+        );
+
+        let route = format!("/repos/{owner}/{repo}/collaborators/{username}");
+
+        // GitHub returns 204 No Content on success.
+        // Use Option<serde_json::Value> so octocrab handles both 204 and 200 + {} gracefully.
+        let result: OctocrabResult<Option<serde_json::Value>> =
+            self.client.delete(route, None::<&()>).await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    username = username,
+                    "Successfully removed repository collaborator"
+                );
+                Ok(())
+            }
+            Err(e) => match &e {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == http::StatusCode::NOT_FOUND {
+                        error!(
+                            owner = owner,
+                            repo = repo,
+                            username = username,
+                            "Repository or collaborator not found when removing"
+                        );
+                        log_octocrab_error("Repository or collaborator not found", e);
+                        return Err(Error::NotFound);
+                    }
+
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        status_code = %source.status_code,
+                        message = %source.message,
+                        "GitHub API error removing repository collaborator"
+                    );
+                    log_octocrab_error("Failed to remove repository collaborator", e);
+                    Err(Error::ApiError())
+                }
+                _ => {
+                    error!(
+                        owner = owner,
+                        repo = repo,
+                        username = username,
+                        error = %e,
+                        "Non-GitHub error removing repository collaborator"
+                    );
+                    log_octocrab_error("Failed to remove repository collaborator", e);
+                    Err(Error::InvalidResponse)
+                }
+            },
+        }
     }
 }
 
@@ -939,10 +2051,6 @@ impl RepositoryClient for GitHubClient {
                 Ok(default_branch)
             }
             Err(e) => {
-                eprintln!(
-                    "DIAGNOSTIC: Error getting org {} default branch: error={}",
-                    org_name, e
-                );
                 error!(
                     org_name = org_name,
                     "Failed to get organization information: {}", e
@@ -1041,10 +2149,6 @@ impl RepositoryClient for GitHubClient {
             Ok(response) => {
                 // Parse the response array of {property_name, value} objects
                 let properties = response.as_array().ok_or_else(|| {
-                    eprintln!(
-                        "DIAGNOSTIC: Custom properties response is not an array for {}/{}",
-                        owner, repo
-                    );
                     error!("Custom properties response is not an array");
                     Error::InvalidResponse
                 })?;
@@ -1066,10 +2170,6 @@ impl RepositoryClient for GitHubClient {
                 Ok(property_map)
             }
             Err(e) => {
-                eprintln!(
-                    "DIAGNOSTIC: Error getting custom properties for {}/{}: error={}",
-                    owner, repo, e
-                );
                 log_octocrab_error("Failed to get custom properties", e);
                 Err(Error::InvalidResponse)
             }
@@ -1098,10 +2198,6 @@ impl RepositoryClient for GitHubClient {
                 // Match on the error type to provide detailed diagnostics
                 match &e {
                     octocrab::Error::GitHub { source, .. } => {
-                        eprintln!(
-                            "DIAGNOSTIC: GitHub API error listing labels for {}/{}: status={}, message={}",
-                            owner, repo, source.status_code, source.message
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -1113,10 +2209,6 @@ impl RepositoryClient for GitHubClient {
                         Err(Error::ApiError())
                     }
                     _ => {
-                        eprintln!(
-                            "DIAGNOSTIC: Non-GitHub error listing labels for {}/{}: error={}",
-                            owner, repo, e
-                        );
                         error!(
                             owner = owner,
                             repo = repo,
@@ -1186,19 +2278,11 @@ impl RepositoryClient for GitHubClient {
                             Ok(())
                         }
                         Err(update_e) => {
-                            eprintln!(
-                                "DIAGNOSTIC: Error updating label {} in {}/{}: error={}",
-                                name, owner, repo, update_e
-                            );
                             log_octocrab_error("Failed to update existing label", update_e);
                             Err(Error::InvalidResponse)
                         }
                     }
                 } else {
-                    eprintln!(
-                        "DIAGNOSTIC: Error creating label {} in {}/{}: error={}",
-                        name, owner, repo, e
-                    );
                     log_octocrab_error("Failed to create label", e);
                     Err(Error::InvalidResponse)
                 }
@@ -1498,20 +2582,12 @@ impl RepositoryClient for GitHubClient {
 
         let route = format!("/repos/{}/{}/rulesets", owner, repo);
 
-        // First get as serde_json::Value to log the raw response
+        // Fetch as serde_json::Value first so we can include a body sample in
+        // deserialization error messages.
         let result: OctocrabResult<serde_json::Value> = self.client.get(&route, None::<&()>).await;
 
         match result {
             Ok(json_value) => {
-                let json_str = serde_json::to_string_pretty(&json_value)
-                    .unwrap_or_else(|_| format!("{:?}", json_value));
-                eprintln!(
-                    "[GITHUB_CLIENT DEBUG] list_repository_rulesets response for {}/{}:",
-                    owner, repo
-                );
-                eprintln!("[GITHUB_CLIENT DEBUG] Body: {}", json_str);
-
-                // Now try to deserialize into our type
                 match serde_json::from_value::<Vec<RepositoryRuleset>>(json_value.clone()) {
                     Ok(rulesets) => {
                         info!(
@@ -1520,48 +2596,24 @@ impl RepositoryClient for GitHubClient {
                             count = rulesets.len(),
                             "Successfully retrieved rulesets"
                         );
-                        if rulesets.is_empty() {
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] Repository has no rulesets (empty array)"
-                            );
-                        } else {
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] Successfully deserialized {} rulesets",
-                                rulesets.len()
-                            );
-                        }
                         Ok(rulesets)
                     }
                     Err(e) => {
+                        let body_sample = serde_json::to_string(&json_value)
+                            .unwrap_or_else(|_| format!("{:?}", json_value));
                         error!(
                             owner = owner,
                             repo = repo,
                             route = &route,
                             error = ?e,
-                            body_sample = &json_str[..json_str.len().min(500)],
+                            body_sample = &body_sample[..body_sample.len().min(500)],
                             "Failed to deserialize rulesets response"
                         );
-                        eprintln!("[GITHUB_CLIENT DEBUG] Deserialization error: {:?}", e);
-                        eprintln!("[GITHUB_CLIENT DEBUG] This means the JSON structure doesn't match Vec<RepositoryRuleset>");
-                        eprintln!("[GITHUB_CLIENT DEBUG] Check if response is an error object instead of an array");
-
-                        // Try to see if it's an error response
-                        if let Some(message) = json_value.get("message") {
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] Response contains 'message' field: {:?}",
-                                message
-                            );
-                            eprintln!(
-                                "[GITHUB_CLIENT DEBUG] This looks like a GitHub error response"
-                            );
-                        }
-
                         Err(Error::InvalidResponse)
                     }
                 }
             }
             Err(e) => {
-                // Check what kind of error this is
                 match &e {
                     octocrab::Error::GitHub { source, .. } => {
                         error!(
@@ -1573,20 +2625,6 @@ impl RepositoryClient for GitHubClient {
                             documentation = %source.documentation_url.as_deref().unwrap_or("N/A"),
                             "GitHub API error when listing rulesets"
                         );
-                        eprintln!("\n[GITHUB_CLIENT ERROR] GitHub API returned error:");
-                        eprintln!("[GITHUB_CLIENT ERROR] Status: {}", source.status_code);
-                        eprintln!("[GITHUB_CLIENT ERROR] Message: {}", source.message);
-                        eprintln!("[GITHUB_CLIENT ERROR] URL: {}", route);
-                        eprintln!("[GITHUB_CLIENT ERROR] This likely means:");
-                        if source.status_code.as_u16() == 404 {
-                            eprintln!("[GITHUB_CLIENT ERROR]   - Repository doesn't exist yet (timing issue)");
-                            eprintln!("[GITHUB_CLIENT ERROR]   - Rulesets endpoint not available for this repo");
-                        } else if source.status_code.as_u16() == 403 {
-                            eprintln!("[GITHUB_CLIENT ERROR]   - Insufficient permissions (need 'administration:read')");
-                            eprintln!(
-                                "[GITHUB_CLIENT ERROR]   - GitHub App doesn't have ruleset access"
-                            );
-                        }
                     }
                     _ => {
                         error!(
@@ -1596,7 +2634,6 @@ impl RepositoryClient for GitHubClient {
                             error = ?e,
                             "Failed to make request to list repository rulesets"
                         );
-                        eprintln!("\n[GITHUB_CLIENT ERROR] Unexpected error type: {:?}", e);
                     }
                 }
                 log_octocrab_error("Failed to list rulesets", e);

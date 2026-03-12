@@ -6,7 +6,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::{OrganizationName, RepositoryName, RepositoryVisibility, TemplateName, Timestamp};
+use crate::{
+    permissions::AccessLevel, OrganizationName, RepositoryName, RepositoryVisibility, TemplateName,
+    Timestamp,
+};
 
 #[cfg(test)]
 #[path = "request_tests.rs"]
@@ -81,6 +84,7 @@ impl Default for ContentStrategy {
 ///     RepositoryCreationRequest, RepositoryName, OrganizationName,
 ///     TemplateName, RepositoryVisibility, ContentStrategy
 /// };
+/// use repo_roller_core::permissions::AccessLevel;
 /// use std::collections::HashMap;
 ///
 /// // Template-based repository (current behavior)
@@ -91,9 +95,13 @@ impl Default for ContentStrategy {
 ///     variables: HashMap::new(),
 ///     visibility: Some(RepositoryVisibility::Private),
 ///     content_strategy: ContentStrategy::Template,
+///     teams: HashMap::new(),
+///     collaborators: HashMap::new(),
 /// };
 ///
-/// // Empty repository with template settings
+/// // Empty repository with team permissions
+/// let mut teams = HashMap::new();
+/// teams.insert("platform".to_string(), AccessLevel::Write);
 /// let request = RepositoryCreationRequest {
 ///     name: RepositoryName::new("my-empty-repo").unwrap(),
 ///     owner: OrganizationName::new("my-org").unwrap(),
@@ -101,6 +109,8 @@ impl Default for ContentStrategy {
 ///     variables: HashMap::new(),
 ///     visibility: None,
 ///     content_strategy: ContentStrategy::Empty,
+///     teams,
+///     collaborators: HashMap::new(),
 /// };
 /// ```
 ///
@@ -140,6 +150,19 @@ pub struct RepositoryCreationRequest {
     ///
     /// See [`ContentStrategy`] for details.
     pub content_strategy: ContentStrategy,
+
+    /// GitHub teams to add to the repository at creation time.
+    ///
+    /// Maps team slug → desired access level.
+    /// An empty map means no teams are explicitly assigned (organisation
+    /// defaults may still apply via the configuration hierarchy).
+    pub teams: HashMap<String, AccessLevel>,
+
+    /// Individual GitHub users to add as collaborators at creation time.
+    ///
+    /// Maps GitHub username → desired access level.
+    /// Use [`AccessLevel::None`] to explicitly remove a user if present.
+    pub collaborators: HashMap<String, AccessLevel>,
 }
 
 /// Result of a successful repository creation operation.
@@ -227,6 +250,8 @@ pub struct RepositoryCreationRequestBuilder {
     variables: Option<HashMap<String, String>>,
     visibility: Option<RepositoryVisibility>,
     content_strategy: Option<ContentStrategy>,
+    teams: HashMap<String, AccessLevel>,
+    collaborators: HashMap<String, AccessLevel>,
 }
 
 impl RepositoryCreationRequestBuilder {
@@ -252,7 +277,63 @@ impl RepositoryCreationRequestBuilder {
             variables: None,
             visibility: None,
             content_strategy: None,
+            teams: HashMap::new(),
+            collaborators: HashMap::new(),
         }
+    }
+
+    /// Set the teams to grant access to the new repository.
+    ///
+    /// Replaces any previously set teams map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use repo_roller_core::*;
+    /// # use repo_roller_core::permissions::AccessLevel;
+    /// # use std::collections::HashMap;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut teams = HashMap::new();
+    /// teams.insert("platform".to_string(), AccessLevel::Write);
+    /// let request = RepositoryCreationRequestBuilder::new(
+    ///     RepositoryName::new("my-repo")?,
+    ///     OrganizationName::new("my-org")?,
+    /// )
+    /// .teams(teams)
+    /// .build();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn teams(mut self, teams: HashMap<String, AccessLevel>) -> Self {
+        self.teams = teams;
+        self
+    }
+
+    /// Set the individual collaborators to grant access to the new repository.
+    ///
+    /// Replaces any previously set collaborators map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use repo_roller_core::*;
+    /// # use repo_roller_core::permissions::AccessLevel;
+    /// # use std::collections::HashMap;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut collaborators = HashMap::new();
+    /// collaborators.insert("alice".to_string(), AccessLevel::Write);
+    /// let request = RepositoryCreationRequestBuilder::new(
+    ///     RepositoryName::new("my-repo")?,
+    ///     OrganizationName::new("my-org")?,
+    /// )
+    /// .collaborators(collaborators)
+    /// .build();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn collaborators(mut self, collaborators: HashMap<String, AccessLevel>) -> Self {
+        self.collaborators = collaborators;
+        self
     }
 
     /// Set the template for content and settings.
@@ -366,6 +447,8 @@ impl RepositoryCreationRequestBuilder {
             variables: self.variables.unwrap_or_default(),
             visibility: self.visibility,
             content_strategy,
+            teams: self.teams,
+            collaborators: self.collaborators,
         }
     }
 }

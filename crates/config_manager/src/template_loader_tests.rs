@@ -84,6 +84,9 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 

@@ -585,6 +585,9 @@ async fn test_validate_template_config_integration() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = validator

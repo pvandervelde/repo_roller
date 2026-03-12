@@ -12,6 +12,7 @@ pub mod environment;
 pub mod github_app;
 pub mod label;
 pub mod notifications;
+pub mod permissions;
 pub mod pull_request;
 pub mod push;
 pub mod repository;
@@ -26,6 +27,11 @@ pub use environment::EnvironmentConfig;
 pub use github_app::GitHubAppConfig;
 pub use label::LabelConfig;
 pub use notifications::{NotificationEndpoint, NotificationsConfig};
+pub use permissions::{
+    access_level_order, DefaultCollaboratorConfig, DefaultTeamConfig,
+    OrganizationPermissionPoliciesConfig, PermissionConfigError, PermissionGrantConfig,
+    RepositoryTypePermissionsConfig, TemplatePermissionsConfig,
+};
 pub use pull_request::PullRequestSettings;
 pub use push::PushSettings;
 pub use repository::RepositorySettings;

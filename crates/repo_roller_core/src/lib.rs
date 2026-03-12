@@ -134,6 +134,21 @@ mod webhook_manager;
 // Ruleset management operations
 mod ruleset_manager;
 
+// Permission types and domain model
+pub mod permissions;
+
+// Policy engine for permission evaluation
+pub mod policy_engine;
+
+// Permission manager for orchestrating permission application
+pub mod permission_manager;
+
+// Structured audit logging for permission decisions
+pub mod permission_audit_logger;
+
+// Permission workflow helpers for the repository creation pipeline
+pub mod permission_workflow;
+
 // Event publishing operations
 pub mod event_publisher;
 
@@ -224,6 +239,13 @@ pub use label_manager::{ApplyLabelsResult, LabelManager};
 pub use webhook_manager::{ApplyWebhooksResult, WebhookManager};
 // Re-exported from ruleset_manager module
 pub use ruleset_manager::{ApplyRulesetsResult, RulesetManager};
+// Re-exported from permissions module
+pub use permissions::{
+    AccessLevel, GitHubPermissionLevel, OrganizationPermissionPolicies, PermissionCondition,
+    PermissionDuration, PermissionError, PermissionGrant, PermissionHierarchy, PermissionRequest,
+    PermissionScope, PermissionType, RepositoryContext, RepositoryTypePermissions,
+    TemplatePermissions, UserPermissionRequests,
+};
 // Re-exported from event_publisher module
 pub use event_publisher::{
     collect_notification_endpoints, compute_hmac_sha256, publish_repository_created,
@@ -287,100 +309,571 @@ mod tests;
 #[path = "lib_integration_tests.rs"]
 mod integration_tests;
 
-/// Create a new repository from a template with type-safe API.
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+/// GitHub clients created during the authentication step.
 ///
-/// This function orchestrates the complete repository creation workflow with
-/// type-safe branded types and comprehensive error handling.
+/// Groups the three GitHub-facing objects produced in Steps 1–2 so they can
+/// be passed around as a unit without a long parameter list.
+struct CreationClients {
+    /// Raw installation token used for git push authentication.
+    installation_token: String,
+    /// GitHub API client authenticated as the installation.
+    installation_repo_client: GitHubClient,
+    /// Template content fetcher backed by the same installation token.
+    template_fetcher: template_engine::GitHubTemplateFetcher,
+}
+
+/// Authenticates as the GitHub App installation and creates the GitHub clients
+/// needed for the rest of the creation workflow.
 ///
-/// ## Workflow Overview
+/// # Errors
 ///
-/// 1. **Authentication**: Set up GitHub App authentication and get installation token
-/// 2. **Configuration Resolution**: Use OrganizationSettingsManager to resolve hierarchical configuration
-/// 3. **Local Repository Preparation**: Create temp directory, fetch template, process variables
-/// 4. **Git Initialization**: Initialize local Git repository with correct default branch
-/// 5. **GitHub Repository Creation**: Create repository via GitHub API
-/// 6. **Configuration Application**: Apply resolved settings to GitHub repository
+/// Returns `AuthenticationFailed` when the installation token cannot be obtained,
+/// or `SystemError::Internal` when a client cannot be constructed.
+async fn setup_github_clients(
+    auth_service: &dyn auth_handler::UserAuthenticationService,
+    owner: &str,
+) -> RepoRollerResult<CreationClients> {
+    let installation_token = auth_service
+        .get_installation_token_for_org(owner)
+        .await
+        .map_err(|e| {
+            error!("Failed to authenticate: {}", e);
+            RepoRollerError::GitHub(GitHubError::AuthenticationFailed {
+                reason: format!("Failed to get installation token: {}", e),
+            })
+        })?;
+
+    let installation_client =
+        github_client::create_token_client(&installation_token).map_err(|e| {
+            error!("Failed to create installation token client: {}", e);
+            RepoRollerError::System(SystemError::Internal {
+                reason: format!("Failed to create installation token client: {}", e),
+            })
+        })?;
+    let installation_repo_client = GitHubClient::new(installation_client);
+
+    let template_fetcher_client =
+        github_client::create_token_client(&installation_token).map_err(|e| {
+            error!("Failed to create GitHub client for template fetcher: {}", e);
+            RepoRollerError::System(SystemError::Internal {
+                reason: format!("Failed to create GitHub client: {}", e),
+            })
+        })?;
+    let template_fetcher =
+        template_engine::GitHubTemplateFetcher::new(GitHubClient::new(template_fetcher_client));
+
+    Ok(CreationClients {
+        installation_token,
+        installation_repo_client,
+        template_fetcher,
+    })
+}
+
+/// Resolves the merged organization configuration and loads the template
+/// configuration from GitHub (when a template is specified).
 ///
-/// ## Parameters
+/// Returns `(merged_config, template)` where `template` is `None` for
+/// empty-repository or no-template creations.
 ///
-/// * `request` - Type-safe repository creation request with branded types
-/// * `config` - Configuration containing template definitions
-/// * `app_id` - GitHub App ID for authentication
-/// * `app_key` - GitHub App private key for authentication
+/// # Errors
 ///
-/// ## Returns
+/// Returns `ConfigurationError` when the merged config cannot be resolved, or
+/// `TemplateError::TemplateNotFound` when the requested template does not exist.
+async fn load_creation_config(
+    installation_token: &str,
+    request: &RepositoryCreationRequest,
+    metadata_provider: &dyn config_manager::MetadataRepositoryProvider,
+    metadata_repository_name: &str,
+) -> RepoRollerResult<(
+    config_manager::MergedConfiguration,
+    Option<config_manager::TemplateConfig>,
+)> {
+    let template_name_for_config = request.template.as_ref().map(|t| t.as_ref()).unwrap_or("");
+    let merged_config = configuration::resolve_organization_configuration(
+        installation_token,
+        request.owner.as_ref(),
+        template_name_for_config,
+        metadata_repository_name,
+    )
+    .await?;
+
+    let template = if let Some(ref template_name) = request.template {
+        debug!(
+            "Loading template '{}' from organization '{}'",
+            template_name, request.owner
+        );
+        let loaded = metadata_provider
+            .load_template_configuration(request.owner.as_ref(), template_name.as_ref())
+            .await
+            .map_err(|e| {
+                error!("Template '{}' not found: {}", template_name, e);
+                RepoRollerError::Template(TemplateError::TemplateNotFound {
+                    name: template_name.to_string(),
+                })
+            })?;
+        info!("Template '{}' loaded successfully", template_name);
+        Some(loaded)
+    } else {
+        info!("No template specified - using organization defaults");
+        None
+    };
+
+    Ok((merged_config, template))
+}
+
+/// Resolves the final repository visibility by evaluating organization policies,
+/// GitHub environment constraints, and the user's preference.
 ///
-/// * `Ok(RepositoryCreationResult)` - Repository created successfully with metadata (url, id, created_at, default_branch)
-/// * `Err(RepoRollerError)` - Creation failed with categorized error
+/// # Errors
 ///
-/// ## Error Types
+/// Maps all [`visibility::VisibilityError`] variants to [`RepoRollerError`].
+async fn resolve_repository_visibility(
+    request: &RepositoryCreationRequest,
+    template: Option<&config_manager::TemplateConfig>,
+    visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
+    environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
+) -> RepoRollerResult<visibility::VisibilityDecision> {
+    info!(
+        "Resolving repository visibility for organization '{}'",
+        request.owner
+    );
+
+    let visibility_request = visibility::VisibilityRequest {
+        organization: request.owner.clone(),
+        user_preference: request.visibility,
+        template_default: template.and_then(|t| t.default_visibility),
+    };
+
+    let resolver =
+        visibility::VisibilityResolver::new(visibility_policy_provider, environment_detector);
+
+    let decision = resolver
+        .resolve_visibility(visibility_request)
+        .await
+        .map_err(|e| {
+            error!("Failed to resolve visibility: {}", e);
+            match e {
+                visibility::VisibilityError::PolicyViolation { requested, policy } => {
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility".to_string(),
+                        reason: format!(
+                            "Visibility {:?} violates organization policy: {}",
+                            requested, policy
+                        ),
+                    })
+                }
+                visibility::VisibilityError::GitHubConstraint { requested, reason } => {
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility".to_string(),
+                        reason: format!("Visibility {:?} not available: {}", requested, reason),
+                    })
+                }
+                visibility::VisibilityError::PolicyNotFound { organization } => {
+                    warn!(
+                        "No visibility policy configured for organization '{}', using default",
+                        organization
+                    );
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility_policy".to_string(),
+                        reason: format!(
+                            "No visibility policy configured for organization '{}'",
+                            organization
+                        ),
+                    })
+                }
+                visibility::VisibilityError::ConfigurationError { message } => {
+                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+                        field: "visibility".to_string(),
+                        reason: message,
+                    })
+                }
+                visibility::VisibilityError::EnvironmentDetectionFailed {
+                    organization,
+                    reason,
+                } => RepoRollerError::GitHub(GitHubError::NetworkError {
+                    reason: format!(
+                        "Failed to detect GitHub environment for organization '{}': {}",
+                        organization, reason
+                    ),
+                }),
+                visibility::VisibilityError::GitHubApiError(source) => {
+                    RepoRollerError::GitHub(GitHubError::NetworkError {
+                        reason: format!("Failed to detect GitHub environment: {}", source),
+                    })
+                }
+            }
+        })?;
+
+    info!(
+        "Visibility resolved: {:?}, source: {:?}",
+        decision.visibility, decision.source
+    );
+    debug!("Applied constraints: {:?}", decision.constraints_applied);
+
+    Ok(decision)
+}
+
+/// Generates the local repository content by selecting a [`ContentProvider`]
+/// based on `request.content_strategy` and calling `provide_content`.
 ///
-/// - `ValidationError` - Invalid input parameters or missing required data
-/// - `AuthenticationError` - GitHub App authentication failures
-/// - `ConfigurationError` - Template or configuration resolution failures
-/// - `TemplateError` - Template fetching or processing errors
-/// - `GitHubError` - GitHub API operation failures
-/// - `RepositoryError` - Git operations or repository setup failures
-/// - `SystemError` - File system or internal errors
+/// Returns the temporary directory path containing the generated content.
 ///
-/// ## Examples
+/// # Errors
 ///
-/// ```no_run
-/// use repo_roller_core::{
-///     RepositoryCreationRequestBuilder, RepositoryName,
-///     OrganizationName, TemplateName, create_repository
-/// };
-/// use config_manager::{GitHubMetadataProvider, MetadataProviderConfig};
-/// use auth_handler::{GitHubAuthService, UserAuthenticationService};
-/// use github_client;
+/// Propagates errors from the content provider.
+async fn generate_repository_content(
+    request: &RepositoryCreationRequest,
+    template: Option<&config_manager::TemplateConfig>,
+    merged_config: &config_manager::MergedConfiguration,
+    template_fetcher: &template_engine::GitHubTemplateFetcher,
+) -> RepoRollerResult<TempDir> {
+    let template_source = request
+        .template
+        .as_ref()
+        .map(|t| format!("{}/{}", request.owner.as_ref(), t.as_ref()))
+        .unwrap_or_default();
+
+    let content_provider: Box<dyn crate::ContentProvider> = match request.content_strategy {
+        crate::ContentStrategy::Template => {
+            Box::new(crate::TemplateBasedContentProvider::new(template_fetcher))
+        }
+        crate::ContentStrategy::Empty => Box::new(crate::ZeroContentProvider::new()),
+        crate::ContentStrategy::CustomInit {
+            include_readme,
+            include_gitignore,
+        } => Box::new(crate::CustomInitContentProvider::new(
+            crate::CustomInitOptions {
+                include_readme,
+                include_gitignore,
+            },
+        )),
+    };
+
+    content_provider
+        .provide_content(request, template, &template_source, merged_config)
+        .await
+}
+
+/// Pushes the local repository to the newly created GitHub remote.
 ///
-/// # async fn example(
-/// #     visibility_policy_provider: std::sync::Arc<dyn config_manager::VisibilityPolicyProvider>,
-/// #     environment_detector: std::sync::Arc<dyn github_client::GitHubEnvironmentDetector>
-/// # ) -> Result<(), Box<dyn std::error::Error>> {
-/// let request = RepositoryCreationRequestBuilder::new(
-///     RepositoryName::new("my-service")?,
-///     OrganizationName::new("my-org")?,
-/// )
-/// .template(TemplateName::new("rust-service")?)
-/// .variable("author", "Jane Doe")
-/// .build();
+/// # Errors
 ///
-/// let auth_service = GitHubAuthService::new(12345, "private-key".to_string());
-/// let token = auth_service.get_installation_token_for_org("my-org").await?;
-/// let github_client = github_client::create_token_client(&token)?;
-/// let github_client = github_client::GitHubClient::new(github_client);
+/// Returns `SystemError::Internal` if the push fails.
+fn push_repository_to_github(
+    local_repo_path: &TempDir,
+    repo_url: url::Url,
+    default_branch: &str,
+    installation_token: &str,
+) -> RepoRollerResult<()> {
+    info!("Pushing local repository to remote: {}", repo_url);
+    git::push_to_origin(
+        local_repo_path,
+        repo_url,
+        default_branch,
+        installation_token,
+    )
+    .map_err(|e| {
+        error!("Failed to push to origin: {}", e);
+        RepoRollerError::System(SystemError::Internal {
+            reason: format!("Failed to push to origin: {}", e),
+        })
+    })?;
+    info!("Repository successfully pushed to GitHub");
+    Ok(())
+}
+
+/// Applies the merged configuration and repository permissions after the
+/// repository has been created and populated on GitHub.
 ///
-/// let metadata_provider = GitHubMetadataProvider::new(
-///     github_client,
-///     MetadataProviderConfig::explicit(".reporoller")
-/// );
+/// Permission errors are treated as non-fatal warnings: configuration will
+/// still be applied and the repository is fully usable.
 ///
-/// let event_context = repo_roller_core::event_publisher::EventNotificationContext::new(
-///     "user@example.com",
-///     std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new()),
-///     std::sync::Arc::new(repo_roller_core::event_metrics::PrometheusEventMetrics::new(&prometheus::Registry::new())),
-/// );
+/// # Errors
 ///
-/// match create_repository(
-///     request,
-///     &metadata_provider,
-///     &auth_service,
-///     ".reporoller",
-///     visibility_policy_provider,
-///     environment_detector,
-///     event_context,
-/// ).await {
-///     Ok(result) => {
-///         println!("Created: {}", result.repository_url);
-///         println!("ID: {}", result.repository_id);
-///         println!("Branch: {}", result.default_branch);
-///     }
-///     Err(e) => eprintln!("Failed: {}", e),
-/// }
-/// # Ok(())
-/// # }
-/// ```
+/// Returns errors from configuration application; permission errors are logged
+/// and suppressed.
+async fn apply_post_creation_settings(
+    installation_repo_client: &GitHubClient,
+    request: &RepositoryCreationRequest,
+    merged_config: &config_manager::MergedConfiguration,
+    template: Option<&config_manager::TemplateConfig>,
+    requestor: &str,
+) -> RepoRollerResult<()> {
+    configuration::apply_repository_configuration(
+        installation_repo_client,
+        request.owner.as_ref(),
+        request.name.as_ref(),
+        merged_config,
+    )
+    .await?;
+
+    // Permission errors are non-fatal: the repository already exists and is
+    // usable; log a warning rather than failing the entire creation.
+    {
+        let permission_manager = crate::permission_manager::PermissionManager::new(
+            installation_repo_client.clone(),
+            crate::policy_engine::PolicyEngine::new(),
+        );
+        let hierarchy = crate::permission_workflow::build_permission_hierarchy(template);
+        let perm_request = crate::permission_workflow::build_permission_request(
+            &request.owner,
+            &request.name,
+            requestor,
+        );
+        // NOTE: `hierarchy` carries empty `organization_policies` and
+        // `user_requested_permissions` because org-level policies are not yet
+        // threaded through `MergedConfiguration`. The `PolicyEngine::evaluate_permission_request`
+        // call below therefore evaluates an empty request against an empty policy and
+        // is effectively a no-op today. The real permission-merge enforcement lives in
+        // `merge_access_map_with_policy` (called immediately below). The PolicyEngine
+        // path is future infrastructure intended to replace that merge once org policies
+        // are properly wired up. Until then, do not add policy logic inside the engine.
+        // Teams and collaborators are merged from two sources:
+        //   1. Org/template config (merged_config.teams / .collaborators) – baseline
+        //   2. Explicit request fields (request.teams / .collaborators)    – highest precedence
+        //
+        // Policy rules applied during merge (request overrides are subject to):
+        //   • Locked entries (merged_config.locked_teams) cannot be altered by the request.
+        //   • Config-established entries cannot be demoted (only upgraded) by the request.
+        //   • No request entry may exceed merged_config.max_team_access_level (capped).
+        let teams: std::collections::HashMap<String, crate::permissions::AccessLevel> =
+            merge_access_map_with_policy(
+                &merged_config.teams,
+                &merged_config.locked_teams,
+                merged_config.max_team_access_level.as_deref(),
+                request
+                    .teams
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), *v))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                "team",
+            );
+        let collaborators: std::collections::HashMap<String, crate::permissions::AccessLevel> =
+            merge_access_map_with_policy(
+                &merged_config.collaborators,
+                &merged_config.locked_collaborators,
+                merged_config.max_collaborator_access_level.as_deref(),
+                request
+                    .collaborators
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), *v))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                "collaborator",
+            );
+
+        match permission_manager
+            .apply_repository_permissions(
+                request.owner.as_ref(),
+                request.name.as_ref(),
+                &perm_request,
+                &hierarchy,
+                &teams,
+                &collaborators,
+            )
+            .await
+        {
+            Ok(result) => {
+                info!(
+                    teams_applied = result.teams_applied,
+                    collaborators_applied = result.collaborators_applied,
+                    "Repository permissions applied successfully"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Permission application failed (non-fatal); repository created \
+                     but permissions may not be fully configured: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Merges a config-derived access map with request-supplied overrides, enforcing
+/// three protection rules:
+///
+/// 1. **Locked entries** — identifiers in `locked` cannot be altered by any request entry.
+///    The config value is preserved and a warning is logged.
+/// 2. **No demotion** — request entries that would *reduce* the access level of a
+///    config-established identifier are silently skipped (with a warning).
+/// 3. **Max-level ceiling** — if `max_level_str` is `Some`, request entries that exceed
+///    that ceiling are capped at the ceiling value (with a warning).
+///
+/// # Arguments
+///
+/// * `config_entries`  – Config-derived identifiers (`HashMap<String, String>`).
+/// * `locked`          – Set of identifiers that must not be changed by requests.
+/// * `max_level_str`   – Optional ceiling level string; entries exceeding it are capped.
+/// * `request_entries` – `(&str, AccessLevel)` pairs from the creation request.
+/// * `kind`            – Human-readable label used in warning messages (`"team"` or
+///   `"collaborator"`).
+///
+/// # Returns
+///
+/// A `HashMap<String, AccessLevel>` with the fully resolved access map.
+pub fn merge_access_map_with_policy(
+    config_entries: &std::collections::HashMap<String, String>,
+    locked: &std::collections::HashSet<String>,
+    max_level_str: Option<&str>,
+    request_entries: &[(&str, crate::permissions::AccessLevel)],
+    kind: &str,
+) -> std::collections::HashMap<String, crate::permissions::AccessLevel> {
+    // Parse and collect config entries; skip entries with unrecognised level strings.
+    let mut map: std::collections::HashMap<String, crate::permissions::AccessLevel> =
+        config_entries
+            .iter()
+            .filter_map(|(id, level_str)| {
+                crate::permissions::AccessLevel::try_from(level_str.as_str())
+                    .map(|level| (id.clone(), level))
+                    .map_err(|e| {
+                        warn!(
+                            kind,
+                            identifier = id.as_str(),
+                            level = level_str.as_str(),
+                            "Ignoring invalid access level for default {} from config: {}",
+                            kind,
+                            e
+                        );
+                    })
+                    .ok()
+            })
+            .collect();
+
+    // Parse the ceiling once; if the string is invalid, ignore the ceiling with a warning.
+    let ceiling: Option<crate::permissions::AccessLevel> = max_level_str.and_then(|s| {
+        crate::permissions::AccessLevel::try_from(s)
+            .map_err(|e| {
+                warn!(
+                    kind,
+                    ceiling = s,
+                    "Ignoring invalid max_{}_access_level from org config: {}",
+                    kind,
+                    e
+                );
+            })
+            .ok()
+    });
+
+    for (id, mut requested_level) in request_entries.iter().copied() {
+        let id_owned = id.to_string();
+
+        // Rule 1 – locked entry must not be changed by a request.
+        // Note: `locked` is populated only from entries already present in
+        // `config_entries`, so the map entry is always Occupied here.
+        // A locked entry must never accept an arbitrary request value.
+        if locked.contains(&id_owned) {
+            warn!(
+                kind,
+                identifier = id,
+                "Request tried to alter locked {} '{}'; ignoring request entry",
+                kind,
+                id
+            );
+            continue;
+        }
+
+        // Apply ceiling (Rule 3 in the spec) before the no-demotion check so that
+        // we compare the already-capped level against the config-established level.
+        if let Some(cap) = ceiling {
+            if requested_level > cap {
+                warn!(
+                    kind,
+                    identifier = id,
+                    requested = ?requested_level,
+                    ceiling = ?cap,
+                    "Request {} level for '{}' exceeds org ceiling; capping at {:?}",
+                    kind,
+                    id,
+                    cap
+                );
+                requested_level = cap;
+            }
+        }
+
+        // No-demotion (Rule 2 in the spec): a request cannot lower a
+        // config-established level (checked against the already-capped value).
+        if let Some(&existing_level) = map.get(&id_owned) {
+            if requested_level < existing_level {
+                warn!(
+                    kind,
+                    identifier = id,
+                    existing = ?existing_level,
+                    requested = ?requested_level,
+                    "Request tried to demote {} '{}' from {:?} to {:?}; ignoring",
+                    kind,
+                    id,
+                    existing_level,
+                    requested_level
+                );
+                continue;
+            }
+        }
+
+        map.insert(id_owned, requested_level);
+    }
+
+    map
+}
+
+/// Spawns a background task that delivers `RepositoryCreatedEvent` notifications
+/// to all configured webhook endpoints.
+///
+/// Uses a fire-and-forget pattern: the caller does not wait for delivery.
+/// Delivery results are summarised in the tracing log.
+fn spawn_event_notification(
+    result: &RepositoryCreationResult,
+    request: RepositoryCreationRequest,
+    merged_config: config_manager::MergedConfiguration,
+    event_context: event_publisher::EventNotificationContext,
+) {
+    let result_clone = result.clone();
+    let created_by_str = event_context.created_by;
+    let secret_resolver = event_context.secret_resolver;
+    let metrics = event_context.metrics;
+
+    tokio::spawn(async move {
+        info!(
+            repository = %request.name,
+            "Spawning background task for event notifications"
+        );
+
+        let delivery_results = publish_repository_created(
+            &result_clone,
+            &request,
+            &merged_config,
+            &created_by_str,
+            secret_resolver.as_ref(),
+            metrics.as_ref(),
+        )
+        .await;
+
+        let success_count = delivery_results.iter().filter(|r| r.success).count();
+        let failure_count = delivery_results.len() - success_count;
+
+        if failure_count > 0 {
+            warn!(
+                repository = %request.name,
+                success_count = success_count,
+                failure_count = failure_count,
+                "Event notification delivery completed with failures"
+            );
+        } else if success_count > 0 {
+            info!(
+                repository = %request.name,
+                success_count = success_count,
+                "Event notification delivery completed successfully"
+            );
+        }
+    });
+}
+
 /// Initialize and commit local Git repository.
 ///
 /// # Returns
@@ -574,237 +1067,76 @@ pub async fn create_repository(
         request.name, request.owner, request.template, request.content_strategy
     );
 
-    // Step 1: Setup GitHub authentication and get installation token
-    let installation_token = auth_service
-        .get_installation_token_for_org(request.owner.as_ref())
-        .await
-        .map_err(|e| {
-            error!("Failed to authenticate: {}", e);
-            RepoRollerError::GitHub(GitHubError::AuthenticationFailed {
-                reason: format!("Failed to get installation token: {}", e),
-            })
-        })?;
+    // Steps 1–2: Authenticate and create GitHub clients.
+    let clients = setup_github_clients(auth_service, request.owner.as_ref()).await?;
 
-    // Create GitHub client with installation token
-    let installation_client =
-        github_client::create_token_client(&installation_token).map_err(|e| {
-            error!("Failed to create installation token client: {}", e);
-            RepoRollerError::System(SystemError::Internal {
-                reason: format!("Failed to create installation token client: {}", e),
-            })
-        })?;
-    let installation_repo_client = GitHubClient::new(installation_client);
-
-    // Step 2: Create template fetcher
-    // For now, reuse installation token - in the future this could be separate
-    let template_fetcher_client =
-        github_client::create_token_client(&installation_token).map_err(|e| {
-            error!("Failed to create GitHub client for template fetcher: {}", e);
-            RepoRollerError::System(SystemError::Internal {
-                reason: format!("Failed to create GitHub client: {}", e),
-            })
-        })?;
-    let template_fetcher =
-        template_engine::GitHubTemplateFetcher::new(GitHubClient::new(template_fetcher_client));
-
-    // Step 3: Resolve organization configuration
-    // Template name is optional - use empty string if not provided
-    let template_name_for_config = request.template.as_ref().map(|t| t.as_ref()).unwrap_or("");
-    let merged_config = configuration::resolve_organization_configuration(
-        &installation_token,
-        request.owner.as_ref(),
-        template_name_for_config,
+    // Steps 3–4: Resolve merged configuration and load the template config.
+    let (merged_config, template) = load_creation_config(
+        &clients.installation_token,
+        &request,
+        metadata_provider,
         metadata_repository_name,
     )
     .await?;
 
-    // Step 4: Load template configuration from GitHub (if template provided)
-    let template = if let Some(ref template_name) = request.template {
-        debug!(
-            "Loading template '{}' from organization '{}'",
-            template_name, request.owner
-        );
-        let loaded = metadata_provider
-            .load_template_configuration(request.owner.as_ref(), template_name.as_ref())
-            .await
-            .map_err(|e| {
-                error!("Template '{}' not found: {}", template_name, e);
-                RepoRollerError::Template(TemplateError::TemplateNotFound {
-                    name: template_name.to_string(),
-                })
-            })?;
-        info!("Template '{}' loaded successfully", template_name);
-        Some(loaded)
-    } else {
-        info!("No template specified - using organization defaults");
-        None
-    };
+    // Step 5: Resolve repository visibility.
+    let visibility_decision = resolve_repository_visibility(
+        &request,
+        template.as_ref(),
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await?;
 
-    // Step 5: Resolve repository visibility
-    info!(
-        "Resolving repository visibility for organization '{}'",
-        request.owner
-    );
-    let visibility_request = visibility::VisibilityRequest {
-        organization: request.owner.clone(),
-        user_preference: request.visibility,
-        template_default: template.as_ref().and_then(|t| t.default_visibility),
-    };
+    // Step 6: Generate local repository content.
+    let local_repo_path = generate_repository_content(
+        &request,
+        template.as_ref(),
+        &merged_config,
+        &clients.template_fetcher,
+    )
+    .await?;
 
-    let visibility_resolver =
-        visibility::VisibilityResolver::new(visibility_policy_provider, environment_detector);
-
-    let visibility_decision = visibility_resolver
-        .resolve_visibility(visibility_request)
-        .await
-        .map_err(|e| {
-            error!("Failed to resolve visibility: {}", e);
-            match e {
-                visibility::VisibilityError::PolicyViolation { requested, policy } => {
-                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
-                        field: "visibility".to_string(),
-                        reason: format!(
-                            "Visibility {:?} violates organization policy: {}",
-                            requested, policy
-                        ),
-                    })
-                }
-                visibility::VisibilityError::GitHubConstraint { requested, reason } => {
-                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
-                        field: "visibility".to_string(),
-                        reason: format!("Visibility {:?} not available: {}", requested, reason),
-                    })
-                }
-                visibility::VisibilityError::PolicyNotFound { organization } => {
-                    warn!(
-                        "No visibility policy configured for organization '{}', using default",
-                        organization
-                    );
-                    // For PolicyNotFound, we should use unrestricted policy
-                    // This error shouldn't reach here if resolver handles it correctly
-                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
-                        field: "visibility_policy".to_string(),
-                        reason: format!(
-                            "No visibility policy configured for organization '{}'",
-                            organization
-                        ),
-                    })
-                }
-                visibility::VisibilityError::ConfigurationError { message } => {
-                    RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
-                        field: "visibility".to_string(),
-                        reason: message,
-                    })
-                }
-                visibility::VisibilityError::EnvironmentDetectionFailed {
-                    organization,
-                    reason,
-                } => RepoRollerError::GitHub(GitHubError::NetworkError {
-                    reason: format!(
-                        "Failed to detect GitHub environment for organization '{}': {}",
-                        organization, reason
-                    ),
-                }),
-                visibility::VisibilityError::GitHubApiError(source) => {
-                    RepoRollerError::GitHub(GitHubError::NetworkError {
-                        reason: format!("Failed to detect GitHub environment: {}", source),
-                    })
-                }
-            }
-        })?;
-
-    info!(
-        "Visibility resolved: {:?}, source: {:?}",
-        visibility_decision.visibility, visibility_decision.source
-    );
-    debug!(
-        "Applied constraints: {:?}",
-        visibility_decision.constraints_applied
-    );
-
-    // Construct source repository identifier for template fetcher (if template exists)
-    // Format: "org/repo" (e.g., "my-org/template-rust-library")
-    let template_source = request
-        .template
-        .as_ref()
-        .map(|t| format!("{}/{}", request.owner.as_ref(), t.as_ref()))
-        .unwrap_or_default();
-
-    // Step 6: Generate repository content based on strategy
-    let content_provider: Box<dyn crate::ContentProvider> = match request.content_strategy {
-        crate::ContentStrategy::Template => {
-            Box::new(crate::TemplateBasedContentProvider::new(&template_fetcher))
-        }
-        crate::ContentStrategy::Empty => Box::new(crate::ZeroContentProvider::new()),
-        crate::ContentStrategy::CustomInit {
-            include_readme,
-            include_gitignore,
-        } => Box::new(crate::CustomInitContentProvider::new(
-            crate::CustomInitOptions {
-                include_readme,
-                include_gitignore,
-            },
-        )),
-    };
-
-    let local_repo_path = content_provider
-        .provide_content(
-            &request,
-            template.as_ref(),
-            &template_source,
-            &merged_config,
-        )
-        .await?;
-
-    // Step 7: Initialize Git repository and commit
-    // For empty repositories, we allow empty commits
+    // Step 7: Initialize the local Git repository and create the initial commit.
     let allow_empty_commit = matches!(request.content_strategy, ContentStrategy::Empty);
     let default_branch = initialize_git_repository(
         &local_repo_path,
-        &installation_repo_client,
+        &clients.installation_repo_client,
         request.owner.as_ref(),
         allow_empty_commit,
     )
     .await?;
 
-    // Step 8: Create repository on GitHub
+    // Step 8: Create the repository on GitHub.
     let repo = create_github_repository(
         &request,
         &merged_config,
-        &installation_repo_client,
+        &clients.installation_repo_client,
         visibility_decision.visibility,
     )
     .await?;
 
-    // Step 9: Push local repository to GitHub
-    info!("Pushing local repository to remote: {}", repo.url());
-    git::push_to_origin(
+    // Step 9: Push local content to the GitHub remote.
+    push_repository_to_github(
         &local_repo_path,
         repo.url(),
         &default_branch,
-        &installation_token,
-    )
-    .map_err(|e| {
-        error!("Failed to push to origin: {}", e);
-        RepoRollerError::System(SystemError::Internal {
-            reason: format!("Failed to push to origin: {}", e),
-        })
-    })?;
+        &clients.installation_token,
+    )?;
 
-    info!("Repository successfully pushed to GitHub");
-
-    // Step 10: Apply merged configuration to repository
-    configuration::apply_repository_configuration(
-        &installation_repo_client,
-        request.owner.as_ref(),
-        request.name.as_ref(),
+    // Steps 10–11: Apply merged configuration and repository permissions.
+    apply_post_creation_settings(
+        &clients.installation_repo_client,
+        &request,
         &merged_config,
+        template.as_ref(),
+        &event_context.created_by,
     )
     .await?;
 
     info!("Repository creation completed successfully");
 
-    // Step 11: Return success result with repository metadata
+    // Step 12: Build the result.
     let result = RepositoryCreationResult {
         repository_url: repo.url().to_string(),
         repository_id: repo.node_id().to_string(),
@@ -812,51 +1144,8 @@ pub async fn create_repository(
         default_branch: default_branch.clone(),
     };
 
-    // Step 12: Spawn background task for event notification
-    // Clone data needed for async task (avoid borrowing issues)
-    let result_clone = result.clone();
-    let request_clone = request.clone();
-    let merged_config_clone = merged_config.clone();
-    let created_by_str = event_context.created_by;
-    let secret_resolver_clone = event_context.secret_resolver;
-    let metrics_clone = event_context.metrics;
+    // Step 13: Fire-and-forget event notification.
+    spawn_event_notification(&result, request, merged_config, event_context);
 
-    tokio::spawn(async move {
-        info!(
-            repository = %request_clone.name,
-            "Spawning background task for event notifications"
-        );
-
-        let delivery_results = publish_repository_created(
-            &result_clone,
-            &request_clone,
-            &merged_config_clone,
-            &created_by_str,
-            secret_resolver_clone.as_ref(),
-            metrics_clone.as_ref(),
-        )
-        .await;
-
-        // Log summary
-        let success_count = delivery_results.iter().filter(|r| r.success).count();
-        let failure_count = delivery_results.len() - success_count;
-
-        if failure_count > 0 {
-            warn!(
-                repository = %request_clone.name,
-                success_count = success_count,
-                failure_count = failure_count,
-                "Event notification delivery completed with failures"
-            );
-        } else if success_count > 0 {
-            info!(
-                repository = %request_clone.name,
-                success_count = success_count,
-                "Event notification delivery completed successfully"
-            );
-        }
-    });
-
-    // Return result immediately (fire-and-forget pattern)
     Ok(result)
 }

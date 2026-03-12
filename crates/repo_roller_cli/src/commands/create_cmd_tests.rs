@@ -1,8 +1,8 @@
 use super::*;
 use crate::errors::Error;
 use repo_roller_core::{
-    RepoRollerError, RepoRollerResult, RepositoryCreationRequest, RepositoryCreationResult,
-    SystemError, Timestamp,
+    permissions::AccessLevel, RepoRollerError, RepoRollerResult, RepositoryCreationRequest,
+    RepositoryCreationResult, SystemError, Timestamp,
 };
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -97,7 +97,8 @@ async fn test_cli_config_invalid_toml() {
     let ask = make_ask_user_for_value;
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
-    let options = CreateCommandOptions::new(&path, &None, &None, &None, false, false, false);
+    let options =
+        CreateCommandOptions::new(&path, &None, &None, &None, false, false, false, &[], &[]);
     let result = handle_create_command(options, ask, create_repository).await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
@@ -108,7 +109,17 @@ async fn test_cli_config_missing() {
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
     let config_file = Some("nonexistent.toml".to_string());
-    let options = CreateCommandOptions::new(&config_file, &None, &None, &None, false, false, false);
+    let options = CreateCommandOptions::new(
+        &config_file,
+        &None,
+        &None,
+        &None,
+        false,
+        false,
+        false,
+        &[],
+        &[],
+    );
     let result = handle_create_command(options, ask, create_repository).await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
 }
@@ -125,7 +136,8 @@ async fn test_cli_config_missing_fields() {
 
     let create_repo = make_logged_create_repo_success(log.clone());
 
-    let options = CreateCommandOptions::new(&path, &None, &None, &None, false, false, false);
+    let options =
+        CreateCommandOptions::new(&path, &None, &None, &None, false, false, false, &[], &[]);
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
@@ -151,7 +163,15 @@ async fn test_create_repository_failure() {
     let org_name = Some("calvinverse".to_string());
     let repo_type = Some("library".to_string());
     let options = CreateCommandOptions::new(
-        &None, &repo_name, &org_name, &repo_type, false, false, false,
+        &None,
+        &repo_name,
+        &org_name,
+        &repo_type,
+        false,
+        false,
+        false,
+        &[],
+        &[],
     );
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -180,7 +200,15 @@ async fn test_happy_path_with_all_args() {
     let org_name = Some("calvinverse".to_string());
     let repo_type = Some("library".to_string());
     let options = CreateCommandOptions::new(
-        &None, &repo_name, &org_name, &repo_type, false, false, false,
+        &None,
+        &repo_name,
+        &org_name,
+        &repo_type,
+        false,
+        false,
+        false,
+        &[],
+        &[],
     );
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
@@ -209,7 +237,8 @@ async fn test_happy_path_with_cli_config() {
 
     let create_repo = make_logged_create_repo_success(log.clone());
 
-    let options = CreateCommandOptions::new(&path, &None, &None, &None, false, false, false);
+    let options =
+        CreateCommandOptions::new(&path, &None, &None, &None, false, false, false, &[], &[]);
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
@@ -315,8 +344,17 @@ async fn test_empty_flag_creates_empty_repository() {
 
     let repo_name = Some("empty-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &None, true, false, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        true,
+        false,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -340,8 +378,17 @@ async fn test_empty_with_template_uses_template_settings() {
     let repo_name = Some("empty-templated-repo".to_string());
     let org_name = Some("test-org".to_string());
     let template = Some("rust-service".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &template, true, false, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        true,
+        false,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -364,8 +411,17 @@ async fn test_init_readme_flag_creates_custom_init_repository() {
 
     let repo_name = Some("readme-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &None, false, true, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        false,
+        true,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -387,8 +443,17 @@ async fn test_init_gitignore_flag_creates_custom_init_repository() {
 
     let repo_name = Some("gitignore-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &None, false, false, true);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        false,
+        false,
+        true,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -410,7 +475,17 @@ async fn test_init_readme_and_gitignore_creates_both_files() {
 
     let repo_name = Some("both-init-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options = CreateCommandOptions::new(&None, &repo_name, &org_name, &None, false, true, true);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        false,
+        true,
+        true,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -433,8 +508,17 @@ async fn test_init_flags_with_template_uses_template_settings() {
     let repo_name = Some("init-with-template-repo".to_string());
     let org_name = Some("test-org".to_string());
     let template = Some("rust-library".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &template, false, true, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        true,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -464,8 +548,17 @@ async fn test_empty_flag_does_not_require_template() {
 
     let repo_name = Some("no-template-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &None, true, false, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        true,
+        false,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -493,8 +586,17 @@ async fn test_init_flags_do_not_require_template() {
 
     let repo_name = Some("init-no-template-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &None, false, true, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        false,
+        true,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -517,8 +619,17 @@ async fn test_template_required_without_special_flags() {
 
     let repo_name = Some("normal-repo".to_string());
     let org_name = Some("test-org".to_string());
-    let options =
-        CreateCommandOptions::new(&None, &repo_name, &org_name, &None, false, false, false);
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &None,
+        false,
+        false,
+        false,
+        &[],
+        &[],
+    );
 
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -527,4 +638,380 @@ async fn test_template_required_without_special_flags() {
     let req = &log.create_repository_args[0];
     // Template should have been prompted and set
     assert_eq!(req.template.as_ref().unwrap().as_str(), "required-template");
+}
+
+// =============================================================================
+// Teams and Collaborators Tests
+// =============================================================================
+
+/// Test that a single --team flag passes through to the creation request.
+#[tokio::test]
+async fn test_teams_flag_passes_to_request() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let teams = vec!["platform:write".to_string()];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &teams,
+        &[],
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let log = log.lock().unwrap();
+    let req = &log.create_repository_args[0];
+    assert_eq!(req.teams.len(), 1);
+    assert_eq!(req.teams.get("platform"), Some(&AccessLevel::Write));
+}
+
+/// Test that a single --collaborator flag passes through to the creation request.
+#[tokio::test]
+async fn test_collaborators_flag_passes_to_request() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let collaborators = vec!["alice:read".to_string()];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &[],
+        &collaborators,
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let log = log.lock().unwrap();
+    let req = &log.create_repository_args[0];
+    assert_eq!(req.collaborators.len(), 1);
+    assert_eq!(req.collaborators.get("alice"), Some(&AccessLevel::Read));
+}
+
+/// Test that multiple --team and --collaborator flags are all passed through.
+#[tokio::test]
+async fn test_multiple_teams_and_collaborators_pass_to_request() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let teams = vec![
+        "platform:write".to_string(),
+        "security:admin".to_string(),
+        "qa:read".to_string(),
+    ];
+    let collaborators = vec!["alice:write".to_string(), "bob:read".to_string()];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &teams,
+        &collaborators,
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let log = log.lock().unwrap();
+    let req = &log.create_repository_args[0];
+    assert_eq!(req.teams.len(), 3);
+    assert_eq!(req.collaborators.len(), 2);
+    assert_eq!(req.teams.get("platform"), Some(&AccessLevel::Write));
+    assert_eq!(req.teams.get("security"), Some(&AccessLevel::Admin));
+    assert_eq!(req.teams.get("qa"), Some(&AccessLevel::Read));
+    assert_eq!(req.collaborators.get("alice"), Some(&AccessLevel::Write));
+    assert_eq!(req.collaborators.get("bob"), Some(&AccessLevel::Read));
+}
+
+/// Test that --team with missing colon separator returns a clear error.
+#[tokio::test]
+async fn test_team_invalid_format_no_colon_returns_error() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let teams = vec!["platform-without-permission".to_string()];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &teams,
+        &[],
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(result.is_err(), "Expected Err for malformed --team, got Ok");
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Invalid --team format"),
+        "Error message should mention --team format, got: {err}"
+    );
+}
+
+/// Test that --team with an unrecognised permission string returns a clear error.
+#[tokio::test]
+async fn test_team_invalid_permission_string_returns_error() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let teams = vec!["platform:superuser".to_string()]; // "superuser" is not a valid AccessLevel
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &teams,
+        &[],
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(
+        result.is_err(),
+        "Expected Err for invalid team permission, got Ok"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("superuser") || err.contains("Invalid permission"),
+        "Error message should mention the invalid value, got: {err}"
+    );
+}
+
+/// Test that --collaborator with missing colon separator returns a clear error.
+#[tokio::test]
+async fn test_collaborator_invalid_format_no_colon_returns_error() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let collaborators = vec!["alice-without-permission".to_string()];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &[],
+        &collaborators,
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(
+        result.is_err(),
+        "Expected Err for malformed --collaborator, got Ok"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Invalid --collaborator format"),
+        "Error message should mention --collaborator format, got: {err}"
+    );
+}
+
+/// Test that --collaborator with an unrecognised permission string returns a clear error.
+#[tokio::test]
+async fn test_collaborator_invalid_permission_string_returns_error() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let collaborators = vec!["alice:owner".to_string()]; // "owner" is not a valid AccessLevel
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &[],
+        &collaborators,
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(
+        result.is_err(),
+        "Expected Err for invalid collaborator permission, got Ok"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("owner") || err.contains("Invalid permission"),
+        "Error message should mention the invalid value, got: {err}"
+    );
+}
+
+/// Test that all six valid AccessLevel variants are accepted for --team.
+#[tokio::test]
+async fn test_teams_accepts_all_valid_access_levels() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    let teams = vec![
+        "t-none:none".to_string(),
+        "t-read:read".to_string(),
+        "t-triage:triage".to_string(),
+        "t-write:write".to_string(),
+        "t-maintain:maintain".to_string(),
+        "t-admin:admin".to_string(),
+    ];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &teams,
+        &[],
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let log = log.lock().unwrap();
+    let req = &log.create_repository_args[0];
+    assert_eq!(req.teams.len(), 6);
+    assert_eq!(req.teams.get("t-none"), Some(&AccessLevel::None));
+    assert_eq!(req.teams.get("t-read"), Some(&AccessLevel::Read));
+    assert_eq!(req.teams.get("t-triage"), Some(&AccessLevel::Triage));
+    assert_eq!(req.teams.get("t-write"), Some(&AccessLevel::Write));
+    assert_eq!(req.teams.get("t-maintain"), Some(&AccessLevel::Maintain));
+    assert_eq!(req.teams.get("t-admin"), Some(&AccessLevel::Admin));
+}
+
+/// Test that no --team or --collaborator flags produces empty maps in the request.
+#[tokio::test]
+async fn test_no_teams_or_collaborators_flags_yields_empty_maps() {
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &[],
+        &[],
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
+    let log = log.lock().unwrap();
+    let req = &log.create_repository_args[0];
+    assert!(req.teams.is_empty(), "Expected empty teams map");
+    assert!(
+        req.collaborators.is_empty(),
+        "Expected empty collaborators map"
+    );
+}
+
+/// Test that a permission value with a colon in it (edge case) splits on first colon only.
+#[tokio::test]
+async fn test_team_slug_with_colon_splits_on_first_colon() {
+    // splitn(2, ':') means only the first colon is the separator.
+    // A slug like "org:team" would have slug="org" and perm="team:..." is rejected.
+    // This test verifies the first-colon-split behaviour is correct.
+    let ask = make_ask_user_for_value;
+    let log = Arc::new(Mutex::new(CallLog::new()));
+    let create_repo = make_logged_create_repo_success(log.clone());
+
+    let repo_name = Some("my-repo".to_string());
+    let org_name = Some("my-org".to_string());
+    let template = Some("rust-library".to_string());
+    // "devs:write:extra" should split to slug="devs", perm_str="write:extra"
+    // "write:extra" is not a valid AccessLevel, so should error.
+    let teams = vec!["devs:write:extra".to_string()];
+
+    let options = CreateCommandOptions::new(
+        &None,
+        &repo_name,
+        &org_name,
+        &template,
+        false,
+        false,
+        false,
+        &teams,
+        &[],
+    );
+
+    let result = handle_create_command(options, ask, create_repo).await;
+
+    // "write:extra" is not a valid AccessLevel → should fail
+    assert!(
+        result.is_err(),
+        "Expected Err for permission 'write:extra', got Ok"
+    );
 }

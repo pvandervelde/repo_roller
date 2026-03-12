@@ -298,3 +298,122 @@ fn test_create_repository_request_custom_init_both_files() {
         }
     );
 }
+
+// ============================================================================
+// Teams and Collaborators JSON Deserialization Tests
+// ============================================================================
+
+/// Test that teams and collaborators fields are absent by default (empty maps).
+#[test]
+fn test_create_repository_request_teams_and_collaborators_default_empty() {
+    let json = r#"{
+        "organization": "myorg",
+        "name": "my-repo"
+    }"#;
+
+    let req: CreateRepositoryRequest = serde_json::from_str(json).unwrap();
+    assert!(req.teams.is_empty());
+    assert!(req.collaborators.is_empty());
+}
+
+/// Test that teams field is correctly deserialized from JSON.
+#[test]
+fn test_create_repository_request_deserializes_teams() {
+    let json = r#"{
+        "organization": "myorg",
+        "name": "my-repo",
+        "teams": {
+            "platform": "write",
+            "security": "admin"
+        }
+    }"#;
+
+    let req: CreateRepositoryRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.teams.len(), 2);
+    assert_eq!(req.teams.get("platform"), Some(&"write".to_string()));
+    assert_eq!(req.teams.get("security"), Some(&"admin".to_string()));
+}
+
+/// Test that collaborators field is correctly deserialized from JSON.
+#[test]
+fn test_create_repository_request_deserializes_collaborators() {
+    let json = r#"{
+        "organization": "myorg",
+        "name": "my-repo",
+        "collaborators": {
+            "alice": "write",
+            "bob": "read"
+        }
+    }"#;
+
+    let req: CreateRepositoryRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.collaborators.len(), 2);
+    assert_eq!(req.collaborators.get("alice"), Some(&"write".to_string()));
+    assert_eq!(req.collaborators.get("bob"), Some(&"read".to_string()));
+}
+
+/// Test that both teams and collaborators can be specified together.
+#[test]
+fn test_create_repository_request_deserializes_teams_and_collaborators_together() {
+    let json = r#"{
+        "organization": "myorg",
+        "name": "my-repo",
+        "teams": {
+            "devs": "write"
+        },
+        "collaborators": {
+            "carol": "maintain"
+        }
+    }"#;
+
+    let req: CreateRepositoryRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.teams.len(), 1);
+    assert_eq!(req.collaborators.len(), 1);
+    assert_eq!(req.teams.get("devs"), Some(&"write".to_string()));
+    assert_eq!(
+        req.collaborators.get("carol"),
+        Some(&"maintain".to_string())
+    );
+}
+
+/// Test that empty teams object deserializes to an empty map.
+#[test]
+fn test_create_repository_request_empty_teams_object() {
+    let json = r#"{
+        "organization": "myorg",
+        "name": "my-repo",
+        "teams": {}
+    }"#;
+
+    let req: CreateRepositoryRequest = serde_json::from_str(json).unwrap();
+    assert!(req.teams.is_empty());
+}
+
+/// Test that permission strings are preserved as raw strings during deserialization.
+///
+/// The HTTP model stores permission values as plain strings; validation and
+/// conversion to AccessLevel happens in the translation layer.
+#[test]
+fn test_create_repository_request_teams_stores_raw_permission_strings() {
+    let json = r#"{
+        "organization": "myorg",
+        "name": "my-repo",
+        "teams": {
+            "t1": "none",
+            "t2": "read",
+            "t3": "triage",
+            "t4": "write",
+            "t5": "maintain",
+            "t6": "admin"
+        }
+    }"#;
+
+    let req: CreateRepositoryRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.teams.len(), 6);
+    assert_eq!(req.teams.get("t1"), Some(&"none".to_string()));
+    assert_eq!(req.teams.get("t2"), Some(&"read".to_string()));
+    assert_eq!(req.teams.get("t3"), Some(&"triage".to_string()));
+    assert_eq!(req.teams.get("t4"), Some(&"write".to_string()));
+    assert_eq!(req.teams.get("t5"), Some(&"maintain".to_string()));
+    assert_eq!(req.teams.get("t6"), Some(&"admin".to_string()));
+}

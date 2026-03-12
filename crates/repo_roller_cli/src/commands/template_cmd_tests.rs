@@ -168,6 +168,9 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         rulesets: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 
@@ -223,6 +226,9 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         rulesets: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 

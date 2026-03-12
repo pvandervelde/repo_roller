@@ -54,7 +54,8 @@
 
 use crate::settings::{
     BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+    NotificationsConfig, PullRequestSettings, RepositorySettings, RepositoryTypePermissionsConfig,
+    RulesetConfig, WebhookConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -150,6 +151,24 @@ pub struct RepositoryTypeConfig {
     /// Type-specific webhook endpoints for event notifications.
     /// Combined with global, team, and template notifications.
     pub notifications: Option<NotificationsConfig>,
+
+    /// Repository type permission constraints (optional).
+    ///
+    /// Defines permissions required for all repositories of this type and
+    /// permission types that are forbidden for this repository type.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[permissions.required]]
+    /// permission_type = "push"
+    /// level = "write"
+    /// scope = "repository"
+    ///
+    /// [permissions]
+    /// restricted_types = ["admin"]
+    /// ```
+    pub permissions: Option<RepositoryTypePermissionsConfig>,
 }
 
 #[cfg(test)]

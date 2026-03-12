@@ -308,3 +308,37 @@ fn test_values_auto_wrapped_with_override_allowed() {
     assert!(!discussions.value);
     assert!(discussions.override_allowed); // Auto-wrapped
 }
+
+// ── Permission constraints field ──────────────────────────────────────────────
+
+#[test]
+fn test_deserialize_with_permissions_required_and_restricted_types() {
+    let toml = r#"
+        [permissions]
+        restricted_types = ["admin"]
+
+        [[permissions.required]]
+        permission_type = "push"
+        level = "write"
+        scope = "repository"
+    "#;
+
+    let config: RepositoryTypeConfig = toml::from_str(toml).expect("Failed to parse");
+    let perms = config.permissions.expect("permissions present");
+    let required = perms.required.expect("required present");
+    assert_eq!(required.len(), 1);
+    assert_eq!(required[0].permission_type, "push");
+    let restricted = perms.restricted_types.expect("restricted_types present");
+    assert_eq!(restricted, vec!["admin"]);
+}
+
+#[test]
+fn test_deserialize_without_permissions_gives_none() {
+    let toml = r#"
+        [repository]
+        discussions = false
+    "#;
+
+    let config: RepositoryTypeConfig = toml::from_str(toml).expect("Failed to parse");
+    assert!(config.permissions.is_none());
+}

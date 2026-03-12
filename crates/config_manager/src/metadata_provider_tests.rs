@@ -248,6 +248,9 @@ mod mock_provider {
                 rulesets: None,
                 repository_visibility: None,
                 notifications: None,
+                permissions: None,
+                default_teams: None,
+                default_collaborators: None,
             })
         }
 

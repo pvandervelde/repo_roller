@@ -41,6 +41,9 @@ impl MockMetadataProvider {
             rulesets: None,
             repository_visibility: None, // No policy = unrestricted
             notifications: None,
+            permissions: None,
+            default_teams: None,
+            default_collaborators: None,
         };
 
         Self {
@@ -76,6 +79,9 @@ impl MockMetadataProvider {
                     .map(|v| v.iter().map(|s| s.to_string()).collect()),
             }),
             notifications: None,
+            permissions: None,
+            default_teams: None,
+            default_collaborators: None,
         };
 
         self.config_data = Some(defaults);

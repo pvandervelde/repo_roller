@@ -28,6 +28,9 @@ fn create_test_template() -> NewTemplateConfig {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     }
 }
 
@@ -208,6 +211,9 @@ fn test_merge_template_rulesets() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -310,6 +316,9 @@ fn test_merge_all_levels_rulesets() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -378,6 +387,9 @@ fn test_merge_empty_rulesets() {
         default_visibility: None,
         templating: None,
         notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);

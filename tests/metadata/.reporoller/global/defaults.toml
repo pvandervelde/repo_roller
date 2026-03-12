@@ -38,3 +38,23 @@ enforce_admins = { value = false, override_allowed = true }
 # Pull request settings
 [pull_requests]
 require_conversation_resolution = { value = true, override_allowed = false }
+
+# Default teams - always added to every repository in this organization.
+# The 'reporoller-test-permissions' team is created by tests/create-test-teams.ps1.
+[[default_teams]]
+slug = "reporoller-test-permissions"
+access_level = "triage"
+
+# Locked team example: security team is fixed at admin and cannot be altered
+# by templates or individual repository creation requests.
+# The 'reporoller-test-security' team is created by tests/create-test-teams.ps1.
+[[default_teams]]
+slug = "reporoller-test-security"
+access_level = "admin"
+locked = true
+
+# Permission protection ceiling: requests cannot grant teams above 'maintain'
+# or collaborators above 'write'.
+[permissions]
+max_team_access_level = "maintain"
+max_collaborator_access_level = "write"

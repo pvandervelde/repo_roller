@@ -210,6 +210,50 @@ This document defines testable assertions about RepoRoller's behavior. These ass
 
 ## Multi-Level Permissions Assertions
 
+### Default Team and Collaborator Protection Policies
+
+**Assertion PPP-001: Locked Team Preserved Against Request Upgrade**
+
+- **Given**: Org global defaults define team `security-ops` at `admin` with `locked = true`
+- **And**: Configuration is resolved (MergedConfiguration.locked_teams contains `security-ops`)
+- **When**: A repository creation request includes `security-ops` with any access level
+- **Then**: The config-established `admin` level is preserved in the final access map
+- **And**: The request entry is silently skipped with a `WARN` log event
+- **And**: No error is raised (soft enforcement)
+
+**Assertion PPP-002: Config-Established Team Cannot Be Demoted By Request**
+
+- **Given**: Org global defaults define team `platform` at `maintain` (not locked)
+- **And**: Configuration is resolved
+- **When**: A repository creation request includes `platform` with access level `read`
+- **Then**: The config-established `maintain` level is preserved in the final access map
+- **And**: The request's demotion is silently skipped with a `WARN` log event
+
+**Assertion PPP-003: Request Team Level Capped At Org Ceiling**
+
+- **Given**: Org configuration defines `max_team_access_level = "write"`
+- **And**: Configuration is resolved
+- **When**: A repository creation request includes a team with access level `admin`
+- **Then**: The team's access level in the final map is `write` (capped at ceiling)
+- **And**: A `WARN` log event records the cap
+- **And**: No error is raised
+
+**Assertion PPP-004: Template Cannot Alter Globally Locked Team (Hard Error)**
+
+- **Given**: Org global defaults define team `security-ops` with `locked = true`
+- **When**: Template configuration includes an entry for `security-ops` at any access level
+- **When**: Configuration resolution (`resolve_configuration`) is called
+- **Then**: Configuration resolution fails with `ConfigurationError::PermissionLockedNotAllowed`
+- **And**: Repository creation is blocked before any GitHub API calls
+
+**Assertion PPP-005: Template Cannot Demote Globally Established Team (Hard Error)**
+
+- **Given**: Org global defaults define team `platform` at `maintain` (locked = false)
+- **When**: Template configuration specifies `platform` at `read` (a demotion)
+- **When**: Configuration resolution is called
+- **Then**: Configuration resolution fails with `ConfigurationError::PermissionDemotionNotAllowed`
+- **And**: Repository creation is blocked before any GitHub API calls
+
 ### Permission Hierarchy Enforcement
 
 **Assertion MPA-001: Organization Baseline Permission Enforcement**
