@@ -1421,6 +1421,12 @@ impl GitHubClient {
                     }
                 };
 
+                // The GET /repos/{owner}/{repo}/teams endpoint returns `permission`
+                // with raw GitHub permission strings ("pull", "push", "triage",
+                // "maintain", "admin"). The `role_name` field is present in the
+                // response but is always null on this endpoint. Normalise the two
+                // legacy names to their human-readable equivalents so callers work
+                // with consistent values regardless of which endpoint was used.
                 let role_name = teams
                     .iter()
                     .find(|t| {
@@ -1429,8 +1435,13 @@ impl GitHubClient {
                             .map(|s| s.eq_ignore_ascii_case(team_slug))
                             .unwrap_or(false)
                     })
-                    .and_then(|t| t.get("role_name"))
+                    .and_then(|t| t.get("permission"))
                     .and_then(|v| v.as_str())
+                    .map(|s| match s {
+                        "pull" => "read",
+                        "push" => "write",
+                        other => other,
+                    })
                     .map(|s| s.to_string());
 
                 info!(

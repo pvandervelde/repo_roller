@@ -1609,6 +1609,8 @@ async fn test_get_repository_team_permission_returns_role_when_team_found() {
     let repo = "my-service";
     let team_slug = "platform-team";
 
+    // The real GET /repos/{owner}/{repo}/teams response uses `permission` (not
+    // `role_name`). Use `permission` in mock JSON to match the real API.
     Mock::given(method("GET"))
         .and(path(format!("/repos/{owner}/{repo}/teams")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
@@ -1616,13 +1618,15 @@ async fn test_get_repository_team_permission_returns_role_when_team_found() {
                 "id": 1,
                 "slug": "platform-team",
                 "name": "Platform Team",
-                "role_name": "maintain"
+                "permission": "maintain",
+                "role_name": null
             },
             {
                 "id": 2,
                 "slug": "security-team",
                 "name": "Security Team",
-                "role_name": "admin"
+                "permission": "admin",
+                "role_name": null
             }
         ])))
         .mount(&mock_server)
@@ -1645,7 +1649,85 @@ async fn test_get_repository_team_permission_returns_role_when_team_found() {
     assert_eq!(
         result.unwrap(),
         Some("maintain".to_string()),
-        "Expected 'maintain' role_name for platform-team"
+        "Expected 'maintain' permission for platform-team"
+    );
+}
+
+/// Test that get_repository_team_permission normalises legacy permission strings:
+/// `pull` → `read` and `push` → `write`.
+#[tokio::test]
+async fn test_get_repository_team_permission_normalises_pull_and_push() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "my-service";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "id": 1, "slug": "read-team",  "permission": "pull",  "role_name": null },
+            { "id": 2, "slug": "write-team", "permission": "push",  "role_name": null },
+            { "id": 3, "slug": "triage-team","permission": "triage","role_name": null }
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app(TEST_APP_ID.into(), key)
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    // `pull` normalised to `read`
+    let r1 = client
+        .get_repository_team_permission(owner, repo, "read-team")
+        .await;
+    assert_eq!(
+        r1.unwrap(),
+        Some("read".to_string()),
+        "pull should normalise to read"
+    );
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "id": 1, "slug": "read-team",  "permission": "pull",  "role_name": null },
+            { "id": 2, "slug": "write-team", "permission": "push",  "role_name": null },
+            { "id": 3, "slug": "triage-team","permission": "triage","role_name": null }
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    // `push` normalised to `write`
+    let r2 = client
+        .get_repository_team_permission(owner, repo, "write-team")
+        .await;
+    assert_eq!(
+        r2.unwrap(),
+        Some("write".to_string()),
+        "push should normalise to write"
+    );
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}/teams")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "id": 1, "slug": "read-team",  "permission": "pull",  "role_name": null },
+            { "id": 2, "slug": "write-team", "permission": "push",  "role_name": null },
+            { "id": 3, "slug": "triage-team","permission": "triage","role_name": null }
+        ])))
+        .mount(&mock_server)
+        .await;
+
+    // `triage` passes through unchanged
+    let r3 = client
+        .get_repository_team_permission(owner, repo, "triage-team")
+        .await;
+    assert_eq!(
+        r3.unwrap(),
+        Some("triage".to_string()),
+        "triage should pass through unchanged"
     );
 }
 
@@ -1664,7 +1746,8 @@ async fn test_get_repository_team_permission_returns_none_when_team_not_found() 
                 "id": 1,
                 "slug": "platform-team",
                 "name": "Platform Team",
-                "role_name": "write"
+                "permission": "push",
+                "role_name": null
             }
         ])))
         .mount(&mock_server)
