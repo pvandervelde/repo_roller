@@ -4,6 +4,9 @@
 //! - Empty repositories (no files) through HTTP API
 //! - Custom initialization (README.md and/or .gitignore) through HTTP API
 //! - Settings application without templates through HTTP API
+//! - Permission configuration (teams, collaborators, ceilings, locked entries)
+//! - Repository naming rules enforcement (valid names accepted, violations rejected)
+//! - Naming rules concatenation from global + template config (both enforced)
 //!
 //! Tests use testcontainers to run the API server in Docker and make
 //! real HTTP requests, verifying the complete deployment stack.
@@ -1462,6 +1465,358 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
     } else {
         tracing::info!("✓ No rulesets configured (verified list operation succeeds)");
     }
+
+    // Cleanup
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+
+    container.stop().await?;
+    Ok(())
+}
+
+// ── Naming Rules E2E Tests ────────────────────────────────────────────────────
+//
+// These tests verify that repository naming rules are enforced through the full
+// API pipeline, covering two scenarios:
+//
+//   A) Global-only rules  (no template):
+//      - tests/metadata/.reporoller/global/defaults.toml contains:
+//            [[naming_rules]]
+//            forbidden_patterns = ["noncompliant"]
+//      - valid name  → 201 Created
+//      - "noncompliant-repo" → 400 Bad Request
+//
+//   B) Rule concatenation (global + template):
+//      - template-test-basic also contributes:
+//            [[naming_rules]]
+//            forbidden_patterns = ["badtemplate"]
+//      - A name violating only the template rule → 400 Bad Request
+//      - A valid name satisfying both rules + template applied → 201 Created
+
+/// Verify that a repository whose name satisfies all configured naming rules
+/// is accepted by the API and created successfully.
+///
+/// Uses a name following the standard E2E pattern, which does not trigger the
+/// `forbidden_patterns = ["noncompliant"]` rule in the test metadata.
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_naming_rules_valid_name_accepted() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    // Name deliberately avoids 'noncompliant' -- pass the naming rule.
+    let repo_name = generate_e2e_test_repo_name("naming-valid");
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private"
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    if response.status() != StatusCode::CREATED {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_naming_rules_valid_name_accepted) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => tracing::warn!("Failed to capture container logs: {}", e),
+        }
+    }
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Repository with valid name should be created (naming rules must not block it)"
+    );
+
+    let json: serde_json::Value = response.json().await?;
+    assert_eq!(
+        json["repository"]["name"], repo_name,
+        "Response should echo back the created repository name"
+    );
+
+    tracing::info!(
+        "✓ Repository '{}' accepted – naming rules allow it",
+        repo_name
+    );
+
+    // Cleanup
+    e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
+        .await
+        .ok();
+
+    container.stop().await?;
+    Ok(())
+}
+
+/// Verify that a repository whose name violates a configured naming rule is
+/// rejected with 400 Bad Request before any GitHub API call is made.
+///
+/// The test metadata global/defaults.toml contains:
+///
+/// ```toml
+/// [[naming_rules]]
+/// forbidden_patterns = ["noncompliant"]
+/// ```
+///
+/// A name containing "noncompliant" therefore violates this rule and the API
+/// must return 400 Bad Request with an error body describing the violation.
+/// No repository is created on GitHub.
+///
+/// **WARNING**: This test does NOT create a repository in GitHub.
+#[tokio::test]
+async fn test_e2e_naming_rules_violation_rejected() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    // This name contains 'noncompliant' matching the forbidden_patterns rule
+    // in the test metadata; must be rejected without creating any repository.
+    let invalid_repo_name = "noncompliant-repo";
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    let request_body = json!({
+        "name": invalid_repo_name,
+        "organization": org,
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private"
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    if response.status() != StatusCode::BAD_REQUEST {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_naming_rules_violation_rejected) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => tracing::warn!("Failed to capture container logs: {}", e),
+        }
+    }
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Repository name violating naming rules must return 400 Bad Request"
+    );
+
+    let json: serde_json::Value = response.json().await?;
+
+    // The error body must describe the naming violation.
+    let error_message = json["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+
+    assert!(
+        error_message.contains("noncompliant")
+            || error_message.contains("naming")
+            || error_message.contains("forbidden"),
+        "Error message should reference the naming violation, got: {}",
+        json["error"]["message"]
+    );
+
+    tracing::info!(
+        "✓ Repository '{}' rejected with 400 – naming rule enforced",
+        invalid_repo_name
+    );
+
+    container.stop().await?;
+    Ok(())
+}
+
+/// Verify that naming rules from `template-test-basic` are enforced in addition
+/// to the global naming rules from `global/defaults.toml`.
+///
+/// `template-test-basic` contributes:
+/// ```toml
+/// [[naming_rules]]
+/// forbidden_patterns = ["badtemplate"]
+/// ```
+///
+/// A repository name containing "badtemplate" violates *only* the template rule
+/// (not the global rule which forbids "noncompliant").  The API must still
+/// return 400 Bad Request, proving that template naming rules are loaded and
+/// appended to the merged rule set.
+///
+/// No repository is created on GitHub.
+///
+/// **WARNING**: This test does NOT create a repository in GitHub.
+#[tokio::test]
+async fn test_e2e_naming_rules_concat_template_violation_rejected() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    // "badtemplate-repo" satisfies the global rule (no "noncompliant") but
+    // violates the template-test-basic rule (forbidden_patterns = ["badtemplate"]).
+    let invalid_repo_name = "badtemplate-repo";
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    let request_body = json!({
+        "name": invalid_repo_name,
+        "organization": org,
+        "template": "template-test-basic",
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private"
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    if response.status() != StatusCode::BAD_REQUEST {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_naming_rules_concat_template_violation_rejected) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => tracing::warn!("Failed to capture container logs: {}", e),
+        }
+    }
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Name violating template naming rule must return 400 Bad Request (template rules must be concatenated)"
+    );
+
+    let json: serde_json::Value = response.json().await?;
+
+    let error_message = json["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+
+    assert!(
+        error_message.contains("badtemplate")
+            || error_message.contains("naming")
+            || error_message.contains("forbidden"),
+        "Error message should reference the naming violation, got: {}",
+        json["error"]["message"]
+    );
+
+    tracing::info!(
+        "✓ Repository '{}' rejected with 400 – template naming rule concatenated and enforced",
+        invalid_repo_name
+    );
+
+    container.stop().await?;
+    Ok(())
+}
+
+/// Verify that a repository name satisfying both the global naming rule and the
+/// template naming rule is accepted when `template-test-basic` is used.
+///
+/// Rules in effect after merge:
+///   - Global (`global/defaults.toml`): `forbidden_patterns = ["noncompliant"]`
+///   - Template (`template-test-basic`): `forbidden_patterns = ["badtemplate"]`
+///
+/// A standard E2E name (generated by `generate_e2e_test_repo_name`) contains
+/// neither substring, so it must be accepted with 201 Created.
+///
+/// **WARNING**: This test CREATES A REAL REPOSITORY in GitHub.
+#[tokio::test]
+async fn test_e2e_naming_rules_concat_valid_name_with_template() -> Result<()> {
+    let config = ApiContainerConfig::from_env()?;
+    let org = config.test_org.clone();
+    let app_id = config
+        .github_app_id
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+    let private_key = config.github_app_private_key.clone();
+
+    let mut container = ApiContainer::new(config.clone()).await?;
+    let base_url = container.start().await?;
+
+    // Standard E2E name — contains neither "noncompliant" nor "badtemplate".
+    let repo_name = generate_e2e_test_repo_name("naming-concat");
+    let client = Client::new();
+    let token = get_github_installation_token().await?;
+
+    let request_body = json!({
+        "name": repo_name,
+        "organization": org,
+        "template": "template-test-basic",
+        "contentStrategy": {"type": "empty"},
+        "visibility": "private"
+    });
+
+    let response = client
+        .post(format!("{}/api/v1/repositories", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    if response.status() != StatusCode::CREATED {
+        match container.get_logs().await {
+            Ok(logs) => {
+                eprintln!("\n========== CONTAINER LOGS (test_e2e_naming_rules_concat_valid_name_with_template) ==========");
+                eprintln!("{}", logs);
+                eprintln!("====================================\n");
+            }
+            Err(e) => tracing::warn!("Failed to capture container logs: {}", e),
+        }
+    }
+
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "Valid name satisfying both global and template naming rules must be accepted"
+    );
+
+    let json: serde_json::Value = response.json().await?;
+    assert_eq!(
+        json["repository"]["name"], repo_name,
+        "Response should echo back the created repository name"
+    );
+
+    tracing::info!(
+        "✓ Repository '{}' accepted – satisfies both global and template naming rules",
+        repo_name
+    );
 
     // Cleanup
     e2e_tests::cleanup_test_repository(&org, &repo_name, app_id, &private_key)
