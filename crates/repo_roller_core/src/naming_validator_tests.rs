@@ -73,6 +73,26 @@ fn test_max_length_accepts_exact_length() {
     assert!(v.validate("hello", &rules).is_ok());
 }
 
+/// A naming rule where min_length > max_length is a misconfiguration.
+/// The validator should return an error immediately rather than silently
+/// rejecting every name with a misleading length message.
+#[test]
+fn test_min_length_greater_than_max_length_is_config_error() {
+    let v = RepositoryNamingValidator::new();
+    let rules = vec![RepositoryNamingRulesConfig {
+        min_length: Some(10),
+        max_length: Some(5),
+        ..Default::default()
+    }];
+
+    let err = v.validate("any-name", &rules).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Misconfigured") || msg.contains("misconfigured") || msg.contains("min_length"),
+        "Error should describe the misconfiguration; got: {msg}"
+    );
+}
+
 // ============================================================================
 // Required prefix / suffix
 // ============================================================================

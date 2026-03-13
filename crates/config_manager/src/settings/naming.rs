@@ -110,7 +110,19 @@ pub struct RepositoryNamingRulesConfig {
     /// Regex patterns that the repository name must **not** match.
     ///
     /// If the name matches any of these patterns the name is considered
-    /// invalid.  Each entry is an independent pattern.
+    /// invalid.  Each entry is an independent pattern checked with
+    /// [`Regex::is_match`], which matches **anywhere** in the name unless the
+    /// pattern is explicitly anchored with `^` and `$`.
+    ///
+    /// > **Note**: Unlike [`reserved_words`], which performs a case-insensitive
+    /// > **exact** match against the whole name, `forbidden_patterns` matches
+    /// > as a substring by default.  For example,
+    /// > `forbidden_patterns = ["test"]` rejects `"test-service"`, `"my-test"`,
+    /// > and `"test"`, whereas `reserved_words = ["test"]` only rejects the
+    /// > name `"test"` itself.  Use `^test$` if exact-match semantics are
+    /// > required.
+    ///
+    /// [`reserved_words`]: Self::reserved_words
     ///
     /// # Examples
     ///

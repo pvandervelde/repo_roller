@@ -344,7 +344,7 @@ pub struct TemplateConfig {
     /// required_suffix = "-lib"
     /// forbidden_patterns = [".*--.*"]
     /// ```
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
 }
 

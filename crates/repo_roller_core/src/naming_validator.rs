@@ -34,7 +34,7 @@
 
 use config_manager::RepositoryNamingRulesConfig;
 use regex::Regex;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::errors::ValidationError;
 
@@ -112,6 +112,26 @@ impl RepositoryNamingValidator {
             .description
             .as_deref()
             .unwrap_or("repository naming rule");
+
+        // --- Contradictory length constraints ---------------------------------
+        // Detect misconfigured rules (min > max) at validation time rather than
+        // silently rejecting every name with a misleading error message.
+        if let (Some(min), Some(max)) = (rule.min_length, rule.max_length) {
+            if min > max {
+                warn!(
+                    min = min,
+                    max = max,
+                    rule = rule_desc,
+                    "Naming rule has min_length > max_length; this configuration is invalid"
+                );
+                return Err(ValidationError::InvalidRepositoryName {
+                    reason: format!(
+                        "Naming rule '{rule_desc}' is misconfigured: \
+                         min_length ({min}) is greater than max_length ({max})"
+                    ),
+                });
+            }
+        }
 
         // --- Length constraints -----------------------------------------------
         if let Some(min) = rule.min_length {
@@ -198,15 +218,26 @@ impl RepositoryNamingValidator {
         }
 
         // --- Allowed pattern (whole-name match) -------------------------------
+        // TODO: regex patterns are recompiled on every validation call. For the
+        // current usage (one call per repository creation) this is acceptable,
+        // but a pre-compiled cache or RegexSet should be considered if bulk
+        // validation is ever required.
         if let Some(pattern) = &rule.allowed_pattern {
             // Anchor the match so the pattern must cover the full name.
             let anchored = format!("^(?:{pattern})$");
-            let re_anchored =
-                Regex::new(&anchored).map_err(|e| ValidationError::InvalidRepositoryName {
+            let re_anchored = Regex::new(&anchored).map_err(|e| {
+                warn!(
+                    pattern = pattern,
+                    rule = rule_desc,
+                    error = %e,
+                    "allowed_pattern contains an invalid regex; treating as validation failure"
+                );
+                ValidationError::InvalidRepositoryName {
                     reason: format!(
                         "Invalid allowed_pattern regex '{pattern}' in rule '{rule_desc}': {e}"
                     ),
-                })?;
+                }
+            })?;
             if !re_anchored.is_match(name) {
                 debug!(
                     name = name,
@@ -224,10 +255,18 @@ impl RepositoryNamingValidator {
 
         // --- Forbidden patterns -----------------------------------------------
         for pattern in &rule.forbidden_patterns {
-            let re = Regex::new(pattern).map_err(|e| ValidationError::InvalidRepositoryName {
-                reason: format!(
-                    "Invalid forbidden_pattern regex '{pattern}' in rule '{rule_desc}': {e}"
-                ),
+            let re = Regex::new(pattern).map_err(|e| {
+                warn!(
+                    pattern = pattern,
+                    rule = rule_desc,
+                    error = %e,
+                    "forbidden_pattern contains an invalid regex; treating as validation failure"
+                );
+                ValidationError::InvalidRepositoryName {
+                    reason: format!(
+                        "Invalid forbidden_pattern regex '{pattern}' in rule '{rule_desc}': {e}"
+                    ),
+                }
             })?;
             if re.is_match(name) {
                 debug!(
