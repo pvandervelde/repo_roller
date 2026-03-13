@@ -88,7 +88,9 @@ fn test_min_length_greater_than_max_length_is_config_error() {
     let err = v.validate("any-name", &rules).unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("Misconfigured") || msg.contains("misconfigured") || msg.contains("min_length"),
+        msg.contains("Misconfigured")
+            || msg.contains("misconfigured")
+            || msg.contains("min_length"),
         "Error should describe the misconfiguration; got: {msg}"
     );
 }
