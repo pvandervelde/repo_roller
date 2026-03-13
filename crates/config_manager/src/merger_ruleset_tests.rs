@@ -31,6 +31,7 @@ fn create_test_template() -> NewTemplateConfig {
         permissions: None,
         teams: None,
         collaborators: None,
+        naming_rules: None,
     }
 }
 
@@ -214,6 +215,7 @@ fn test_merge_template_rulesets() {
         permissions: None,
         teams: None,
         collaborators: None,
+        naming_rules: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -319,6 +321,7 @@ fn test_merge_all_levels_rulesets() {
         permissions: None,
         teams: None,
         collaborators: None,
+        naming_rules: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -390,6 +393,7 @@ fn test_merge_empty_rulesets() {
         permissions: None,
         teams: None,
         collaborators: None,
+        naming_rules: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);

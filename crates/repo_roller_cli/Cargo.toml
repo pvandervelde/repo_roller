@@ -23,7 +23,7 @@ keyring = { version = "3.6.2", features = [
 ] }
 octocrab.workspace = true
 prometheus = "0.13"
-regex = "1.10.4"
+regex.workspace = true
 repo_roller_core = { path = "../repo_roller_core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json.workspace = true

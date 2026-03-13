@@ -47,6 +47,7 @@ impl TemplateRepository for MockTemplateRepository {
             permissions: None,
             teams: None,
             collaborators: None,
+            naming_rules: None,
         })
     }
 
@@ -504,6 +505,7 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             permissions: None,
             teams: None,
             collaborators: None,
+            naming_rules: None,
         })
     }
 
@@ -790,6 +792,7 @@ impl TemplateRepository for PermissionTestTemplateRepository {
             permissions: None,
             teams: self.teams.clone(),
             collaborators: self.collaborators.clone(),
+            naming_rules: None,
         })
     }
 

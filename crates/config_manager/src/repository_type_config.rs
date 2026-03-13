@@ -169,6 +169,21 @@ pub struct RepositoryTypeConfig {
     /// restricted_types = ["admin"]
     /// ```
     pub permissions: Option<RepositoryTypePermissionsConfig>,
+
+    /// Repository type-specific naming rules (additive).
+    ///
+    /// Naming rules for this repository type.  Combined with rules from
+    /// global, team, and template levels — every rule must be satisfied.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[naming_rules]]
+    /// description     = "Service repositories must end with -svc"
+    /// required_suffix = "-svc"
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
 }
 
 #[cfg(test)]

@@ -38,3 +38,17 @@ access_level = "triage"
 [[teams]]
 slug = "reporoller-test-permissions"
 access_level = "write"
+
+# Template-level naming rule — merged additively with the org-level rule
+# in tests/metadata/.reporoller/global/defaults.toml.
+#
+# This rule is used by E2E concatenation tests to verify that naming rules
+# from both global config and template config are enforced together:
+#   - Names containing 'badtemplate' are rejected with 400 Bad Request
+#     (violates template rule only).
+#   - Names containing 'noncompliant' are rejected with 400 Bad Request
+#     (violates global rule only).
+#   - Names containing neither are accepted (satisfies both rules).
+[[naming_rules]]
+description = "Template naming policy: names must not contain 'badtemplate'"
+forbidden_patterns = ["badtemplate"]

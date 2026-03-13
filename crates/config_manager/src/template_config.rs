@@ -329,6 +329,23 @@ pub struct TemplateConfig {
     /// ```
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collaborators: Option<Vec<crate::settings::DefaultCollaboratorConfig>>,
+
+    /// Template-specific repository naming rules (additive).
+    ///
+    /// Naming rules defined here apply to repositories created from this
+    /// template.  Combined with rules from global, repository type, and team
+    /// levels \u2014 every rule in the merged set must be satisfied.
+    ///
+    /// # Examples
+    ///
+    /// ```toml
+    /// [[naming_rules]]
+    /// description     = "All repos from this template must end with -lib"
+    /// required_suffix = "-lib"
+    /// forbidden_patterns = [".*--.*"]
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
 }
 
 /// Template metadata providing information about the template.

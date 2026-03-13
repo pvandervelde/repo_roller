@@ -44,6 +44,7 @@ impl MockMetadataProvider {
             permissions: None,
             default_teams: None,
             default_collaborators: None,
+            naming_rules: None,
         };
 
         Self {
@@ -82,6 +83,7 @@ impl MockMetadataProvider {
             permissions: None,
             default_teams: None,
             default_collaborators: None,
+            naming_rules: None,
         };
 
         self.config_data = Some(defaults);

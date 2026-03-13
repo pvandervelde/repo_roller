@@ -38,7 +38,8 @@
 
 use crate::settings::{
     BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig, WebhookConfig,
+    NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig, RepositorySettings,
+    RulesetConfig, WebhookConfig,
 };
 use std::collections::HashMap;
 
@@ -94,6 +95,13 @@ pub struct MergedConfiguration {
     ///
     /// Merged from all sources (additive - all rulesets from all sources).
     pub rulesets: Vec<RulesetConfig>,
+
+    /// Naming rules that the repository name must satisfy.
+    ///
+    /// Merged from all sources (additive - all rules from all sources).
+    /// Every rule in this collection must be satisfied for the repository name
+    /// to be considered valid.
+    pub naming_rules: Vec<RepositoryNamingRulesConfig>,
 
     /// Outbound event notification endpoints.
     ///
@@ -172,6 +180,7 @@ impl MergedConfiguration {
             environments: Vec::new(),
             github_apps: Vec::new(),
             rulesets: Vec::new(),
+            naming_rules: Vec::new(),
             notifications: NotificationsConfig {
                 outbound_webhooks: Vec::new(),
             },

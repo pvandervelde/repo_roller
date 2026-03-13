@@ -87,6 +87,7 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         permissions: None,
         teams: None,
         collaborators: None,
+        naming_rules: None,
     }
 }
 

@@ -11,6 +11,7 @@ pub mod custom_property;
 pub mod environment;
 pub mod github_app;
 pub mod label;
+pub mod naming;
 pub mod notifications;
 pub mod permissions;
 pub mod pull_request;
@@ -26,6 +27,7 @@ pub use custom_property::CustomProperty;
 pub use environment::EnvironmentConfig;
 pub use github_app::GitHubAppConfig;
 pub use label::LabelConfig;
+pub use naming::RepositoryNamingRulesConfig;
 pub use notifications::{NotificationEndpoint, NotificationsConfig};
 pub use permissions::{
     access_level_order, DefaultCollaboratorConfig, DefaultTeamConfig,

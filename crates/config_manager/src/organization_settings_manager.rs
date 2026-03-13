@@ -358,6 +358,7 @@ impl OrganizationSettingsManager {
                 permissions: None,
                 teams: None,
                 collaborators: None,
+                naming_rules: None,
             }
         } else {
             match self
@@ -395,6 +396,7 @@ impl OrganizationSettingsManager {
                         permissions: None,
                         teams: None,
                         collaborators: None,
+                        naming_rules: None,
                     }
                 }
                 Err(e) => {

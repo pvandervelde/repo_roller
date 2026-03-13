@@ -58,3 +58,13 @@ locked = true
 [permissions]
 max_team_access_level = "maintain"
 max_collaborator_access_level = "write"
+
+# Repository naming rules - enforced at the organisation level for all repositories.
+# These rules are applied during repository creation before any GitHub API calls.
+#
+# This rule is used by E2E tests to verify that naming rules are enforced:
+#   - Names containing 'noncompliant' are rejected with 400 Bad Request.
+#   - All other standard test repository names pass this rule.
+[[naming_rules]]
+description = "Repository names must not contain 'noncompliant' (org naming policy)"
+forbidden_patterns = ["noncompliant"]
