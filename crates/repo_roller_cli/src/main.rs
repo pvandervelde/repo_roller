@@ -159,7 +159,13 @@ async fn main() {
         }
         Commands::MakeTemplate(args) => {
             match crate::commands::make_template_cmd::execute(args, &ask_user_for_value).await {
-                Ok(_result) => {
+                Ok(result) => {
+                    tracing::debug!(
+                        "make-template '{}' wrote {} file(s), skipped {} file(s)",
+                        result.template_name,
+                        result.written_files.len(),
+                        result.skipped_files.len()
+                    );
                     std::process::exit(0);
                 }
                 Err(e) => {

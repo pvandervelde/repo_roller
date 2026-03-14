@@ -6,6 +6,7 @@
 //! - `auth_cmd`: Authentication-related commands for GitHub credentials
 //! - `config_cmd`: Configuration management commands for settings and templates
 //! - `create_cmd`: Repository creation commands from templates
+//! - `make_template_cmd`: Scaffold a Git repository as a RepoRoller template
 //! - `org_settings_cmd`: Organization settings inspection commands
 //! - `template_cmd`: Template inspection and validation commands
 

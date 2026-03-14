@@ -506,8 +506,13 @@ Error::GitHub("GitHub API rate limit exceeded. Retry after: 2024-12-29T15:30:00Z
 - Template comparison (`template diff <template1> <template2>`)
 - Template usage statistics (how many repos created from template)
 - Template update checking (notify if template has updates)
-- Template scaffolding (create new template from scratch)
 - Batch validation (validate all templates in organization)
+
+**Implemented** (previously listed here as future work):
+
+- Template scaffolding — `repo-roller make-template <path>` scaffolds a Git repository
+  as a RepoRoller template. Implemented in `crates/repo_roller_cli/src/commands/make_template_cmd.rs`;
+  user guide at `crates/repo_roller_cli/MAKE_TEMPLATE.md`.
 
 ## Related Specifications
 

@@ -101,7 +101,7 @@ async fn test_make_template_git_file_worktree_is_accepted() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_make_template_user_cancels_returns_invalid_arguments() {
+async fn test_make_template_user_cancels_returns_cancelled() {
     let dir = TempDir::new().unwrap();
     init_git_dir(dir.path());
 
@@ -110,8 +110,8 @@ async fn test_make_template_user_cancels_returns_invalid_arguments() {
 
     let result = execute(&args, ask_no).await;
     assert!(
-        matches!(result, Err(Error::InvalidArguments(_))),
-        "declining confirmation should return InvalidArguments"
+        matches!(result, Err(Error::Cancelled(_))),
+        "declining confirmation should return Cancelled, not InvalidArguments"
     );
     // No files should have been written.
     assert!(!dir.path().join(".reporoller/template.toml").exists());
@@ -558,5 +558,54 @@ fn test_generate_renovate_config_is_valid_json() {
         parsed.is_ok(),
         "generate_renovate_config should produce valid JSON; error: {:?}",
         parsed.err()
+    );
+}
+
+// ============================================================================
+// TOML injection guard
+// ============================================================================
+
+#[test]
+fn test_generate_template_toml_special_characters_produce_valid_toml() {
+    // Values containing `"` and `\` would corrupt the TOML string without
+    // proper escaping via toml_string_value.
+    let content = generate_template_toml(
+        r#"name"with"quotes"#,
+        r#"desc with \ backslash"#,
+        r#"author "quoted""#,
+    );
+    let parsed: Result<toml::Table, _> = toml::from_str(&content);
+    assert!(
+        parsed.is_ok(),
+        "special characters must be escaped to produce valid TOML; error: {:?}",
+        parsed.err()
+    );
+    let table = parsed.unwrap();
+    let tmpl = table.get("template").unwrap();
+    assert_eq!(
+        tmpl.get("name").and_then(|v| v.as_str()),
+        Some(r#"name"with"quotes"#),
+        "name must round-trip correctly through TOML escaping"
+    );
+}
+
+// ============================================================================
+// Plan / content-map sync
+// ============================================================================
+
+#[tokio::test]
+async fn test_make_template_all_planned_files_are_written_or_skipped() {
+    let dir = TempDir::new().unwrap();
+    init_git_dir(dir.path());
+
+    let mut args = make_args(dir.path().to_str().unwrap());
+    args.name = Some("sync-check".to_string());
+    // No --renovate, no pre-existing files: all 7 files should be written.
+    let result = execute(&args, ask_yes).await.unwrap();
+    assert_eq!(
+        result.written_files.len() + result.skipped_files.len(),
+        7,
+        "all 7 planned files must be either written or skipped; \
+         if this fails, plan_files and build_content_map are out of sync"
     );
 }
