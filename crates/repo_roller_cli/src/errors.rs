@@ -34,6 +34,14 @@ pub enum Error {
     #[error("Invalid arguments: {0}")]
     InvalidArguments(String),
 
+    /// Operation was deliberately cancelled by the user.
+    ///
+    /// This error is returned when the user aborts an interactive confirmation
+    /// prompt (e.g. pressing N at a "Proceed?" prompt). It is distinct from
+    /// `InvalidArguments`, which signals bad CLI flags.
+    #[error("Cancelled: {0}")]
+    Cancelled(String),
+
     /// Failed to load a file from the filesystem.
     ///
     /// This error wraps underlying I/O errors that occur when reading files,

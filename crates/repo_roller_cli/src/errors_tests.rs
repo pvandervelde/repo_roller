@@ -60,3 +60,12 @@ fn test_stdout_flush_failed_error_display() {
     let error = Error::StdOutFlushFailed;
     assert_eq!(error.to_string(), "Failed to flush the std out buffer.");
 }
+
+#[test]
+fn test_cancelled_error_display() {
+    let error = Error::Cancelled("Template initialization cancelled by user.".to_string());
+    assert_eq!(
+        error.to_string(),
+        "Cancelled: Template initialization cancelled by user."
+    );
+}
