@@ -12,5 +12,6 @@
 pub mod auth_cmd;
 pub mod config_cmd;
 pub mod create_cmd;
+pub mod make_template_cmd;
 pub mod org_settings_cmd;
 pub mod template_cmd;

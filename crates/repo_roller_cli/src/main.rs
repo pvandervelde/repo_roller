@@ -32,7 +32,8 @@ use errors::Error;
 
 use crate::commands::{
     auth_cmd::AuthCommands, config_cmd::ConfigCommands, create_cmd::CreateArgs,
-    org_settings_cmd::OrgSettingsCommands, template_cmd::TemplateCommands,
+    make_template_cmd::MakeTemplateArgs, org_settings_cmd::OrgSettingsCommands,
+    template_cmd::TemplateCommands,
 };
 
 #[cfg(test)]
@@ -71,6 +72,9 @@ enum Commands {
 
     /// List recognized template variables and their descriptions
     ListVariables,
+
+    /// Convert a local Git repository into a RepoRoller template
+    MakeTemplate(MakeTemplateArgs),
 
     /// Organization settings inspection commands
     #[command(subcommand)]
@@ -149,6 +153,17 @@ async fn main() {
                 }
                 Err(e) => {
                     println!("Failed to create repository: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::MakeTemplate(args) => {
+            match crate::commands::make_template_cmd::execute(args, &ask_user_for_value).await {
+                Ok(_result) => {
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    error!("Error: {e}");
                     std::process::exit(1);
                 }
             }
