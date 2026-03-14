@@ -8,8 +8,6 @@ members = [
     "crates/auth_handler",
     "crates/repo_roller_cli",
     "crates/repo_roller_api",
-    "crates/repo_roller_mcp",
-    "crates/repo_roller_azure_fn",
     "crates/integration_tests",
     "crates/e2e_tests",
     "crates/test_utils",
