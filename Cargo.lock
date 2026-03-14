@@ -2649,10 +2649,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "repo_roller_azure_fn"
-version = "0.1.0"
-
-[[package]]
 name = "repo_roller_cli"
 version = "0.1.0"
 dependencies = [
@@ -2710,10 +2706,6 @@ dependencies = [
  "walkdir",
  "wiremock 0.6.5",
 ]
-
-[[package]]
-name = "repo_roller_mcp"
-version = "0.1.0"
 
 [[package]]
 name = "reqwest"

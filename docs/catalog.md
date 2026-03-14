@@ -47,16 +47,6 @@ Add to this whenever a reusable component becomes "the standard way".
   Key exports: API handlers, request/response types, middleware
   Notes: Translation layer between HTTP JSON and domain types
 
-- **`crates/repo_roller_mcp/`** — Model Context Protocol server
-  Use when: LLM/AI agent integration
-  Key exports: MCP tool definitions for repository creation
-  Notes: JSON-RPC interface for AI workflows
-
-- **`crates/repo_roller_azure_fn/`** — Azure Functions wrapper
-  Use when: Serverless deployment to Azure
-  Key exports: Azure Function bindings and handlers
-  Notes: Wraps repo_roller_api for Azure Functions runtime
-
 ### Testing Infrastructure
 
 - **`crates/test_utils/`** — Shared test utilities and mocks
