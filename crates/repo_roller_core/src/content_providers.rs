@@ -19,13 +19,12 @@
 //!
 //! ```no_run
 //! use repo_roller_core::{TemplateBasedContentProvider, ContentProvider};
-//! use template_engine::GitHubTemplateFetcher;
 //!
 //! # async fn example(
-//! #     request: &repo_roller_core::RepositoryCreationRequest,
-//! #     template: &config_manager::TemplateConfig,
-//! #     merged_config: &config_manager::MergedConfiguration,
-//! #     fetcher: &dyn template_engine::TemplateFetcher,
+//!     request: &repo_roller_core::RepositoryCreationRequest,
+//!     template: &config_manager::TemplateConfig,
+//!     merged_config: &config_manager::MergedConfiguration,
+//!     fetcher: &dyn template_engine::TemplateFetcher,
 //! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // Use template-based provider
 //! let provider = TemplateBasedContentProvider::new(fetcher);
@@ -156,28 +155,26 @@ pub trait ContentProvider: Send + Sync {
 /// ```no_run
 /// use repo_roller_core::{TemplateBasedContentProvider, ContentProvider};
 /// use template_engine::GitHubTemplateFetcher;
-/// use github_client::GitHubClient;
 ///
 /// # async fn example(
 /// #     request: &repo_roller_core::RepositoryCreationRequest,
 /// #     template: &config_manager::TemplateConfig,
 /// #     merged_config: &config_manager::MergedConfiguration,
-/// #     github_client: GitHubClient,
+/// #     fetcher: &dyn template_engine::TemplateFetcher,
 /// # ) -> Result<(), Box<dyn std::error::Error>> {
-/// let fetcher = GitHubTemplateFetcher::new(github_client);
-/// let provider = TemplateBasedContentProvider::new(&fetcher);
-///
+/// // Use template-based provider
+/// let provider = TemplateBasedContentProvider::new(fetcher);
 /// let temp_dir = provider.provide_content(
 ///     request,
 ///     Some(template),
-///     "my-org/template-rust-library",
-///     merged_config,
+///     "org/template-repo",
+///     merged_config
 /// ).await?;
 /// # Ok(())
 /// # }
 /// ```
 ///
-/// See specs/interfaces/content-providers.md#templatebasedcontentprovider for complete specification.
+/// See specs/interfaces/content-providers.md for complete contract specification.
 pub struct TemplateBasedContentProvider<'a> {
     /// Template fetcher for retrieving files from source repository
     fetcher: &'a dyn template_engine::TemplateFetcher,
@@ -195,10 +192,9 @@ impl<'a> TemplateBasedContentProvider<'a> {
     /// ```no_run
     /// use repo_roller_core::TemplateBasedContentProvider;
     /// use template_engine::GitHubTemplateFetcher;
-    /// use github_client::GitHubClient;
     ///
-    /// # fn example(github_client: GitHubClient) {
-    /// let fetcher = GitHubTemplateFetcher::new(github_client);
+    /// # fn example() {
+    /// let fetcher = GitHubTemplateFetcher::new();
     /// let provider = TemplateBasedContentProvider::new(&fetcher);
     /// # }
     /// ```

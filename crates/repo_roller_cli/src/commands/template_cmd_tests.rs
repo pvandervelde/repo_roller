@@ -48,7 +48,6 @@ impl MockMetadataProvider {
         self
     }
 
-    #[allow(dead_code)] // Will be used for validation tests in task 4.3
     fn with_available_types(mut self, types: Vec<String>) -> Self {
         self.available_types = types;
         self
