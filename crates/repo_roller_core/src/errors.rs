@@ -127,8 +127,10 @@ pub enum RepositoryError {
 
 pub type RepositoryResult<T> = Result<T, RepositoryError>;
 
-// Re-export ConfigurationError from config_manager (proper architectural layering)
-#[allow(unused_imports)] // Used in tests
+// Re-export ConfigurationError from config_manager (proper architectural layering).
+// ConfigurationResult is only referenced in test modules (via use super::*), so the
+// re-export triggers unused_imports in non-test compilation — suppress it explicitly.
+#[allow(unused_imports)]
 pub use config_manager::{ConfigurationError, ConfigurationResult};
 
 /// Template processing errors.
