@@ -164,8 +164,9 @@ pub mod event_metrics;
 
 // Re-export error types for public API
 pub use errors::{
-    AuthenticationError, ConfigurationError, GitHubError, RepoRollerError, RepoRollerResult,
-    RepositoryError, SystemError, TemplateError, ValidationError,
+    AuthenticationError, AuthenticationResult, ConfigurationError, GitHubError, GitHubResult,
+    RepoRollerError, RepoRollerResult, RepositoryError, RepositoryResult, SystemError,
+    SystemResult, TemplateError, TemplateResult, ValidationError,
 };
 
 // Domain-specific types organized by business area
@@ -358,15 +359,7 @@ async fn setup_github_clients(
         })?;
     let installation_repo_client = GitHubClient::new(installation_client);
 
-    let template_fetcher_client =
-        github_client::create_token_client(&installation_token).map_err(|e| {
-            error!("Failed to create GitHub client for template fetcher: {}", e);
-            RepoRollerError::System(SystemError::Internal {
-                reason: format!("Failed to create GitHub client: {}", e),
-            })
-        })?;
-    let template_fetcher =
-        template_engine::GitHubTemplateFetcher::new(GitHubClient::new(template_fetcher_client));
+    let template_fetcher = template_engine::GitHubTemplateFetcher::new();
 
     Ok(CreationClients {
         installation_token,

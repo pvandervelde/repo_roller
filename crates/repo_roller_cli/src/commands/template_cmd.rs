@@ -31,12 +31,8 @@ use crate::config::{get_config_path, AppConfig, DEFAULT_METADATA_REPOSITORY_NAME
 use crate::errors::Error;
 
 // Keyring constants (shared with create_cmd and auth_cmd)
-// Currently unused but will be needed when template loading is implemented
-#[allow(dead_code)]
 const KEY_RING_SERVICE_NAME: &str = "repo_roller";
-#[allow(dead_code)]
 const KEY_RING_APP_ID: &str = "github_app_id";
-#[allow(dead_code)]
 const KEY_RING_APP_PRIVATE_KEY_PATH: &str = "github_app_private_key_path";
 
 // ============================================================================
@@ -234,9 +230,6 @@ pub async fn execute(cmd: &TemplateCommands) -> Result<(), Error> {
 ///
 /// Loads GitHub App credentials from the system keyring and creates
 /// an authenticated GitHubMetadataProvider instance.
-///
-/// TODO: This will be needed when template loading from template repositories is implemented
-#[allow(dead_code)]
 async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider>, Error> {
     // Load application config to get metadata repository name
     let config_path = get_config_path(None);
@@ -306,7 +299,6 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 /// Returns CLI-friendly `TemplateInfo` representation.
 ///
 /// See: specs/interfaces/cli-template-operations.md
-#[allow(dead_code)] // Used in tests
 fn template_config_to_info(config: TemplateConfig) -> TemplateInfo {
     // Count non-None configuration sections
     let mut config_sections = 0;
@@ -361,7 +353,6 @@ fn template_config_to_info(config: TemplateConfig) -> TemplateInfo {
 }
 
 /// Convert business domain `TemplateVariable` to CLI `TemplateVariableInfo`.
-#[allow(dead_code)] // Used in tests
 fn template_variable_to_info(name: String, var: TemplateVariable) -> TemplateVariableInfo {
     TemplateVariableInfo {
         name,
@@ -399,7 +390,7 @@ fn template_variable_to_info(name: String, var: TemplateVariable) -> TemplateVar
 /// * `Error::GitHub` - GitHub API errors during template discovery
 ///
 /// See: specs/interfaces/cli-template-operations.md
-#[allow(dead_code)] // Used in tests and future CLI commands
+#[allow(dead_code)] // Public API used from integration tests; no CLI subcommand for listing yet
 pub async fn list_templates(
     org: &str,
     provider: Arc<dyn MetadataRepositoryProvider>,
@@ -469,7 +460,6 @@ pub async fn list_templates(
 /// * `Error::GitHub` - GitHub API errors
 ///
 /// See: specs/interfaces/cli-template-operations.md
-#[allow(dead_code)] // Used in tests and future CLI commands
 pub async fn get_template_info(
     org: &str,
     template_name: &str,
@@ -540,7 +530,6 @@ pub async fn get_template_info(
 /// not as function errors.
 ///
 /// See: specs/interfaces/cli-template-operations.md
-#[allow(dead_code)] // Used in tests and future CLI commands
 pub async fn validate_template(
     org: &str,
     template_name: &str,

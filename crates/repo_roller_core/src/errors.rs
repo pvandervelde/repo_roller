@@ -104,7 +104,6 @@ impl ValidationError {
 /// and management operations.
 ///
 /// See specs/interfaces/error-types.md#repositoryerror
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum RepositoryError {
     #[error("Repository '{name}' already exists in organization '{org}'")]
@@ -126,7 +125,6 @@ pub enum RepositoryError {
     OperationTimeout { timeout_secs: u64 },
 }
 
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 pub type RepositoryResult<T> = Result<T, RepositoryError>;
 
 // Re-export ConfigurationError from config_manager (proper architectural layering)
@@ -139,7 +137,6 @@ pub use config_manager::{ConfigurationError, ConfigurationResult};
 /// and variable substitution operations.
 ///
 /// See specs/interfaces/error-types.md#templateerror
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum TemplateError {
     #[error("Template not found: {name}")]
@@ -167,7 +164,6 @@ pub enum TemplateError {
     PathTraversalAttempt { path: String },
 }
 
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 pub type TemplateResult<T> = Result<T, TemplateError>;
 
 /// Authentication and authorization errors.
@@ -176,7 +172,6 @@ pub type TemplateResult<T> = Result<T, TemplateError>;
 /// and permission checks.
 ///
 /// See specs/interfaces/error-types.md#authenticationerror
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum AuthenticationError {
     #[error("Invalid or expired token")]
@@ -201,7 +196,6 @@ pub enum AuthenticationError {
     TokenRefreshFailed { reason: String },
 }
 
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 pub type AuthenticationResult<T> = Result<T, AuthenticationError>;
 
 /// GitHub API interaction errors.
@@ -210,7 +204,6 @@ pub type AuthenticationResult<T> = Result<T, AuthenticationError>;
 /// They wrap underlying HTTP and API-specific errors.
 ///
 /// See specs/interfaces/error-types.md#githuberror
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum GitHubError {
     #[error("GitHub API request failed: {status} - {message}")]
@@ -235,7 +228,6 @@ pub enum GitHubError {
     AppNotInstalled { org: String },
 }
 
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 pub type GitHubResult<T> = Result<T, GitHubError>;
 
 /// System and infrastructure errors.
@@ -244,7 +236,6 @@ pub type GitHubResult<T> = Result<T, GitHubError>;
 /// issues, and other infrastructure problems.
 ///
 /// See specs/interfaces/error-types.md#systemerror
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum SystemError {
     #[error("File system error: {operation} - {reason}")]
@@ -269,7 +260,6 @@ pub enum SystemError {
     ResourceUnavailable { resource: String },
 }
 
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 pub type SystemResult<T> = Result<T, SystemError>;
 
 /// Top-level error type for all RepoRoller operations.
@@ -278,7 +268,6 @@ pub type SystemResult<T> = Result<T, SystemError>;
 /// for error handling and user-facing error messages.
 ///
 /// See specs/interfaces/error-types.md#reporollererror
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 #[derive(Error, Debug)]
 pub enum RepoRollerError {
     #[error("Validation error: {0}")]
@@ -306,5 +295,4 @@ pub enum RepoRollerError {
     Permission(#[from] crate::permissions::PermissionError),
 }
 
-#[allow(dead_code)] // Will be used in Task 1.8.3+
 pub type RepoRollerResult<T> = Result<T, RepoRollerError>;

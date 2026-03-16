@@ -12,7 +12,6 @@ version.workspace = true
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
-github_client = { path = "../github_client" }
 glob = "0.3.2"
 handlebars = "6.0"
 regex.workspace = true

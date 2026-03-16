@@ -8,7 +8,7 @@ use base64::Engine;
 use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, Result as OctocrabResult};
 use secrecy::ExposeSecret;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tracing::{debug, error, info, instrument, warn};
 
 pub mod errors;
@@ -2777,25 +2777,6 @@ impl RepositoryClient for GitHubClient {
             }
         }
     }
-}
-
-/// JWT claims structure for GitHub App authentication.
-///
-/// This struct represents the claims included in JSON Web Tokens used
-/// for GitHub App authentication. It contains the standard JWT fields
-/// required by GitHub's authentication system.
-///
-/// Note: Currently not used as JWT encoding is handled by octocrab internally,
-/// but kept for potential future use or custom JWT implementation.
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-struct JWTClaims {
-    /// Issued at time (Unix timestamp)
-    iat: u64,
-    /// Expiration time (Unix timestamp)
-    exp: u64,
-    /// Issuer (GitHub App ID)
-    iss: u64,
 }
 
 /// Payload structure for creating a new repository via the GitHub REST API.

@@ -81,7 +81,6 @@
 //! - `default_branch` - Default branch name
 
 use async_trait::async_trait;
-use github_client::GitHubClient;
 use glob::{MatchOptions, Pattern};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -244,20 +243,12 @@ pub struct BuiltInVariablesParams<'a> {
 /// and preparing them for template processing. It handles various GitHub URL formats
 /// and filters out repository metadata files (like .git, .github directories).
 ///
-/// # Fields
-///
-/// * `github_client` - A GitHub API client used for repository operations. This will
-///   be used in future implementations for authenticated access and advanced repository
-///   features. Currently marked as dead_code but preserved for future use.
-///
 /// # Examples
 ///
 /// ```rust,ignore
 /// use template_engine::GitHubTemplateFetcher;
-/// use github_client::GitHubClient;
 ///
-/// let client = GitHubClient::new(octocrab_instance);
-/// let fetcher = GitHubTemplateFetcher::new(client);
+/// let fetcher = GitHubTemplateFetcher::new();
 ///
 /// // Fetch template files from a repository
 /// # async {
@@ -265,17 +256,11 @@ pub struct BuiltInVariablesParams<'a> {
 /// # Ok::<(), String>(())
 /// # };
 /// ```
-pub struct GitHubTemplateFetcher {
-    #[allow(dead_code)] // Will be used in future implementation
-    github_client: GitHubClient,
-}
+#[derive(Default)]
+pub struct GitHubTemplateFetcher {}
 
 impl GitHubTemplateFetcher {
-    /// Creates a new GitHub template fetcher with the provided client.
-    ///
-    /// # Arguments
-    ///
-    /// * `github_client` - An authenticated GitHub client for API operations
+    /// Creates a new GitHub template fetcher.
     ///
     /// # Returns
     ///
@@ -285,13 +270,11 @@ impl GitHubTemplateFetcher {
     ///
     /// ```rust,ignore
     /// use template_engine::GitHubTemplateFetcher;
-    /// use github_client::GitHubClient;
     ///
-    /// let client = GitHubClient::new(octocrab_instance);
-    /// let fetcher = GitHubTemplateFetcher::new(client);
+    /// let fetcher = GitHubTemplateFetcher::new();
     /// ```
-    pub fn new(github_client: GitHubClient) -> Self {
-        Self { github_client }
+    pub fn new() -> Self {
+        Self {}
     }
 
     /// Clones a Git repository and reads all files from it.
