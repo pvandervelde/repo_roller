@@ -183,7 +183,7 @@ async fn main() {
                 "template_repo"
             );
             println!("  {:<20} Default branch name (e.g. main)", "default_branch");
-            println!("  {:<20} ISO 8601 UTC creation timestamp", "timestamp");
+            println!("  {:<20} RFC 3339 UTC creation timestamp", "timestamp");
             println!(
                 "  {:<20} Unix epoch creation timestamp (seconds)",
                 "timestamp_unix"
