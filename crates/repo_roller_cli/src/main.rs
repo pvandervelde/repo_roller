@@ -67,10 +67,7 @@ enum Commands {
     #[command()]
     Create(CreateArgs),
 
-    /// Initialize a repository config file in the current directory
-    Init,
-
-    /// List recognized template variables and their descriptions
+    /// List built-in template variables automatically injected into every template
     ListVariables,
 
     /// Convert a local Git repository into a RepoRoller template
@@ -174,12 +171,27 @@ async fn main() {
                 }
             }
         }
-        Commands::Init => {
-            println!("Repository config initialization: (not yet implemented)");
-            std::process::exit(0);
-        }
         Commands::ListVariables => {
-            println!("Recognized template variables: (not yet implemented)");
+            println!("Built-in template variables (automatically available in all templates):\n");
+            println!("  {:<20} Name of the new repository", "repo_name");
+            println!("  {:<20} Owner organisation", "org_name");
+            println!("  {:<20} GitHub login of the requesting user", "user_login");
+            println!("  {:<20} Display name of the requesting user", "user_name");
+            println!("  {:<20} Name of the template used", "template_name");
+            println!(
+                "  {:<20} Full template repository name (e.g. myorg/rust-library)",
+                "template_repo"
+            );
+            println!("  {:<20} Default branch name (e.g. main)", "default_branch");
+            println!("  {:<20} RFC 3339 UTC creation timestamp", "timestamp");
+            println!(
+                "  {:<20} Unix epoch creation timestamp (seconds)",
+                "timestamp_unix"
+            );
+            println!();
+            println!("These variables are injected by the template engine before user-defined");
+            println!("variables. Template-specific variables are listed with:");
+            println!("  repo-roller template info --org <ORG> --template <TEMPLATE>");
             std::process::exit(0);
         }
         Commands::OrgSettings(cmd) => {

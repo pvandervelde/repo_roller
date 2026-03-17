@@ -13,14 +13,6 @@
 //! - GitHub App and Personal Access Token authentication
 //! - Template-based repository creation
 //!
-//! ## TODO (Interface Design)
-//!
-//! This module should be refactored to use the new interface design:
-//! - Use branded types from `repo_roller_core::repository` (RepositoryName, OrganizationName)
-//! - Use branded types from `repo_roller_core::template` (TemplateName)
-//! - Integrate `auth_handler` traits for authentication instead of ad-hoc keyring access
-//! - See specs/interfaces/authentication-interfaces.md for auth service interfaces
-
 use crate::{
     commands::auth_cmd::{KEY_RING_APP_ID, KEY_RING_APP_PRIVATE_KEY_PATH, KEY_RING_SERVICE_NAME},
     config::{get_config_path, AppConfig},
@@ -439,7 +431,9 @@ where
     }
 
     // Prompt for repository name if missing.
-    // TODO (Task 7.2): Validate against organization-specific rules from OrganizationSettingsManager
+    // Name validation against organisation-specific naming rules (RepositoryNamingValidator) is
+    // performed inside `create_repository()` after the merged configuration has been loaded from
+    // the metadata repository, so it happens automatically further down the call chain.
     if final_name.trim().is_empty() {
         loop {
             final_name = ask_user_for_value("Repository name (required): ").unwrap_or_default();
