@@ -194,16 +194,6 @@ impl TokenAuthService {
 
 #[async_trait]
 impl auth_handler::UserAuthenticationService for TokenAuthService {
-    async fn authenticate_installation(
-        &self,
-        _app_id: u64,
-        _private_key: &str,
-        _installation_id: u64,
-    ) -> Result<String, auth_handler::AuthError> {
-        // Token is already validated by middleware, just return it
-        Ok(self.token.clone())
-    }
-
     async fn get_installation_token_for_org(
         &self,
         _org: &str,

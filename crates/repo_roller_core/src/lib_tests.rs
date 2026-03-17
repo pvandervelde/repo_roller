@@ -23,15 +23,6 @@ struct MockAuthService;
 
 #[async_trait]
 impl auth_handler::UserAuthenticationService for MockAuthService {
-    async fn authenticate_installation(
-        &self,
-        _app_id: u64,
-        _private_key: &str,
-        _installation_id: u64,
-    ) -> auth_handler::AuthResult<String> {
-        Err(auth_handler::AuthError::InvalidCredentials)
-    }
-
     async fn get_installation_token_for_org(
         &self,
         _org_name: &str,

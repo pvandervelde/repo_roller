@@ -52,20 +52,6 @@ impl GitHubAuthService {
 
 #[async_trait]
 impl UserAuthenticationService for GitHubAuthService {
-    async fn authenticate_installation(
-        &self,
-        _app_id: u64,
-        _private_key: &str,
-        _installation_id: u64,
-    ) -> AuthResult<String> {
-        // This method is not currently needed for our use case
-        // We use get_installation_token_for_org instead
-        Err(AuthError::Other(
-            "authenticate_installation not implemented - use get_installation_token_for_org"
-                .to_string(),
-        ))
-    }
-
     async fn get_installation_token_for_org(&self, org_name: &str) -> AuthResult<String> {
         // Create app client using stored credentials
         let app_client = create_app_client(self.app_id, &self.private_key)
