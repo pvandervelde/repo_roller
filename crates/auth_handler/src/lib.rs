@@ -9,8 +9,6 @@
 //! - Business logic depends on these traits
 //! - Infrastructure (GitHub, database) implements the traits
 //! - Main application wires everything together
-//!
-//! See specs/interfaces/authentication-interfaces.md for complete specifications.
 
 use async_trait::async_trait;
 
@@ -40,7 +38,6 @@ pub enum AuthError {
 /// User authentication service interface
 ///
 /// Handles user identity verification and session management.
-/// See specs/interfaces/authentication-interfaces.md#userauthenticationservice
 #[async_trait]
 pub trait UserAuthenticationService: Send + Sync {
     /// Get installation token for an organization

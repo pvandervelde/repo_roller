@@ -135,30 +135,6 @@ This document defines the abstract interfaces that represent the boundaries betw
 - Token refresh failures
 - OAuth flow interruptions and errors
 
-### OrganizationPermissionService
-
-**Purpose**: Abstract interface for determining user permissions and authorization.
-
-**Responsibilities**:
-
-- Resolve user permissions within organizations
-- Check authorization for specific operations
-- Handle team membership and role validation
-- Integrate with multi-level permission system
-
-**Key Operations**:
-
-- `check_repository_permission()` - Verify repository creation permission
-- `resolve_user_permissions()` - Get comprehensive user permission set
-- `validate_team_membership()` - Confirm user team membership
-- `check_organization_access()` - Verify organization-level access
-
-**Error Handling**:
-
-- Insufficient permissions for operations
-- Permission resolution failures
-- Team membership validation issues
-
 ## Template Processing Interfaces
 
 ### TemplateEngine
