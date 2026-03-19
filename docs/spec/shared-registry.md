@@ -119,9 +119,7 @@ All domain primitives use newtype pattern for type safety.
 
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
-| `UserAuthenticationService` | `auth_handler/src/lib.rs` | User authentication | [authentication-interfaces.md](authentication-interfaces.md) |
-| `OrganizationPermissionService` | `auth_handler/src/lib.rs` | Permission resolution | [authentication-interfaces.md](authentication-interfaces.md) |
-| `AuthenticationContext` | `auth_handler/src/lib.rs` | Auth context carrier | [authentication-interfaces.md](authentication-interfaces.md) |
+| `UserAuthenticationService` | `auth_handler/src/lib.rs` | User authentication | — |
 
 ### Visibility Domain (Task 5.0)
 
