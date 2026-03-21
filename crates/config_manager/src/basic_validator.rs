@@ -98,6 +98,73 @@ impl BasicConfigurationValidator {
             }
         }
 
+        // Validate merge-method/commit-format cross-field constraints.
+        //
+        // GitHub only honours merge_commit_title/message when merge commits are
+        // enabled, and squash_merge_commit_title/message when squash merges are
+        // enabled.  Setting these format fields while the corresponding merge type
+        // is explicitly disabled is therefore a configuration error: the field
+        // will be silently ignored by GitHub, misleading operators into thinking
+        // their configuration is active.
+
+        if let Some(allow) = &settings.allow_merge_commit {
+            if !allow.value {
+                if settings.merge_commit_title.is_some() {
+                    errors.push(ValidationError {
+                        error_type: ValidationErrorType::BusinessRuleViolation,
+                        field_path: "pull_requests.merge_commit_title".to_string(),
+                        message:
+                            "merge_commit_title has no effect because allow_merge_commit is false"
+                                .to_string(),
+                        suggestion: Some(
+                            "Remove merge_commit_title or set allow_merge_commit to true"
+                                .to_string(),
+                        ),
+                    });
+                }
+                if settings.merge_commit_message.is_some() {
+                    errors.push(ValidationError {
+                        error_type: ValidationErrorType::BusinessRuleViolation,
+                        field_path: "pull_requests.merge_commit_message".to_string(),
+                        message:
+                            "merge_commit_message has no effect because allow_merge_commit is false"
+                                .to_string(),
+                        suggestion: Some(
+                            "Remove merge_commit_message or set allow_merge_commit to true"
+                                .to_string(),
+                        ),
+                    });
+                }
+            }
+        }
+
+        if let Some(allow) = &settings.allow_squash_merge {
+            if !allow.value {
+                if settings.squash_merge_commit_title.is_some() {
+                    errors.push(ValidationError {
+                        error_type: ValidationErrorType::BusinessRuleViolation,
+                        field_path: "pull_requests.squash_merge_commit_title".to_string(),
+                        message: "squash_merge_commit_title has no effect because allow_squash_merge is false".to_string(),
+                        suggestion: Some(
+                            "Remove squash_merge_commit_title or set allow_squash_merge to true"
+                                .to_string(),
+                        ),
+                    });
+                }
+                if settings.squash_merge_commit_message.is_some() {
+                    errors.push(ValidationError {
+                        error_type: ValidationErrorType::BusinessRuleViolation,
+                        field_path: "pull_requests.squash_merge_commit_message".to_string(),
+                        message: "squash_merge_commit_message has no effect because allow_squash_merge is false".to_string(),
+                        suggestion: Some(
+                            "Remove squash_merge_commit_message or set allow_squash_merge to true"
+                                .to_string(),
+                        ),
+                    });
+                }
+            }
+        }
+
         errors
     }
 
@@ -336,12 +403,16 @@ impl BasicConfigurationValidator {
     // ========================================================================
 
     /// Validate conditional requirements across configuration.
+    ///
+    /// Checks cross-field constraints that span multiple top-level settings
+    /// groups. Per-group cross-field rules (e.g., merge-method / commit-format)
+    /// are validated in their respective `validate_*` helpers; this function
+    /// handles constraints that involve two different groups.
     fn validate_conditional_requirements(
         &self,
         _merged: &MergedConfiguration,
     ) -> Vec<ValidationError> {
-        // Placeholder for future cross-field validations
-        // Examples: If feature X enabled, field Y must be set
+        // No cross-group conditional validation rules are currently required.
         Vec::new()
     }
 }

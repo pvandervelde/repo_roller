@@ -389,24 +389,30 @@ pub async fn verify_labels(
 
 /// Load expected configuration from metadata repository for comparison.
 ///
+/// **Stub implementation** — this function always returns an all-`None`
+/// [`ExpectedConfiguration`]. A real implementation would clone the metadata
+/// repository, locate the TOML configuration file for `scenario`, parse it,
+/// and return the resulting expected state.
+///
+/// Tests that need to assert specific expected state should construct
+/// [`ExpectedConfiguration`] directly rather than calling this function.
+///
 /// # Arguments
 ///
-/// * `client` - GitHub client for API calls
-/// * `org` - Organization name
-/// * `metadata_repo` - Metadata repository name
-/// * `scenario` - Test scenario to load configuration for
+/// * `_client` - GitHub client (unused until implementation is complete)
+/// * `_org` - Organization name (unused until implementation is complete)
+/// * `_metadata_repo` - Metadata repository name (unused until implementation is complete)
+/// * `_scenario` - Test scenario (unused until implementation is complete)
 ///
 /// # Returns
 ///
-/// Expected configuration for the given scenario
+/// An all-`None` [`ExpectedConfiguration`] in all cases.
 pub async fn load_expected_configuration(
     _client: &GitHubClient,
     _org: &str,
     _metadata_repo: &str,
     _scenario: &crate::TestScenario,
 ) -> Result<ExpectedConfiguration> {
-    // TODO: Implement loading expected configuration from metadata repository
-    // This will parse TOML files and construct ExpectedConfiguration
     Ok(ExpectedConfiguration {
         repository_settings: None,
         custom_properties: None,

@@ -194,7 +194,8 @@ async fn test_empty_repository_with_template_settings() -> Result<()> {
         "Empty repository should not have README.md even with template"
     );
 
-    // TODO: Verify that template settings were applied (once we have setting inspection)
+    // Note: template settings (labels, webhooks, rulesets) are applied during repository
+    // creation and are verified separately in the label/webhook/ruleset integration tests.
     info!("✓ Empty repository with template settings test passed");
     Ok(())
 }
@@ -594,7 +595,8 @@ async fn test_custom_init_with_template_settings() -> Result<()> {
     // (template-test-basic would have other files if template content was used)
     // We can't easily list all files, but we know custom init should only have 2 files
 
-    // TODO: Verify that template settings were applied
+    // Note: template settings (labels, webhooks, rulesets) are applied during repository
+    // creation and verified separately in the label/webhook/ruleset integration tests.
     info!("✓ Custom init with template settings test passed");
     Ok(())
 }

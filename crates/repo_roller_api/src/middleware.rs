@@ -26,12 +26,22 @@ use repo_roller_core::AuthenticationError;
 pub struct AuthContext {
     /// Bearer token from Authorization header
     pub token: String,
+    /// GitHub login of the authenticated actor, if determinable.
+    ///
+    /// Populated by a best-effort call to the GitHub `/user` API endpoint.
+    /// `None` when the token is an installation token (which does not map
+    /// to a user) or when the lookup fails.
+    pub user_login: Option<String>,
 }
 
 impl AuthContext {
     /// Create a new authentication context
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn new(token: String) -> Self {
-        Self { token }
+        Self {
+            token,
+            user_login: None,
+        }
     }
 }
 
@@ -71,9 +81,13 @@ pub async fn auth_middleware(
     // Validate token against GitHub API
     validate_token(&token).await?;
 
-    // Create authentication context without organization
-    // Organization will be extracted from path parameters by handlers
-    let auth_context = AuthContext::new(token);
+    // Best-effort: try to resolve the GitHub login for the token bearer.
+    // Installation tokens (GitHub App) do not map to a user, so this call
+    // may fail; in that case we leave user_login as None.
+    let user_login = try_get_user_login(&token).await;
+
+    // Create authentication context
+    let auth_context = AuthContext { token, user_login };
 
     // Attach context to request extensions
     request.extensions_mut().insert(auth_context);
@@ -129,6 +143,24 @@ async fn validate_token(token: &str) -> Result<(), AuthError> {
     tracing::info!("Token validated successfully");
 
     Ok(())
+}
+
+/// Attempt to retrieve the GitHub login for the token bearer.
+///
+/// Makes an authenticated request to the GitHub `/user` endpoint.  This
+/// succeeds for personal-access tokens and OAuth tokens; it **fails** (returns
+/// `None`) for installation tokens, which are scoped to an app installation
+/// rather than a specific human user.
+///
+/// Failure is treated as non-fatal — callers fall back to a default identity.
+async fn try_get_user_login(token: &str) -> Option<String> {
+    let octocrab = github_client::create_token_client(token).ok()?;
+    octocrab
+        .current()
+        .user()
+        .await
+        .ok()
+        .map(|u| u.login.clone())
 }
 
 /// Organization authorization middleware.

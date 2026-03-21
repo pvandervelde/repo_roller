@@ -97,6 +97,7 @@ impl Default for ContentStrategy {
 ///     content_strategy: ContentStrategy::Template,
 ///     teams: HashMap::new(),
 ///     collaborators: HashMap::new(),
+///     actor_login: "alice".to_string(),
 /// };
 ///
 /// // Empty repository with team permissions
@@ -111,6 +112,7 @@ impl Default for ContentStrategy {
 ///     content_strategy: ContentStrategy::Empty,
 ///     teams,
 ///     collaborators: HashMap::new(),
+///     actor_login: "bob".to_string(),
 /// };
 /// ```
 ///
@@ -163,6 +165,17 @@ pub struct RepositoryCreationRequest {
     /// Maps GitHub username → desired access level.
     /// Use [`AccessLevel::None`] to explicitly remove a user if present.
     pub collaborators: HashMap<String, AccessLevel>,
+
+    /// The identity (login) of the actor initiating this request.
+    ///
+    /// Used for:
+    /// - Audit logging and event notifications (who triggered the creation)
+    /// - Built-in template variables (`user_login`, `user_name`)
+    ///
+    /// For API requests this is the authenticated user's GitHub login if
+    /// available, or the app installation slug as a fallback.
+    /// For CLI requests this is `"reporoller-cli"`.
+    pub actor_login: String,
 }
 
 /// Result of a successful repository creation operation.
@@ -252,6 +265,7 @@ pub struct RepositoryCreationRequestBuilder {
     content_strategy: Option<ContentStrategy>,
     teams: HashMap<String, AccessLevel>,
     collaborators: HashMap<String, AccessLevel>,
+    actor_login: Option<String>,
 }
 
 impl RepositoryCreationRequestBuilder {
@@ -279,7 +293,32 @@ impl RepositoryCreationRequestBuilder {
             content_strategy: None,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: None,
         }
+    }
+
+    /// Set the identity (GitHub login) of the actor initiating this request.
+    ///
+    /// Used for audit logging, event notifications, and built-in template
+    /// variables. Defaults to `"reporoller"` if not set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use repo_roller_core::*;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let request = RepositoryCreationRequestBuilder::new(
+    ///     RepositoryName::new("my-repo")?,
+    ///     OrganizationName::new("my-org")?,
+    /// )
+    /// .actor("alice".to_string())
+    /// .build();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn actor(mut self, login: String) -> Self {
+        self.actor_login = Some(login);
+        self
     }
 
     /// Set the teams to grant access to the new repository.
@@ -449,6 +488,7 @@ impl RepositoryCreationRequestBuilder {
             content_strategy,
             teams: self.teams,
             collaborators: self.collaborators,
+            actor_login: self.actor_login.unwrap_or_else(|| "reporoller".to_string()),
         }
     }
 }

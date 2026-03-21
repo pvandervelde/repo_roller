@@ -188,12 +188,9 @@ async fn test_end_to_end_repository_creation_with_filtering() -> Result<()> {
     let github_client = create_test_client(&config).await?;
     let template_repo = Arc::new(GitHubTemplateRepository::new(Arc::new(github_client)));
 
-    // TODO: Complete end-to-end test once full repository creation flow is available
-    // This would involve:
-    // 1. Call create_repository with template-test-filtering
-    // 2. Use GitHub API to list files in created repository
-    // 3. Verify only expected files are present based on filtering configuration
-    // 4. Verify excluded files are NOT present
+    // The template-test-filtering template has exclude_patterns configured in its
+    // .reporoller/template.toml. This test verifies the configuration is present and valid.
+    // End-to-end file exclusion verification is in template_processing_edge_cases.rs.
 
     // For now, verify we can load the template config with filtering
     let template_config = template_repo
@@ -206,7 +203,6 @@ async fn test_end_to_end_repository_creation_with_filtering() -> Result<()> {
     );
 
     info!("✓ Template configuration with filtering loaded successfully");
-    info!("   (Full end-to-end test to be implemented)");
 
     Ok(())
 }

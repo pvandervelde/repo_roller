@@ -119,7 +119,16 @@ pub async fn create_repository(
     };
 
     // Translate HTTP request to domain request (includes validation)
-    let domain_request = http_create_repository_request_to_domain(request.clone())?;
+    let mut domain_request = http_create_repository_request_to_domain(request.clone())?;
+
+    // Set the actor identity from the authenticated user, falling back to the
+    // service-level identity when the token is an installation token (no user login).
+    let actor_login = auth
+        .user_login
+        .as_deref()
+        .unwrap_or("reporoller-api")
+        .to_string();
+    domain_request.actor_login = actor_login.clone();
 
     // Create GitHub client for template operations
     let github_octocrab = std::sync::Arc::new(
@@ -154,11 +163,8 @@ pub async fn create_repository(
     let metrics = std::sync::Arc::new(
         repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry),
     );
-    let event_context = repo_roller_core::EventNotificationContext::new(
-        "api-user", // TODO: Extract from authenticated user context
-        secret_resolver,
-        metrics,
-    );
+    let event_context =
+        repo_roller_core::EventNotificationContext::new(&actor_login, secret_resolver, metrics);
 
     // Call domain service to create repository
     let result = repo_roller_core::create_repository(
@@ -297,19 +303,9 @@ pub async fn validate_repository_request(
                 severity: ValidationSeverity::Error,
             });
         } else {
-            // Note: This endpoint provides basic format validation only.
-            // Comprehensive template existence validation requires GitHub API calls
-            // and happens during actual repository creation via OrganizationSettingsManager.
-            // The hardcoded check below demonstrates the validation pattern for testing
-            // without requiring GitHub API access. Real validation is in create_repository().
-            // Enhancement tracked in Task 9.7: Add GitHub API-based template validation.
-            if template_str == "nonexistent-template" {
-                errors.push(ValidationResult {
-                    field: "template".to_string(),
-                    message: format!("Template '{}' does not exist in organization", template_str),
-                    severity: ValidationSeverity::Error,
-                });
-            }
+            // Note: This endpoint performs structural format validation only.
+            // Template existence is validated during actual repository creation via
+            // OrganizationSettingsManager, which has GitHub API access.
         }
     }
 
@@ -324,37 +320,12 @@ pub async fn validate_repository_request(
         }
     }
 
-    // Note: This endpoint provides basic format validation only.
-    // Comprehensive variable validation requires loading template configuration
-    // and happens during actual repository creation via the template engine.
-    // The hardcoded check below demonstrates the validation pattern for testing.
-    // Real validation is in create_repository().
-    // Enhancement tracked in Task 9.7: Add template-aware variable validation.
-    if let Some(ref template_str) = request.template {
-        if template_str == "rust-library" && request.variables.is_empty() {
-            errors.push(ValidationResult {
-                field: "variables.project_name".to_string(),
-                message: "Required variable is missing".to_string(),
-                severity: ValidationSeverity::Error,
-            });
-        }
-    }
+    // Note: Variable content validation (required fields, patterns) requires the
+    // template configuration to be loaded from GitHub, so it is deferred to the
+    // creation step via the template engine.
 
-    // Note: This endpoint provides basic format validation only.
-    // Comprehensive team existence validation requires GitHub API calls
-    // and happens during actual repository creation.
-    // The hardcoded check below demonstrates the validation pattern for testing.
-    // Real validation is in create_repository().
-    // Enhancement tracked in Task 9.7: Add GitHub API-based team validation.
-    if let Some(ref team) = request.team {
-        if team == "nonexistent-team" {
-            errors.push(ValidationResult {
-                field: "team".to_string(),
-                message: format!("Team '{}' does not exist in organization", team),
-                severity: ValidationSeverity::Error,
-            });
-        }
-    }
+    // Note: Team existence validation requires GitHub API calls and is deferred
+    // to the creation step.
 
     let response = ValidateRepositoryRequestResponse {
         valid: errors.is_empty(),
@@ -725,9 +696,10 @@ pub async fn preview_configuration(
         ))
     })?;
 
-    // Extract source attribution from the merged configuration's source trace
-    // Source trace extraction is a future enhancement (Task 9.7)
-    // The source_trace structure requires mapping to flat key-value pairs
+    // Extract source attribution from the merged configuration's source trace.
+    // Source tracing maps each configuration key to the file/level it came from.
+    // This requires the ConfigurationMerger to propagate source metadata through
+    // the merge chain, which is not yet implemented in the merger.
     let sources = std::collections::HashMap::new();
 
     let response = PreviewConfigurationResponse {

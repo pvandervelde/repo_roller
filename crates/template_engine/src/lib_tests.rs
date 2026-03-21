@@ -272,6 +272,48 @@ fn test_validate_variables_pattern() {
 }
 
 #[test]
+fn test_validate_variables_default_value_validated_against_pattern() {
+    // Default values must satisfy the same pattern constraints as supplied values.
+    // A config author error (bad default) should surface as a validation failure
+    // rather than silently producing incorrect output.
+    let processor = TemplateProcessor::new().expect("Failed to create processor");
+
+    let mut variable_configs = HashMap::new();
+    variable_configs.insert(
+        "tag".to_string(),
+        VariableConfig {
+            description: "Lowercase tag".to_string(),
+            example: Some("mytag".to_string()),
+            required: Some(false),
+            pattern: Some(r"^[a-z]+$".to_string()),
+            min_length: None,
+            max_length: None,
+            options: None,
+            // Default value deliberately violates the pattern
+            default: Some("Invalid123".to_string()),
+        },
+    );
+
+    // No user-supplied value — fall through to the default
+    let request = TemplateProcessingRequest {
+        variables: HashMap::new(),
+        built_in_variables: HashMap::new(),
+        variable_configs,
+        templating_config: None,
+    };
+
+    let result = processor.validate_variables(&request);
+    assert!(
+        result.is_err(),
+        "expected validation failure when default value violates pattern"
+    );
+    assert!(
+        matches!(result.unwrap_err(), Error::PatternValidationFailed { .. }),
+        "expected PatternValidationFailed error"
+    );
+}
+
+#[test]
 fn test_validate_variables_length() {
     let processor = TemplateProcessor::new().expect("Failed to create processor");
 

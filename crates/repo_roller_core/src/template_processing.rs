@@ -543,8 +543,8 @@ pub fn extract_config_variables(
 /// - `repo_name`: Repository name from the request
 /// - `org_name`: Organization/owner name from the request
 /// - `template_name`: Template name used for creation
-/// - `user_login`: GitHub App login (placeholder)
-/// - `user_name`: GitHub App display name (placeholder)
+/// - `user_login`: GitHub login of the actor who requested the creation (from `RepositoryCreationRequest::actor_login`)
+/// - `user_name`: Same as `user_login`; a dedicated display-name field may be added in future
 /// - `default_branch`: Default branch name ("main")
 ///
 /// ## Configuration Variables
@@ -604,8 +604,8 @@ pub(crate) fn replace_template_variables(
         org_name: req.owner.as_ref(),
         template_name: template_name_str,
         template_repo: "unknown", // We'd need to get this from template config
-        user_login: "reporoller-app", // Placeholder for GitHub App
-        user_name: "RepoRoller App", // Placeholder for GitHub App
+        user_login: &req.actor_login,
+        user_name: &req.actor_login, // Use login as display name; dedicated display name not in request
         default_branch: "main",
     };
     let built_in_variables = processor.generate_built_in_variables(&built_in_params);

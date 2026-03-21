@@ -209,8 +209,9 @@ async fn test_validate_repository_request_valid() {
 
 /// Test validate_repository_request endpoint with missing template variables
 ///
-/// Verifies that missing required template variables result in valid=false
-/// with specific error about the missing variables.
+/// Verifies that the validate endpoint performs only structural validation.
+/// Template variable completeness is deferred to the creation step where the
+/// template configuration is available.
 #[tokio::test]
 async fn test_validate_repository_request_missing_variables() {
     let app = create_router_without_auth(test_app_state());
@@ -219,7 +220,7 @@ async fn test_validate_repository_request_missing_variables() {
         "organization": "testorg",
         "name": "test-repo",
         "template": "rust-library",
-        "variables": {}  // Missing required variables
+        "variables": {}  // No variables provided
     });
 
     let request = Request::builder()
@@ -239,16 +240,18 @@ async fn test_validate_repository_request_missing_variables() {
         .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(response_json["valid"], false);
-
-    let errors = response_json["errors"].as_array().unwrap();
-    assert!(!errors.is_empty());
+    // Structural validation passes: name, org, and template are all non-empty.
+    // Variable completeness is validated during creation, not during this pre-check.
+    assert_eq!(
+        response_json["valid"], true,
+        "validate endpoint should return valid=true for structurally correct request"
+    );
 }
 
-/// Test validate_repository_request endpoint with non-existent template
+/// Test validate_repository_request endpoint with a template name
 ///
-/// Verifies that referencing a non-existent template results in valid=false
-/// with appropriate error message.
+/// Verifies that the validate endpoint performs only structural validation.
+/// Template existence is deferred to the creation step where GitHub API is available.
 #[tokio::test]
 async fn test_validate_repository_request_nonexistent_template() {
     let app = create_router_without_auth(test_app_state());
@@ -277,12 +280,10 @@ async fn test_validate_repository_request_nonexistent_template() {
         .unwrap();
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(response_json["valid"], false);
-
-    let errors = response_json["errors"].as_array().unwrap();
-    assert!(!errors.is_empty());
-    assert!(errors
-        .iter()
-        .any(|e| e["message"].as_str().unwrap().contains("template")
-            || e["field"].as_str().unwrap().contains("template")));
+    // Template existence is not checked in structural validation (requires GitHub API).
+    // The request is structurally valid: non-empty org, name, and template name.
+    assert_eq!(
+        response_json["valid"], true,
+        "validate endpoint should return valid=true for structurally correct request"
+    );
 }

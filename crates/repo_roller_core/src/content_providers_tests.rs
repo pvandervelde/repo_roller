@@ -32,10 +32,9 @@ fn create_test_request() -> RepositoryCreationRequest {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     }
 }
-
-// Helper function to create a minimal test template config
 fn create_test_template_config() -> config_manager::TemplateConfig {
     config_manager::TemplateConfig {
         template: config_manager::TemplateMetadata {

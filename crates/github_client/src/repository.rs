@@ -69,6 +69,8 @@ pub struct Repository {
     has_projects: Option<bool>,
     /// Whether discussions are enabled for this repository
     has_discussions: Option<bool>,
+    /// Whether auto-merge is enabled for this repository
+    allow_auto_merge: Option<bool>,
 }
 
 impl Repository {
@@ -112,6 +114,7 @@ impl Repository {
             has_wiki: None,
             has_projects: None,
             has_discussions: None,
+            allow_auto_merge: None,
         }
     }
 
@@ -149,6 +152,18 @@ impl Repository {
     /// `Some(true)` if discussions are enabled, `Some(false)` if disabled, or `None` if unknown.
     pub fn has_discussions(&self) -> Option<bool> {
         self.has_discussions
+    }
+
+    /// Returns whether auto-merge is enabled for this repository.
+    ///
+    /// When enabled, pull requests are automatically merged after all required
+    /// status checks pass and any required approvals are received.
+    ///
+    /// # Returns
+    ///
+    /// `Some(true)` if auto-merge is enabled, `Some(false)` if disabled, or `None` if unknown.
+    pub fn allow_auto_merge(&self) -> Option<bool> {
+        self.allow_auto_merge
     }
 
     /// Returns the GraphQL node ID of the repository.
@@ -189,6 +204,7 @@ impl From<octocrab::models::Repository> for Repository {
             // Note: has_discussions is not available in octocrab::models::Repository
             // This field may need to be fetched separately via the GitHub API
             has_discussions: None,
+            allow_auto_merge: value.allow_auto_merge,
         }
     }
 }

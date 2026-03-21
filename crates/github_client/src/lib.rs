@@ -3695,7 +3695,7 @@ pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocra
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let token = "ghp_xxxxxxxxxxxxxxxxxxxx"; // Your GitHub PAT
+///     let token = "YOUR_GITHUB_TOKEN_HERE"; // Replace with your GitHub PAT
 ///     let client = create_token_client(token)?;
 ///
 ///     // Use client for API operations
