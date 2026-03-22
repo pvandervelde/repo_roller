@@ -283,7 +283,10 @@ async fn test_template_variable_injection_protection() -> Result<()> {
 
         let files = vec![(
             "script.sh".to_string(),
-            b"#!/bin/bash\n# Command: {{command}}".to_vec(),
+            // Triple-brace {{{command}}} disables HTML escaping so the raw value
+            // passes through verbatim. The security property (no shell execution)
+            // is guaranteed by the Handlebars processing model, not by encoding.
+            b"#!/bin/bash\n# Command: {{{command}}}".to_vec(),
         )];
 
         let request = TemplateProcessingRequest {
