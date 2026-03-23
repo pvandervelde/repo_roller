@@ -80,6 +80,8 @@
 //! | `>`       | `&gt;`    |
 //! | `&`       | `&amp;`   |
 //! | `"`       | `&quot;`  |
+//! | `'`       | `&#x27;`  |
+//! | `=`       | `&#x3D;`  |
 //! | `` ` ``   | `&#x60;`  |
 //!
 //! This is correct and safe for **HTML files** (README rendered in a browser,

@@ -334,7 +334,8 @@ async fn test_template_variable_injection_protection() -> Result<()> {
         ),
         (
             "<img src=x onerror=alert('XSS')>",
-            "&lt;img src=x",
+            // Handlebars also encodes '=' as &#x3D;, so check the prefix only
+            "&lt;img src",
             "<img src=x",
         ),
         ("'; DROP TABLE users; --", "&#x27;; DROP TABLE", "'; DROP"),
