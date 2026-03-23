@@ -118,9 +118,6 @@ pub async fn create_repository(
         domain_repository_creation_result_to_http, http_create_repository_request_to_domain,
     };
 
-    // Translate HTTP request to domain request (includes validation)
-    let mut domain_request = http_create_repository_request_to_domain(request.clone())?;
-
     // Set the actor identity from the authenticated user, falling back to the
     // service-level identity when the token is an installation token (no user login).
     let actor_login = auth
@@ -128,7 +125,12 @@ pub async fn create_repository(
         .as_deref()
         .unwrap_or("reporoller-api")
         .to_string();
-    domain_request.actor_login = actor_login.clone();
+
+    // Translate HTTP request to domain request (includes validation).
+    // actor_login is passed directly so the builder sets it, keeping all
+    // construction through a single code path.
+    let domain_request =
+        http_create_repository_request_to_domain(request.clone(), actor_login.clone())?;
 
     // Create GitHub client for template operations
     let github_octocrab = std::sync::Arc::new(
@@ -159,9 +161,11 @@ pub async fn create_repository(
     // Create event notification dependencies
     let secret_resolver =
         std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new());
-    let metrics_registry = prometheus::Registry::new();
+    // Use the shared registry from AppState so metrics accumulate across requests
+    // and remain scrapable by Prometheus. A per-request registry would be dropped
+    // at the end of this function, making all counters permanently zero.
     let metrics = std::sync::Arc::new(
-        repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry),
+        repo_roller_core::event_metrics::PrometheusEventMetrics::new(&state.metrics_registry),
     );
     let event_context =
         repo_roller_core::EventNotificationContext::new(&actor_login, secret_resolver, metrics);
@@ -567,12 +571,14 @@ pub async fn list_repository_types(
         .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
     // Convert to response format
-    // Descriptions are loaded from repository type configurations when they exist
+    // Descriptions are not available without an extra API call per type;
+    // returning the name is the most accurate data we have at this point.
+    // A dedicated endpoint (get_repository_type_config) provides full details.
     let types = type_names
         .into_iter()
         .map(|name| RepositoryTypeSummary {
             name: name.clone(),
-            description: format!("Repository type: {}", name),
+            description: name.clone(),
         })
         .collect();
 

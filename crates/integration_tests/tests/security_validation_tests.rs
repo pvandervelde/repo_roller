@@ -320,7 +320,76 @@ async fn test_template_variable_injection_protection() -> Result<()> {
         );
     }
 
+    // --- HTML/XSS payloads in variables must be HTML-encoded in rendered output ----
+    // Handlebars double-brace {{variable}} HTML-encodes output, so characters such
+    // as `<` and `>` become `&lt;` and `&gt;`. This means injected script tags
+    // will NOT execute when the output is used in an HTML context.
+    // We verify both that (a) the rendered output does NOT contain the raw `<script>`
+    // tag, and (b) the HTML-encoded form IS present, confirming encoding is active.
+    let xss_values = vec![
+        (
+            "<script>alert('XSS')</script>",
+            "&lt;script&gt;",
+            "<script>",
+        ),
+        (
+            "<img src=x onerror=alert('XSS')>",
+            "&lt;img src=x",
+            "<img src=x",
+        ),
+        ("'; DROP TABLE users; --", "&#x27;; DROP TABLE", "'; DROP"),
+    ];
+
+    for (value, expected_encoded, not_expected_raw) in xss_values {
+        let mut variables = HashMap::new();
+        variables.insert("description".to_string(), value.to_string());
+
+        let files = vec![(
+            "README.md".to_string(),
+            "# Description: {{description}}".to_string().into_bytes(),
+        )];
+
+        let request = TemplateProcessingRequest {
+            variables,
+            built_in_variables: HashMap::new(),
+            variable_configs: HashMap::new(),
+            templating_config: None,
+        };
+
+        let result = processor.process_template(&files, &request, Path::new("."));
+        assert!(
+            result.is_ok(),
+            "Template processing should succeed for XSS value: {}",
+            value
+        );
+
+        let processed = result.unwrap();
+        let readme = processed
+            .files
+            .iter()
+            .find(|(path, _)| path == "README.md")
+            .map(|(_, content)| String::from_utf8_lossy(content).into_owned())
+            .expect("README.md should be present in output");
+
+        // The raw dangerous string must NOT appear in output
+        assert!(
+            !readme.contains(not_expected_raw),
+            "Output must NOT contain raw value '{}' — Handlebars should have HTML-encoded it. Got: {}",
+            not_expected_raw,
+            readme
+        );
+        // The HTML-encoded form MUST appear, confirming encoding is active
+        assert!(
+            readme.contains(expected_encoded),
+            "Output must contain HTML-encoded form '{}'. Got: {}",
+            expected_encoded,
+            readme
+        );
+    }
+
     // --- Request builder accepts injection-like values without panicking ------
+    // (Separate from rendering — verifies the value is stored in the domain
+    // object verbatim before any template processing occurs)
     let risky_values = vec![
         "<script>alert('XSS')</script>",
         "<img src=x onerror=alert('XSS')>",

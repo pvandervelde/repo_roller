@@ -404,10 +404,16 @@ impl BasicConfigurationValidator {
 
     /// Validate conditional requirements across configuration.
     ///
-    /// Checks cross-field constraints that span multiple top-level settings
-    /// groups. Per-group cross-field rules (e.g., merge-method / commit-format)
-    /// are validated in their respective `validate_*` helpers; this function
-    /// handles constraints that involve two different groups.
+    /// Checks cross-field constraints that span **multiple top-level settings
+    /// groups** (e.g., a field in `repository` constraining a field in
+    /// `branch_protection`).  Single-group cross-field rules are validated
+    /// inside their respective `validate_*` helpers — for example, the
+    /// merge-method / commit-format constraints (merge_commit_title requires
+    /// allow_merge_commit = true) live in `validate_pull_request_settings`
+    /// because all relevant fields belong to the pull-request group.
+    ///
+    /// No cross-group rules are currently required; this method returns an
+    /// empty vector until such a need arises.
     fn validate_conditional_requirements(
         &self,
         _merged: &MergedConfiguration,

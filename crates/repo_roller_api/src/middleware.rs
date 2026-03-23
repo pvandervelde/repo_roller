@@ -35,8 +35,11 @@ pub struct AuthContext {
 }
 
 impl AuthContext {
-    /// Create a new authentication context
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// Create a new authentication context.
+    ///
+    /// Only used in tests — production code constructs `AuthContext` directly
+    /// inside `auth_middleware` after token validation.
+    #[cfg(test)]
     pub fn new(token: String) -> Self {
         Self {
             token,
@@ -155,12 +158,18 @@ async fn validate_token(token: &str) -> Result<(), AuthError> {
 /// Failure is treated as non-fatal — callers fall back to a default identity.
 async fn try_get_user_login(token: &str) -> Option<String> {
     let octocrab = github_client::create_token_client(token).ok()?;
-    octocrab
-        .current()
-        .user()
-        .await
-        .ok()
-        .map(|u| u.login.clone())
+    match octocrab.current().user().await {
+        Ok(user) => Some(user.login.clone()),
+        Err(e) => {
+            // Expected for installation tokens; logged at debug so it is
+            // observable without flooding production logs.
+            tracing::debug!(
+                "Could not resolve user login from token (expected for installation tokens): {}",
+                e
+            );
+            None
+        }
+    }
 }
 
 /// Organization authorization middleware.

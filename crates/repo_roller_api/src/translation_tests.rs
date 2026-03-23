@@ -24,7 +24,7 @@ fn test_http_to_domain_create_repository_request_valid() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -59,7 +59,7 @@ fn test_http_to_domain_invalid_repository_name() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_err());
 }
 
@@ -81,7 +81,7 @@ fn test_http_to_domain_invalid_organization_name() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_err());
 }
 
@@ -103,7 +103,7 @@ fn test_http_to_domain_invalid_template_name() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_err());
 }
 
@@ -192,7 +192,7 @@ fn test_http_to_domain_empty_variables() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -222,7 +222,7 @@ fn test_http_to_domain_multiple_variables() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -259,7 +259,7 @@ fn test_http_to_domain_empty_strategy_without_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -287,7 +287,7 @@ fn test_http_to_domain_empty_strategy_with_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -319,7 +319,7 @@ fn test_http_to_domain_custom_init_both_files() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -354,7 +354,7 @@ fn test_http_to_domain_custom_init_with_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -389,7 +389,7 @@ fn test_http_to_domain_template_strategy_requires_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_err());
 
     // Verify it's a validation error (checking the error type indirectly)
@@ -417,7 +417,7 @@ fn test_http_to_domain_default_content_strategy_with_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -442,7 +442,7 @@ fn test_http_to_domain_visibility_public() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -467,7 +467,7 @@ fn test_http_to_domain_visibility_private() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -492,7 +492,7 @@ fn test_http_to_domain_visibility_none() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok());
 
     let domain_req = result.unwrap();
@@ -517,7 +517,7 @@ fn test_http_to_domain_visibility_invalid() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_err());
 }
 
@@ -548,7 +548,7 @@ fn test_http_to_domain_teams_with_valid_permissions() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
     let domain_req = result.unwrap();
     assert_eq!(domain_req.teams.len(), 2);
@@ -579,7 +579,7 @@ fn test_http_to_domain_collaborators_with_valid_permissions() {
         collaborators,
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
     let domain_req = result.unwrap();
     assert_eq!(domain_req.collaborators.len(), 2);
@@ -614,7 +614,7 @@ fn test_http_to_domain_teams_invalid_permission_returns_error() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(
         result.is_err(),
         "Expected Err for invalid team permission, got Ok"
@@ -642,7 +642,7 @@ fn test_http_to_domain_collaborators_invalid_permission_returns_error() {
         collaborators,
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(
         result.is_err(),
         "Expected Err for invalid collaborator permission, got Ok"
@@ -667,7 +667,7 @@ fn test_http_to_domain_empty_teams_and_collaborators_yields_empty_maps() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
     let domain_req = result.unwrap();
     assert!(domain_req.teams.is_empty());
@@ -701,7 +701,7 @@ fn test_http_to_domain_teams_all_valid_access_levels() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req);
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
     assert!(result.is_ok(), "Expected Ok but got: {:?}", result.err());
     let domain_req = result.unwrap();
     assert_eq!(domain_req.teams.get("t-none"), Some(&AccessLevel::None));

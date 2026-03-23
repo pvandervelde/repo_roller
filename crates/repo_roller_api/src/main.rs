@@ -31,10 +31,19 @@ pub const DEFAULT_PORT: u16 = 8080;
 ///
 /// Contains shared configuration for API handlers.
 /// Actual service instances are created per-request using authentication context.
+///
+/// The `metrics_registry` is intentionally shared so that Prometheus counters
+/// accumulate across requests and can be scraped at a `/metrics` endpoint.
+/// Creating a new registry per-request would discard all accumulated metrics.
 #[derive(Clone)]
 pub struct AppState {
     /// Metadata repository name for organization settings
     pub metadata_repository_name: String,
+    /// Shared Prometheus registry for event metrics.
+    ///
+    /// Must be shared at the application level so metrics accumulate across
+    /// requests and remain scrapable by Prometheus.
+    pub metrics_registry: std::sync::Arc<prometheus::Registry>,
 }
 
 impl AppState {
@@ -46,6 +55,7 @@ impl AppState {
     pub fn new(metadata_repository_name: impl Into<String>) -> Self {
         Self {
             metadata_repository_name: metadata_repository_name.into(),
+            metrics_registry: std::sync::Arc::new(prometheus::Registry::new()),
         }
     }
 }

@@ -64,9 +64,45 @@
 //! ## Variable Substitution
 //!
 //! The engine uses Handlebars-style syntax for variable substitution:
-//! - `{{variable}}` - Simple variable substitution
+//! - `{{variable}}` - Variable substitution **with HTML encoding** (see note below)
+//! - `{{{variable}}}` - Variable substitution **without HTML encoding** (raw output)
 //! - `{{#if condition}}...{{/if}}` - Conditional blocks
 //! - `{{#each items}}...{{/each}}` - Iteration over lists
+//!
+//! ### HTML Encoding Behaviour
+//!
+//! **Important for template authors**: Handlebars' double-brace `{{variable}}` syntax
+//! HTML-encodes special characters in the substituted value:
+//!
+//! | Character | Encoded as |
+//! |-----------|-----------|
+//! | `<`       | `&lt;`    |
+//! | `>`       | `&gt;`    |
+//! | `&`       | `&amp;`   |
+//! | `"`       | `&quot;`  |
+//! | `` ` ``   | `&#x60;`  |
+//!
+//! This is correct and safe for **HTML files** (README rendered in a browser,
+//! HTML templates), where encoding prevents XSS.
+//!
+//! For **non-HTML files** (shell scripts, Makefiles, YAML, TOML, Rust source, etc.)
+//! where literal special characters are required, use triple-brace syntax instead:
+//!
+//! ```handlebars
+//! # HTML template ({{var}} is correct — encodes < > & for safety)
+//! <p>{{description}}</p>
+//!
+//! # Shell script (use {{{var}}} — && and backticks must not be encoded)
+//! #!/bin/bash
+//! set -e
+//! {{{build_command}}}
+//!
+//! # YAML (use {{{var}}} — colons and special chars must be literal)
+//! command: {{{command}}}
+//! ```
+//!
+//! When in doubt: use `{{{variable}}}` in non-HTML templates to guarantee
+//! variable values pass through byte-for-byte.
 //!
 //! ## Built-in Variables
 //!

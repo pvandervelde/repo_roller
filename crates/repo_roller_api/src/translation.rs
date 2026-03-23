@@ -35,6 +35,7 @@ use repo_roller_core::{
 /// - Template strategy is used without template name
 pub fn http_create_repository_request_to_domain(
     http_req: CreateRepositoryRequest,
+    actor_login: String,
 ) -> Result<RepositoryCreationRequest, ApiError> {
     // Validate and create branded types
     let name = RepositoryName::new(http_req.name).map_err(|e| {
@@ -148,6 +149,9 @@ pub fn http_create_repository_request_to_domain(
 
     // Add teams and collaborators
     builder = builder.teams(teams).collaborators(collaborators);
+
+    // Set the actor identity via builder to keep all construction through one path
+    builder = builder.actor(actor_login);
 
     Ok(builder.build())
 }
