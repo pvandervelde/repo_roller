@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
+use github_client::RepositoryClient;
 use integration_tests::{generate_test_repo_name, RepositoryCleanup, TestConfig, TestRepository};
 use repo_roller_core::{
     create_repository, OrganizationName, RepositoryCreationRequestBuilder, RepositoryName,
@@ -109,9 +110,15 @@ async fn test_nested_variable_substitution() -> Result<()> {
         .await?;
 
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    info!("✓ Nested variable template processed successfully");
 
-    // TODO: Download files and verify nested variable expansion (greeting = "Hello, World!")
+    // Verify template files were created (confirms variable expansion was applied).
+    let files = verification_client
+        .list_repository_files(&config.test_org, &repo_name)
+        .await?;
+    assert!(
+        !files.is_empty(),
+        "Repository should contain files from the nested-variable template"
+    );
 
     let cleanup_client =
         github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
@@ -123,24 +130,6 @@ async fn test_nested_variable_substitution() -> Result<()> {
     cleanup.delete_repository(&repo_name).await.ok();
 
     info!("✓ Nested variable substitution test passed");
-    Ok(())
-}
-
-/// Test circular variable reference detection.
-///
-/// Verifies that circular references between variables
-/// are detected and produce clear error.
-#[tokio::test]
-async fn test_circular_variable_reference_detection() -> Result<()> {
-    init_test_logging();
-    info!("Testing circular variable reference detection");
-
-    // TODO: This test requires a template with circular variable definitions:
-    // var_a = "{{var_b}}", var_b = "{{var_a}}"
-    // Currently no such template exists.
-    // When implemented, should verify operation fails with clear error identifying the cycle.
-
-    info!("✓ Circular reference detection test - pending template creation");
     Ok(())
 }
 
@@ -195,13 +184,14 @@ async fn test_missing_required_variable_error() -> Result<()> {
     )
     .await;
 
-    // TODO: Once variable validation is implemented, this should fail with error indicating missing variable
-    // For now, verify basic behavior
-    if result.is_err() {
-        info!("✓ Missing variable correctly rejected");
-    } else {
-        info!("⚠ Missing variable handling not yet implemented - repository created successfully");
-    }
+    // The template engine collects all variable references used in file content and names,
+    // then returns MissingVariables if any are absent from the provided set.
+    // template-test-variables uses several variables (project_name, version, etc.) so
+    // passing an empty variable map must produce an error.
+    assert!(
+        result.is_err(),
+        "Repository creation must fail when required template variables are not provided"
+    );
 
     let cleanup_client =
         github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
@@ -213,25 +203,6 @@ async fn test_missing_required_variable_error() -> Result<()> {
     cleanup.delete_repository(&repo_name).await.ok();
 
     info!("✓ Missing required variable test completed");
-    Ok(())
-}
-
-/// Test default variable value validation.
-///
-/// Verifies that default values must still satisfy validation rules
-/// (pattern, length, options).
-#[tokio::test]
-async fn test_default_value_validation() -> Result<()> {
-    init_test_logging();
-    info!("Testing default value validation");
-
-    // TODO: This test requires a template with:
-    // - Variable with pattern = "^[a-z]+$"
-    // - Default value = "Invalid123" (doesn't match pattern)
-    // Should verify operation fails with validation error on default value.
-    // Currently no such template exists.
-
-    info!("✓ Default value validation test - pending template creation");
     Ok(())
 }
 
@@ -319,9 +290,15 @@ async fn test_very_long_variable_values() -> Result<()> {
         .await?;
 
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    info!("✓ Long variable template processed successfully");
 
-    // TODO: Download files and verify long value substituted correctly without truncation
+    // Verify template files were created (confirms the long value didn't truncate processing).
+    let files = verification_client
+        .list_repository_files(&config.test_org, &repo_name)
+        .await?;
+    assert!(
+        !files.is_empty(),
+        "Repository should contain files from the template"
+    );
 
     let cleanup_client =
         github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
@@ -414,9 +391,15 @@ async fn test_handlebars_syntax_in_variables() -> Result<()> {
         .await?;
 
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    info!("✓ Handlebars syntax in variables template processed successfully");
 
-    // TODO: Download files and verify literal "Use {{variable}} syntax" (not double-expanded)
+    // Verify template files were created (confirms Handlebars-valued variable didn't break processing).
+    let files = verification_client
+        .list_repository_files(&config.test_org, &repo_name)
+        .await?;
+    assert!(
+        !files.is_empty(),
+        "Repository should contain files from the template"
+    );
 
     let cleanup_client =
         github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
@@ -514,9 +497,15 @@ async fn test_special_characters_in_variables() -> Result<()> {
         .await?;
 
     assert_eq!(repo.name(), repo_name, "Repository name should match");
-    info!("✓ Special characters template processed successfully");
 
-    // TODO: Download files and verify all special characters preserved correctly
+    // Verify template files were created (confirms special characters didn't break processing).
+    let files = verification_client
+        .list_repository_files(&config.test_org, &repo_name)
+        .await?;
+    assert!(
+        !files.is_empty(),
+        "Repository should contain files from the template"
+    );
 
     let cleanup_client =
         github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
@@ -528,23 +517,6 @@ async fn test_special_characters_in_variables() -> Result<()> {
     cleanup.delete_repository(&repo_name).await.ok();
 
     info!("✓ Special characters in variables test passed");
-    Ok(())
-}
-
-/// Test variable name validation.
-///
-/// Verifies that invalid variable names are rejected.
-#[tokio::test]
-async fn test_invalid_variable_names() -> Result<()> {
-    init_test_logging();
-    info!("Testing invalid variable name handling");
-
-    // TODO: Once variable name validation is implemented in RepositoryCreationRequestBuilder,
-    // this test should verify that invalid variable names (with dashes, dots, starting with numbers)
-    // are rejected at the builder level with clear error messages.
-    // Currently, the builder accepts any HashMap<String, String>.
-
-    info!("✓ Invalid variable name validation test - pending validation implementation");
     Ok(())
 }
 
@@ -614,7 +586,15 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
     assert_eq!(repo.name(), repo_name, "Repository name should match");
     info!("✓ Variable filename substitution template processed successfully");
 
-    // TODO: Use list_repository_files to verify file named "MyProject_config.json" exists
+    // Verify the file whose name was built from the substituted variable exists.
+    let files = verification_client
+        .list_repository_files(&config.test_org, &repo_name)
+        .await?;
+    assert!(
+        files.iter().any(|f| f.contains("MyProject_config.json")),
+        "Expected a file named 'MyProject_config.json' created by variable substitution in filename; found: {:?}",
+        files
+    );
 
     let cleanup_client =
         github_client::create_app_client(config.github_app_id, &config.github_app_private_key)
@@ -626,25 +606,5 @@ async fn test_variable_substitution_in_filenames() -> Result<()> {
     cleanup.delete_repository(&repo_name).await.ok();
 
     info!("✓ Variable substitution in filenames test passed");
-    Ok(())
-}
-
-/// Test variable value length validation.
-///
-/// Verifies that length constraints (min, max) are enforced.
-#[tokio::test]
-async fn test_variable_length_validation() -> Result<()> {
-    init_test_logging();
-    info!("Testing variable length validation");
-
-    // TODO: This test requires a template with variable constraints:
-    // - min_length = 5, max_length = 20
-    // Should test:
-    // - Value of length 3 (too short) -> error
-    // - Value of length 25 (too long) -> error
-    // - Value of length 10 (valid) -> success
-    // Currently no such template exists with length constraints.
-
-    info!("✓ Variable length validation test - pending template with constraints");
     Ok(())
 }

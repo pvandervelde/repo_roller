@@ -260,7 +260,7 @@ pub async fn create_repository(
         repo_roller_core::event_metrics::PrometheusEventMetrics::new(&metrics_registry),
     );
     let event_context = repo_roller_core::EventNotificationContext::new(
-        "cli-user", // TODO: Get actual user from auth context
+        &request.actor_login,
         secret_resolver,
         metrics,
     );
@@ -550,6 +550,11 @@ where
         .collect::<Result<_, Error>>()?;
 
     builder = builder.teams(teams).collaborators(collaborators);
+
+    // CLI acts as the "reporoller-cli" service actor. Determining the
+    // specific human user behind an installation token requires an additional
+    // GitHub API call (/user) which is not yet wired for the CLI path.
+    builder = builder.actor("reporoller-cli".to_string());
 
     let req = builder.build();
 

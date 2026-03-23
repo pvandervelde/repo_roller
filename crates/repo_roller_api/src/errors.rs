@@ -109,7 +109,9 @@ impl IntoResponse for ApiError {
             if let Some(repo_error) = self.0.downcast_ref::<RepoRollerError>() {
                 convert_reporoller_error(repo_error)
             } else {
-                // Fallback for non-RepoRollerError types (temporary during migration)
+                // Fallback for errors that are not wrapped in RepoRollerError.
+                // This handles anyhow errors injected directly via `ApiError::from(anyhow::Error)`
+                // in handlers that construct ad-hoc error messages.
                 convert_error(&self.0)
             };
 

@@ -151,6 +151,291 @@ fn test_validate_pull_request_settings_zero_review_count() {
 }
 
 // ============================================================================
+// Cross-field PR Validation Tests
+// ============================================================================
+
+fn pr_settings_with_merge_commit_title_but_merge_disabled() -> PullRequestSettings {
+    PullRequestSettings {
+        required_approving_review_count: None,
+        allow_merge_commit: Some(OverridableValue {
+            value: false,
+            override_allowed: false,
+        }),
+        allow_squash_merge: None,
+        allow_rebase_merge: None,
+        allow_auto_merge: None,
+        delete_branch_on_merge: None,
+        require_code_owner_reviews: None,
+        require_conversation_resolution: None,
+        merge_commit_title: Some(OverridableValue {
+            value: "PR_TITLE".to_string(),
+            override_allowed: false,
+        }),
+        merge_commit_message: None,
+        squash_merge_commit_title: None,
+        squash_merge_commit_message: None,
+    }
+}
+
+fn pr_settings_with_squash_commit_message_but_squash_disabled() -> PullRequestSettings {
+    PullRequestSettings {
+        required_approving_review_count: None,
+        allow_merge_commit: None,
+        allow_squash_merge: Some(OverridableValue {
+            value: false,
+            override_allowed: false,
+        }),
+        allow_rebase_merge: None,
+        allow_auto_merge: None,
+        delete_branch_on_merge: None,
+        require_code_owner_reviews: None,
+        require_conversation_resolution: None,
+        merge_commit_title: None,
+        merge_commit_message: None,
+        squash_merge_commit_title: None,
+        squash_merge_commit_message: Some(OverridableValue {
+            value: "BLANK".to_string(),
+            override_allowed: false,
+        }),
+    }
+}
+
+/// Verify merge_commit_title is rejected when allow_merge_commit is explicitly false.
+#[test]
+fn test_merge_commit_title_disallowed_when_merge_commits_disabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = pr_settings_with_merge_commit_title_but_merge_disabled();
+
+    let errors = validator.validate_pull_request_settings(&settings);
+
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one error, got: {:?}",
+        errors
+    );
+    assert_eq!(
+        errors[0].error_type,
+        ValidationErrorType::BusinessRuleViolation
+    );
+    assert_eq!(errors[0].field_path, "pull_requests.merge_commit_title");
+    assert!(
+        errors[0].message.contains("allow_merge_commit is false"),
+        "unexpected message: {}",
+        errors[0].message
+    );
+}
+
+/// Verify merge_commit_message is rejected when allow_merge_commit is explicitly false.
+#[test]
+fn test_merge_commit_message_disallowed_when_merge_commits_disabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = PullRequestSettings {
+        merge_commit_title: None,
+        merge_commit_message: Some(OverridableValue {
+            value: "BLANK".to_string(),
+            override_allowed: false,
+        }),
+        ..pr_settings_with_merge_commit_title_but_merge_disabled()
+    };
+
+    let errors = validator.validate_pull_request_settings(&settings);
+
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one error, got: {:?}",
+        errors
+    );
+    assert_eq!(
+        errors[0].error_type,
+        ValidationErrorType::BusinessRuleViolation
+    );
+    assert_eq!(errors[0].field_path, "pull_requests.merge_commit_message");
+}
+
+/// Verify both merge_commit_title and merge_commit_message produce separate errors
+/// when allow_merge_commit is false.
+#[test]
+fn test_merge_commit_title_and_message_both_disallowed_when_merge_commits_disabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = PullRequestSettings {
+        allow_merge_commit: Some(OverridableValue {
+            value: false,
+            override_allowed: false,
+        }),
+        merge_commit_title: Some(OverridableValue {
+            value: "PR_TITLE".to_string(),
+            override_allowed: false,
+        }),
+        merge_commit_message: Some(OverridableValue {
+            value: "BLANK".to_string(),
+            override_allowed: false,
+        }),
+        required_approving_review_count: None,
+        allow_squash_merge: None,
+        allow_rebase_merge: None,
+        allow_auto_merge: None,
+        delete_branch_on_merge: None,
+        require_code_owner_reviews: None,
+        require_conversation_resolution: None,
+        squash_merge_commit_title: None,
+        squash_merge_commit_message: None,
+    };
+
+    let errors = validator.validate_pull_request_settings(&settings);
+
+    assert_eq!(errors.len(), 2, "expected two errors, got: {:?}", errors);
+    let paths: Vec<&str> = errors.iter().map(|e| e.field_path.as_str()).collect();
+    assert!(paths.contains(&"pull_requests.merge_commit_title"));
+    assert!(paths.contains(&"pull_requests.merge_commit_message"));
+}
+
+/// Verify squash_merge_commit_message is rejected when allow_squash_merge is explicitly false.
+#[test]
+fn test_squash_commit_message_disallowed_when_squash_merges_disabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = pr_settings_with_squash_commit_message_but_squash_disabled();
+
+    let errors = validator.validate_pull_request_settings(&settings);
+
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one error, got: {:?}",
+        errors
+    );
+    assert_eq!(
+        errors[0].error_type,
+        ValidationErrorType::BusinessRuleViolation
+    );
+    assert_eq!(
+        errors[0].field_path,
+        "pull_requests.squash_merge_commit_message"
+    );
+    assert!(
+        errors[0].message.contains("allow_squash_merge is false"),
+        "unexpected message: {}",
+        errors[0].message
+    );
+}
+
+/// Verify squash_merge_commit_title is rejected when allow_squash_merge is explicitly false.
+#[test]
+fn test_squash_commit_title_disallowed_when_squash_merges_disabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = PullRequestSettings {
+        squash_merge_commit_message: None,
+        squash_merge_commit_title: Some(OverridableValue {
+            value: "PR_TITLE".to_string(),
+            override_allowed: false,
+        }),
+        ..pr_settings_with_squash_commit_message_but_squash_disabled()
+    };
+
+    let errors = validator.validate_pull_request_settings(&settings);
+
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one error, got: {:?}",
+        errors
+    );
+    assert_eq!(
+        errors[0].error_type,
+        ValidationErrorType::BusinessRuleViolation
+    );
+    assert_eq!(
+        errors[0].field_path,
+        "pull_requests.squash_merge_commit_title"
+    );
+}
+
+/// Verify merge_commit_title is allowed when allow_merge_commit is explicitly true.
+#[test]
+fn test_merge_commit_title_allowed_when_merge_commits_enabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = PullRequestSettings {
+        required_approving_review_count: None,
+        allow_merge_commit: Some(OverridableValue {
+            value: true,
+            override_allowed: true,
+        }),
+        allow_squash_merge: None,
+        allow_rebase_merge: None,
+        allow_auto_merge: None,
+        delete_branch_on_merge: None,
+        require_code_owner_reviews: None,
+        require_conversation_resolution: None,
+        merge_commit_title: Some(OverridableValue {
+            value: "PR_TITLE".to_string(),
+            override_allowed: true,
+        }),
+        merge_commit_message: None,
+        squash_merge_commit_title: None,
+        squash_merge_commit_message: None,
+    };
+
+    let errors = validator.validate_pull_request_settings(&settings);
+    assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+}
+
+/// Verify merge_commit_title is allowed when allow_merge_commit is unset (None).
+#[test]
+fn test_merge_commit_title_allowed_when_merge_commits_unset() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = PullRequestSettings {
+        required_approving_review_count: None,
+        allow_merge_commit: None,
+        allow_squash_merge: None,
+        allow_rebase_merge: None,
+        allow_auto_merge: None,
+        delete_branch_on_merge: None,
+        require_code_owner_reviews: None,
+        require_conversation_resolution: None,
+        merge_commit_title: Some(OverridableValue {
+            value: "PR_TITLE".to_string(),
+            override_allowed: true,
+        }),
+        merge_commit_message: None,
+        squash_merge_commit_title: None,
+        squash_merge_commit_message: None,
+    };
+
+    let errors = validator.validate_pull_request_settings(&settings);
+    assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+}
+
+/// Verify squash_merge_commit_title is allowed when allow_squash_merge is explicitly true.
+#[test]
+fn test_squash_commit_title_allowed_when_squash_merges_enabled() {
+    let validator = BasicConfigurationValidator::new();
+    let settings = PullRequestSettings {
+        required_approving_review_count: None,
+        allow_merge_commit: None,
+        allow_squash_merge: Some(OverridableValue {
+            value: true,
+            override_allowed: true,
+        }),
+        allow_rebase_merge: None,
+        allow_auto_merge: None,
+        delete_branch_on_merge: None,
+        require_code_owner_reviews: None,
+        require_conversation_resolution: None,
+        merge_commit_title: None,
+        merge_commit_message: None,
+        squash_merge_commit_title: Some(OverridableValue {
+            value: "PR_TITLE".to_string(),
+            override_allowed: true,
+        }),
+        squash_merge_commit_message: None,
+    };
+
+    let errors = validator.validate_pull_request_settings(&settings);
+    assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+}
+
+// ============================================================================
 // Branch Protection Validation Tests
 // ============================================================================
 

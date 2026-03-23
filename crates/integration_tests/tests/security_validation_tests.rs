@@ -8,6 +8,8 @@ use auth_handler::UserAuthenticationService;
 use repo_roller_core::{
     OrganizationName, RepositoryCreationRequestBuilder, RepositoryName, TemplateName,
 };
+use std::collections::HashMap;
+use std::path::Path;
 use tracing::info;
 
 /// Test repository name security validation.
@@ -207,43 +209,67 @@ async fn test_template_name_validation_security() -> Result<()> {
 
 /// Test that variable values don't allow code injection.
 ///
-/// Verifies that template variable values are properly sanitized
-/// and don't allow injection of executable code.
+/// Verifies that template variable values are stored and rendered literally —
+/// they are not executed as shell commands, not re-evaluated as template syntax,
+/// and not interpreted as HTML.
 #[tokio::test]
 async fn test_template_variable_injection_protection() -> Result<()> {
     info!("Testing template variable injection protection");
 
-    // Test: Script tags in variables
-    let script_injection_values = vec![
-        "<script>alert('XSS')</script>",
-        "<img src=x onerror=alert('XSS')>",
-        "'; DROP TABLE users; --",
-    ];
+    use template_engine::{TemplateProcessingRequest, TemplateProcessor};
 
-    for value in script_injection_values {
-        // Create a request with potentially malicious variable
-        let result = RepositoryCreationRequestBuilder::new(
-            RepositoryName::new("test-repo")?,
-            OrganizationName::new("test-org")?,
-        )
-        .template(TemplateName::new("test-template")?)
-        .variable("description", value)
-        .build();
+    let processor = TemplateProcessor::new().expect("Failed to create template processor");
 
-        // The variable should be accepted (will be escaped during template processing)
-        // but we should verify it doesn't execute
+    // --- Template syntax must not be double-expanded --------------------------
+    // If a variable value contains Handlebars syntax such as {{other}}, it must
+    // appear literally in the rendered output and not trigger a second round of
+    // template expansion.
+    let template_injection_values = vec!["{{nested}}", "{% code %}", "${variable}"];
+
+    for value in template_injection_values {
+        let mut variables = HashMap::new();
+        variables.insert("description".to_string(), value.to_string());
+
+        let files = vec![(
+            "README.md".to_string(),
+            "# Description: {{description}}".to_string().into_bytes(),
+        )];
+
+        let request = TemplateProcessingRequest {
+            variables,
+            built_in_variables: HashMap::new(),
+            variable_configs: HashMap::new(),
+            templating_config: None,
+        };
+
+        let result = processor.process_template(&files, &request, Path::new("."));
         assert!(
-            result.variables.contains_key("description"),
-            "Variable should be stored"
+            result.is_ok(),
+            "Template processing should succeed for value: {}",
+            value
         );
 
-        // TODO: Actual injection protection verification would require:
-        // 1. Processing the template with this variable
-        // 2. Verifying the output is properly escaped
-        // 3. Confirming no code execution occurred
+        let processed = result.unwrap();
+        let readme = processed
+            .files
+            .iter()
+            .find(|(path, _)| path == "README.md")
+            .map(|(_, content)| String::from_utf8_lossy(content).into_owned())
+            .expect("README.md should be present in output");
+
+        // The variable value must appear literally — not expanded again
+        assert!(
+            readme.contains(value),
+            "Output must contain the literal value '{}', got: {}",
+            value,
+            readme
+        );
     }
 
-    // Test: Shell commands in variables
+    // --- Shell command syntax in variables must be preserved literally --------
+    // Shell metacharacters inside variable values must never be executed.
+    // The template engine writes files; it is not a shell interpreter. These
+    // values should pass through unchanged.
     let shell_injection_values = vec![
         "`rm -rf /`",
         "$(malicious command)",
@@ -252,35 +278,141 @@ async fn test_template_variable_injection_protection() -> Result<()> {
     ];
 
     for value in shell_injection_values {
-        let result = RepositoryCreationRequestBuilder::new(
-            RepositoryName::new("test-repo")?,
-            OrganizationName::new("test-org")?,
-        )
-        .template(TemplateName::new("test-template")?)
-        .variable("command", value)
-        .build();
+        let mut variables = HashMap::new();
+        variables.insert("command".to_string(), value.to_string());
 
+        let files = vec![(
+            "script.sh".to_string(),
+            // Triple-brace {{{command}}} disables HTML escaping so the raw value
+            // passes through verbatim. The security property (no shell execution)
+            // is guaranteed by the Handlebars processing model, not by encoding.
+            b"#!/bin/bash\n# Command: {{{command}}}".to_vec(),
+        )];
+
+        let request = TemplateProcessingRequest {
+            variables,
+            built_in_variables: HashMap::new(),
+            variable_configs: HashMap::new(),
+            templating_config: None,
+        };
+
+        let result = processor.process_template(&files, &request, Path::new("."));
         assert!(
-            result.variables.contains_key("command"),
-            "Variable should be stored (will be escaped)"
+            result.is_ok(),
+            "Template processing should succeed for shell value: {}",
+            value
+        );
+
+        let processed = result.unwrap();
+        let script = processed
+            .files
+            .iter()
+            .find(|(path, _)| path == "script.sh")
+            .map(|(_, content)| String::from_utf8_lossy(content).into_owned())
+            .expect("script.sh should be present in output");
+
+        // The value must appear literally — not interpreted as a shell command
+        assert!(
+            script.contains(value),
+            "Output must contain the literal shell value '{}', got: {}",
+            value,
+            script
         );
     }
 
-    // Test: Template syntax in variables (nested templates)
-    let template_injection_values = vec!["{{nested}}", "{% code %}", "${variable}"];
+    // --- HTML/XSS payloads in variables must be HTML-encoded in rendered output ----
+    // Handlebars double-brace {{variable}} HTML-encodes output, so characters such
+    // as `<` and `>` become `&lt;` and `&gt;`. This means injected script tags
+    // will NOT execute when the output is used in an HTML context.
+    // We verify both that (a) the rendered output does NOT contain the raw `<script>`
+    // tag, and (b) the HTML-encoded form IS present, confirming encoding is active.
+    let xss_values = vec![
+        (
+            "<script>alert('XSS')</script>",
+            "&lt;script&gt;",
+            "<script>",
+        ),
+        (
+            "<img src=x onerror=alert('XSS')>",
+            // Handlebars also encodes '=' as &#x3D;, so check the prefix only
+            "&lt;img src",
+            "<img src=x",
+        ),
+        ("'; DROP TABLE users; --", "&#x27;; DROP TABLE", "'; DROP"),
+    ];
 
-    for value in template_injection_values {
+    for (value, expected_encoded, not_expected_raw) in xss_values {
+        let mut variables = HashMap::new();
+        variables.insert("description".to_string(), value.to_string());
+
+        let files = vec![(
+            "README.md".to_string(),
+            "# Description: {{description}}".to_string().into_bytes(),
+        )];
+
+        let request = TemplateProcessingRequest {
+            variables,
+            built_in_variables: HashMap::new(),
+            variable_configs: HashMap::new(),
+            templating_config: None,
+        };
+
+        let result = processor.process_template(&files, &request, Path::new("."));
+        assert!(
+            result.is_ok(),
+            "Template processing should succeed for XSS value: {}",
+            value
+        );
+
+        let processed = result.unwrap();
+        let readme = processed
+            .files
+            .iter()
+            .find(|(path, _)| path == "README.md")
+            .map(|(_, content)| String::from_utf8_lossy(content).into_owned())
+            .expect("README.md should be present in output");
+
+        // The raw dangerous string must NOT appear in output
+        assert!(
+            !readme.contains(not_expected_raw),
+            "Output must NOT contain raw value '{}' — Handlebars should have HTML-encoded it. Got: {}",
+            not_expected_raw,
+            readme
+        );
+        // The HTML-encoded form MUST appear, confirming encoding is active
+        assert!(
+            readme.contains(expected_encoded),
+            "Output must contain HTML-encoded form '{}'. Got: {}",
+            expected_encoded,
+            readme
+        );
+    }
+
+    // --- Request builder accepts injection-like values without panicking ------
+    // (Separate from rendering — verifies the value is stored in the domain
+    // object verbatim before any template processing occurs)
+    let risky_values = vec![
+        "<script>alert('XSS')</script>",
+        "<img src=x onerror=alert('XSS')>",
+        "'; DROP TABLE users; --",
+    ];
+
+    for value in risky_values {
         let result = RepositoryCreationRequestBuilder::new(
             RepositoryName::new("test-repo")?,
             OrganizationName::new("test-org")?,
         )
         .template(TemplateName::new("test-template")?)
-        .variable("nested_template", value)
+        .variable("description", value)
         .build();
 
         assert!(
-            result.variables.contains_key("nested_template"),
-            "Variable should be stored (template engine should escape)"
+            result.variables.contains_key("description"),
+            "Variable should be stored"
+        );
+        assert_eq!(
+            result.variables["description"], value,
+            "Variable value must be preserved verbatim in the request"
         );
     }
 
@@ -328,71 +460,7 @@ async fn test_secrets_not_exposed_in_errors() -> Result<()> {
         "Error message should indicate authentication issue"
     );
 
-    // TODO: Test error serialization to JSON doesn't leak secrets
-    // let error_json = serde_json::to_string(&result.unwrap_err())?;
-    // assert!(!error_json.contains("FAKE_KEY_DATA"));
-
     info!("✓ Secrets exposure in errors tests passed");
-    Ok(())
-}
-
-/// Test authentication rate limiting protection.
-///
-/// Verifies that repeated authentication failures trigger rate limiting
-/// to prevent brute force attacks.
-#[tokio::test]
-async fn test_authentication_rate_limiting() -> Result<()> {
-    info!("Testing authentication rate limiting");
-
-    // TODO: Implement once we have rate limiting in the authentication layer
-    // This test would:
-    // 1. Make multiple failed authentication attempts rapidly
-    // 2. Verify that after N failures, we get rate limited
-    // 3. Verify 429 Too Many Requests response
-    // 4. Verify rate limit headers are present
-    // 5. Verify backoff period is enforced
-
-    info!("⚠ Authentication rate limiting test not yet implemented");
-    Ok(())
-}
-
-/// Test that path traversal is blocked in template processing.
-///
-/// Verifies that template files with path traversal attempts
-/// are rejected and cannot access files outside the template directory.
-#[tokio::test]
-async fn test_template_path_traversal_protection() -> Result<()> {
-    info!("Testing template path traversal protection");
-
-    // Test: Relative path traversal
-    let dangerous_paths = vec![
-        "../../../etc/passwd",
-        "../../secrets/api_key",
-        "../../../home/user/.ssh/id_rsa",
-    ];
-
-    for path in dangerous_paths {
-        // TODO: Test actual template processing with dangerous paths
-        // This requires integration with the template engine
-        info!("Path traversal test path: {}", path);
-    }
-
-    // Test: Absolute paths
-    let absolute_paths = vec![
-        "/etc/passwd",
-        "/root/.ssh/id_rsa",
-        "C:\\Windows\\System32\\config\\SAM",
-    ];
-
-    for path in absolute_paths {
-        // TODO: Test actual template processing with absolute paths
-        info!("Absolute path test: {}", path);
-    }
-
-    // Test: Symbolic link following (if applicable)
-    // This would need to be tested with actual file system operations
-
-    info!("⚠ Path traversal protection test needs template engine integration");
     Ok(())
 }
 

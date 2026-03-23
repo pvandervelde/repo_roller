@@ -364,8 +364,8 @@ async fn test_empty_flag_creates_empty_repository() {
     let req = &log.create_repository_args[0];
     assert_eq!(req.name.as_str(), "empty-repo");
     assert_eq!(req.owner.as_str(), "test-org");
-    // TODO (Task 6.7): After implementation, verify content_strategy is Empty
-    // assert!(matches!(req.content_strategy, ContentStrategy::Empty));
+    // Note: content_strategy field is not yet present on CreateRepositoryRequest.
+    // Once added, also assert: matches!(req.content_strategy, ContentStrategy::Empty)
 }
 
 /// Verify that --empty with --template uses template settings but no content.
@@ -398,8 +398,8 @@ async fn test_empty_with_template_uses_template_settings() {
     let req = &log.create_repository_args[0];
     assert_eq!(req.name.as_str(), "empty-templated-repo");
     assert_eq!(req.template.as_ref().unwrap().as_str(), "rust-service");
-    // TODO (Task 6.7): Verify content_strategy is Empty despite having template
-    // assert!(matches!(req.content_strategy, ContentStrategy::Empty));
+    // Note: content_strategy field is not yet present on CreateRepositoryRequest.
+    // Once added, also assert: matches!(req.content_strategy, ContentStrategy::Empty)
 }
 
 /// Verify that --init-readme flag creates repository with CustomInit strategy.
@@ -430,8 +430,8 @@ async fn test_init_readme_flag_creates_custom_init_repository() {
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name.as_str(), "readme-repo");
-    // TODO (Task 6.7): Verify content_strategy is CustomInit with include_readme=true
-    // assert!(matches!(req.content_strategy, ContentStrategy::CustomInit(_)));
+    // Note: content_strategy field is not yet present on CreateRepositoryRequest.
+    // Once added, also assert: matches!(req.content_strategy, ContentStrategy::CustomInit(_))
 }
 
 /// Verify that --init-gitignore flag creates repository with CustomInit strategy.
@@ -462,8 +462,8 @@ async fn test_init_gitignore_flag_creates_custom_init_repository() {
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name.as_str(), "gitignore-repo");
-    // TODO (Task 6.7): Verify content_strategy is CustomInit with include_gitignore=true
-    // assert!(matches!(req.content_strategy, ContentStrategy::CustomInit(_)));
+    // Note: content_strategy field is not yet present on CreateRepositoryRequest.
+    // Once added, also assert: matches!(req.content_strategy, ContentStrategy::CustomInit(_))
 }
 
 /// Verify that --init-readme --init-gitignore creates repository with both files.
@@ -494,8 +494,8 @@ async fn test_init_readme_and_gitignore_creates_both_files() {
     assert_eq!(log.create_repository_args.len(), 1);
     let req = &log.create_repository_args[0];
     assert_eq!(req.name.as_str(), "both-init-repo");
-    // TODO (Task 6.7): Verify content_strategy is CustomInit with both flags set
-    // assert!(matches!(req.content_strategy, ContentStrategy::CustomInit(opts) if opts.include_readme && opts.include_gitignore));
+    // Note: content_strategy field is not yet present on CreateRepositoryRequest.
+    // Once added, also assert: matches!(req.content_strategy, ContentStrategy::CustomInit(opts) if opts.include_readme && opts.include_gitignore)
 }
 
 /// Verify that init flags with template use template settings.
@@ -528,8 +528,8 @@ async fn test_init_flags_with_template_uses_template_settings() {
     let req = &log.create_repository_args[0];
     assert_eq!(req.name.as_str(), "init-with-template-repo");
     assert_eq!(req.template.as_ref().unwrap().as_str(), "rust-library");
-    // TODO (Task 6.7): Verify content_strategy is CustomInit with include_readme=true
-    // assert!(matches!(req.content_strategy, ContentStrategy::CustomInit(_)));
+    // Note: content_strategy field is not yet present on CreateRepositoryRequest.
+    // Once added, also assert: matches!(req.content_strategy, ContentStrategy::CustomInit(_))
 }
 
 /// Verify that template is not required when using --empty flag.

@@ -25,6 +25,7 @@ fn test_repository_creation_request_creation() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     assert_eq!(request.name, name);
@@ -49,6 +50,7 @@ fn test_repository_creation_request_with_variables() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     assert_eq!(request.variables.len(), 2);
@@ -68,6 +70,7 @@ fn test_repository_creation_request_clone() {
         visibility: None,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     let cloned = request.clone();
@@ -91,6 +94,7 @@ fn test_repository_creation_request_debug() {
         visibility: None,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     let debug_output = format!("{:?}", request);
@@ -118,6 +122,7 @@ fn test_repository_creation_request_type_safety() {
         visibility: None,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     // Verify we can access the values
@@ -138,6 +143,7 @@ fn test_repository_creation_request_empty_variables() {
         visibility: None,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     assert!(request.variables.is_empty());
@@ -165,6 +171,7 @@ fn test_repository_creation_request_validates_names() {
         visibility: None,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     assert_eq!(request.name.as_str(), "valid-repo");
@@ -760,6 +767,7 @@ fn test_request_empty_strategy_validation() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     // Should not panic or error - Empty strategy doesn't require template
@@ -781,6 +789,7 @@ fn test_request_custom_init_strategy_validation() {
         },
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        actor_login: "test-user".to_string(),
     };
 
     // Should not panic or error - CustomInit strategy doesn't require template

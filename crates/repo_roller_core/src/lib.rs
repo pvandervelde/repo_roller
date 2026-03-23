@@ -310,10 +310,6 @@ impl From<DateTime<Utc>> for Timestamp {
 #[path = "lib_tests.rs"]
 mod tests;
 
-#[cfg(test)]
-#[path = "lib_integration_tests.rs"]
-mod integration_tests;
-
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /// GitHub clients created during the authentication step.

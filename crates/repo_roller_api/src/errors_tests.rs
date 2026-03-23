@@ -1,8 +1,8 @@
 //! Tests for error handling and HTTP conversion
 
 use super::*;
-use axum::http::StatusCode;
-use repo_roller_core::AuthenticationError;
+use axum::{http::StatusCode, response::IntoResponse};
+use repo_roller_core::{AuthenticationError, RepoRollerError};
 
 #[test]
 fn test_authentication_error_invalid_token() {
@@ -176,11 +176,155 @@ fn test_error_response_without_details() {
     assert!(!serialized.contains("details"));
 }
 
-// TODO: Add tests for other RepoRollerError variants:
-// - ValidationError → 400 Bad Request
-// - RepositoryError → various status codes depending on variant
-// - ConfigurationError → 500 Internal Server Error or 400 Bad Request
-// - TemplateError → 400 Bad Request or 404 Not Found
-// - GitHubError → 502 Bad Gateway or 500 Internal Server Error
-// - SystemError → 500 Internal Server Error
-// These tests will be added as error conversion functions are implemented.
+// ============================================================================
+// RepoRollerError variant conversion tests
+// ============================================================================
+
+#[test]
+fn test_validation_error_empty_field_returns_400() {
+    use repo_roller_core::ValidationError;
+    let error = RepoRollerError::Validation(ValidationError::EmptyField {
+        field: "name".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn test_validation_error_invalid_repository_name_returns_400() {
+    use repo_roller_core::ValidationError;
+    let error = RepoRollerError::Validation(ValidationError::InvalidRepositoryName {
+        reason: "contains invalid characters".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn test_repository_error_already_exists_returns_409() {
+    use repo_roller_core::RepositoryError;
+    let error = RepoRollerError::Repository(RepositoryError::AlreadyExists {
+        org: "my-org".to_string(),
+        name: "my-repo".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+}
+
+#[test]
+fn test_repository_error_not_found_returns_404() {
+    use repo_roller_core::RepositoryError;
+    let error = RepoRollerError::Repository(RepositoryError::NotFound {
+        org: "my-org".to_string(),
+        name: "my-repo".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn test_repository_error_creation_failed_returns_500() {
+    use repo_roller_core::RepositoryError;
+    let error = RepoRollerError::Repository(RepositoryError::CreationFailed {
+        reason: "GitHub API error".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[test]
+fn test_configuration_error_not_found_returns_404() {
+    use config_manager::ConfigurationError;
+    let error = RepoRollerError::Configuration(ConfigurationError::MetadataRepositoryNotFound {
+        org: "my-org".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn test_configuration_error_invalid_returns_400() {
+    use config_manager::ConfigurationError;
+    let error = RepoRollerError::Configuration(ConfigurationError::InvalidConfiguration {
+        field: "webhooks[0].url".to_string(),
+        reason: "must use HTTPS".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn test_template_error_not_found_returns_404() {
+    use repo_roller_core::TemplateError;
+    let error = RepoRollerError::Template(TemplateError::TemplateNotFound {
+        name: "rust-service".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn test_template_error_syntax_returns_400() {
+    use repo_roller_core::TemplateError;
+    let error = RepoRollerError::Template(TemplateError::SyntaxError {
+        file: "README.md".to_string(),
+        reason: "unclosed block".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn test_github_error_api_failure_returns_502() {
+    use repo_roller_core::GitHubError;
+    let error = RepoRollerError::GitHub(GitHubError::ApiRequestFailed {
+        status: 503,
+        message: "Service Unavailable".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[test]
+fn test_github_error_rate_limit_returns_429() {
+    use repo_roller_core::GitHubError;
+    let error = RepoRollerError::GitHub(GitHubError::RateLimitExceeded {
+        reset_at: "2026-01-01T00:00:00Z".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[test]
+fn test_system_error_internal_returns_500() {
+    use repo_roller_core::SystemError;
+    let error = RepoRollerError::System(SystemError::Internal {
+        reason: "unexpected panic".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[test]
+fn test_system_error_filesystem_returns_500() {
+    use repo_roller_core::SystemError;
+    let error = RepoRollerError::System(SystemError::FileSystem {
+        operation: "read".to_string(),
+        reason: "permission denied".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}

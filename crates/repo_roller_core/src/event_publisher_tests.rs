@@ -258,6 +258,7 @@ mod event_construction_tests {
             content_strategy: ContentStrategy::Template,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -311,6 +312,7 @@ mod event_construction_tests {
             content_strategy: ContentStrategy::Empty,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -361,6 +363,7 @@ mod event_construction_tests {
             },
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -412,6 +415,7 @@ mod event_construction_tests {
             content_strategy: ContentStrategy::Empty,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         // Act
@@ -469,6 +473,7 @@ mod event_construction_tests {
             content_strategy: ContentStrategy::Empty,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         // Act
@@ -509,6 +514,7 @@ mod event_construction_tests {
             content_strategy: ContentStrategy::Empty,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -571,6 +577,7 @@ mod event_construction_tests {
             content_strategy: ContentStrategy::Empty,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -1289,6 +1296,7 @@ mod publish_workflow_tests {
             content_strategy: ContentStrategy::Template,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         }
     }
 
@@ -1538,6 +1546,7 @@ mod http_delivery_tests {
             content_strategy: ContentStrategy::Template,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         }
     }
 
@@ -2421,6 +2430,7 @@ mod logging_tests {
             content_strategy: ContentStrategy::Empty,
             teams: HashMap::new(),
             collaborators: HashMap::new(),
+            actor_login: "test-user".to_string(),
         }
     }
 

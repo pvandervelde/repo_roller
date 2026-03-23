@@ -218,7 +218,7 @@ impl RepositoryNamingValidator {
         }
 
         // --- Allowed pattern (whole-name match) -------------------------------
-        // TODO: regex patterns are recompiled on every validation call. For the
+        // Note: regex patterns are recompiled on every validation call. For the
         // current usage (one call per repository creation) this is acceptable,
         // but a pre-compiled cache or RegexSet should be considered if bulk
         // validation is ever required.
