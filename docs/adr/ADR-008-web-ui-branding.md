@@ -1,4 +1,4 @@
-# ADR-0008: Web UI Deployment-Time Branding
+# ADR-008: Web UI Deployment-Time Branding
 
 Status: Accepted
 Date: 2026-03-24

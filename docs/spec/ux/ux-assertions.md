@@ -84,7 +84,7 @@ Each assertion follows Given / When / Then structure.
 
 - **Given**: The user has entered a correctly-formatted repository name
 - **When**: The name field loses focus (blur event)
-- **Then**: A `POST /repositories/validate-name` API call is made
+- **Then**: A `POST /api/v1/repositories/validate-name` API call is made
 - **And**: The field shows a "Checking availability…" indicator during the call
 
 ### UX-ASSERT-011: Next / Create button is disabled while uniqueness check is in-flight
@@ -99,6 +99,14 @@ Each assertion follows Given / When / Then structure.
 - **When**: The result is shown to the user
 - **Then**: The name field shows an "already taken" error
 - **And**: The Next / Create button remains disabled until the name is changed
+
+### UX-ASSERT-028: Next / Create button is enabled when the uniqueness check could not be completed
+
+- **Given**: The uniqueness check API call fails (network error or server error)
+- **When**: The `check_failed` result is shown below the name field
+- **Then**: The Next / Create button is **enabled** (not disabled)
+- **And**: A warning indicator below the field advises the user that availability could not be confirmed
+- **And**: The user can proceed with the understanding that the name may already exist (a race-condition 422 on creation will handle the conflict)
 
 ### UX-ASSERT-013: Changing the name after a "taken" result clears the error immediately
 

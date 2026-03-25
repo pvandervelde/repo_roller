@@ -49,6 +49,11 @@ logo_alt    = "Acme logo"
 primary_color = "#d4451a"
 ```
 
+> **Security note**: `brand.toml` is a server-side configuration file. It **must not** be placed
+> inside the SvelteKit `static/` (or `public/`) directory — files in that directory are served
+> verbatim to all HTTP clients. Place `brand.toml` in the server's working directory outside the
+> static file serving root, or supply values exclusively via environment variables.
+
 ---
 
 ## How Branding Flows Into the UI

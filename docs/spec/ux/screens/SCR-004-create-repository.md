@@ -75,7 +75,7 @@ Selected state (rust-library chosen, details loaded):
 |  +----------------------------------------------------------+|
 |  | e.g. my-new-service                                      ||
 |  +----------------------------------------------------------+|
-|  Lowercase letters, numbers, and hyphens only.               |
+|  Lowercase letters, numbers, hyphens, underscores, dots.     |
 |                after blur → [ ✓ Available ]                  |
 |                                                              |
 |  Repository type                                             |
@@ -269,12 +269,16 @@ is ready without delay.
 - Template cards interactive
 - Next button: disabled
 
-#### Card selected
+#### Card selected — fetch in progress
 
 - Selected card: highlighted border, checkmark in top-right corner
-- Template details fetch begins in background (GET /orgs/{org}/templates/{template})
-- Next button: enabled (unless details fetch failed — see error state below)
+- Template details fetch begins immediately (`GET /api/v1/orgs/{org}/templates/{template}`)
+- Next button: **disabled** while the fetch is in-flight
 - Previously selected template (if user came back from Step 2): pre-selected on return
+
+#### Card selected — fetch complete
+
+- Next button: **enabled** — transitions automatically when the fetch succeeds; no user action required
 
 #### Template details fetch error (after card selection)
 
@@ -297,8 +301,8 @@ is ready without delay.
 
 | Element | Action | Outcome |
 |---|---|---|
-| Template card | Click | Card selected; details fetch begins; Next activates |
-| Different card (when one already selected) | Click | New card selected; details refetched; previous selection cleared |
+| Template card | Click | Card selected; details fetch begins; Next remains disabled until fetch succeeds |
+| Different card (when one already selected) | Click | New card selected; details refetched; previous selection cleared; Next disabled during refetch |
 | Search/filter bar | Type | Template cards filtered client-side (by name, description, tags); no API call |
 | Search bar cleared | Clear | All templates shown again |
 | Retry button (API error state) | Click | Template list refetched |
@@ -330,7 +334,7 @@ populated with defaults from the template or org configuration.
 - Label: "Repository name"
 - Input type: text
 - Placeholder: "e.g. my-new-service"
-- Helper text: "Lowercase letters, numbers, and hyphens only. Must be unique in the organization."
+- Helper text: "Lowercase letters, numbers, hyphens, underscores, and dots. Must be unique in the organization. Cannot start with a dot."
 - Validation behaviour:
   - **On type** (debounced 300ms): client-side format check only. Removes the "already taken" error
     immediately if the name changes.
@@ -358,7 +362,7 @@ Shown only when repository types are defined in the org configuration.
   - Dropdown, pre-selected to the template's preferred type
   - User can change it
   - Helper text: "Recommended by this template, but you can choose a different type."
-  - Dropdown options: all available repository types from `GET /orgs/{org}/repository-types`
+  - Dropdown options: all available repository types from `GET /api/v1/orgs/{org}/types`
 
   **Policy: `optional` or no policy**
   - Dropdown, default selection: "No specific type"
@@ -503,6 +507,10 @@ Displayed over the entire wizard while `POST /api/v1/repositories` is in flight.
 - Wizard step content is visually obscured (not removed from DOM — allows error recovery)
 - If the API call succeeds: navigates to `/create/success`
 - If the API call fails: overlay is dismissed; appropriate inline error is shown (see below)
+- **Timeout**: if no response is received within **90 seconds**, treat as a network error; dismiss
+  the overlay and show the "Could not reach the server. Check your connection and try again."
+  InlineAlert on the current step. The sub-message "This may take up to a minute" implies a
+  ~60-second expected maximum; the 90-second timeout adds a safety margin before giving up.
 
 ---
 
@@ -547,7 +555,7 @@ is dismissed before the error appears.
 |---|---|---|
 | Fetch template list | On step entry (page load) | `GET /api/v1/orgs/{org}/templates` |
 | Fetch template details | When user selects a template card | `GET /api/v1/orgs/{org}/templates/{template}` |
-| Fetch repository types | On step 2 entry (first time only) | `GET /api/v1/orgs/{org}/repository-types` |
+| Fetch repository types | On step 2 entry (first time only) | `GET /api/v1/orgs/{org}/types` |
 | Validate name uniqueness | On blur of name field (if format valid) | `POST /api/v1/repositories/validate-name` |
 | Create repository | On "Create Repository" click | `POST /api/v1/repositories` |
 

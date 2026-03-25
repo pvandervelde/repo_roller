@@ -37,7 +37,7 @@
 │                                                         │
 │         ✕  GitHub authorization was cancelled           │
 │                                                         │
-│  RepoRoller needs permission to read your GitHub        │
+|  [App Name] needs permission to read your GitHub        |
 │  identity to log who creates repositories.              │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
@@ -90,7 +90,7 @@ or the identity lookup failed).
 Shown when the user clicked "Cancel" on the GitHub authorization page.
 
 - Heading: "GitHub authorization was cancelled"
-- Message: "RepoRoller needs permission to read your GitHub identity to log who creates repositories."
+- Message: "[App Name] needs permission to read your GitHub identity to log who creates repositories."
 - Primary action button: "Try again" → `/sign-in`
 
 ### Org membership required (reason=not_org_member) — future
@@ -98,7 +98,7 @@ Shown when the user clicked "Cancel" on the GitHub authorization page.
 Shown when the org membership check is enabled and the user is not a member of the required org.
 
 - Heading: "Access restricted to organization members"
-- Message: "RepoRoller is available to members of [Org Name] only. If you believe this is an
+- Message: "[App Name] is available to members of [Org Name] only. If you believe this is an
   error, contact your administrator."
 - Primary action button: "Back to sign-in" → `/sign-in`
 
@@ -125,15 +125,15 @@ Shown when the org membership check is enabled and the user is not a member of t
 
 | Element | Copy |
 |---|---|
-| Page `<title>` | Access denied — RepoRoller |
+| Page `<title>` | Access denied — [App Name] |
 | OAuth error heading | Sign-in could not be completed |
 | OAuth error message | There was a problem connecting to GitHub. This is usually temporary. |
 | OAuth error button | Try again |
 | Access denied heading | GitHub authorization was cancelled |
-| Access denied message | RepoRoller needs permission to read your GitHub identity to log who creates repositories. |
+| Access denied message | [App Name] needs permission to read your GitHub identity to log who creates repositories. |
 | Access denied button | Try again |
 | Not org member heading | Access restricted to organization members |
-| Not org member message | RepoRoller is available to members of [org] only. If you believe this is an error, contact your administrator. |
+| Not org member message | [App Name] is available to members of [org] only. If you believe this is an error, contact your administrator. |
 | Not org member button | Back to sign-in |
 
 ---

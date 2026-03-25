@@ -98,7 +98,7 @@ UX specifications have been produced in `docs/spec/ux/`.
    creation attempt; they can correct and retry without starting over.
 6. **Deployment-time branding** — logo, app name, and primary colour are configured via
    `brand.toml` or environment variables; a CSS custom property (`--brand-primary`) propagates
-   the colour to all interactive elements. See [ADR-0008](../adr/ADR-0008-web-ui-branding.md).
+   the colour to all interactive elements. See [ADR-008](../adr/ADR-008-web-ui-branding.md).
 
 ### For the Interface Designer
 

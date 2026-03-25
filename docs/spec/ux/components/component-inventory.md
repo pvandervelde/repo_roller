@@ -62,6 +62,11 @@ All interactive elements in this component (and all other components) reference
 
 ## CMP-001b: BrandCard
 
+> **Naming note**: BrandCard shares the `001` base number with AppShell because it addresses the
+> same brand-identity concern — unauthenticated screens cannot use the AppShell header but must
+> still display the same logo/wordmark. The `b` suffix makes the structural relationship explicit.
+> All other components are numbered sequentially from `002`.
+
 **Used by**: SCR-001, SCR-002, SCR-003
 **Purpose**: Centred card shell for unauthenticated screens (sign-in, OAuth callback, access denied).
 Displays the brand logo/wordmark above the card content, providing visual continuity with the
@@ -237,9 +242,10 @@ type NameValidationResult =
 ### Internal behaviour
 
 - On type: debounce 300ms → client-side format check
-- Format regex (client-side): `^[a-z0-9][a-z0-9-]*[a-z0-9]$` or single alphanumeric char
-  (mirrors GitHub naming rules — lowercase, alphanumeric, hyphens, no leading/trailing hyphens)
-- On blur (if format valid): calls `POST /repositories/validate-name`; emits `checking` then result
+- Format regex (client-side): `^[a-z0-9._-]+$` with additional rules: cannot start with `.`;
+  cannot contain `..` sequence (mirrors backend validation — see `api-request-types.md`, Repository
+  Names section)
+- On blur (if format valid): calls `POST /api/v1/repositories/validate-name`; emits `checking` then result
 - On type after a "taken" result: clears taken state immediately (user is correcting the name)
 
 ### Accessibility

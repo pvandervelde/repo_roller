@@ -57,7 +57,7 @@ Use these strings verbatim in implementation. Do not use placeholder text like "
 | OAuth / network error | Message | There was a problem connecting to GitHub. This is usually temporary. |
 | OAuth / network error | Button | Try again |
 | User cancelled on GitHub | Heading `<h1>` | GitHub authorization was cancelled |
-| User cancelled on GitHub | Message | RepoRoller needs permission to read your GitHub identity to log who creates repositories. |
+| User cancelled on GitHub | Message | [App Name] needs permission to read your GitHub identity to log who creates repositories. |
 | User cancelled on GitHub | Button | Try again |
 | Not org member (future) | Heading `<h1>` | Access restricted to organization members |
 | Not org member (future) | Message | RepoRoller is available to members of [org] only. If you believe this is an error, contact your administrator. |
@@ -98,11 +98,11 @@ Use these strings verbatim in implementation. Do not use placeholder text like "
 | Step label (in progress indicator) | Settings |
 | Repository name label | Repository name |
 | Repository name placeholder | e.g. my-new-service |
-| Repository name helper text | Lowercase letters, numbers, and hyphens only. Must be unique in the organization. |
+| Repository name helper text | Lowercase letters, numbers, hyphens, underscores, and dots. Must be unique in the organization. Cannot start with a dot. |
 | Name checking indicator | Checking availability… |
 | Name available indicator | Available |
 | Name taken error | '[name]' is already taken in this organization. |
-| Name format error | Repository names may only contain lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen. |
+| Name format error | Repository names may only contain lowercase letters, numbers, hyphens (-), underscores (_), and dots (.). Names cannot start with a dot. |
 | Name availability check failed warning | Could not check availability. You can still proceed, but the name may already exist. |
 | Repository type label | Repository type |
 | Repository type fixed helper | This template requires a specific repository type. |
@@ -141,6 +141,7 @@ Use these strings verbatim in implementation. Do not use placeholder text like "
 | Spinner aria-label | Creating repository |
 | Overlay heading | Creating your repository… |
 | Overlay sub-message | This may take up to a minute. Please don't close this page. |
+| Overlay timeout error | Could not reach the server. Check your connection and try again. |
 
 ### Creation errors (InlineAlert messages)
 

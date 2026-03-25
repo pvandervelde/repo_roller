@@ -119,7 +119,7 @@ is malformed:
 - Repository name and link have clear label context
 - Applied config summary uses `<details>` / `<summary>` for semantic expand/collapse
 - "View repository on GitHub" button has `aria-label="View [org/name] on GitHub"` to give screen
-  readers the repository name in context; also has `target="_blank"` with `rel="noopener"`
+  readers the repository name in context; also has `target="_blank"` with `rel="noopener noreferrer"`
   and a visible "(opens in new tab)" indicator
 
 ---
@@ -128,7 +128,7 @@ is malformed:
 
 | Element | Copy |
 |---|---|
-| Page `<title>` | Repository created — RepoRoller |
+| Page `<title>` | Repository created — [App Name] |
 | Heading `<h1>` | Repository created! |
 | Repository link label | View on GitHub |
 | "View on GitHub" button | View repository on GitHub |
@@ -140,8 +140,21 @@ is malformed:
 
 ## Data Requirements
 
-- **Inputs**: `repo` query parameter (format: `{org}/{name}`) + full creation response stored in
-  session/navigation state from the creation redirect
+- **Inputs**: `repo` query parameter (format: `{org}/{name}`) + creation response and wizard
+  inputs stored in navigation state from the creation redirect
 - **No additional API calls** on this screen
-- The applied configuration details come from the `CreateRepositoryResponse.configuration`
-  returned by the creation API call, passed via navigation state (not re-fetched)
+- **Data sources for the "What was applied" section**:
+
+  | Field shown | Source |
+  |---|---|
+  | Repository full name, URL | `CreateRepositoryResponse.repository.full_name`, `.url` |
+  | Visibility | `CreateRepositoryResponse.repository.visibility` |
+  | Repository type | `CreateRepositoryResponse.repository.repository_type` (optional) |
+  | Creation timestamp | `CreateRepositoryResponse.repository.created_at` |
+  | Template name | Wizard navigation state (captured at step 1; not present in API response) |
+  | Team name | Wizard navigation state (captured at step 2; not present in API response) |
+
+  **Note**: `AppliedConfiguration.applied_settings` is internal configuration metadata (branch
+  protection rules, repository settings, etc.) and is not surfaced directly in this UI. Template
+  name and team name must be carried in navigation state from the wizard, as `RepositoryInfo`
+  does not include them.

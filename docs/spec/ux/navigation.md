@@ -80,4 +80,4 @@ Sign-out is available on all authenticated screens via the UserBadge dropdown in
 
 | Link | Destination | Behaviour |
 |---|---|---|
-| Repository link on SCR-005 | `https://github.com/{org}/{name}` | Opens in new tab (`target="_blank"`, `rel="noopener"`) |
+| Repository link on SCR-005 | `https://github.com/{org}/{name}` | Opens in new tab (`target="_blank"`, `rel="noopener noreferrer"`) |
