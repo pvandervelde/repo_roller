@@ -31,6 +31,7 @@ Write an ADR for decisions that:
 - [ADR-005: Multiple User Interface Strategy](ADR-005-multiple-user-interfaces.md) - CLI, API, MCP, and Azure Functions sharing single business logic core
 - [ADR-006: GitHub App Authentication](ADR-006-github-app-authentication.md) - Installation tokens for organization-scoped, auto-rotating authentication
 - [ADR-007: Repository Rulesets for Branch Protection](ADR-007-repository-rulesets.md) - Additive ruleset composition for flexible repository protection
+- [ADR-008: Web UI Deployment-Time Branding](ADR-008-web-ui-branding.md) - Four-token branding config (logo, name, colour) via env vars or brand.toml
 
 ## Related Documentation
 
