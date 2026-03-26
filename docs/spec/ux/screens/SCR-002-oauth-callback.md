@@ -86,7 +86,7 @@ There are no user interactions on this screen. Navigation is system-driven.
 
 | Element | Copy |
 |---|---|
-| Page `<title>` | Signing in… — RepoRoller |
+| Page `<title>` | Signing in… — [App Name] |
 | Heading `<h1>` | Completing sign-in |
 | Status message | You'll be redirected in a moment. |
 | Error heading | Sign-in could not be completed. |

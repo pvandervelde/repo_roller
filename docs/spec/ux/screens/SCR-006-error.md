@@ -111,7 +111,7 @@ that is not possible.
 
 | Element | Copy |
 |---|---|
-| Page `<title>` | Error — RepoRoller |
+| Page `<title>` | Error — [App Name] |
 | Generic heading | Something went wrong |
 | Generic message | An unexpected error occurred. If this keeps happening, contact your platform team. |
 | Generic button | Try again |

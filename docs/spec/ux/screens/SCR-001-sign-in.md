@@ -44,7 +44,7 @@ briefly and provide the single sign-in action.
 ## Layout
 
 - Centred card, single column, vertically centred on the viewport
-- RepoRoller logo/wordmark at top
+- [App Name] logo/wordmark at top
 - One-line description of what the tool does
 - "Sign in with GitHub" button (prominent, GitHub-branded style)
 - No navigation, no header, no footer (intentional — this is a full-screen gate)
@@ -76,7 +76,7 @@ briefly and provide the single sign-in action.
 
 ## Accessibility
 
-- Single `<h1>`: "Sign in to RepoRoller"
+- Single `<h1>`: "Sign in to [App Name]"
 - Button is the page's primary action; Enter key triggers it
 - No autofocus needed (single interactive element)
 - Button has sufficient contrast in both default and loading states
@@ -88,8 +88,8 @@ briefly and provide the single sign-in action.
 
 | Element | Copy |
 |---|---|
-| Page `<title>` | Sign in — RepoRoller |
-| Heading `<h1>` | Sign in to RepoRoller |
+| Page `<title>` | Sign in — [App Name] |
+| Heading `<h1>` | Sign in to [App Name] |
 | Description | Create standardized GitHub repositories from your organization's templates. |
 | Button (default) | Sign in with GitHub |
 | Button (loading) | Redirecting to GitHub… |

@@ -60,7 +60,7 @@ Use these strings verbatim in implementation. Do not use placeholder text like "
 | User cancelled on GitHub | Message | [App Name] needs permission to read your GitHub identity to log who creates repositories. |
 | User cancelled on GitHub | Button | Try again |
 | Not org member (future) | Heading `<h1>` | Access restricted to organization members |
-| Not org member (future) | Message | RepoRoller is available to members of [org] only. If you believe this is an error, contact your administrator. |
+| Not org member (future) | Message | [App Name] is available to members of [org] only. If you believe this is an error, contact your administrator. |
 | Not org member (future) | Button | Back to sign-in |
 
 ---
