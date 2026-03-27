@@ -18,7 +18,8 @@ Components are listed in dependency order (primitives first, composites last).
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | `appName` | `string` | Yes | Configured application name (e.g., "Acme Dev Tools"); from branding config |
-| `logoUrl` | `string \| null` | No | Configured logo image URL; if null, `appName` is rendered as a text wordmark |
+| `logoUrl` | `string \| null` | No | Light-mode logo image URL; if null, `appName` is rendered as a text wordmark |
+| `logoUrlDark` | `string \| null` | No | Dark-mode logo image URL; used in `<picture>` alongside `logoUrl` when set |
 | `logoAlt` | `string` | No | Alt text for the logo image; defaults to `"[appName] logo"` |
 | `userLogin` | `string` | Yes | GitHub username of the authenticated user |
 | `userAvatarUrl` | `string \| null` | No | GitHub avatar URL; falls back to initials if null |
@@ -37,17 +38,19 @@ Components are listed in dependency order (primitives first, composites last).
 [ logo/wordmark ]  [ appName ]          [ @username ▾ ]
 ```
 
-- Logo/wordmark: left-aligned. If `logoUrl` is set, renders `<img>`; otherwise renders styled
-  `appName` text. The `appName` text label is always present in the DOM for screen readers even
-  when a logo image is shown (may be visually hidden on narrow screens using `class="sr-only"`).
+- Logo/wordmark: left-aligned. If `logoUrl` is set, renders `<img>` (or `<picture>` when
+  `logoUrlDark` is also set); otherwise renders styled `appName` text. The `appName` text label
+  is always present in the DOM for screen readers even when a logo image is shown (may be
+  visually hidden on narrow screens using `class="sr-only"`).
 - `appName` text label: shown next to the logo on wider viewports.
 - UserBadge: right-aligned.
 
 ### CSS hook
 
-The root `<html>` element has `--brand-primary` set to the configured primary colour.
-All interactive elements in this component (and all other components) reference
-`var(--brand-primary)` for colour values.
+The root layout injects a `<style>` block that sets `--brand-primary` on `:root` and,
+when configured, adds a `@media (prefers-color-scheme: dark)` override. All interactive
+elements in this component (and all other components) reference `var(--brand-primary)`
+for colour values.
 
 ### Accessibility
 
@@ -77,7 +80,8 @@ AppShell before the user is authenticated.
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | `appName` | `string` | Yes | Configured application name; from branding config |
-| `logoUrl` | `string \| null` | No | Configured logo image URL; if null, `appName` rendered as text wordmark |
+| `logoUrl` | `string \| null` | No | Light-mode logo image URL; if null, `appName` rendered as text wordmark |
+| `logoUrlDark` | `string \| null` | No | Dark-mode logo image URL; used in `<picture>` alongside `logoUrl` when set |
 | `logoAlt` | `string` | No | Alt text for the logo image; defaults to `"[appName] logo"` |
 
 ### Slots
