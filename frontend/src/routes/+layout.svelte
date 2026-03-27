@@ -6,7 +6,7 @@
 
   const { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-  const brandCss = buildBrandCssBlock(data.brandConfig);
+  const brandCss = $derived(buildBrandCssBlock(data.brandConfig));
 </script>
 
 <svelte:head>

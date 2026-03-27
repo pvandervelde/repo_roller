@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
 
   const { data }: { data: PageData } = $props();
-  const appName = data.brandConfig.appName;
+  const appName = $derived(data.brandConfig.appName);
 </script>
 
 <svelte:head>
