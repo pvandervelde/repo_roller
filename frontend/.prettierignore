@@ -1,0 +1,7 @@
+# Prettier ignore patterns
+.svelte-kit/
+build/
+dist/
+node_modules/
+coverage/
+playwright-report/
