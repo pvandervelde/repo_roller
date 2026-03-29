@@ -16,19 +16,19 @@
 
 /** POST /api/v1/repositories */
 export interface CreateRepositoryRequest {
-    organization: string;
-    name: string;
-    template: string;
-    visibility?: string;
-    team?: string;
-    repository_type?: string;
-    variables?: Record<string, string>;
+  organization: string;
+  name: string;
+  template: string;
+  visibility?: string;
+  team?: string;
+  repository_type?: string;
+  variables?: Record<string, string>;
 }
 
 /** POST /api/v1/repositories/validate-name (body) */
 export interface ValidateRepositoryNameRequestBody {
-    organization: string;
-    name: string;
+  organization: string;
+  name: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,75 +36,75 @@ export interface ValidateRepositoryNameRequestBody {
 // ---------------------------------------------------------------------------
 
 export interface RepositoryInfo {
-    name: string;
-    full_name: string;
-    url: string;
-    visibility: string;
-    repository_type?: string;
-    created_at: string;
+  name: string;
+  full_name: string;
+  url: string;
+  visibility: string;
+  repository_type?: string;
+  created_at: string;
 }
 
 export interface AppliedConfiguration {
-    applied_settings: Record<string, unknown>;
-    sources: Record<string, string>;
+  applied_settings: Record<string, unknown>;
+  sources: Record<string, string>;
 }
 
 /** 201 response for POST /api/v1/repositories */
 export interface CreateRepositoryResponse {
-    repository: RepositoryInfo;
-    configuration: AppliedConfiguration;
+  repository: RepositoryInfo;
+  configuration: AppliedConfiguration;
 }
 
 export interface ValidationIssue {
-    field: string;
-    message: string;
-    constraint: string;
+  field: string;
+  message: string;
+  constraint: string;
 }
 
 /** 200 response for POST /api/v1/repositories/validate-name (always 200) */
 export interface ValidateRepositoryNameResponse {
-    valid: boolean;
-    name: string;
-    errors?: ValidationIssue[];
+  valid: boolean;
+  name: string;
+  errors?: ValidationIssue[];
 }
 
 export interface RepositoryTypePolicy {
-    policy: string;
-    type_name?: string;
+  policy: string;
+  type_name?: string;
 }
 
 export interface TemplateSummary {
-    name: string;
-    description: string;
-    author?: string;
-    tags: string[];
-    repository_type?: RepositoryTypePolicy;
+  name: string;
+  description: string;
+  author?: string;
+  tags: string[];
+  repository_type?: RepositoryTypePolicy;
 }
 
 /** 200 response for GET /api/v1/orgs/:org/templates */
 export interface ListTemplatesResponse {
-    templates: TemplateSummary[];
+  templates: TemplateSummary[];
 }
 
 export interface TemplateMetadata {
-    author?: string;
-    description: string;
-    tags: string[];
+  author?: string;
+  description: string;
+  tags: string[];
 }
 
 export interface TemplateVariable {
-    name: string;
-    description?: string;
-    required: boolean;
-    default_value?: string;
+  name: string;
+  description?: string;
+  required: boolean;
+  default_value?: string;
 }
 
 /** 200 response for GET /api/v1/orgs/:org/templates/:name */
 export interface GetTemplateDetailsResponse {
-    name: string;
-    metadata: TemplateMetadata;
-    repository_type?: RepositoryTypePolicy;
-    variables: TemplateVariable[];
+  name: string;
+  metadata: TemplateMetadata;
+  repository_type?: RepositoryTypePolicy;
+  variables: TemplateVariable[];
 }
 
 // ---------------------------------------------------------------------------
@@ -112,11 +112,11 @@ export interface GetTemplateDetailsResponse {
 // ---------------------------------------------------------------------------
 
 export interface ErrorDetails {
-    code: string;
-    message: string;
-    details?: unknown;
+  code: string;
+  message: string;
+  details?: unknown;
 }
 
 export interface ErrorResponse {
-    error: ErrorDetails;
+  error: ErrorDetails;
 }

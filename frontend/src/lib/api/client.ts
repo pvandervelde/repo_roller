@@ -7,19 +7,20 @@
  * Errors are thrown as typed subclasses of ApiError (see errors.ts).
  */
 import {
-    ApiAuthError,
-    ApiConflictError,
-    ApiNetworkError,
-    ApiServerError,
-    ApiValidationError,
+  ApiAuthError,
+  ApiConflictError,
+  ApiNetworkError,
+  ApiServerError,
+  ApiValidationError,
 } from './errors';
 import type {
-    CreateRepositoryRequest,
-    CreateRepositoryResponse,
-    ErrorResponse,
-    GetTemplateDetailsResponse,
-    TemplateSummary,
-    ValidateRepositoryNameResponse,
+  CreateRepositoryRequest,
+  CreateRepositoryResponse,
+  ErrorResponse,
+  GetTemplateDetailsResponse,
+  ListTemplatesResponse,
+  TemplateSummary,
+  ValidateRepositoryNameResponse,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -27,29 +28,29 @@ import type {
 // ---------------------------------------------------------------------------
 
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-    try {
-        return await fetch(url, init);
-    } catch (err) {
-        throw new ApiNetworkError(err);
-    }
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    throw new ApiNetworkError(err);
+  }
 }
 
 async function throwForStatus(response: Response): Promise<never> {
-    let details = { code: 'UnknownError', message: `HTTP ${response.status}` };
+  let details = { code: 'UnknownError', message: `HTTP ${response.status}` };
 
-    try {
-        const body = (await response.json()) as ErrorResponse;
-        if (body?.error) details = body.error;
-    } catch {
-        // Body was not valid JSON — keep the default details above
-    }
+  try {
+    const body = (await response.json()) as ErrorResponse;
+    if (body?.error) details = body.error;
+  } catch {
+    // Body was not valid JSON — keep the default details above
+  }
 
-    const status = response.status;
+  const status = response.status;
 
-    if (status === 400 || status === 404) throw new ApiValidationError(status, details);
-    if (status === 401 || status === 403) throw new ApiAuthError(status, details);
-    if (status === 409 || status === 422) throw new ApiConflictError(status, details);
-    throw new ApiServerError(status, details);
+  if (status === 400 || status === 404) throw new ApiValidationError(status, details);
+  if (status === 401 || status === 403) throw new ApiAuthError(status, details);
+  if (status === 409 || status === 422) throw new ApiConflictError(status, details);
+  throw new ApiServerError(status, details);
 }
 
 // ---------------------------------------------------------------------------
@@ -61,8 +62,12 @@ async function throwForStatus(response: Response): Promise<never> {
  * GET /api/v1/orgs/:org/templates
  */
 export async function listTemplates(org: string): Promise<TemplateSummary[]> {
-    void org;
-    return [];
+  const response = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/templates`, {
+    method: 'GET',
+  });
+  if (!response.ok) await throwForStatus(response);
+  const body = (await response.json()) as ListTemplatesResponse;
+  return body.templates;
 }
 
 /**
@@ -70,16 +75,15 @@ export async function listTemplates(org: string): Promise<TemplateSummary[]> {
  * GET /api/v1/orgs/:org/templates/:name
  */
 export async function getTemplateDetails(
-    org: string,
-    name: string,
+  org: string,
+  name: string,
 ): Promise<GetTemplateDetailsResponse> {
-    void org;
-    void name;
-    return {
-        name: '',
-        metadata: { description: '', tags: [] },
-        variables: [],
-    };
+  const response = await apiFetch(
+    `/api/v1/orgs/${encodeURIComponent(org)}/templates/${encodeURIComponent(name)}`,
+    { method: 'GET' },
+  );
+  if (!response.ok) await throwForStatus(response);
+  return response.json() as Promise<GetTemplateDetailsResponse>;
 }
 
 /**
@@ -88,12 +92,16 @@ export async function getTemplateDetails(
  * Always returns 200 — `valid: false` for invalid names, never throws on validation failures.
  */
 export async function validateRepositoryName(
-    org: string,
-    name: string,
+  org: string,
+  name: string,
 ): Promise<ValidateRepositoryNameResponse> {
-    void org;
-    void name;
-    return { valid: false, name };
+  const response = await apiFetch('/api/v1/repositories/validate-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ organization: org, name }),
+  });
+  if (!response.ok) await throwForStatus(response);
+  return response.json() as Promise<ValidateRepositoryNameResponse>;
 }
 
 /**
@@ -102,23 +110,13 @@ export async function validateRepositoryName(
  * Returns 201 on success; throws typed errors on failure.
  */
 export async function createRepository(
-    req: CreateRepositoryRequest,
+  req: CreateRepositoryRequest,
 ): Promise<CreateRepositoryResponse> {
-    void req;
-    return {
-        repository: {
-            name: '',
-            full_name: '',
-            url: '',
-            visibility: '',
-            created_at: '',
-        },
-        configuration: {
-            applied_settings: {},
-            sources: {},
-        },
-    };
+  const response = await apiFetch('/api/v1/repositories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) await throwForStatus(response);
+  return response.json() as Promise<CreateRepositoryResponse>;
 }
-
-// Re-export for convenience
-export { apiFetch, throwForStatus };
