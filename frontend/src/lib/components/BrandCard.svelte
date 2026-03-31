@@ -25,4 +25,63 @@
   const resolvedLogoAlt = $derived(logoAlt ?? `${appName} logo`);
 </script>
 
-<!-- TODO: implement -->
+<div class="brand-card__wrapper">
+  <div class="brand-card__brand">
+    {#if logoUrl}
+      {#if logoUrlDark}
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset={logoUrlDark} />
+          <img src={logoUrl} alt={resolvedLogoAlt} class="brand-card__logo" />
+        </picture>
+      {:else}
+        <img src={logoUrl} alt={resolvedLogoAlt} class="brand-card__logo" />
+      {/if}
+      <span class="sr-only">{appName}</span>
+    {:else}
+      <span class="brand-card__wordmark">{appName}</span>
+    {/if}
+  </div>
+  <div class="brand-card__card">
+    {@render children()}
+  </div>
+</div>
+
+<style>
+  .brand-card__wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    background-color: var(--color-bg);
+  }
+
+  .brand-card__brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .brand-card__logo {
+    height: 2.5rem;
+    width: auto;
+  }
+
+  .brand-card__wordmark {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--brand-primary);
+    letter-spacing: -0.02em;
+  }
+
+  .brand-card__card {
+    width: 100%;
+    max-width: 24rem;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 2rem;
+  }
+</style>

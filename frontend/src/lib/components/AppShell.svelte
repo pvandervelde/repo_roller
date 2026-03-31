@@ -39,4 +39,67 @@
   const resolvedLogoAlt = $derived(logoAlt ?? `${appName} logo`);
 </script>
 
-<!-- TODO: implement -->
+<header class="app-shell__header">
+  <a href="/" class="app-shell__brand">
+    {#if logoUrl}
+      {#if logoUrlDark}
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset={logoUrlDark} />
+          <img src={logoUrl} alt={resolvedLogoAlt} class="app-shell__logo" />
+        </picture>
+      {:else}
+        <img src={logoUrl} alt={resolvedLogoAlt} class="app-shell__logo" />
+      {/if}
+      <span class="sr-only">{appName}</span>
+    {:else}
+      <span class="app-shell__wordmark">{appName}</span>
+    {/if}
+  </a>
+  <UserBadge login={userLogin} avatarUrl={userAvatarUrl} {onsignOut} />
+</header>
+
+<main class="app-shell__main">
+  {@render children()}
+</main>
+
+<style>
+  .app-shell__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+    height: 3.5rem;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .app-shell__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .app-shell__logo {
+    height: 1.75rem;
+    width: auto;
+  }
+
+  .app-shell__wordmark {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--brand-primary);
+    letter-spacing: -0.01em;
+  }
+
+  .app-shell__main {
+    padding: 2rem 1.5rem;
+    max-width: 72rem;
+    margin: 0 auto;
+    width: 100%;
+  }
+</style>
