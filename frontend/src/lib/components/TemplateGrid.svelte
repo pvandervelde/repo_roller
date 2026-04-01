@@ -9,6 +9,8 @@
    */
 
   import type { TemplateSummary } from '$lib/api/types';
+  import TemplateCard from './TemplateCard.svelte';
+  import InlineAlert from './InlineAlert.svelte';
 
   interface Props {
     templates: TemplateSummary[];
@@ -27,6 +29,123 @@
     ontemplateSelect,
     onretry,
   }: Props = $props();
+
+  let searchQuery = $state('');
+
+  const filteredTemplates = $derived.by(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return templates;
+    return templates.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.tags.some((tag) => tag.toLowerCase().includes(q)),
+    );
+  });
 </script>
 
-<div class="template-grid"></div>
+<div class="template-grid">
+  <div class="template-grid__search">
+    <label for="template-search" class="template-grid__search-label">Search templates</label>
+    <input
+      id="template-search"
+      type="search"
+      class="template-grid__search-input"
+      placeholder="Search templates"
+      bind:value={searchQuery}
+    />
+  </div>
+
+  {#if error}
+    <InlineAlert
+      variant="error"
+      message={error}
+      action={{ label: 'Try again', onClick: () => onretry?.() }}
+    />
+  {:else if loading}
+    <div class="template-grid__cards template-grid__cards--loading">
+      {#each [0, 1, 2] as _}
+        <TemplateCard name="" description="" selected={false} loading={true} />
+      {/each}
+    </div>
+  {:else if templates.length === 0}
+    <p role="status" class="template-grid__empty">
+      No templates are configured for this organization. Contact your platform team.
+    </p>
+  {:else}
+    <div role="radiogroup" aria-label="Available templates" class="template-grid__cards">
+      {#if filteredTemplates.length === 0}
+        <p role="status" class="template-grid__no-results">
+          No templates match '{searchQuery}'
+        </p>
+      {:else}
+        {#each filteredTemplates as template}
+          <TemplateCard
+            name={template.name}
+            description={template.description}
+            tags={template.tags}
+            repositoryTypeBadge={template.repository_type
+              ? {
+                  typeName: template.repository_type.type_name ?? template.repository_type.policy,
+                  policy: template.repository_type.policy as 'fixed' | 'preferable' | 'optional',
+                }
+              : null}
+            selected={template.name === selectedTemplateName}
+            onselect={() => ontemplateSelect?.(template.name)}
+          />
+        {/each}
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<style>
+  .template-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .template-grid__search {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .template-grid__search-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+  }
+
+  .template-grid__search-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    color: #111827;
+    background-color: #fff;
+    box-sizing: border-box;
+  }
+
+  .template-grid__search-input:focus {
+    outline: 2px solid var(--brand-primary, #2563eb);
+    outline-offset: 2px;
+    border-color: var(--brand-primary, #2563eb);
+  }
+
+  .template-grid__cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 1rem;
+  }
+
+  .template-grid__empty,
+  .template-grid__no-results {
+    font-size: 0.875rem;
+    color: #6b7280;
+    text-align: center;
+    padding: 2rem 1rem;
+  }
+</style>
