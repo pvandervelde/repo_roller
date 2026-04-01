@@ -1,11 +1,11 @@
 import type { PageServerLoad } from './$types';
 
-type DenialReason =
-    | 'access_denied'
-    | 'oauth_error'
-    | 'network_error'
-    | 'identity_failure'
-    | 'not_org_member';
+export type DenialReason =
+  | 'access_denied'
+  | 'oauth_error'
+  | 'network_error'
+  | 'identity_failure'
+  | 'not_org_member';
 
 /**
  * Access denied page.
@@ -13,16 +13,16 @@ type DenialReason =
  * SCR-003 / authentication.md
  */
 export const load: PageServerLoad = async ({ url }) => {
-    const raw = url.searchParams.get('reason') ?? 'oauth_error';
-    const reason: DenialReason = [
-        'access_denied',
-        'oauth_error',
-        'network_error',
-        'identity_failure',
-        'not_org_member',
-    ].includes(raw)
-        ? (raw as DenialReason)
-        : 'oauth_error';
+  const raw = url.searchParams.get('reason') ?? 'oauth_error';
+  const reason: DenialReason = [
+    'access_denied',
+    'oauth_error',
+    'network_error',
+    'identity_failure',
+    'not_org_member',
+  ].includes(raw)
+    ? (raw as DenialReason)
+    : 'oauth_error';
 
-    return { reason };
+  return { reason };
 };

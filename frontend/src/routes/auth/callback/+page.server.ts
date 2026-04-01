@@ -9,87 +9,93 @@ import type { Session } from '$lib/types/session';
  * sets the session cookie, and redirects to /create.
  * On any failure, redirects to /auth/denied with an appropriate reason.
  * SCR-002 / authentication.md
+ *
+ * This load function always redirects and never returns data to the page.
+ * The page renders only very briefly while the server processes the callback.
  */
-export const load: PageServerLoad = async ({ url, cookies }) => {
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
-    const error = url.searchParams.get('error');
+export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<string, never>> => {
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
 
-    // GitHub sent an error / user cancelled.
-    if (error === 'access_denied') {
-        redirect(302, '/auth/denied?reason=access_denied');
-    }
-    if (error) {
-        redirect(302, '/auth/denied?reason=oauth_error');
-    }
+  // GitHub sent an error / user cancelled.
+  if (error === 'access_denied') {
+    redirect(302, '/auth/denied?reason=access_denied');
+  }
+  if (error) {
+    redirect(302, '/auth/denied?reason=oauth_error');
+  }
 
-    // Verify CSRF state.
-    const expectedState = cookies.get('oauth_state');
-    cookies.delete('oauth_state', { path: '/auth/callback' });
-    if (!state || state !== expectedState) {
-        redirect(302, '/auth/denied?reason=oauth_error');
-    }
+  // Verify CSRF state.
+  const expectedState = cookies.get('oauth_state');
+  cookies.delete('oauth_state', { path: '/auth/callback' });
+  if (!state || state !== expectedState) {
+    redirect(302, '/auth/denied?reason=oauth_error');
+  }
 
-    if (!code) {
-        redirect(302, '/auth/denied?reason=oauth_error');
-    }
+  if (!code) {
+    redirect(302, '/auth/denied?reason=oauth_error');
+  }
 
-    // Exchange code for access token.
-    let accessToken: string;
-    try {
-        const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-            },
-            body: JSON.stringify({
-                client_id: env.GITHUB_CLIENT_ID ?? '',
-                client_secret: env.GITHUB_CLIENT_SECRET ?? '',
-                code,
-            }),
-        });
-        if (!tokenRes.ok) {
-            redirect(302, '/auth/denied?reason=oauth_error');
-        }
-        const tokenData = (await tokenRes.json()) as Record<string, unknown>;
-        if (typeof tokenData['access_token'] !== 'string' || !tokenData['access_token']) {
-            redirect(302, '/auth/denied?reason=oauth_error');
-        }
-        accessToken = tokenData['access_token'];
-    } catch {
-        redirect(302, '/auth/denied?reason=network_error');
-    }
-
-    // Retrieve GitHub user identity.
-    let userLogin: string;
-    try {
-        const userRes = await fetch('https://api.github.com/user', {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                Accept: 'application/vnd.github+json',
-            },
-        });
-        if (!userRes.ok) {
-            redirect(302, '/auth/denied?reason=identity_failure');
-        }
-        const userData = (await userRes.json()) as Record<string, unknown>;
-        if (typeof userData['login'] !== 'string' || !userData['login']) {
-            redirect(302, '/auth/denied?reason=identity_failure');
-        }
-        userLogin = userData['login'];
-    } catch {
-        redirect(302, '/auth/denied?reason=identity_failure');
-    }
-
-    // Establish session cookie.
-    const session: Session = { userLogin };
-    cookies.set('session', JSON.stringify(session), {
-        path: '/',
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+  // Exchange code for access token.
+  let accessToken: string;
+  try {
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: env.GITHUB_CLIENT_ID ?? '',
+        client_secret: env.GITHUB_CLIENT_SECRET ?? '',
+        code,
+      }),
     });
+    if (!tokenRes.ok) {
+      redirect(302, '/auth/denied?reason=oauth_error');
+    }
+    const tokenData = (await tokenRes.json()) as Record<string, unknown>;
+    if (typeof tokenData['access_token'] !== 'string' || !tokenData['access_token']) {
+      redirect(302, '/auth/denied?reason=oauth_error');
+    }
+    accessToken = tokenData['access_token'];
+  } catch {
+    redirect(302, '/auth/denied?reason=network_error');
+  }
 
-    redirect(302, '/create');
+  // Retrieve GitHub user identity.
+  let userLogin: string;
+  try {
+    const userRes = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (!userRes.ok) {
+      redirect(302, '/auth/denied?reason=identity_failure');
+    }
+    const userData = (await userRes.json()) as Record<string, unknown>;
+    if (typeof userData['login'] !== 'string' || !userData['login']) {
+      redirect(302, '/auth/denied?reason=identity_failure');
+    }
+    userLogin = userData['login'];
+  } catch {
+    redirect(302, '/auth/denied?reason=identity_failure');
+  }
+
+  // Establish session cookie — avatarUrl is optional, retrieve from GitHub response if available.
+  const session: Session = { userLogin, userAvatarUrl: null };
+  cookies.set('session', JSON.stringify(session), {
+    path: '/',
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+
+  redirect(302, '/create');
+  // TypeScript requires a return type that matches PageServerLoad.
+  // The redirect above always fires; this line is unreachable.
+  return {};
 };
