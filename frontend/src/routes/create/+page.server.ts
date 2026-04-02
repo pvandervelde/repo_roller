@@ -2,9 +2,10 @@ import { redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  return {
-    userLogin: locals.session?.userLogin ?? null,
-  };
+    return {
+        userLogin: locals.session?.userLogin ?? null,
+        organization: process.env.GITHUB_ORG ?? '',
+    };
 };
 
 /**
@@ -13,8 +14,8 @@ export const load: PageServerLoad = async ({ locals }) => {
  * UX-ASSERT-004
  */
 export const actions: Actions = {
-  signOut: async ({ cookies }) => {
-    cookies.delete('session', { path: '/' });
-    redirect(302, '/sign-in');
-  },
+    signOut: async ({ cookies }) => {
+        cookies.delete('session', { path: '/' });
+        redirect(302, '/sign-in');
+    },
 };
