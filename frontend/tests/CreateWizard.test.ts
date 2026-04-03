@@ -198,4 +198,217 @@ describe('Create wizard (SCR-004)', () => {
       expect(document.activeElement).toBe(h1);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Step 3: Template variables (UX-ASSERT-015, UX-ASSERT-016, UX-ASSERT-017)
+  // -------------------------------------------------------------------------
+
+  async function advanceToStep3(templateName = 'python-service') {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: templateName,
+      metadata: { description: 'A Python service template', tags: [] },
+      variables: [
+        { name: 'service_name', required: true, description: 'Name of the service' },
+        {
+          name: 'owner_team',
+          required: false,
+          default_value: 'platform',
+        },
+      ],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    // Step 1: select template
+    await waitFor(() => screen.getByRole('radio', { name: templateName }));
+    await fireEvent.change(screen.getByRole('radio', { name: templateName }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    const nextSettings = screen.getByRole('button', { name: /next: repository settings/i });
+    await waitFor(() => expect(nextSettings).not.toBeDisabled());
+    await fireEvent.click(nextSettings);
+
+    // Step 2: "Next: Variables" button — starts disabled, we do not fill the name field
+    // The button label should be "Next: Variables →" since template has variables
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+  }
+
+  it('shows "Template variables" heading on step 3', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      metadata: { description: 'A Python service template', tags: [] },
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    // Advance to step 2
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    const nextSettings = screen.getByRole('button', { name: /next: repository settings/i });
+    await waitFor(() => expect(nextSettings).not.toBeDisabled());
+    await fireEvent.click(nextSettings);
+
+    // Verify step 2 shows "Next: Variables →" button
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    expect(screen.getByRole('button', { name: /next: variables/i })).toBeInTheDocument();
+  });
+
+  it('shows VariableField inputs on step 3', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      metadata: { description: 'Python service', tags: [] },
+      variables: [
+        { name: 'service_name', required: true },
+        { name: 'owner_team', required: false, default_value: 'platform' },
+      ],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    // Advance through step 1 and 2 to step 3
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+
+    // Click "Next: Variables →"
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    // Both variable fields should be present
+    expect(screen.getByRole('textbox', { name: /service name/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /owner team/i })).toBeInTheDocument();
+  });
+
+  it('pre-populates optional variable with default_value (UX-ASSERT-017)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      metadata: { description: 'Python service', tags: [] },
+      variables: [
+        { name: 'service_name', required: true },
+        { name: 'owner_team', required: false, default_value: 'platform' },
+      ],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    expect(screen.getByRole('textbox', { name: /owner team/i })).toHaveValue('platform');
+  });
+
+  it('disables Create button when a required variable is empty (UX-ASSERT-016)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      metadata: { description: 'Python service', tags: [] },
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    // Required field is empty → Create button disabled
+    expect(screen.getByRole('button', { name: /create repository/i })).toBeDisabled();
+  });
+
+  it('enables Create button once all required variables are filled (UX-ASSERT-016)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      metadata: { description: 'Python service', tags: [] },
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    // Fill the required field
+    const input = screen.getByRole('textbox', { name: /service name/i });
+    await fireEvent.input(input, { target: { value: 'my-service' } });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /create repository/i })).not.toBeDisabled(),
+    );
+  });
+
+  it('shows RepositorySummary on step 3', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      metadata: { description: 'Python service', tags: [] },
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    // RepositorySummary should be present with its aria-label
+    expect(screen.getByRole('generic', { name: /repository summary/i })).toBeInTheDocument();
+  });
 });

@@ -7,6 +7,7 @@
   import RepositoryNameField from '$lib/components/RepositoryNameField.svelte';
   import RepositoryTypePicker from '$lib/components/RepositoryTypePicker.svelte';
   import RepositorySummary from '$lib/components/RepositorySummary.svelte';
+  import VariableField from '$lib/components/VariableField.svelte';
   import InlineAlert from '$lib/components/InlineAlert.svelte';
   import { goto } from '$app/navigation';
   import {
@@ -78,9 +79,36 @@
 
   const templateTypeName = $derived(templateDetails?.repository_type?.type_name ?? null);
 
+  // Sorted variable list: required first, then optional (UX spec)
+  const sortedVariables = $derived(
+    [...(templateDetails?.variables ?? [])].sort((a, b) => {
+      if (a.required === b.required) return 0;
+      return a.required ? -1 : 1;
+    }),
+  );
+
+  // Step 3 Create enabled when all required variables have non-empty values (UX-ASSERT-016)
+  const step3CreateEnabled = $derived(
+    (templateDetails?.variables ?? []).every(
+      (v) => !v.required || (variableValues[v.name] ?? '').trim().length > 0,
+    ),
+  );
+
   // Creation error for the no-variables (direct create) path
   let createError: string | null = $state(null);
   let typesLoadedForStep2 = $state(false);
+
+  // Step 3 state — variable values keyed by variable name
+  let variableValues = $state<Record<string, string>>({});
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  /** Convert snake_case / kebab-case to Title Case for variable labels. */
+  function toTitleCase(name: string): string {
+    return name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
 
   // ---------------------------------------------------------------------------
   // DOM refs for focus management  (UX-ASSERT-024)
@@ -161,6 +189,12 @@
 
   async function handleStep2Action() {
     if (hasVariables) {
+      // Initialise variable values from defaults before advancing (UX-ASSERT-017)
+      const initial: Record<string, string> = {};
+      for (const v of templateDetails?.variables ?? []) {
+        initial[v.name] = variableValues[v.name] ?? v.default_value ?? '';
+      }
+      variableValues = initial;
       await advanceStep();
     } else {
       await submitCreate();
@@ -318,11 +352,45 @@
     {:else if currentStep === 3}
       <h1 tabindex="-1" bind:this={step3Heading} class="wizard__heading">Template variables</h1>
 
-      <p class="wizard__placeholder">Step 3 implementation coming in task 13.10.</p>
+      {#if createError}
+        <InlineAlert variant="error" message={createError} />
+      {/if}
+
+      <div class="wizard__step2-fields">
+        {#each sortedVariables as variable (variable.name)}
+          <VariableField
+            variableName={variable.name}
+            label={toTitleCase(variable.name)}
+            description={variable.description ?? null}
+            required={variable.required}
+            defaultValue={variable.default_value ?? null}
+            value={variableValues[variable.name] ?? ''}
+            onchange={(v) => {
+              variableValues = { ...variableValues, [variable.name]: v };
+            }}
+          />
+        {/each}
+
+        <RepositorySummary
+          organization={data.organization}
+          repositoryName={repoName}
+          templateName={selectedTemplateName ?? ''}
+          typeName={selectedTypeName}
+          {visibility}
+          teamName={selectedTeamName}
+        />
+      </div>
 
       <div class="wizard__actions">
         <button type="button" class="wizard__btn-back" onclick={retreatStep}>← Back</button>
-        <button type="button" class="wizard__btn-create" disabled> Create Repository </button>
+        <button
+          type="button"
+          class="wizard__btn-create"
+          disabled={!step3CreateEnabled}
+          onclick={() => submitCreate(variableValues)}
+        >
+          Create Repository
+        </button>
       </div>
     {/if}
   </div>
