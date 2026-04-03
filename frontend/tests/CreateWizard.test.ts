@@ -3,6 +3,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import CreatePage from '../src/routes/create/+page.svelte';
 import type { BrandConfig } from '../src/lib/types/brand';
 import type { TemplateSummary } from '../src/lib/api/types';
+import {
+  ApiConflictError,
+  ApiAuthError,
+  ApiNetworkError,
+  ApiServerError,
+} from '../src/lib/api/errors';
 
 // ---------------------------------------------------------------------------
 // Mock the API client so no real HTTP requests are made
@@ -410,5 +416,149 @@ describe('Create wizard (SCR-004)', () => {
 
     // RepositorySummary should be present with its aria-label
     expect(screen.getByRole('generic', { name: /repository summary/i })).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // Creation overlay (CMP-011) and error routing (UX-ASSERT-018–021)
+  // -------------------------------------------------------------------------
+
+  /** Helper: advance to Step 2 with a no-variable template and mock createRepository. */
+  async function advanceToStep2NoVars() {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'rust-library',
+      metadata: { description: 'A Rust library template', tags: [] },
+      variables: [],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+  }
+
+  it('shows overlay while creation is in flight (UX-ASSERT-018)', async () => {
+    // createRepository never resolves during this test
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'rust-library',
+      metadata: { description: 'Template', tags: [] },
+      variables: [],
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockReturnValue(new Promise(() => {})); // never resolves
+
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+
+    // Click "Create Repository" — overlay should appear
+    await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: /creating repository/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('returns to step 2 with error on name-taken race condition (UX-ASSERT-019)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockRejectedValue(
+      new ApiConflictError(422, { code: 'NameTaken', message: 'Name already taken' }),
+    );
+
+    await advanceToStep2NoVars();
+
+    await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert').textContent).toMatch(/was created while you were filling/i);
+  });
+
+  it('returns to step 1 with error on template-not-found (UX-ASSERT-020)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockRejectedValue(
+      new ApiConflictError(422, {
+        code: 'TemplateNotFound',
+        message: 'Template not found',
+      }),
+    );
+
+    await advanceToStep2NoVars();
+
+    await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Choose a template'),
+    );
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert').textContent).toMatch(/no longer available/i);
+  });
+
+  it('shows permission error inline on 403 (UX-ASSERT-021)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockRejectedValue(
+      new ApiAuthError(403, { code: 'Forbidden', message: 'Forbidden' }),
+    );
+
+    await advanceToStep2NoVars();
+
+    await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert').textContent).toMatch(/don't have permission/i);
+    // Still on step 2
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings');
+  });
+
+  it('shows network error inline without losing step (UX-ASSERT-021)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockRejectedValue(new ApiNetworkError(new Error('offline')));
+
+    await advanceToStep2NoVars();
+
+    await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert').textContent).toMatch(/could not reach the server/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings');
+  });
+
+  it('shows server error inline on 5xx (UX-ASSERT-021)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockRejectedValue(
+      new ApiServerError(500, { code: 'InternalError', message: 'Internal server error' }),
+    );
+
+    await advanceToStep2NoVars();
+
+    await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert').textContent).toMatch(/GitHub is temporarily unavailable/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings');
   });
 });

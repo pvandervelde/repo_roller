@@ -9,6 +9,7 @@
   import RepositorySummary from '$lib/components/RepositorySummary.svelte';
   import VariableField from '$lib/components/VariableField.svelte';
   import InlineAlert from '$lib/components/InlineAlert.svelte';
+  import CreationOverlay from '$lib/components/CreationOverlay.svelte';
   import { goto } from '$app/navigation';
   import {
     listTemplates,
@@ -16,6 +17,7 @@
     listRepositoryTypes,
     createRepository,
   } from '$lib/api/client';
+  import { ApiConflictError, ApiAuthError, ApiNetworkError } from '$lib/api/errors';
   import type { GetTemplateDetailsResponse, TemplateSummary } from '$lib/api/types';
   import type { NameValidationResult } from '$lib/components/RepositoryNameField.svelte';
   import type { RepositoryTypeOption } from '$lib/components/RepositoryTypePicker.svelte';
@@ -96,6 +98,7 @@
 
   // Creation error for the no-variables (direct create) path
   let createError: string | null = $state(null);
+  let creatingRepo = $state(false);
   let typesLoadedForStep2 = $state(false);
 
   // Step 3 state — variable values keyed by variable name
@@ -126,6 +129,8 @@
     loadTemplates();
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Guard disabled while overlay is active (creation is in flight)
+      if (creatingRepo) return;
       if (selectedTemplateName !== null || repoName.length > 0) {
         e.preventDefault();
       }
@@ -203,8 +208,9 @@
 
   async function submitCreate(variables: Record<string, string> = {}) {
     createError = null;
+    creatingRepo = true;
     try {
-      await createRepository({
+      const result = await createRepository({
         organization: data.organization,
         name: repoName,
         template: selectedTemplateName!,
@@ -213,9 +219,41 @@
         repository_type: selectedTypeName ?? undefined,
         variables: Object.keys(variables).length > 0 ? variables : undefined,
       });
-      await goto('/create/success');
-    } catch {
-      createError = 'Failed to create repository. Please try again.';
+      // Success: navigate away (guard already suppressed while creatingRepo=true)
+      await goto(`/create/success?repo=${encodeURIComponent(result.repository.full_name)}`);
+    } catch (err) {
+      creatingRepo = false;
+
+      if (err instanceof ApiConflictError) {
+        const code = err.errorDetails.code ?? '';
+        if (code === 'TemplateNotFound' || err.errorDetails.message?.includes('template')) {
+          // UX-ASSERT-020: template not found — back to step 1, refresh list
+          currentStep = 1;
+          await tick();
+          step1Heading?.focus();
+          await loadTemplates();
+          createError = `The template '${selectedTemplateName}' is no longer available. Please choose a different template.`;
+          selectedTemplateName = null;
+          templateDetails = null;
+        } else {
+          // UX-ASSERT-019: name already taken (race condition) — back to step 2
+          currentStep = 2;
+          await tick();
+          step2Heading?.focus();
+          nameValidation = { status: 'taken', name: repoName };
+          createError = `A repository named '${repoName}' was created while you were filling in this form. Please choose a different name.`;
+        }
+      } else if (err instanceof ApiAuthError) {
+        // 403 permission denied — show inline on current step
+        createError =
+          "You don't have permission to create repositories in this organization. Contact your administrator.";
+      } else if (err instanceof ApiNetworkError) {
+        createError = 'Could not reach the server. Check your connection and try again.';
+      } else {
+        // UX-ASSERT-021: 5xx server error
+        createError =
+          'GitHub is temporarily unavailable. Your repository was not created. Please try again.';
+      }
     }
   }
 
@@ -239,11 +277,15 @@
   userLogin={data.session?.userLogin ?? ''}
   userAvatarUrl={data.session?.userAvatarUrl ?? null}
 >
-  <div class="wizard">
+  <div class="wizard" aria-hidden={creatingRepo ? 'true' : undefined}>
     <StepProgress {steps} {currentStep} />
 
     {#if currentStep === 1}
       <h1 tabindex="-1" bind:this={step1Heading} class="wizard__heading">Choose a template</h1>
+
+      {#if createError}
+        <InlineAlert variant="error" message={createError} />
+      {/if}
 
       <TemplateGrid
         {templates}
@@ -394,6 +436,8 @@
       </div>
     {/if}
   </div>
+
+  <CreationOverlay visible={creatingRepo} />
 </AppShell>
 
 <style>
