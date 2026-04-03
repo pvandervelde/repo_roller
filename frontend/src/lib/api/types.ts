@@ -81,6 +81,11 @@ export interface TemplateSummary {
   repository_type?: RepositoryTypePolicy;
 }
 
+/** 200 response for GET /api/v1/orgs/:org/types */
+export interface ListRepositoryTypesResponse {
+  types: string[];
+}
+
 /** 200 response for GET /api/v1/orgs/:org/templates */
 export interface ListTemplatesResponse {
   templates: TemplateSummary[];

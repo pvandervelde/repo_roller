@@ -11,9 +11,12 @@ import type { TemplateSummary } from '../src/lib/api/types';
 vi.mock('../src/lib/api/client', () => ({
   listTemplates: vi.fn(),
   getTemplateDetails: vi.fn(),
+  validateRepositoryName: vi.fn(),
+  listRepositoryTypes: vi.fn(),
+  createRepository: vi.fn(),
 }));
 
-import { listTemplates, getTemplateDetails } from '../src/lib/api/client';
+import { listTemplates, getTemplateDetails, listRepositoryTypes } from '../src/lib/api/client';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -52,6 +55,7 @@ describe('Create wizard (SCR-004)', () => {
       metadata: { description: 'A Rust library template', tags: ['rust'] },
       variables: [],
     });
+    vi.mocked(listRepositoryTypes).mockResolvedValue([]);
   });
 
   // -------------------------------------------------------------------------

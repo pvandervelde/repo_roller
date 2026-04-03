@@ -18,6 +18,7 @@ import type {
   CreateRepositoryResponse,
   ErrorResponse,
   GetTemplateDetailsResponse,
+  ListRepositoryTypesResponse,
   ListTemplatesResponse,
   TemplateSummary,
   ValidateRepositoryNameResponse,
@@ -102,6 +103,19 @@ export async function validateRepositoryName(
   });
   if (!response.ok) await throwForStatus(response);
   return response.json() as Promise<ValidateRepositoryNameResponse>;
+}
+
+/**
+ * List all repository types configured for an organisation.
+ * GET /api/v1/orgs/:org/types
+ */
+export async function listRepositoryTypes(org: string): Promise<string[]> {
+  const response = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/types`, {
+    method: 'GET',
+  });
+  if (!response.ok) await throwForStatus(response);
+  const body = (await response.json()) as ListRepositoryTypesResponse;
+  return body.types;
 }
 
 /**
