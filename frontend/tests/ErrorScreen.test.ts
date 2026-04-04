@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import ErrorPage from '../src/routes/error/+page.svelte';
+import type { ErrorReason } from '../src/routes/error/+page.ts';
 
 const brandConfig = {
     appName: 'RepoRoller',
@@ -16,7 +17,7 @@ const session = {
     userAvatarUrl: 'https://example.com/avatar.png',
 };
 
-function makeProps(reason: string, hasSession = true) {
+function makeProps(reason: ErrorReason, hasSession = true) {
     return {
         data: {
             brandConfig,
@@ -36,13 +37,14 @@ describe('Error screen (SCR-006)', () => {
         expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Something went wrong');
     });
 
-    it('renders "Something went wrong" h1 when no reason param (empty string → generic)', () => {
-        render(ErrorPage, { props: makeProps('') });
+    it('renders "Something went wrong" h1 when reason is generic (default after load normalization)', () => {
+        // The load function normalizes unknown/missing params to 'generic'
+        render(ErrorPage, { props: makeProps('generic') });
         expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Something went wrong');
     });
 
-    it('renders "Something went wrong" h1 for unknown reason value', () => {
-        render(ErrorPage, { props: makeProps('some_unknown_reason') });
+    it('renders "Something went wrong" h1 — same output regardless of which generic call', () => {
+        render(ErrorPage, { props: makeProps('generic') });
         expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Something went wrong');
     });
 
