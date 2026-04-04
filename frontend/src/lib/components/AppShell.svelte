@@ -55,7 +55,9 @@
       <span class="app-shell__wordmark">{appName}</span>
     {/if}
   </a>
-  <UserBadge login={userLogin} avatarUrl={userAvatarUrl} {onsignOut} />
+  {#if userLogin}
+    <UserBadge login={userLogin} avatarUrl={userAvatarUrl} {onsignOut} />
+  {/if}
 </header>
 
 <main class="app-shell__main">
