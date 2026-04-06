@@ -2,5 +2,6 @@
 export type { BrandConfig } from './types/brand';
 export { DEFAULT_BRAND_CONFIG } from './types/brand';
 export type { Session } from './types/session';
-export { loadBrandConfig, buildBrandCssBlock } from './brand';
+export { buildBrandCssBlock } from './brand';
+export { loadBrandConfig } from './brand.server';
 export * from './api';

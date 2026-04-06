@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DEFAULT_BRAND_CONFIG } from '../src/lib/types/brand';
-import { buildBrandCssBlock, loadBrandConfig } from '../src/lib/brand';
+import { buildBrandCssBlock } from '../src/lib/brand';
+import { loadBrandConfig } from '../src/lib/brand.server';
 
 vi.mock('node:fs/promises');
 
