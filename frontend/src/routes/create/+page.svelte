@@ -96,6 +96,33 @@
     ),
   );
 
+  // ---------------------------------------------------------------------------
+  // Disabled-button tooltip reasons
+  // ---------------------------------------------------------------------------
+
+  const step1NextTooltip = $derived.by<string | null>(() => {
+    if (step1NextEnabled) return null;
+    if (!selectedTemplateName) return 'Select a template to continue';
+    if (templateDetailsLoading) return 'Loading template details…';
+    if (templateDetailsError) return 'Template details could not be loaded — try again';
+    return null;
+  });
+
+  const step2ActionTooltip = $derived.by<string | null>(() => {
+    if (step2Actionable) return null;
+    if (!repoName) return 'Enter a repository name to continue';
+    const s = nameValidation.status;
+    if (s === 'checking') return 'Checking name availability…';
+    if (s === 'taken') return 'This repository name is already taken — choose another';
+    if (s === 'invalid_format') return 'Fix the repository name format to continue';
+    return 'Enter a valid, available repository name to continue';
+  });
+
+  const step3CreateTooltip = $derived.by<string | null>(() => {
+    if (step3CreateEnabled) return null;
+    return 'Fill in all required template variables to continue';
+  });
+
   // Creation error for the no-variables (direct create) path
   let createError: string | null = $state(null);
   let creatingRepo = $state(false);
@@ -167,6 +194,12 @@
     } finally {
       templateDetailsLoading = false;
     }
+  }
+
+  function handleTemplateDeselect() {
+    selectedTemplateName = null;
+    templateDetails = null;
+    templateDetailsError = null;
   }
 
   async function advanceStep() {
@@ -293,6 +326,7 @@
         loading={templatesLoading}
         error={templatesError}
         ontemplateSelect={handleTemplateSelect}
+        ontemplateDeselect={handleTemplateDeselect}
         onretry={loadTemplates}
       />
 
@@ -301,14 +335,16 @@
       {/if}
 
       <div class="wizard__actions wizard__actions--step1">
-        <button
-          type="button"
-          class="wizard__btn-next"
-          disabled={!step1NextEnabled}
-          onclick={advanceStep}
-        >
-          Next: Repository settings →
-        </button>
+        <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
+          <button
+            type="button"
+            class="wizard__btn-next"
+            disabled={!step1NextEnabled}
+            onclick={advanceStep}
+          >
+            Next: Repository settings →
+          </button>
+        </span>
       </div>
     {:else if currentStep === 2}
       <h1 tabindex="-1" bind:this={step2Heading} class="wizard__heading">Repository settings</h1>
@@ -368,28 +404,28 @@
           {/if}
         </div>
 
-        {#if !hasVariables}
-          <RepositorySummary
-            organization={data.organization}
-            repositoryName={repoName}
-            templateName={selectedTemplateName ?? ''}
-            typeName={selectedTypeName}
-            {visibility}
-            teamName={selectedTeamName}
-          />
-        {/if}
+        <RepositorySummary
+          organization={data.organization}
+          repositoryName={repoName}
+          templateName={selectedTemplateName ?? ''}
+          typeName={selectedTypeName}
+          {visibility}
+          teamName={selectedTeamName}
+        />
       </div>
 
       <div class="wizard__actions">
         <button type="button" class="wizard__btn-back" onclick={retreatStep}>← Back</button>
-        <button
-          type="button"
-          class="wizard__btn-next"
-          disabled={!step2Actionable}
-          onclick={handleStep2Action}
-        >
-          {hasVariables ? 'Next: Variables →' : 'Create Repository'}
-        </button>
+        <span class="wizard__btn-tip" title={step2ActionTooltip ?? undefined}>
+          <button
+            type="button"
+            class="wizard__btn-next"
+            disabled={!step2Actionable}
+            onclick={handleStep2Action}
+          >
+            {hasVariables ? 'Next: Variables →' : 'Create Repository'}
+          </button>
+        </span>
       </div>
     {:else if currentStep === 3}
       <h1 tabindex="-1" bind:this={step3Heading} class="wizard__heading">Template variables</h1>
@@ -425,14 +461,16 @@
 
       <div class="wizard__actions">
         <button type="button" class="wizard__btn-back" onclick={retreatStep}>← Back</button>
-        <button
-          type="button"
-          class="wizard__btn-create"
-          disabled={!step3CreateEnabled}
-          onclick={() => submitCreate(variableValues)}
-        >
-          Create Repository
-        </button>
+        <span class="wizard__btn-tip" title={step3CreateTooltip ?? undefined}>
+          <button
+            type="button"
+            class="wizard__btn-create"
+            disabled={!step3CreateEnabled}
+            onclick={() => submitCreate(variableValues)}
+          >
+            Create Repository
+          </button>
+        </span>
       </div>
     {/if}
   </div>
@@ -453,7 +491,7 @@
   .wizard__heading {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #111827;
+    color: var(--color-text);
     margin: 0;
   }
 
@@ -489,20 +527,31 @@
   .wizard__btn-create:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+    /* Allow pointer events to pass through to the wrapper span so title shows */
+    pointer-events: none;
+  }
+
+  /* Wrapper that carries the tooltip title when the button is disabled */
+  .wizard__btn-tip {
+    display: inline-block;
+  }
+  .wizard__btn-tip:has(button:disabled) {
+    cursor: not-allowed;
   }
 
   .wizard__btn-back {
     padding: 0.625rem 1rem;
-    background: none;
-    border: 1px solid #d1d5db;
+    background: transparent;
+    border: 1px solid var(--color-border);
     border-radius: 0.375rem;
     font-size: 0.9375rem;
-    color: #374151;
+    color: var(--color-text);
     cursor: pointer;
+    transition: background-color 0.15s;
   }
 
   .wizard__btn-back:hover {
-    background-color: #f9fafb;
+    background-color: var(--color-surface);
   }
 
   .wizard__detail-error {
@@ -525,16 +574,16 @@
   .wizard__label {
     font-size: 0.875rem;
     font-weight: 500;
-    color: #374151;
+    color: var(--color-text);
   }
 
   .wizard__select {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border);
     border-radius: 0.375rem;
     font-size: 0.9375rem;
-    background-color: #fff;
-    color: #111827;
+    background-color: var(--color-bg);
+    color: var(--color-text);
   }
 
   .wizard__select:disabled {
@@ -544,7 +593,7 @@
 
   .wizard__helper {
     font-size: 0.8125rem;
-    color: #6b7280;
+    color: var(--color-text-muted);
     margin: 0;
   }
 </style>

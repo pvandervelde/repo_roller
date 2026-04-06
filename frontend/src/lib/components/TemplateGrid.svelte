@@ -18,6 +18,7 @@
     loading?: boolean;
     error?: string | null;
     ontemplateSelect?: (templateName: string) => void;
+    ontemplateDeselect?: () => void;
     onretry?: () => void;
   }
 
@@ -27,6 +28,7 @@
     loading = false,
     error = null,
     ontemplateSelect,
+    ontemplateDeselect,
     onretry,
   }: Props = $props();
 
@@ -92,6 +94,7 @@
               : null}
             selected={template.name === selectedTemplateName}
             onselect={() => ontemplateSelect?.(template.name)}
+            ondeselect={() => ontemplateDeselect?.()}
           />
         {/each}
       {/if}
@@ -115,24 +118,24 @@
   .template-grid__search-label {
     font-size: 0.875rem;
     font-weight: 500;
-    color: #374151;
+    color: var(--color-text);
   }
 
   .template-grid__search-input {
     width: 100%;
     padding: 0.5rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border);
     border-radius: 0.375rem;
     font-size: 0.875rem;
-    color: #111827;
-    background-color: #fff;
+    color: var(--color-text);
+    background-color: var(--color-bg);
     box-sizing: border-box;
   }
 
   .template-grid__search-input:focus {
-    outline: 2px solid var(--brand-primary, #2563eb);
+    outline: 2px solid var(--brand-primary);
     outline-offset: 2px;
-    border-color: var(--brand-primary, #2563eb);
+    border-color: var(--brand-primary);
   }
 
   .template-grid__cards {
@@ -144,7 +147,7 @@
   .template-grid__empty,
   .template-grid__no-results {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: var(--color-text-muted);
     text-align: center;
     padding: 2rem 1rem;
   }

@@ -35,7 +35,8 @@
   .creation-overlay {
     position: fixed;
     inset: 0;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: color-mix(in srgb, var(--color-bg) 92%, transparent);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -50,13 +51,17 @@
     text-align: center;
     max-width: 24rem;
     padding: 2rem;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
   }
 
   .creation-overlay__spinner {
     width: 3rem;
     height: 3rem;
-    border: 4px solid #e5e7eb;
-    border-top-color: var(--brand-primary, #2563eb);
+    border: 4px solid var(--color-border);
+    border-top-color: var(--brand-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -70,13 +75,13 @@
   .creation-overlay__heading {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #111827;
+    color: var(--color-text);
     margin: 0;
   }
 
   .creation-overlay__message {
     font-size: 0.9375rem;
-    color: #6b7280;
+    color: var(--color-text-muted);
     margin: 0;
   }
 </style>

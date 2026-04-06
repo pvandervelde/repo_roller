@@ -24,6 +24,17 @@
     onselect?: () => void;
   }
 
+  interface Props {
+    name: string;
+    description: string;
+    tags?: string[];
+    repositoryTypeBadge?: RepositoryTypeBadge;
+    selected: boolean;
+    loading?: boolean;
+    onselect?: () => void;
+    ondeselect?: () => void;
+  }
+
   let {
     name,
     description,
@@ -32,6 +43,7 @@
     selected,
     loading = false,
     onselect,
+    ondeselect,
   }: Props = $props();
 
   const visibleTags = $derived(tags.slice(0, 4));
@@ -52,6 +64,12 @@
       aria-label={name}
       class="template-card__radio"
       onchange={onselect}
+      onclick={selected
+        ? (e) => {
+            e.preventDefault();
+            ondeselect?.();
+          }
+        : undefined}
     />
     {#if selected}
       <span class="template-card__checkmark" aria-hidden="true">✓</span>
@@ -78,23 +96,23 @@
     display: block;
     position: relative;
     padding: 1rem;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--color-border);
     border-radius: 0.5rem;
     cursor: pointer;
     transition:
       border-color 0.15s,
       box-shadow 0.15s;
-    background-color: #fff;
+    background-color: var(--color-surface);
   }
 
   .template-card:hover {
-    border-color: var(--brand-primary, #2563eb);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-color: var(--brand-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
 
   .template-card--selected {
-    border-color: var(--brand-primary, #2563eb);
-    box-shadow: 0 0 0 2px var(--brand-primary, #2563eb);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px var(--brand-primary);
   }
 
   /* Visually hidden but accessible */
@@ -123,13 +141,13 @@
     font-size: 0.9375rem;
     font-weight: 600;
     margin: 0 0 0.375rem;
-    color: #111827;
+    color: var(--color-text);
     padding-right: 1.5rem;
   }
 
   .template-card__description {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: var(--color-text-muted);
     margin: 0 0 0.5rem;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -150,9 +168,10 @@
   .template-card__tag {
     font-size: 0.75rem;
     padding: 0.125rem 0.5rem;
-    background-color: #f3f4f6;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
     border-radius: 9999px;
-    color: #374151;
+    color: var(--color-text-muted);
   }
 
   .template-card__type-badge {
@@ -160,21 +179,21 @@
     margin-top: 0.5rem;
     font-size: 0.75rem;
     padding: 0.125rem 0.5rem;
-    background-color: #dbeafe;
-    color: var(--brand-primary, #1d4ed8);
+    background-color: color-mix(in srgb, var(--brand-primary) 15%, transparent);
+    color: var(--brand-primary);
     border-radius: 0.25rem;
   }
 
   /* Loading skeleton */
   .template-card--loading {
     cursor: default;
-    background-color: #f9fafb;
-    border-color: #e5e7eb;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
   }
 
   .template-card__skeleton-name {
     height: 1rem;
-    background-color: #e5e7eb;
+    background-color: var(--color-border);
     border-radius: 0.25rem;
     margin-bottom: 0.5rem;
     width: 60%;
@@ -183,7 +202,7 @@
 
   .template-card__skeleton-desc {
     height: 0.875rem;
-    background-color: #e5e7eb;
+    background-color: var(--color-border);
     border-radius: 0.25rem;
     width: 85%;
     animation: skeleton-pulse 1.5s ease-in-out infinite;

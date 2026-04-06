@@ -78,7 +78,7 @@
   .step-progress__connector {
     flex: 1;
     height: 2px;
-    background-color: #e5e7eb;
+    background-color: var(--color-border);
     margin: 0 0.5rem;
     min-width: 2rem;
   }
@@ -107,13 +107,13 @@
   }
 
   .step-progress__dot--upcoming {
-    background-color: #e5e7eb;
-    color: #6b7280;
+    background-color: var(--color-border);
+    color: var(--color-text-muted);
   }
 
   .step-progress__label {
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 </style>

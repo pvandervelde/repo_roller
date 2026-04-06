@@ -64,10 +64,10 @@
 
 <style>
   .repo-summary {
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     padding: 1rem;
-    background-color: #f9fafb;
+    background-color: var(--color-surface);
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -75,7 +75,7 @@
 
   .repo-summary__prefix {
     font-size: 0.8125rem;
-    color: #6b7280;
+    color: var(--color-text-muted);
     margin: 0;
   }
 
@@ -83,12 +83,12 @@
     font-size: 1rem;
     font-weight: 600;
     font-family: monospace;
-    color: #111827;
+    color: var(--color-text);
     margin: 0;
   }
 
   .repo-summary__repo--placeholder {
-    color: #9ca3af;
+    color: var(--color-text-muted);
     font-style: italic;
   }
 
@@ -106,18 +106,19 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.25rem 0.625rem;
-    background-color: #e5e7eb;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
     border-radius: 9999px;
     font-size: 0.75rem;
   }
 
   .repo-summary__chip-label {
-    color: #6b7280;
+    color: var(--color-text-muted);
     font-weight: 400;
   }
 
   .repo-summary__chip-value {
-    color: #111827;
+    color: var(--color-text);
     font-weight: 500;
   }
 </style>
