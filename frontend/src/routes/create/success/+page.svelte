@@ -41,12 +41,7 @@
         {githubUrl}
       </a>
 
-      <a
-        href={githubUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="success__btn-primary"
-      >
+      <a href={githubUrl} target="_blank" rel="noopener noreferrer" class="success__btn-primary">
         View repository on GitHub ↗
       </a>
     {:else}

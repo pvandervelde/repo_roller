@@ -11,16 +11,16 @@ import { test, expect } from '@playwright/test';
 
 // A minimal valid session cookie for testing authenticated pages.
 const SESSION_COOKIE = {
-    name: 'session',
-    value: JSON.stringify({
-        userLogin: 'test-user',
-        userAvatarUrl: 'https://example.com/avatar.png',
-    }),
-    domain: 'localhost',
-    path: '/',
-    httpOnly: true,
-    secure: false,
-    sameSite: 'Lax' as const,
+  name: 'session',
+  value: JSON.stringify({
+    userLogin: 'test-user',
+    userAvatarUrl: 'https://example.com/avatar.png',
+  }),
+  domain: 'localhost',
+  path: '/',
+  httpOnly: true,
+  secure: false,
+  sameSite: 'Lax' as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -28,27 +28,27 @@ const SESSION_COOKIE = {
 // ---------------------------------------------------------------------------
 
 test.describe('Sign-in page (SCR-001)', () => {
-    test('page title contains "Sign in"', async ({ page }) => {
-        await page.goto('/sign-in');
-        await expect(page).toHaveTitle(/Sign in/);
-    });
+  test('page title contains "Sign in"', async ({ page }) => {
+    await page.goto('/sign-in');
+    await expect(page).toHaveTitle(/Sign in/);
+  });
 
-    test('renders an h1 heading', async ({ page }) => {
-        await page.goto('/sign-in');
-        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    });
+  test('renders an h1 heading', async ({ page }) => {
+    await page.goto('/sign-in');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  });
 
-    test('renders "Sign in with GitHub" link-button', async ({ page }) => {
-        await page.goto('/sign-in');
-        await expect(page.getByRole('button', { name: /Sign in with GitHub/i })).toBeVisible();
-    });
+  test('renders "Sign in with GitHub" link-button', async ({ page }) => {
+    await page.goto('/sign-in');
+    await expect(page.getByRole('button', { name: /Sign in with GitHub/i })).toBeVisible();
+  });
 
-    test('"Sign in with GitHub" button links to GitHub OAuth', async ({ page }) => {
-        await page.goto('/sign-in');
-        const btn = page.getByRole('button', { name: /Sign in with GitHub/i });
-        const href = await btn.getAttribute('href');
-        expect(href).toContain('github.com/login/oauth/authorize');
-    });
+  test('"Sign in with GitHub" button links to GitHub OAuth', async ({ page }) => {
+    await page.goto('/sign-in');
+    const btn = page.getByRole('button', { name: /Sign in with GitHub/i });
+    const href = await btn.getAttribute('href');
+    expect(href).toContain('github.com/login/oauth/authorize');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -56,24 +56,21 @@ test.describe('Sign-in page (SCR-001)', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Route guards (UX-ASSERT-001)', () => {
-    test('unauthenticated /create redirects to /sign-in', async ({ page }) => {
-        await page.goto('/create');
-        await expect(page).toHaveURL('/sign-in');
-    });
+  test('unauthenticated /create redirects to /sign-in', async ({ page }) => {
+    await page.goto('/create');
+    await expect(page).toHaveURL('/sign-in');
+  });
 
-    test('unauthenticated /create/success redirects to /sign-in', async ({ page }) => {
-        await page.goto('/create/success');
-        await expect(page).toHaveURL('/sign-in');
-    });
+  test('unauthenticated /create/success redirects to /sign-in', async ({ page }) => {
+    await page.goto('/create/success');
+    await expect(page).toHaveURL('/sign-in');
+  });
 
-    test('session cookie allows access to /create (UX-ASSERT-001)', async ({
-        page,
-        context,
-    }) => {
-        await context.addCookies([SESSION_COOKIE]);
-        await page.goto('/create');
-        await expect(page).not.toHaveURL('/sign-in');
-    });
+  test('session cookie allows access to /create (UX-ASSERT-001)', async ({ page, context }) => {
+    await context.addCookies([SESSION_COOKIE]);
+    await page.goto('/create');
+    await expect(page).not.toHaveURL('/sign-in');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -81,32 +78,32 @@ test.describe('Route guards (UX-ASSERT-001)', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Access Denied page (SCR-003)', () => {
-    test('access_denied reason shows "GitHub authorization was cancelled"', async ({ page }) => {
-        await page.goto('/auth/denied?reason=access_denied');
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-            'GitHub authorization was cancelled',
-        );
-    });
+  test('access_denied reason shows "GitHub authorization was cancelled"', async ({ page }) => {
+    await page.goto('/auth/denied?reason=access_denied');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      'GitHub authorization was cancelled',
+    );
+  });
 
-    test('oauth_error reason shows "Sign-in could not be completed"', async ({ page }) => {
-        await page.goto('/auth/denied?reason=oauth_error');
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-            'Sign-in could not be completed',
-        );
-    });
+  test('oauth_error reason shows "Sign-in could not be completed"', async ({ page }) => {
+    await page.goto('/auth/denied?reason=oauth_error');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      'Sign-in could not be completed',
+    );
+  });
 
-    test('no reason defaults to oauth_error copy', async ({ page }) => {
-        await page.goto('/auth/denied');
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-            'Sign-in could not be completed',
-        );
-    });
+  test('no reason defaults to oauth_error copy', async ({ page }) => {
+    await page.goto('/auth/denied');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      'Sign-in could not be completed',
+    );
+  });
 
-    test('"Try again" button navigates to /sign-in', async ({ page }) => {
-        await page.goto('/auth/denied?reason=oauth_error');
-        const btn = page.getByRole('link', { name: 'Try again' });
-        await expect(btn).toHaveAttribute('href', '/sign-in');
-    });
+  test('"Try again" button navigates to /sign-in', async ({ page }) => {
+    await page.goto('/auth/denied?reason=oauth_error');
+    const btn = page.getByRole('link', { name: 'Try again' });
+    await expect(btn).toHaveAttribute('href', '/sign-in');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -114,38 +111,30 @@ test.describe('Access Denied page (SCR-003)', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Error screen (SCR-006)', () => {
-    test('generic error shows "Something went wrong"', async ({ page }) => {
-        await page.goto('/error');
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText('Something went wrong');
-    });
+  test('generic error shows "Something went wrong"', async ({ page }) => {
+    await page.goto('/error');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Something went wrong');
+  });
 
-    test('session_expired shows "Your session has expired"', async ({ page }) => {
-        await page.goto('/error?reason=session_expired');
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-            'Your session has expired',
-        );
-    });
+  test('session_expired shows "Your session has expired"', async ({ page }) => {
+    await page.goto('/error?reason=session_expired');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your session has expired');
+  });
 
-    test('generic error message uses role="alert"', async ({ page }) => {
-        await page.goto('/error');
-        await expect(page.getByRole('alert')).toContainText(
-            'An unexpected error occurred. If this keeps happening, contact your platform team.',
-        );
-    });
+  test('generic error message uses role="alert"', async ({ page }) => {
+    await page.goto('/error');
+    await expect(page.getByRole('alert')).toContainText(
+      'An unexpected error occurred. If this keeps happening, contact your platform team.',
+    );
+  });
 
-    test('"Try again" button links to /sign-in when no session', async ({ page }) => {
-        await page.goto('/error');
-        await expect(page.getByRole('link', { name: 'Try again' })).toHaveAttribute(
-            'href',
-            '/sign-in',
-        );
-    });
+  test('"Try again" button links to /sign-in when no session', async ({ page }) => {
+    await page.goto('/error');
+    await expect(page.getByRole('link', { name: 'Try again' })).toHaveAttribute('href', '/sign-in');
+  });
 
-    test('"Sign in" button for session_expired links to /sign-in', async ({ page }) => {
-        await page.goto('/error?reason=session_expired');
-        await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
-            'href',
-            '/sign-in',
-        );
-    });
+  test('"Sign in" button for session_expired links to /sign-in', async ({ page }) => {
+    await page.goto('/error?reason=session_expired');
+    await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in');
+  });
 });

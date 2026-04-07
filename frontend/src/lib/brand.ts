@@ -1,4 +1,4 @@
-import { DEFAULT_BRAND_CONFIG, type BrandConfig } from "./types/brand";
+import { DEFAULT_BRAND_CONFIG, type BrandConfig } from './types/brand';
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
 
