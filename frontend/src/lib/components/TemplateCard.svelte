@@ -53,13 +53,14 @@
       checked={selected}
       aria-label={name}
       class="template-card__radio"
-      onchange={onselect}
-      onclick={selected
-        ? (e) => {
-            e.preventDefault();
-            ondeselect?.();
-          }
-        : undefined}
+      onclick={(e) => {
+        e.preventDefault();
+        if (selected) {
+          ondeselect?.();
+        } else {
+          onselect?.();
+        }
+      }}
     />
     {#if selected}
       <span class="template-card__checkmark" aria-hidden="true">✓</span>
