@@ -36,7 +36,7 @@ use config_manager::{
     MetadataRepositoryProvider, OrganizationSettingsManager,
 };
 use github_client::GitHubClient;
-use repo_roller_core::RepoRollerError;
+use repo_roller_core::{RepoRollerError, RepositoryNamingValidator};
 
 /// Create an OrganizationSettingsManager and MetadataRepositoryProvider for a request.
 ///
@@ -213,25 +213,91 @@ impl auth_handler::UserAuthenticationService for TokenAuthService {
     }
 }
 
+/// Load and apply organisation-level naming rules to `name`.
+///
+/// Discovers the metadata repository for `org`, loads its global defaults,
+/// extracts any `naming_rules`, and validates `name` against them using
+/// `RepositoryNamingValidator`.
+///
+/// # Returns
+///
+/// A list of human-readable error messages for each rule violation, or an
+/// empty list when the name passes all rules.  Failures to reach the metadata
+/// repository or load defaults are treated as soft degradation — the validation
+/// still succeeds with only the format check applied.
+pub(crate) async fn check_org_naming_rules(
+    name: &str,
+    org: &str,
+    provider: &dyn MetadataRepositoryProvider,
+) -> Vec<String> {
+    // Discover the metadata repository for the org.
+    let metadata_repo = match provider.discover_metadata_repository(org).await {
+        Ok(repo) => repo,
+        Err(e) => {
+            tracing::warn!(
+                org = org,
+                error = %e,
+                "Failed to discover metadata repository; skipping org naming rules"
+            );
+            return vec![];
+        }
+    };
+
+    // Load global defaults to obtain org-level naming rules.
+    let global_defaults = match provider.load_global_defaults(&metadata_repo).await {
+        Ok(defaults) => defaults,
+        Err(e) => {
+            tracing::warn!(
+                org = org,
+                error = %e,
+                "Failed to load global defaults; skipping org naming rules"
+            );
+            return vec![];
+        }
+    };
+
+    // Extract naming rules — nothing to validate when none are configured.
+    let naming_rules = match global_defaults.naming_rules {
+        Some(rules) if !rules.is_empty() => rules,
+        _ => return vec![],
+    };
+
+    // Validate the name against every configured naming rule.
+    let validator = RepositoryNamingValidator::new();
+    match validator.validate(name, &naming_rules) {
+        Ok(()) => vec![],
+        Err(e) => vec![e.to_string()],
+    }
+}
+
 /// POST /api/v1/repositories/validate-name
 ///
 /// Validate a repository name for availability and format.
 ///
+/// Performs two levels of validation:
+/// 1. **Format check** (always): GitHub character-set rules.
+/// 2. **Org naming rules** (when authenticated): organisation-level constraints
+///    loaded from the metadata repository via `RepositoryNamingValidator`.
+///
+/// Org rule loading degrades gracefully — if the metadata repository cannot be
+/// reached the response falls back to the format check alone.
+///
 /// See: specs/interfaces/api-request-types.md#validaterepositorynamerequest
 pub async fn validate_repository_name(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
     Json(request): Json<ValidateRepositoryNameRequest>,
 ) -> Result<Json<ValidateRepositoryNameResponse>, ApiError> {
     let mut messages = Vec::new();
     let mut valid = true;
 
-    // Check if name is empty
+    // Check if name is empty.
     if request.name.is_empty() {
         messages.push("Repository name cannot be empty".to_string());
         valid = false;
     }
 
-    // Check for invalid characters
+    // Check basic GitHub format rules.
     if !is_valid_repository_name(&request.name) {
         messages.push(
             "Repository name can only contain lowercase letters, numbers, hyphens, and underscores"
@@ -239,14 +305,44 @@ pub async fn validate_repository_name(
         );
         valid = false;
 
-        // Check specifically for uppercase
+        // Provide a specific message for uppercase characters.
         if request.name.chars().any(|c| c.is_uppercase()) {
             messages.push("Repository name cannot contain uppercase letters".to_string());
         }
     }
 
-    // Repository availability checking via GitHub API is a future enhancement
-    // See Task 9.7 - REST API Post-MVP Enhancements
+    // When the format is valid and the request is authenticated, also check
+    // organisation-level naming rules loaded from the metadata repository.
+    if valid {
+        if let Some(Extension(auth_ctx)) = auth {
+            match create_settings_manager(&auth_ctx, &state).await {
+                Ok((_manager, provider)) => {
+                    let naming_messages = check_org_naming_rules(
+                        &request.name,
+                        &request.organization,
+                        provider.as_ref(),
+                    )
+                    .await;
+                    if !naming_messages.is_empty() {
+                        valid = false;
+                        messages.extend(naming_messages);
+                    }
+                }
+                Err(e) => {
+                    // Log the failure but do not surface it as an HTTP error — the
+                    // caller still receives a format-only result rather than a 5xx.
+                    tracing::warn!(
+                        org = %request.organization,
+                        error = ?e,
+                        "Failed to create settings manager for naming rule check; skipping org rules"
+                    );
+                }
+            }
+        }
+    }
+
+    // Repository availability checking via GitHub API is a future enhancement.
+    // See Task 9.7 - REST API Post-MVP Enhancements.
     let available = valid;
 
     let response = ValidateRepositoryNameResponse {
