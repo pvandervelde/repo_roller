@@ -107,10 +107,10 @@ export async function validateRepositoryName(
 
 /**
  * List all repository types configured for an organisation.
- * GET /api/v1/orgs/:org/types
+ * GET /api/v1/orgs/:org/repository-types
  */
 export async function listRepositoryTypes(org: string): Promise<string[]> {
-  const response = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/types`, {
+  const response = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/repository-types`, {
     method: 'GET',
   });
   if (!response.ok) await throwForStatus(response);
