@@ -287,3 +287,191 @@ async fn test_validate_repository_request_nonexistent_template() {
         "validate endpoint should return valid=true for structurally correct request"
     );
 }
+
+// ============================================================================
+// check_org_naming_rules unit tests
+//
+// These tests call the helper function directly with a mock provider so they
+// exercise the naming-rule logic without a live GitHub connection.
+// ============================================================================
+
+/// Minimal mock that lets tests configure what `load_global_defaults` returns.
+struct MockNamingRuleProvider {
+    naming_rules: Option<Vec<config_manager::RepositoryNamingRulesConfig>>,
+}
+
+impl MockNamingRuleProvider {
+    /// Provider that returns no naming rules (empty org config).
+    fn with_no_rules() -> Self {
+        Self { naming_rules: None }
+    }
+
+    /// Provider that returns the supplied naming rules.
+    fn with_rules(rules: Vec<config_manager::RepositoryNamingRulesConfig>) -> Self {
+        Self {
+            naming_rules: Some(rules),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl config_manager::MetadataRepositoryProvider for MockNamingRuleProvider {
+    async fn discover_metadata_repository(
+        &self,
+        _org: &str,
+    ) -> config_manager::ConfigurationResult<config_manager::MetadataRepository> {
+        Ok(config_manager::MetadataRepository {
+            organization: "test-org".to_string(),
+            repository_name: "test-meta".to_string(),
+            discovery_method: config_manager::DiscoveryMethod::ConfigurationBased {
+                repository_name: "test-meta".to_string(),
+            },
+            last_updated: chrono::Utc::now(),
+        })
+    }
+
+    async fn load_global_defaults(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+    ) -> config_manager::ConfigurationResult<config_manager::GlobalDefaults> {
+        Ok(config_manager::GlobalDefaults {
+            naming_rules: self.naming_rules.clone(),
+            ..Default::default()
+        })
+    }
+
+    async fn load_team_configuration(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+        _team: &str,
+    ) -> config_manager::ConfigurationResult<Option<config_manager::TeamConfig>> {
+        Ok(None)
+    }
+
+    async fn load_repository_type_configuration(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+        _repo_type: &str,
+    ) -> config_manager::ConfigurationResult<Option<config_manager::RepositoryTypeConfig>> {
+        Ok(None)
+    }
+
+    async fn load_standard_labels(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+    ) -> config_manager::ConfigurationResult<
+        std::collections::HashMap<String, config_manager::LabelConfig>,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
+
+    async fn load_global_webhooks(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+    ) -> config_manager::ConfigurationResult<Vec<config_manager::settings::WebhookConfig>> {
+        Ok(vec![])
+    }
+
+    async fn list_available_repository_types(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+    ) -> config_manager::ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn validate_repository_structure(
+        &self,
+        _repo: &config_manager::MetadataRepository,
+    ) -> config_manager::ConfigurationResult<()> {
+        Ok(())
+    }
+
+    async fn list_templates(&self, _org: &str) -> config_manager::ConfigurationResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn load_template_configuration(
+        &self,
+        _org: &str,
+        _template_name: &str,
+    ) -> config_manager::ConfigurationResult<config_manager::TemplateConfig> {
+        Err(config_manager::ConfigurationError::FileNotFound {
+            path: "template.toml".to_string(),
+        })
+    }
+}
+
+/// When the org has no naming rules configured, any format-valid name passes.
+#[tokio::test]
+async fn test_check_org_naming_rules_no_rules_returns_empty() {
+    let provider = MockNamingRuleProvider::with_no_rules();
+    let messages = check_org_naming_rules("my-service", "test-org", &provider).await;
+    assert!(
+        messages.is_empty(),
+        "Expected no messages when no org naming rules are configured"
+    );
+}
+
+/// A format-valid name that satisfies all org naming rules produces no messages.
+#[tokio::test]
+async fn test_check_org_naming_rules_valid_name_passes_rules() {
+    let rules = vec![config_manager::RepositoryNamingRulesConfig {
+        required_prefix: Some("svc-".to_string()),
+        ..Default::default()
+    }];
+    let provider = MockNamingRuleProvider::with_rules(rules);
+    let messages = check_org_naming_rules("svc-billing", "test-org", &provider).await;
+    assert!(
+        messages.is_empty(),
+        "Expected no messages for a name that satisfies the prefix rule"
+    );
+}
+
+/// A name that violates an org-level naming rule produces a non-empty message list.
+#[tokio::test]
+async fn test_check_org_naming_rules_prefix_violation_returns_message() {
+    let rules = vec![config_manager::RepositoryNamingRulesConfig {
+        required_prefix: Some("svc-".to_string()),
+        ..Default::default()
+    }];
+    let provider = MockNamingRuleProvider::with_rules(rules);
+    let messages = check_org_naming_rules("billing", "test-org", &provider).await;
+    assert!(
+        !messages.is_empty(),
+        "Expected error messages when the name violates the required prefix rule"
+    );
+    assert!(
+        messages[0].contains("svc-"),
+        "Error message should mention the required prefix"
+    );
+}
+
+/// A name that matches a forbidden pattern returns an error message.
+#[tokio::test]
+async fn test_check_org_naming_rules_forbidden_pattern_violation_returns_message() {
+    let rules = vec![config_manager::RepositoryNamingRulesConfig {
+        forbidden_patterns: vec!["noncompliant".to_string()],
+        ..Default::default()
+    }];
+    let provider = MockNamingRuleProvider::with_rules(rules);
+    let messages = check_org_naming_rules("my-noncompliant-repo", "test-org", &provider).await;
+    assert!(
+        !messages.is_empty(),
+        "Expected error messages when the name matches a forbidden pattern"
+    );
+}
+
+/// A name matching a reserved word is rejected.
+#[tokio::test]
+async fn test_check_org_naming_rules_reserved_word_returns_message() {
+    let rules = vec![config_manager::RepositoryNamingRulesConfig {
+        reserved_words: vec!["test".to_string()],
+        ..Default::default()
+    }];
+    let provider = MockNamingRuleProvider::with_rules(rules);
+    let messages = check_org_naming_rules("test", "test-org", &provider).await;
+    assert!(
+        !messages.is_empty(),
+        "Expected error messages when the name is a reserved word"
+    );
+}
