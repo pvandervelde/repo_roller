@@ -16,7 +16,6 @@
     label: string;
     description?: string | null;
     required: boolean;
-    defaultValue?: string | null;
     value: string;
     disabled?: boolean;
     onchange?: (value: string) => void;
@@ -27,7 +26,6 @@
     label,
     description = null,
     required,
-    defaultValue = null,
     value,
     disabled = false,
     onchange,

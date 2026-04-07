@@ -100,22 +100,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: pnpm/action-setup@a3252b7022685d3c4c4e5902bd0f0e6f0a19b48e # v4.1.0
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version-file: frontend/.node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: frontend
       - name: Security audit
-        run: npm audit --audit-level=high
+        run: pnpm audit --audit-level=high
         working-directory: frontend
       - name: ESLint
-        run: npm run lint
+        run: pnpm run lint
         working-directory: frontend
       - name: Prettier format check
-        run: npm run format:check
+        run: pnpm run format:check
         working-directory: frontend
 
   frontend-type-check:
@@ -123,17 +126,65 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: pnpm/action-setup@a3252b7022685d3c4c4e5902bd0f0e6f0a19b48e # v4.1.0
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version-file: frontend/.node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: frontend
       - name: Generate SvelteKit types
-        run: npm run prepare
+        run: pnpm run prepare
         working-directory: frontend
       - name: Svelte type-check
-        run: npm run check
+        run: pnpm run check
+        working-directory: frontend
+
+  frontend-test:
+    name: Frontend unit tests & coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: pnpm/action-setup@a3252b7022685d3c4c4e5902bd0f0e6f0a19b48e # v4.1.0
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: frontend/.node-version
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: frontend
+      - name: Run unit tests with coverage
+        run: pnpm run test:coverage
+        working-directory: frontend
+
+  frontend-build:
+    name: Frontend production build
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values required by SvelteKit env validation at build time
+      GITHUB_CLIENT_ID: build-placeholder
+      GITHUB_CLIENT_SECRET: build-placeholder
+      GITHUB_ORG: build-placeholder
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: pnpm/action-setup@a3252b7022685d3c4c4e5902bd0f0e6f0a19b48e # v4.1.0
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: frontend/.node-version
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: frontend
+      - name: Build for production
+        run: pnpm run build
         working-directory: frontend

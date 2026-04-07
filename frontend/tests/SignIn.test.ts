@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/svelte';
 import SignInPage from '../src/routes/sign-in/+page.svelte';
 
 // Minimal brand config matching DEFAULT_BRAND_CONFIG shape.

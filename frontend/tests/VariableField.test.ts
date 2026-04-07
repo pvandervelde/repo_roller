@@ -11,7 +11,6 @@ interface VariableFieldProps {
   label: string;
   description?: string | null;
   required: boolean;
-  defaultValue?: string | null;
   value: string;
   disabled?: boolean;
   onchange?: (value: string) => void;
@@ -118,7 +117,7 @@ describe('VariableField (CMP-008)', () => {
 
   it('pre-fills the input with the provided value', () => {
     render(VariableField, {
-      props: makeProps({ value: 'my-default', defaultValue: 'my-default' }),
+      props: makeProps({ value: 'my-default' }),
     });
     expect(screen.getByRole('textbox')).toHaveValue('my-default');
   });

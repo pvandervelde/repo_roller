@@ -28,6 +28,19 @@ export default [
     },
   },
   {
+    rules: {
+      // Allow variables prefixed with _ to be intentionally unused
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+    },
+  },
+  {
     ignores: [
       'build/',
       '.svelte-kit/',

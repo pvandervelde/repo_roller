@@ -441,7 +441,6 @@
             label={toTitleCase(variable.name)}
             description={variable.description ?? null}
             required={variable.required}
-            defaultValue={variable.default_value ?? null}
             value={variableValues[variable.name] ?? ''}
             onchange={(v) => {
               variableValues = { ...variableValues, [variable.name]: v };

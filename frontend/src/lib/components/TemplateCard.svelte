@@ -22,16 +22,6 @@
     selected: boolean;
     loading?: boolean;
     onselect?: () => void;
-  }
-
-  interface Props {
-    name: string;
-    description: string;
-    tags?: string[];
-    repositoryTypeBadge?: RepositoryTypeBadge;
-    selected: boolean;
-    loading?: boolean;
-    onselect?: () => void;
     ondeselect?: () => void;
   }
 

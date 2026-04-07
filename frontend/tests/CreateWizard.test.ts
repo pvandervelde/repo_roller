@@ -209,37 +209,6 @@ describe('Create wizard (SCR-004)', () => {
   // Step 3: Template variables (UX-ASSERT-015, UX-ASSERT-016, UX-ASSERT-017)
   // -------------------------------------------------------------------------
 
-  async function advanceToStep3(templateName = 'python-service') {
-    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
-    vi.mocked(getTemplateDetails).mockResolvedValue({
-      name: templateName,
-      metadata: { description: 'A Python service template', tags: [] },
-      variables: [
-        { name: 'service_name', required: true, description: 'Name of the service' },
-        {
-          name: 'owner_team',
-          required: false,
-          default_value: 'platform',
-        },
-      ],
-    });
-    render(CreatePage, { props: makeProps() });
-
-    // Step 1: select template
-    await waitFor(() => screen.getByRole('radio', { name: templateName }));
-    await fireEvent.change(screen.getByRole('radio', { name: templateName }));
-    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
-    const nextSettings = screen.getByRole('button', { name: /next: repository settings/i });
-    await waitFor(() => expect(nextSettings).not.toBeDisabled());
-    await fireEvent.click(nextSettings);
-
-    // Step 2: "Next: Variables" button — starts disabled, we do not fill the name field
-    // The button label should be "Next: Variables →" since template has variables
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
-    );
-  }
-
   it('shows "Template variables" heading on step 3', async () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
@@ -452,7 +421,6 @@ describe('Create wizard (SCR-004)', () => {
       metadata: { description: 'Template', tags: [] },
       variables: [],
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockReturnValue(new Promise(() => {})); // never resolves
 
@@ -477,7 +445,6 @@ describe('Create wizard (SCR-004)', () => {
   });
 
   it('returns to step 2 with error on name-taken race condition (UX-ASSERT-019)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiConflictError(422, { code: 'NameTaken', message: 'Name already taken' }),
@@ -495,7 +462,6 @@ describe('Create wizard (SCR-004)', () => {
   });
 
   it('returns to step 1 with error on template-not-found (UX-ASSERT-020)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiConflictError(422, {
@@ -516,7 +482,6 @@ describe('Create wizard (SCR-004)', () => {
   });
 
   it('shows permission error inline on 403 (UX-ASSERT-021)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiAuthError(403, { code: 'Forbidden', message: 'Forbidden' }),
@@ -533,7 +498,6 @@ describe('Create wizard (SCR-004)', () => {
   });
 
   it('shows network error inline without losing step (UX-ASSERT-021)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(new ApiNetworkError(new Error('offline')));
 
@@ -547,7 +511,6 @@ describe('Create wizard (SCR-004)', () => {
   });
 
   it('shows server error inline on 5xx (UX-ASSERT-021)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiServerError(500, { code: 'InternalError', message: 'Internal server error' }),
