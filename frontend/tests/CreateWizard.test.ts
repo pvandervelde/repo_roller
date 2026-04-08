@@ -19,10 +19,11 @@ vi.mock('../src/lib/api/client', () => ({
   getTemplateDetails: vi.fn(),
   validateRepositoryName: vi.fn(),
   listRepositoryTypes: vi.fn(),
+  listTeams: vi.fn(),
   createRepository: vi.fn(),
 }));
 
-import { listTemplates, getTemplateDetails, listRepositoryTypes } from '../src/lib/api/client';
+import { listTemplates, getTemplateDetails, listRepositoryTypes, listTeams } from '../src/lib/api/client';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -62,6 +63,7 @@ describe('Create wizard (SCR-004)', () => {
       variables: [],
     });
     vi.mocked(listRepositoryTypes).mockResolvedValue([]);
+    vi.mocked(listTeams).mockResolvedValue([]);
   });
 
   // -------------------------------------------------------------------------

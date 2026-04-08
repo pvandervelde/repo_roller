@@ -475,3 +475,52 @@ async fn test_check_org_naming_rules_reserved_word_returns_message() {
         "Expected error messages when the name is a reserved word"
     );
 }
+
+// ============================================================================
+// list_organization_teams handler tests
+// ============================================================================
+
+/// Verify that GET /api/v1/orgs/:org/teams is routed correctly.
+///
+/// The handler requires a real GitHub token to call the GitHub API.  With the
+/// no-auth test router we inject a thin fake `AuthContext` to get past the
+/// extension extraction, and the handler will attempt (and fail) the GitHub
+/// API call because the token is not a valid installation token.
+/// That results in a 500 from `create_token_client` / the octocrab client
+/// rather than a 404 (which would mean the route is missing).
+///
+/// This test therefore verifies route wiring without needing a live GitHub
+/// connection.
+#[tokio::test]
+async fn test_list_organization_teams_route_is_registered() {
+    use axum::middleware;
+
+    // Build a router that injects a fake AuthContext so the handler can
+    // extract it, then let the GitHub API call fail naturally.
+    let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new(
+                    "test-token".to_string(),
+                ));
+            next.run(req).await
+        },
+    ));
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/orgs/testorg/teams")
+        .header("authorization", "Bearer test-token")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    // The route exists — a 404 would mean the route is not registered.
+    // The GitHub API call will fail (fake token), producing a 500.
+    assert_ne!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Expected route to be registered; got 404 which means the route is missing"
+    );
+}

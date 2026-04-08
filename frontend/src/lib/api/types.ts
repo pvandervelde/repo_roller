@@ -86,6 +86,17 @@ export interface ListRepositoryTypesResponse {
   types: string[];
 }
 
+/** A single organization team entry for the team dropdown. */
+export interface TeamSummary {
+  slug: string;
+  name: string;
+}
+
+/** 200 response for GET /api/v1/orgs/:org/teams */
+export interface ListTeamsResponse {
+  teams: TeamSummary[];
+}
+
 /** 200 response for GET /api/v1/orgs/:org/templates */
 export interface ListTemplatesResponse {
   templates: TemplateSummary[];

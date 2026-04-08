@@ -4,6 +4,7 @@ import {
   getTemplateDetails,
   validateRepositoryName,
   createRepository,
+  listTeams,
 } from '../src/lib/api/client';
 import {
   ApiAuthError,
@@ -15,6 +16,7 @@ import {
 import type {
   CreateRepositoryResponse,
   GetTemplateDetailsResponse,
+  ListTeamsResponse,
   ListTemplatesResponse,
   ValidateRepositoryNameResponse,
 } from '../src/lib/api/types';
@@ -310,5 +312,67 @@ describe('createRepository()', () => {
     const err = await createRepository(REQUEST).catch((e) => e);
     expect(err).toBeInstanceOf(ApiNetworkError);
     expect(err.cause).toBe(cause);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listTeams
+// ---------------------------------------------------------------------------
+
+describe('listTeams()', () => {
+  const TEAMS_RESPONSE: ListTeamsResponse = {
+    teams: [
+      { slug: 'backend', name: 'Backend Engineers' },
+      { slug: 'platform', name: 'Platform Team' },
+    ],
+  };
+
+  it('calls GET /api/v1/orgs/:org/teams', async () => {
+    mockFetch(TEAMS_RESPONSE);
+    await listTeams('myorg');
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/v1/orgs/myorg/teams',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('URL-encodes the org name', async () => {
+    mockFetch(TEAMS_RESPONSE);
+    await listTeams('my org');
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/v1/orgs/my%20org/teams',
+      expect.anything(),
+    );
+  });
+
+  it('returns the teams array with slug and name', async () => {
+    mockFetch(TEAMS_RESPONSE);
+    const result = await listTeams('myorg');
+    expect(result).toHaveLength(2);
+    expect(result[0].slug).toBe('backend');
+    expect(result[0].name).toBe('Backend Engineers');
+    expect(result[1].slug).toBe('platform');
+    expect(result[1].name).toBe('Platform Team');
+  });
+
+  it('returns an empty array when the org has no teams', async () => {
+    mockFetch({ teams: [] });
+    const result = await listTeams('myorg');
+    expect(result).toEqual([]);
+  });
+
+  it('throws ApiAuthError on 401', async () => {
+    mockFetch(errorBody('AuthenticationError', 'Unauthorized'), 401);
+    await expect(listTeams('myorg')).rejects.toThrow(ApiAuthError);
+  });
+
+  it('throws ApiServerError on 500', async () => {
+    mockFetch(errorBody('SystemError', 'Internal server error'), 500);
+    await expect(listTeams('myorg')).rejects.toThrow(ApiServerError);
+  });
+
+  it('throws ApiNetworkError when fetch rejects', async () => {
+    mockFetchNetworkError();
+    await expect(listTeams('myorg')).rejects.toThrow(ApiNetworkError);
   });
 });
