@@ -1,0 +1,39 @@
+# brand.toml — RepoRoller branding configuration
+#
+# This file is loaded from the server's working directory at runtime.
+#
+# SECURITY: Do NOT place this file inside the `static/` directory.
+# It contains configuration that should only be accessible to the server
+# process, not served as a public asset.
+#
+# Precedence (highest first):
+#   1. Environment variables (BRAND_APP_NAME, BRAND_LOGO_URL, …)
+#   2. This file
+#   3. Built-in defaults
+#
+# All fields are optional. Omit any field to use the default value.
+
+# Application name shown in the browser tab, header wordmark, and page titles.
+# Default: "RepoRoller"
+app_name = "RepoRoller"
+
+# URL to the logo image used in light mode.
+# When absent the header shows the text wordmark instead.
+# logo_url = "https://cdn.example.com/images/repo-roller-logo.svg"
+
+# URL to the logo image used in dark mode.
+# Only takes effect when logo_url is also set.
+# logo_url_dark = "https://cdn.example.com/images/repo-roller-logo-dark.svg"
+
+# Alt text for the logo image (accessibility).
+# Default: "<app_name> logo"
+# logo_alt = "Acme RepoRoller logo"
+
+# Primary accent colour used for links, buttons, and focus rings.
+# Must be a valid CSS colour value.
+# Default: "#0969da" (GitHub blue)
+# primary_color = "#0969da"
+
+# Primary accent colour override for dark mode.
+# Falls back to primary_color when absent.
+# primary_color_dark = "#58a6ff"

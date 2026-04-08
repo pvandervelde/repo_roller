@@ -21,6 +21,10 @@ This guide explains how to configure RepoRoller using the hierarchical configura
 - [Permission Audit Logging](#permission-audit-logging)
 - [Override Controls](#override-controls)
 - [Examples](#examples)
+- [Web Frontend Deployment](#web-frontend-deployment)
+  - [Branding Configuration](#branding-configuration)
+  - [GitHub OAuth App Setup](#github-oauth-app-setup)
+  - [Docker Deployment](#docker-deployment)
 
 ## Overview
 
@@ -863,6 +867,140 @@ required_checks = [
 ```
 
 **Result**: Frontend team repositories have discussions enabled, require only 1 approval (overriding global default), allow auto-merge, have UI/accessibility labels, and require visual regression tests.
+
+---
+
+## Web Frontend Deployment
+
+The RepoRoller web frontend is a SvelteKit application compiled to a standalone Node.js server
+using `@sveltejs/adapter-node`. It can be deployed as a Docker container alongside the Rust API
+server.
+
+### Branding Configuration
+
+The frontend supports custom branding through two mechanisms (highest priority first):
+
+1. **Environment variables** — set at container startup time
+2. **`brand.toml`** — a TOML config file in the server's working directory
+
+> **Security**: `brand.toml` must **not** be placed inside `frontend/static/`. It is a
+> server-side file that is never served to browsers. Place it next to the built server
+> (e.g. `/app/brand.toml` inside the container, or mount it as a volume).
+
+#### Branding Environment Variables
+
+| Variable                 | Description                                                      | Default        |
+|--------------------------|------------------------------------------------------------------|----------------|
+| `BRAND_APP_NAME`         | Application name in the header and page title                    | `RepoRoller`   |
+| `BRAND_LOGO_URL`         | URL for the light-mode logo image                                | *(none)*       |
+| `BRAND_LOGO_URL_DARK`    | URL for the dark-mode logo (requires `BRAND_LOGO_URL`)           | *(none)*       |
+| `BRAND_LOGO_ALT`         | Alt text for the logo image                                      | `<name> logo`  |
+| `BRAND_PRIMARY_COLOR`    | CSS accent colour (hex, rgb, etc.)                               | `#0969da`      |
+| `BRAND_PRIMARY_COLOR_DARK` | Accent colour override for dark mode                           | *(none)*       |
+
+#### `brand.toml` Example
+
+Copy `frontend/brand.toml.example` to `brand.toml` and customise:
+
+```toml
+app_name = "Acme RepoRoller"
+logo_url = "https://cdn.acme.example/logo.svg"
+logo_url_dark = "https://cdn.acme.example/logo-dark.svg"
+logo_alt = "Acme logo"
+primary_color = "#e63946"
+```
+
+---
+
+### GitHub OAuth App Setup
+
+The frontend uses GitHub's OAuth flow for user authentication. You must create a GitHub OAuth
+App in your organization before deploying.
+
+#### Steps
+
+1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App** (or your
+   organization's equivalent path).
+2. Fill in the form:
+   - **Application name**: `RepoRoller` (or your branded name)
+   - **Homepage URL**: your public URL, e.g. `https://reporoller.acme.example`
+   - **Authorization callback URL**: `https://reporoller.acme.example/auth/callback`
+3. Click **Register application**.
+4. Copy the **Client ID** and generate a **Client secret**.
+5. Set the following environment variables when running the frontend container:
+
+| Variable               | Description                                           |
+|------------------------|-------------------------------------------------------|
+| `GITHUB_CLIENT_ID`     | OAuth App client ID (from step 4)                     |
+| `GITHUB_CLIENT_SECRET` | OAuth App client secret — treat as a password         |
+| `GITHUB_ORG`           | GitHub organization slug (e.g. `acme`)                |
+| `ORIGIN`               | Public URL of the frontend, e.g. `https://reporoller.acme.example` — required by the SvelteKit Node adapter for CSRF protection |
+
+> **Security**: `GITHUB_CLIENT_SECRET` is sensitive. Pass it via a secrets manager or
+> `--env-file` rather than embedding it in container images or Docker Compose files
+> committed to source control.
+
+---
+
+### Docker Deployment
+
+The frontend ships with a multi-stage `Dockerfile` at `frontend/Dockerfile`.
+
+#### Build and run
+
+```bash
+# Build the image from the frontend directory
+docker build -t repo-roller-frontend frontend/
+
+# Run with the required environment variables
+docker run -d \
+  --name repo-roller-frontend \
+  -p 3000:3000 \
+  -e GITHUB_CLIENT_ID=Iv1.abc123 \
+  -e GITHUB_CLIENT_SECRET=<secret> \
+  -e GITHUB_ORG=my-org \
+  -e ORIGIN=https://reporoller.example.com \
+  -e BRAND_APP_NAME="My RepoRoller" \
+  repo-roller-frontend
+```
+
+To use `brand.toml` instead of individual environment variables, mount it as a volume at
+`/app/brand.toml`:
+
+```bash
+docker run -d \
+  --name repo-roller-frontend \
+  -p 3000:3000 \
+  -e GITHUB_CLIENT_ID=Iv1.abc123 \
+  -e GITHUB_CLIENT_SECRET=<secret> \
+  -e GITHUB_ORG=my-org \
+  -e ORIGIN=https://reporoller.example.com \
+  -v /etc/reporoller/brand.toml:/app/brand.toml:ro \
+  repo-roller-frontend
+```
+
+#### Docker Compose example
+
+```yaml
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_ORG: ${GITHUB_ORG}
+      ORIGIN: ${ORIGIN}
+      BRAND_APP_NAME: ${BRAND_APP_NAME:-RepoRoller}
+    volumes:
+      - /etc/reporoller/brand.toml:/app/brand.toml:ro
+    restart: unless-stopped
+```
+
+Use a `.env` file (not committed to source control) to supply the secret values locally.
 
 ## Best Practices
 
