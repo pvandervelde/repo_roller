@@ -17,6 +17,7 @@
 //! - GET    /api/v1/orgs/:org/defaults - Get global defaults
 //! - POST   /api/v1/orgs/:org/configuration/preview - Preview configuration
 //! - POST   /api/v1/orgs/:org/validate - Validate organization
+//! - GET    /api/v1/orgs/:org/teams - List organization teams
 //! - GET    /api/v1/health - Health check
 //!
 //! See: .llm/rest-api-review-response.md
@@ -129,6 +130,8 @@ fn organization_routes() -> Router<AppState> {
         )
         // Organization validation
         .route("/validate", post(handlers::validate_organization))
+        // Team routes
+        .route("/teams", get(handlers::list_organization_teams))
         // Add organization-specific authorization middleware
         .layer(middleware::from_fn(
             api_middleware::organization_auth_middleware,
@@ -234,6 +237,8 @@ fn organization_routes_without_auth() -> Router<AppState> {
         )
         // Organization validation
         .route("/validate", post(handlers::validate_organization))
+        // Team routes
+        .route("/teams", get(handlers::list_organization_teams))
 }
 
 #[cfg(test)]

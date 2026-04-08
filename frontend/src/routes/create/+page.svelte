@@ -15,6 +15,7 @@
     listTemplates,
     getTemplateDetails,
     listRepositoryTypes,
+    listTeams,
     createRepository,
   } from '$lib/api/client';
   import { ApiConflictError, ApiAuthError, ApiNetworkError } from '$lib/api/errors';
@@ -204,10 +205,11 @@
 
   async function advanceStep() {
     if (currentStep === 1) {
-      // Entering step 2 for the first time: load types
+      // Entering step 2 for the first time: load types and teams
       if (!typesLoadedForStep2) {
         typesLoadedForStep2 = true;
         loadRepositoryTypes();
+        loadTeams();
       }
     }
     currentStep += 1;
@@ -222,6 +224,18 @@
       availableTypes = names.map((n) => ({ name: n, description: '' }));
     } catch {
       // Leave availableTypes empty — picker degrades gracefully
+    }
+  }
+
+  async function loadTeams() {
+    teamsLoading = true;
+    teamsError = false;
+    try {
+      teams = await listTeams(data.organization);
+    } catch {
+      teamsError = true;
+    } finally {
+      teamsLoading = false;
     }
   }
 

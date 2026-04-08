@@ -19,7 +19,9 @@ import type {
   ErrorResponse,
   GetTemplateDetailsResponse,
   ListRepositoryTypesResponse,
+  ListTeamsResponse,
   ListTemplatesResponse,
+  TeamSummary,
   TemplateSummary,
   ValidateRepositoryNameResponse,
 } from './types';
@@ -116,6 +118,19 @@ export async function listRepositoryTypes(org: string): Promise<string[]> {
   if (!response.ok) await throwForStatus(response);
   const body = (await response.json()) as ListRepositoryTypesResponse;
   return body.types;
+}
+
+/**
+ * List all GitHub organization teams.
+ * GET /api/v1/orgs/:org/teams
+ */
+export async function listTeams(org: string): Promise<TeamSummary[]> {
+  const response = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/teams`, {
+    method: 'GET',
+  });
+  if (!response.ok) await throwForStatus(response);
+  const body = (await response.json()) as ListTeamsResponse;
+  return body.teams;
 }
 
 /**

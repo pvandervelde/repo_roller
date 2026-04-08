@@ -893,6 +893,45 @@ pub async fn validate_organization(
     }))
 }
 
+/// GET /api/v1/orgs/:org/teams
+///
+/// List all GitHub organization teams.
+///
+/// Returns the slug and human-readable name for every team in the org.
+/// Used by the frontend wizard Step 2 to populate the team dropdown.
+///
+/// See: specs/interfaces/api-response-types.md#listteamsresponse
+pub async fn list_organization_teams(
+    State(_state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(org): Path<String>,
+) -> Result<Json<ListTeamsResponse>, ApiError> {
+    // Create a GitHub client with the request's installation token.
+    let octocrab = github_client::create_token_client(&auth.token)
+        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
+    let github_client = GitHubClient::new(octocrab);
+
+    let teams = github_client
+        .list_organization_teams(&org)
+        .await
+        .map_err(|e| {
+            tracing::error!(org = %org, error = %e, "Failed to list organization teams");
+            ApiError::from(anyhow::anyhow!("Failed to list organization teams: {}", e))
+        })?;
+
+    let team_summaries = teams
+        .into_iter()
+        .map(|t| TeamSummary {
+            slug: t.slug,
+            name: t.name,
+        })
+        .collect();
+
+    Ok(Json(ListTeamsResponse {
+        teams: team_summaries,
+    }))
+}
+
 /// GET /api/v1/health
 ///
 /// Health check endpoint.
