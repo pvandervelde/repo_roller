@@ -117,7 +117,7 @@ describe('Create wizard (SCR-004)', () => {
     await waitFor(() => expect(listTemplates).toHaveBeenCalled());
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
 
-    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
 
     const next = screen.getByRole('button', { name: /next: repository settings/i });
@@ -135,7 +135,7 @@ describe('Create wizard (SCR-004)', () => {
 
     // Advance to step 2
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     const next = screen.getByRole('button', { name: /next: repository settings/i });
     await waitFor(() => expect(next).not.toBeDisabled());
@@ -161,7 +161,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
 
     // 2-step: aria-label should say "of 2"
@@ -178,7 +178,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
 
     // 3-step: aria-label should say "of 3"
@@ -194,7 +194,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     const next = screen.getByRole('button', { name: /next: repository settings/i });
     await waitFor(() => expect(next).not.toBeDisabled());
@@ -222,7 +222,7 @@ describe('Create wizard (SCR-004)', () => {
 
     // Advance to step 2
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     const nextSettings = screen.getByRole('button', { name: /next: repository settings/i });
     await waitFor(() => expect(nextSettings).not.toBeDisabled());
@@ -249,7 +249,7 @@ describe('Create wizard (SCR-004)', () => {
 
     // Advance through step 1 and 2 to step 3
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
@@ -283,7 +283,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
@@ -310,7 +310,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
@@ -338,7 +338,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
@@ -371,7 +371,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
@@ -404,7 +404,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
@@ -429,7 +429,7 @@ describe('Create wizard (SCR-004)', () => {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
-    await fireEvent.change(screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
