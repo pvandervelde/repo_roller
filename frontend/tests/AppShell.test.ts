@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import AppShell from '../src/lib/components/AppShell.svelte';
 
@@ -112,8 +112,94 @@ describe('AppShell', () => {
   it('forwards onsignOut when "Sign out" is clicked', async () => {
     const onsignOut = vi.fn();
     render(AppShell, { props: { ...baseProps, onsignOut } });
-    await fireEvent.click(screen.getByRole('button'));
+    await fireEvent.click(screen.getByRole('button', { name: 'octocat' }));
     await fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     expect(onsignOut).toHaveBeenCalledOnce();
+  });
+
+  // -------------------------------------------------------------------------
+  // Colour scheme toggle — task 13.18
+  // -------------------------------------------------------------------------
+
+  describe('colour scheme toggle', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      document.documentElement.removeAttribute('data-color-scheme');
+    });
+
+    it('renders the colour scheme toggle button in the default system state', () => {
+      render(AppShell, { props: baseProps });
+      expect(
+        screen.getByRole('button', { name: /switch to light mode/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('reads stored "dark" scheme from localStorage on mount', async () => {
+      localStorage.setItem('repo-roller-color-scheme', 'dark');
+      render(AppShell, { props: baseProps });
+      await waitFor(() => {
+        expect(document.documentElement.getAttribute('data-color-scheme')).toBe('dark');
+        expect(
+          screen.getByRole('button', { name: /switch to system colour scheme/i }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('reads stored "light" scheme from localStorage on mount', async () => {
+      localStorage.setItem('repo-roller-color-scheme', 'light');
+      render(AppShell, { props: baseProps });
+      await waitFor(() => {
+        expect(document.documentElement.getAttribute('data-color-scheme')).toBe('light');
+        expect(
+          screen.getByRole('button', { name: /switch to dark mode/i }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('cycles to light and sets data-color-scheme when clicked once', async () => {
+      render(AppShell, { props: baseProps });
+      await fireEvent.click(screen.getByRole('button', { name: /switch to light mode/i }));
+      expect(
+        screen.getByRole('button', { name: /switch to dark mode/i }),
+      ).toBeInTheDocument();
+      expect(document.documentElement.getAttribute('data-color-scheme')).toBe('light');
+      expect(localStorage.getItem('repo-roller-color-scheme')).toBe('light');
+    });
+
+    it('cycles to dark when clicked twice', async () => {
+      render(AppShell, { props: baseProps });
+      await fireEvent.click(screen.getByRole('button', { name: /switch to light mode/i }));
+      await fireEvent.click(screen.getByRole('button', { name: /switch to dark mode/i }));
+      expect(
+        screen.getByRole('button', { name: /switch to system colour scheme/i }),
+      ).toBeInTheDocument();
+      expect(document.documentElement.getAttribute('data-color-scheme')).toBe('dark');
+      expect(localStorage.getItem('repo-roller-color-scheme')).toBe('dark');
+    });
+
+    it('returns to system and removes data-color-scheme when clicked three times', async () => {
+      render(AppShell, { props: baseProps });
+      await fireEvent.click(screen.getByRole('button', { name: /switch to light mode/i }));
+      await fireEvent.click(screen.getByRole('button', { name: /switch to dark mode/i }));
+      await fireEvent.click(
+        screen.getByRole('button', { name: /switch to system colour scheme/i }),
+      );
+      expect(
+        screen.getByRole('button', { name: /switch to light mode/i }),
+      ).toBeInTheDocument();
+      expect(document.documentElement.hasAttribute('data-color-scheme')).toBe(false);
+      expect(localStorage.getItem('repo-roller-color-scheme')).toBe('system');
+    });
+
+    it('ignores unknown values in localStorage and defaults to system', async () => {
+      localStorage.setItem('repo-roller-color-scheme', 'invalid-value');
+      render(AppShell, { props: baseProps });
+      await waitFor(() => {
+        expect(document.documentElement.hasAttribute('data-color-scheme')).toBe(false);
+      });
+      expect(
+        screen.getByRole('button', { name: /switch to light mode/i }),
+      ).toBeInTheDocument();
+    });
   });
 });
