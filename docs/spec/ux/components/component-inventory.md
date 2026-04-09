@@ -35,7 +35,7 @@ Components are listed in dependency order (primitives first, composites last).
 ### Header layout
 
 ```
-[ logo/wordmark ]  [ appName ]          [ @username ▾ ]
+[ logo/wordmark ]  [ appName ]     [ ◑/☀/🌙 ]  [ @username ▾ ]
 ```
 
 - Logo/wordmark: left-aligned. If `logoUrl` is set, renders `<img>` (or `<picture>` when
@@ -43,7 +43,29 @@ Components are listed in dependency order (primitives first, composites last).
   is always present in the DOM for screen readers even when a logo image is shown (may be
   visually hidden on narrow screens using `class="sr-only"`).
 - `appName` text label: shown next to the logo on wider viewports.
+- Colour scheme toggle: right-aligned, immediately left of the UserBadge.
 - UserBadge: right-aligned.
+
+### Colour scheme toggle
+
+The AppShell header contains a colour scheme toggle button placed to the left of the UserBadge
+in the header controls area.
+
+**Three-state cycle**: `system → light → dark → system`
+
+| State | Icon | `aria-label` |
+|---|---|---|
+| `system` | ◑ | "Switch to light mode" |
+| `light` | ☀ | "Switch to dark mode" |
+| `dark` | 🌙 | "Switch to system colour scheme" |
+
+- **Persistence**: The chosen state is stored in `localStorage` under the key
+  `repo-roller-color-scheme`. On page load the stored value is restored; if no value is stored
+  the `system` state is used.
+- **DOM effect**: The selected state is written as a `data-color-scheme` attribute on the
+  `<html>` element (`data-color-scheme="system"`, `"light"`, or `"dark"`). CSS uses this
+  attribute alongside `@media (prefers-color-scheme: dark)` to apply the appropriate token
+  overrides.
 
 ### CSS hook
 

@@ -186,7 +186,7 @@ test.describe('Creation wizard — Step 2: Repository settings (SCR-004)', () =>
         body: JSON.stringify(MOCK_TEMPLATE_DETAIL_NO_VARS),
       });
     });
-    await page.route(/\/api\/v1\/orgs\/[^/]*\/types$/, async (route) => {
+    await page.route(/\/api\/v1\/orgs\/[^/]*\/repository-types$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -217,7 +217,7 @@ test.describe('Creation wizard — Step 2: Repository settings (SCR-004)', () =>
         body: JSON.stringify(MOCK_TEMPLATE_DETAIL_NO_VARS),
       });
     });
-    await page.route(/\/api\/v1\/orgs\/[^/]*\/types$/, async (route) => {
+    await page.route(/\/api\/v1\/orgs\/[^/]*\/repository-types$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

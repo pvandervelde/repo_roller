@@ -138,3 +138,43 @@ test.describe('Error screen (SCR-006)', () => {
     await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sign-out flow (UX-ASSERT-004)
+// ---------------------------------------------------------------------------
+
+test.describe('Sign-out flow (UX-ASSERT-004)', () => {
+  test('sign-out destroys session and redirects to /sign-in', async ({ page, context }) => {
+    // Inject a valid session cookie so the user starts authenticated.
+    await context.addCookies([SESSION_COOKIE]);
+
+    // Confirm the user can reach the authenticated /create route.
+    await page.goto('/create');
+    await expect(page).not.toHaveURL('/sign-in');
+
+    // Click the "Sign out" menu item in the UserBadge dropdown.
+    await page.getByRole('button', { name: /sign out/i }).click();
+
+    // After sign-out the server clears the cookie and redirects to /sign-in.
+    await expect(page).toHaveURL('/sign-in');
+  });
+
+  test('after sign-out, navigating to /create redirects to /sign-in', async ({
+    page,
+    context,
+  }) => {
+    // Start authenticated.
+    await context.addCookies([SESSION_COOKIE]);
+    await page.goto('/create');
+    await expect(page).not.toHaveURL('/sign-in');
+
+    // Sign out.
+    await page.getByRole('button', { name: /sign out/i }).click();
+    await expect(page).toHaveURL('/sign-in');
+
+    // Attempting to navigate back to /create must redirect to /sign-in because
+    // the session cookie was cleared by the sign-out server action.
+    await page.goto('/create');
+    await expect(page).toHaveURL('/sign-in');
+  });
+});
