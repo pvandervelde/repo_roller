@@ -161,12 +161,11 @@ pub async fn create_repository(
     // Create event notification dependencies
     let secret_resolver =
         std::sync::Arc::new(repo_roller_core::event_secrets::EnvironmentSecretResolver::new());
-    // Use the shared registry from AppState so metrics accumulate across requests
-    // and remain scrapable by Prometheus. A per-request registry would be dropped
-    // at the end of this function, making all counters permanently zero.
-    let metrics = std::sync::Arc::new(
-        repo_roller_core::event_metrics::PrometheusEventMetrics::new(&state.metrics_registry),
-    );
+    // Reuse the shared metrics instance from AppState (Arc clone, not a new
+    // PrometheusEventMetrics allocation).  Creating a new instance per request
+    // would panic on the second call because Prometheus rejects duplicate metric
+    // registrations against the same registry.
+    let metrics = state.event_metrics.clone();
     let event_context =
         repo_roller_core::EventNotificationContext::new(&actor_login, secret_resolver, metrics);
 

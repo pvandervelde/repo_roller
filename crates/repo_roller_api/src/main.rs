@@ -32,18 +32,20 @@ pub const DEFAULT_PORT: u16 = 8080;
 /// Contains shared configuration for API handlers.
 /// Actual service instances are created per-request using authentication context.
 ///
-/// The `metrics_registry` is intentionally shared so that Prometheus counters
-/// accumulate across requests and can be scraped at a `/metrics` endpoint.
-/// Creating a new registry per-request would discard all accumulated metrics.
+/// Event metrics are initialised once at startup and cloned per request so that
+/// Prometheus counters accumulate across requests and remain scrapable at a
+/// `/metrics` endpoint. Creating a new `PrometheusEventMetrics` per request
+/// would panic on the second call because the counters are already registered
+/// in the shared registry.
 #[derive(Clone)]
 pub struct AppState {
     /// Metadata repository name for organization settings
     pub metadata_repository_name: String,
-    /// Shared Prometheus registry for event metrics.
+    /// Shared event metrics, initialised once at startup.
     ///
-    /// Must be shared at the application level so metrics accumulate across
-    /// requests and remain scrapable by Prometheus.
-    pub metrics_registry: std::sync::Arc<prometheus::Registry>,
+    /// Cloned (Arc clone, not a new allocation) for each handler invocation so
+    /// that metric values accumulate across requests.
+    pub event_metrics: std::sync::Arc<repo_roller_core::event_metrics::PrometheusEventMetrics>,
 }
 
 impl AppState {
@@ -53,9 +55,12 @@ impl AppState {
     ///
     /// * `metadata_repository_name` - Name of the metadata repository
     pub fn new(metadata_repository_name: impl Into<String>) -> Self {
+        let registry = prometheus::Registry::new();
         Self {
             metadata_repository_name: metadata_repository_name.into(),
-            metrics_registry: std::sync::Arc::new(prometheus::Registry::new()),
+            event_metrics: std::sync::Arc::new(
+                repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
+            ),
         }
     }
 }
