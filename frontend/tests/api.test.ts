@@ -15,7 +15,6 @@ import {
 } from '../src/lib/api/errors';
 import type {
   CreateRepositoryResponse,
-  GetTemplateDetailsResponse,
   ListTeamsResponse,
   ListTemplatesResponse,
   ValidateRepositoryNameResponse,
