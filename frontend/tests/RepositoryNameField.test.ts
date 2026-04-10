@@ -97,7 +97,7 @@ describe('RepositoryNameField (CMP-006)', () => {
 
   it('shows "Checking availability…" during API call — UX-ASSERT-010', async () => {
     vi.mocked(validateRepositoryName).mockImplementation(
-      () => new Promise(() => { }), // never resolves
+      () => new Promise(() => {}), // never resolves
     );
     render(RepositoryNameField, { props: { value: 'valid-name', organization: 'test-org' } });
     const input = screen.getByRole('textbox');

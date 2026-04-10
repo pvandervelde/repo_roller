@@ -17,6 +17,6 @@ export const GET: RequestHandler = ({ request, params, locals }) => {
       { name: 'frontend', description: 'Frontend web application' },
       { name: 'library', description: 'Reusable shared library' },
       { name: 'data-pipeline', description: 'Batch data processing pipeline' },
-    ]
+    ],
   });
 };

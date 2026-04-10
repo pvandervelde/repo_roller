@@ -23,7 +23,12 @@ vi.mock('../src/lib/api/client', () => ({
   createRepository: vi.fn(),
 }));
 
-import { listTemplates, getTemplateDetails, listRepositoryTypes, listTeams } from '../src/lib/api/client';
+import {
+  listTemplates,
+  getTemplateDetails,
+  listRepositoryTypes,
+  listTeams,
+} from '../src/lib/api/client';
 
 // ---------------------------------------------------------------------------
 // Fixtures

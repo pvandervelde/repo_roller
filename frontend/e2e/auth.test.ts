@@ -159,10 +159,7 @@ test.describe('Sign-out flow (UX-ASSERT-004)', () => {
     await expect(page).toHaveURL('/sign-in');
   });
 
-  test('after sign-out, navigating to /create redirects to /sign-in', async ({
-    page,
-    context,
-  }) => {
+  test('after sign-out, navigating to /create redirects to /sign-in', async ({ page, context }) => {
     // Start authenticated.
     await context.addCookies([SESSION_COOKIE]);
     await page.goto('/create');

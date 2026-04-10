@@ -204,5 +204,3 @@ export async function createRepository(
   if (!response.ok) await throwForStatus(response);
   return response.json() as Promise<CreateRepositoryResponse>;
 }
-
-

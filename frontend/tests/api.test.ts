@@ -242,7 +242,11 @@ describe('createRepository()', () => {
     const result = await createRepository(REQUEST);
     expect(result.repository.fullName).toBe('myorg/my-new-service');
     expect(result.repository.url).toBe('https://github.com/myorg/my-new-service');
-    expect((result.appliedConfiguration as Record<string, Record<string, string>>).sources['repository.has_issues']).toBe('global');
+    expect(
+      (result.appliedConfiguration as Record<string, Record<string, string>>).sources[
+        'repository.has_issues'
+      ],
+    ).toBe('global');
   });
 
   it('serialises optional fields (team, visibility, variables) when provided', async () => {
@@ -337,10 +341,7 @@ describe('listTeams()', () => {
   it('URL-encodes the org name', async () => {
     mockFetch(TEAMS_RESPONSE);
     await listTeams('my org');
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      '/api/v1/orgs/my%20org/teams',
-      expect.anything(),
-    );
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/orgs/my%20org/teams', expect.anything());
   });
 
   it('returns the teams array with slug and name', async () => {

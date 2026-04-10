@@ -25,53 +25,53 @@ const HOP_BY_HOP = ['host', 'cookie', 'authorization', 'connection', 'transfer-e
  * @param session Active session; if null, returns 401 without calling the backend
  */
 export async function proxyToBackend(
-    path: string,
-    request: Request,
-    session: unknown,
+  path: string,
+  request: Request,
+  session: unknown,
 ): Promise<Response> {
-    if (!session) {
-        return new Response(
-            JSON.stringify({ error: { code: 'Unauthorized', message: 'Authentication required' } }),
-            { status: 401, headers: { 'Content-Type': 'application/json' } },
-        );
-    }
+  if (!session) {
+    return new Response(
+      JSON.stringify({ error: { code: 'Unauthorized', message: 'Authentication required' } }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 
-    const backendUrl = env.BACKEND_API_URL?.replace(/\/$/, '');
-    if (!backendUrl) {
-        return new Response(
-            JSON.stringify({
-                error: { code: 'ServiceUnavailable', message: 'Backend API URL is not configured' },
-            }),
-            { status: 503, headers: { 'Content-Type': 'application/json' } },
-        );
-    }
+  const backendUrl = env.BACKEND_API_URL?.replace(/\/$/, '');
+  if (!backendUrl) {
+    return new Response(
+      JSON.stringify({
+        error: { code: 'ServiceUnavailable', message: 'Backend API URL is not configured' },
+      }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 
-    const forwardHeaders = new Headers();
-    for (const [key, value] of request.headers.entries()) {
-        if (!HOP_BY_HOP.includes(key.toLowerCase())) {
-            forwardHeaders.set(key, value);
-        }
+  const forwardHeaders = new Headers();
+  for (const [key, value] of request.headers.entries()) {
+    if (!HOP_BY_HOP.includes(key.toLowerCase())) {
+      forwardHeaders.set(key, value);
     }
-    const token = env.BACKEND_API_TOKEN;
-    if (token) {
-        forwardHeaders.set('Authorization', `Bearer ${token}`);
-    }
+  }
+  const token = env.BACKEND_API_TOKEN;
+  if (token) {
+    forwardHeaders.set('Authorization', `Bearer ${token}`);
+  }
 
-    const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-    const body = hasBody ? await request.arrayBuffer() : undefined;
+  const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
+  const body = hasBody ? await request.arrayBuffer() : undefined;
 
-    try {
-        return await fetch(`${backendUrl}${path}`, {
-            method: request.method,
-            headers: forwardHeaders,
-            body,
-        });
-    } catch {
-        return new Response(
-            JSON.stringify({
-                error: { code: 'BadGateway', message: 'Failed to reach the backend API' },
-            }),
-            { status: 502, headers: { 'Content-Type': 'application/json' } },
-        );
-    }
+  try {
+    return await fetch(`${backendUrl}${path}`, {
+      method: request.method,
+      headers: forwardHeaders,
+      body,
+    });
+  } catch {
+    return new Response(
+      JSON.stringify({
+        error: { code: 'BadGateway', message: 'Failed to reach the backend API' },
+      }),
+      { status: 502, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 }

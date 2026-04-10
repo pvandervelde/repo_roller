@@ -19,14 +19,14 @@ const MIN_SECRET_LEN = 32;
 const DIGEST_HEX_LEN = 64;
 
 function getSecret(): string {
-    const secret = process.env.SESSION_SECRET;
-    if (!secret || secret.length < MIN_SECRET_LEN) {
-        throw new Error(
-            `SESSION_SECRET environment variable must be set to at least ${MIN_SECRET_LEN} characters. ` +
-            'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"',
-        );
-    }
-    return secret;
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < MIN_SECRET_LEN) {
+    throw new Error(
+      `SESSION_SECRET environment variable must be set to at least ${MIN_SECRET_LEN} characters. ` +
+        "Generate one with: node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"",
+    );
+  }
+  return secret;
 }
 
 /**
@@ -35,10 +35,10 @@ function getSecret(): string {
  * @throws if SESSION_SECRET is not set or too short.
  */
 export function signSessionCookie(payload: object): string {
-    const secret = getSecret();
-    const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    const sig = createHmac(HMAC_ALGO, secret).update(data).digest('hex');
-    return `${data}.${sig}`;
+  const secret = getSecret();
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = createHmac(HMAC_ALGO, secret).update(data).digest('hex');
+  return `${data}.${sig}`;
 }
 
 /**
@@ -51,31 +51,31 @@ export function signSessionCookie(payload: object): string {
  * @throws if SESSION_SECRET is not set or too short.
  */
 export function parseSessionCookie<T>(value: string): T | null {
-    if (!value) return null;
+  if (!value) return null;
 
-    const dotIdx = value.lastIndexOf('.');
-    if (dotIdx < 1) return null;
+  const dotIdx = value.lastIndexOf('.');
+  if (dotIdx < 1) return null;
 
-    const data = value.slice(0, dotIdx);
-    const sig = value.slice(dotIdx + 1);
+  const data = value.slice(0, dotIdx);
+  const sig = value.slice(dotIdx + 1);
 
-    // Reject immediately if the signature is not the expected hex length.
-    // (Avoids variable-length timingSafeEqual which requires equal-length buffers.)
-    if (sig.length !== DIGEST_HEX_LEN) return null;
+  // Reject immediately if the signature is not the expected hex length.
+  // (Avoids variable-length timingSafeEqual which requires equal-length buffers.)
+  if (sig.length !== DIGEST_HEX_LEN) return null;
 
-    try {
-        const secret = getSecret();
-        const expected = createHmac(HMAC_ALGO, secret).update(data).digest('hex');
+  try {
+    const secret = getSecret();
+    const expected = createHmac(HMAC_ALGO, secret).update(data).digest('hex');
 
-        const sigBuf = Buffer.from(sig, 'hex');
-        const expBuf = Buffer.from(expected, 'hex');
+    const sigBuf = Buffer.from(sig, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
 
-        // Both are 32 bytes because DIGEST_HEX_LEN is 64 — safe to compare.
-        if (!timingSafeEqual(sigBuf, expBuf)) return null;
+    // Both are 32 bytes because DIGEST_HEX_LEN is 64 — safe to compare.
+    if (!timingSafeEqual(sigBuf, expBuf)) return null;
 
-        const json = Buffer.from(data, 'base64url').toString('utf-8');
-        return JSON.parse(json) as T;
-    } catch {
-        return null;
-    }
+    const json = Buffer.from(data, 'base64url').toString('utf-8');
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
 }
