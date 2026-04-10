@@ -32,12 +32,19 @@ RUN pnpm prune --prod --ignore-scripts
 # =============================================================================
 FROM node:24-slim AS runtime
 
+# Run as a non-root user for security hardening.
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser --system --uid 1001 --ingroup nodejs nodeuser
+
 WORKDIR /app
 
 # Copy the compiled server output and production node_modules from the builder.
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+
+# Drop privileges before starting the server.
+USER nodeuser
 
 # The SvelteKit Node adapter serves on port 3000 by default.
 EXPOSE 3000
@@ -52,6 +59,15 @@ EXPOSE 3000
 #   GITHUB_ORG             GitHub organization slug (e.g. "my-company")
 #   ORIGIN                 Public URL of this server, e.g. https://reporoller.example.com
 #                          Required by the SvelteKit Node adapter for CSRF protection.
+#   SESSION_SECRET         REQUIRED. Random secret (≥32 chars) used to HMAC-sign session
+#                          cookies. Rotate to invalidate all live sessions.
+#                          Generate: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+#
+# Backend proxy (REQUIRED for production use):
+#   BACKEND_API_URL        Base URL of the Rust API server, e.g. http://api:3000
+#                          All /api/v1/* requests are forwarded here in production.
+#   BACKEND_API_TOKEN      Bearer token sent to the Rust API when proxying. Set this
+#                          to the same value expected by the backend's auth middleware.
 #
 # Branding (all optional — defaults used when absent):
 #   BRAND_APP_NAME          Application name shown in the header and page title
@@ -61,7 +77,7 @@ EXPOSE 3000
 #   BRAND_PRIMARY_COLOR     CSS colour for the brand accent (hex, e.g. #0969da)
 #   BRAND_PRIMARY_COLOR_DARK  Brand accent colour override for dark mode
 #
-# See docs/configuration-guide.md for the full branding configuration reference.
+# See docs/configuration-guide.md for the full configuration reference.
 # ---------------------------------------------------------------------------
 
 ENV NODE_ENV=production

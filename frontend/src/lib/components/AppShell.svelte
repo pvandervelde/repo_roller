@@ -83,16 +83,30 @@
 
   // Icon represents the current scheme so the user knows what is active.
   const toggleIcon = $derived(colorScheme === 'light' ? '☀' : colorScheme === 'dark' ? '🌙' : '◑');
+
+  /**
+   * Derived flag: should the dark logo be shown?
+   * The CSS media query (prefers-color-scheme: dark) only responds to the OS
+   * setting. When the user has manually selected 'dark' via the toggle (and their
+   * OS is set to 'light'), we must switch the logo using JavaScript state.
+   * 'system' defers to the OS preference, so no override is needed.
+   */
+  const shouldUseDarkLogo = $derived(
+    logoUrlDark !== null &&
+      logoUrlDark !== undefined &&
+      (colorScheme === 'dark' ||
+        (colorScheme === 'system' &&
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches)),
+  );
 </script>
 
 <header class="app-shell__header">
   <a href="/" class="app-shell__brand">
     {#if logoUrl}
-      {#if logoUrlDark}
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset={logoUrlDark} />
-          <img src={logoUrl} alt={resolvedLogoAlt} class="app-shell__logo" />
-        </picture>
+      {#if shouldUseDarkLogo && logoUrlDark}
+        <img src={logoUrlDark} alt={resolvedLogoAlt} class="app-shell__logo" />
       {:else}
         <img src={logoUrl} alt={resolvedLogoAlt} class="app-shell__logo" />
       {/if}

@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import type { PageServerLoad } from './$types';
+import { signSessionCookie } from '$lib/session.server';
 
 /**
  * Dev-only shortcut: sets a fake session cookie directly, bypassing GitHub OAuth.
@@ -12,9 +13,11 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
   }
 
   const userLogin = url.searchParams.get('user') ?? 'dev-user';
-  const userAvatarUrl = `https://avatars.githubusercontent.com/u/1?v=4`;
+  // Use the GitHub avatar URL pattern for the given username rather than
+  // hardcoding a specific user ID.
+  const userAvatarUrl = `https://avatars.githubusercontent.com/${encodeURIComponent(userLogin)}?v=4`;
 
-  cookies.set('session', JSON.stringify({ userLogin, userAvatarUrl }), {
+  cookies.set('session', signSessionCookie({ userLogin, userAvatarUrl }), {
     path: '/',
     httpOnly: true,
     secure: false,

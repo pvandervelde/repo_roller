@@ -2,8 +2,8 @@
  * TypeScript types for the RepoRoller REST API.
  *
  * Field names mirror the JSON shapes produced by the Rust API server.
- * Most structs use snake_case (no serde rename_all); ErrorDetails is camelCase
- * because the Rust ErrorResponse uses #[serde(rename_all = "camelCase")].
+ * Top-level response structs use camelCase (serde rename_all = "camelCase").
+ * ErrorDetails is also camelCase (Rust ErrorResponse uses rename_all = "camelCase").
  *
  * See: docs/spec/interfaces/api-request-types.md
  *      docs/spec/interfaces/api-response-types.md
@@ -37,53 +37,56 @@ export interface ValidateRepositoryNameRequestBody {
 
 export interface RepositoryInfo {
   name: string;
-  full_name: string;
+  /** camelCase: matches Rust #[serde(rename_all = "camelCase")] */
+  fullName: string;
   url: string;
   visibility: string;
-  repository_type?: string;
-  created_at: string;
-}
-
-export interface AppliedConfiguration {
-  applied_settings: Record<string, unknown>;
-  sources: Record<string, string>;
+  description?: string;
 }
 
 /** 201 response for POST /api/v1/repositories */
 export interface CreateRepositoryResponse {
   repository: RepositoryInfo;
-  configuration: AppliedConfiguration;
-}
-
-export interface ValidationIssue {
-  field: string;
-  message: string;
-  constraint: string;
+  /** camelCase: matches Rust appliedConfiguration field */
+  appliedConfiguration: unknown;
+  /** ISO 8601 creation timestamp */
+  createdAt: string;
 }
 
 /** 200 response for POST /api/v1/repositories/validate-name (always 200) */
 export interface ValidateRepositoryNameResponse {
+  /** Whether the name passes format validation */
   valid: boolean;
-  name: string;
-  errors?: ValidationIssue[];
+  /** Whether the name is not already taken in the organisation */
+  available: boolean;
+  /** Validation messages when valid=false or available=false */
+  messages?: string[];
 }
 
 export interface RepositoryTypePolicy {
   policy: string;
-  type_name?: string;
+  type_name?: string | null;
 }
 
+/** A single template entry returned by GET /api/v1/orgs/:org/templates */
 export interface TemplateSummary {
   name: string;
   description: string;
-  author?: string;
-  tags: string[];
-  repository_type?: RepositoryTypePolicy;
+  /** Primary category tag for the template (first tag from backend config) */
+  category?: string;
+  /** Names of template variables (used to show variable-count badge) */
+  variables: string[];
 }
 
-/** 200 response for GET /api/v1/orgs/:org/types */
+/** A single repository type entry. */
+export interface RepositoryTypeSummary {
+  name: string;
+  description: string;
+}
+
+/** 200 response for GET /api/v1/orgs/:org/repository-types */
 export interface ListRepositoryTypesResponse {
-  types: string[];
+  types: RepositoryTypeSummary[];
 }
 
 /** A single organization team entry for the team dropdown. */
@@ -102,24 +105,34 @@ export interface ListTemplatesResponse {
   templates: TemplateSummary[];
 }
 
-export interface TemplateMetadata {
-  author?: string;
-  description: string;
-  tags: string[];
-}
-
+/**
+ * Normalized template variable for UI consumption.
+ * Derived from the backend's Record<string, VariableDefinition> by the API client.
+ * Field names match the Rust VariableDefinition struct (camelCase via serde).
+ */
 export interface TemplateVariable {
+  /** Variable key name */
   name: string;
   description?: string;
   required: boolean;
-  default_value?: string;
+  /** Default value if not supplied (field name matches backend `default`) */
+  default?: string;
+  /** Optional regex pattern for client-side preview validation */
+  pattern?: string;
 }
 
-/** 200 response for GET /api/v1/orgs/:org/templates/:name */
+/** 200 response for GET /api/v1/orgs/:org/templates/:name (normalized by client) */
 export interface GetTemplateDetailsResponse {
   name: string;
-  metadata: TemplateMetadata;
-  repository_type?: RepositoryTypePolicy;
+  description: string;
+  category?: string;
+  /**
+   * Repository type guidance from the template configuration.
+   * Not guaranteed to be present — the backend may omit it for templates
+   * that have no type constraint. The wizard defaults to 'optional' when absent.
+   */
+  repository_type?: RepositoryTypePolicy | null;
+  /** Variables normalized from the backend's Record<name, VariableDefinition> */
   variables: TemplateVariable[];
 }
 

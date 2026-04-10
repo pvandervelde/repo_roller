@@ -14,7 +14,7 @@ import { validateRepositoryName } from '../src/lib/api/client';
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.mocked(validateRepositoryName).mockResolvedValue({ valid: true, name: 'my-repo' });
+  vi.mocked(validateRepositoryName).mockResolvedValue({ valid: true, available: true });
 });
 
 afterEach(() => {
@@ -97,7 +97,7 @@ describe('RepositoryNameField (CMP-006)', () => {
 
   it('shows "Checking availability…" during API call — UX-ASSERT-010', async () => {
     vi.mocked(validateRepositoryName).mockImplementation(
-      () => new Promise(() => {}), // never resolves
+      () => new Promise(() => { }), // never resolves
     );
     render(RepositoryNameField, { props: { value: 'valid-name', organization: 'test-org' } });
     const input = screen.getByRole('textbox');
@@ -114,7 +114,7 @@ describe('RepositoryNameField (CMP-006)', () => {
   });
 
   it('shows "already taken" error when API reports name is taken', async () => {
-    vi.mocked(validateRepositoryName).mockResolvedValue({ valid: false, name: 'taken-name' });
+    vi.mocked(validateRepositoryName).mockResolvedValue({ valid: true, available: false });
     render(RepositoryNameField, { props: { value: 'taken-name', organization: 'test-org' } });
     const input = screen.getByRole('textbox');
     await fireEvent.blur(input);
@@ -136,7 +136,7 @@ describe('RepositoryNameField (CMP-006)', () => {
   // -------------------------------------------------------------------------
 
   it('clears "taken" error immediately on any keystroke — UX-ASSERT-013', async () => {
-    vi.mocked(validateRepositoryName).mockResolvedValue({ valid: false, name: 'taken-name' });
+    vi.mocked(validateRepositoryName).mockResolvedValue({ valid: true, available: false });
     render(RepositoryNameField, { props: { value: 'taken-name', organization: 'test-org' } });
     const input = screen.getByRole('textbox');
     await fireEvent.blur(input);

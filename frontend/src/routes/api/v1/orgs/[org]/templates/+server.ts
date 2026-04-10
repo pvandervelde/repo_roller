@@ -1,37 +1,42 @@
 import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
+import { proxyToBackend } from '$lib/proxy.server';
 
 const MOCK_TEMPLATES = [
   {
     name: 'basic-service',
     description: 'A minimal REST API service with health check and CI/CD pipeline.',
-    tags: ['service', 'rest', 'api'],
-    repository_type: { policy: 'preferable', type_name: 'service' },
+    category: 'service',
+    variables: [],
   },
   {
     name: 'data-pipeline',
     description: 'A batch data processing pipeline with scheduling and monitoring.',
-    tags: ['data', 'pipeline', 'batch'],
-    repository_type: { policy: 'optional', type_name: null },
+    category: 'data',
+    variables: ['project_name', 'schedule_cron', 'team_slack_channel'],
   },
   {
     name: 'frontend-app',
     description: 'A modern single-page application with TypeScript and testing setup.',
-    tags: ['frontend', 'spa', 'typescript'],
-    repository_type: { policy: 'fixed', type_name: 'frontend' },
+    category: 'frontend',
+    variables: ['app_display_name'],
   },
   {
     name: 'library',
     description: 'A reusable library with semantic versioning and publishing pipeline.',
-    tags: ['library', 'npm', 'versioning'],
-    repository_type: { policy: 'optional', type_name: null },
+    category: 'library',
+    variables: [],
   },
 ];
 
-export const GET: RequestHandler = ({ params: _params }) => {
+export const GET: RequestHandler = ({ request, params, locals }) => {
   if (!dev) {
-    return new Response('Not Found', { status: 404 });
+    return proxyToBackend(
+      `/api/v1/orgs/${encodeURIComponent(params.org)}/templates`,
+      request,
+      locals.session,
+    );
   }
   // Small artificial delay so loading states are visible
   return new Promise((resolve) =>

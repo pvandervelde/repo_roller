@@ -21,10 +21,35 @@ import type {
   ListRepositoryTypesResponse,
   ListTeamsResponse,
   ListTemplatesResponse,
+  RepositoryTypeSummary,
   TeamSummary,
   TemplateSummary,
+  TemplateVariable,
   ValidateRepositoryNameResponse,
 } from './types';
+
+// ---------------------------------------------------------------------------
+// Internal types: raw shapes returned by the Rust backend
+// ---------------------------------------------------------------------------
+
+/** Raw variable definition from the backend (camelCase). */
+interface RawVariableDefinition {
+  description?: string;
+  required: boolean;
+  default?: string;
+  pattern?: string;
+}
+
+/** Raw template details response before variable normalization. */
+interface RawTemplateDetailsResponse {
+  name: string;
+  description: string;
+  category?: string;
+  repository_type?: { policy: string; type_name?: string | null } | null;
+  /** Backend returns variables as a Record<name, RawVariableDefinition>. */
+  variables?: Record<string, RawVariableDefinition> | TemplateVariable[];
+  configuration?: unknown;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -56,6 +81,27 @@ async function throwForStatus(response: Response): Promise<never> {
   throw new ApiServerError(status, details);
 }
 
+/**
+ * Normalize the variables field from the backend's Record format into an array.
+ * Accepts both the backend object format and a legacy array format (dev mocks).
+ */
+function normalizeVariables(
+  raw: Record<string, RawVariableDefinition> | TemplateVariable[] | undefined,
+): TemplateVariable[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    // Already an array (should not happen with the real backend; guard for safety).
+    return raw;
+  }
+  return Object.entries(raw).map(([name, def]) => ({
+    name,
+    description: def.description,
+    required: def.required ?? false,
+    default: def.default,
+    pattern: def.pattern,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Public API functions
 // ---------------------------------------------------------------------------
@@ -74,8 +120,10 @@ export async function listTemplates(org: string): Promise<TemplateSummary[]> {
 }
 
 /**
- * Fetch full details (metadata + variables) for a single template.
+ * Fetch full details (variables + configuration) for a single template.
  * GET /api/v1/orgs/:org/templates/:name
+ *
+ * Normalizes the backend's `variables` Record into a typed array before returning.
  */
 export async function getTemplateDetails(
   org: string,
@@ -86,13 +134,20 @@ export async function getTemplateDetails(
     { method: 'GET' },
   );
   if (!response.ok) await throwForStatus(response);
-  return response.json() as Promise<GetTemplateDetailsResponse>;
+  const raw = (await response.json()) as RawTemplateDetailsResponse;
+  return {
+    name: raw.name,
+    description: raw.description,
+    category: raw.category,
+    repository_type: raw.repository_type ?? null,
+    variables: normalizeVariables(raw.variables),
+  };
 }
 
 /**
  * Validate a repository name (format + availability) for an organisation.
  * POST /api/v1/repositories/validate-name
- * Always returns 200 — `valid: false` for invalid names, never throws on validation failures.
+ * Always returns 200; `valid` = format check, `available` = uniqueness check.
  */
 export async function validateRepositoryName(
   org: string,
@@ -111,7 +166,7 @@ export async function validateRepositoryName(
  * List all repository types configured for an organisation.
  * GET /api/v1/orgs/:org/repository-types
  */
-export async function listRepositoryTypes(org: string): Promise<string[]> {
+export async function listRepositoryTypes(org: string): Promise<RepositoryTypeSummary[]> {
   const response = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/repository-types`, {
     method: 'GET',
   });
@@ -149,3 +204,5 @@ export async function createRepository(
   if (!response.ok) await throwForStatus(response);
   return response.json() as Promise<CreateRepositoryResponse>;
 }
+
+

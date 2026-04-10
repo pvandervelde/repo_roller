@@ -111,10 +111,18 @@
 
     try {
       const result = await validateRepositoryName(organization, currentValue);
-      if (result.valid) {
+      // Backend: valid=format OK, available=not already taken
+      if (result.valid && result.available) {
         validation = { status: 'available' };
         onvalidationResult?.({ status: 'available' });
+      } else if (!result.valid) {
+        validation = {
+          status: 'invalid_format',
+          message: result.messages?.[0] ?? 'Invalid repository name format',
+        };
+        onvalidationResult?.(validation);
       } else {
+        // valid=true but available=false — name is taken
         validation = { status: 'taken', name: currentValue };
         onvalidationResult?.({ status: 'taken', name: currentValue });
       }

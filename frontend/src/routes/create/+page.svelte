@@ -220,8 +220,7 @@
 
   async function loadRepositoryTypes() {
     try {
-      const names = await listRepositoryTypes(data.organization);
-      availableTypes = names.map((n) => ({ name: n, description: '' }));
+      availableTypes = await listRepositoryTypes(data.organization);
     } catch {
       // Leave availableTypes empty — picker degrades gracefully
     }
@@ -244,7 +243,7 @@
       // Initialise variable values from defaults before advancing (UX-ASSERT-017)
       const initial: Record<string, string> = {};
       for (const v of templateDetails?.variables ?? []) {
-        initial[v.name] = variableValues[v.name] ?? v.default_value ?? '';
+        initial[v.name] = variableValues[v.name] ?? v.default ?? '';
       }
       variableValues = initial;
       await advanceStep();
@@ -267,7 +266,7 @@
         variables: Object.keys(variables).length > 0 ? variables : undefined,
       });
       // Success: navigate away (guard already suppressed while creatingRepo=true)
-      await goto(`/create/success?repo=${encodeURIComponent(result.repository.full_name)}`);
+      await goto(`/create/success?repo=${encodeURIComponent(result.repository.fullName)}`);
     } catch (err) {
       creatingRepo = false;
 

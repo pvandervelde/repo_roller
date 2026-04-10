@@ -41,7 +41,7 @@
       (t) =>
         t.name.toLowerCase().includes(q) ||
         t.description.toLowerCase().includes(q) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(q)),
+        (t.category?.toLowerCase().includes(q) ?? false),
     );
   });
 </script>
@@ -85,13 +85,8 @@
           <TemplateCard
             name={template.name}
             description={template.description}
-            tags={template.tags}
-            repositoryTypeBadge={template.repository_type
-              ? {
-                  typeName: template.repository_type.type_name ?? template.repository_type.policy,
-                  policy: template.repository_type.policy as 'fixed' | 'preferable' | 'optional',
-                }
-              : null}
+            tags={template.category ? [template.category] : []}
+            repositoryTypeBadge={null}
             selected={template.name === selectedTemplateName}
             onselect={() => ontemplateSelect?.(template.name)}
             ondeselect={() => ontemplateDeselect?.()}

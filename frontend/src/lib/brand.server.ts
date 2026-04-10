@@ -21,6 +21,13 @@ interface TomlBrandConfig {
 }
 
 /**
+ * Module-level singleton. Brand config is immutable for the lifetime of the
+ * process (brand.toml and env vars are read once at first request), so caching
+ * here avoids redundant disk I/O on every navigation.
+ */
+let cachedBrandConfig: BrandConfig | null = null;
+
+/**
  * Load brand configuration from environment variables, brand.toml, or built-in defaults.
  *
  * Priority (highest first):
@@ -31,8 +38,13 @@ interface TomlBrandConfig {
  *
  * Security: brand.toml must NOT be placed inside static/ — it is a server-side file only.
  * Rule: logo_url_dark without logo_url is not valid; both are treated as absent.
+ *
+ * The result is cached for the lifetime of the server process.
  */
 export async function loadBrandConfig(): Promise<BrandConfig> {
+  if (cachedBrandConfig !== null) {
+    return cachedBrandConfig;
+  }
   const config: BrandConfig = { ...DEFAULT_BRAND_CONFIG };
 
   // Layer 2: brand.toml
@@ -69,5 +81,14 @@ export async function loadBrandConfig(): Promise<BrandConfig> {
     config.logoUrlDark = null;
   }
 
+  cachedBrandConfig = config;
   return config;
+}
+
+/**
+ * Reset the cached brand config. Call this in test `beforeEach` hooks to
+ * ensure each test loads config fresh. Has no effect in production.
+ */
+export function _resetBrandConfigForTesting(): void {
+  cachedBrandConfig = null;
 }

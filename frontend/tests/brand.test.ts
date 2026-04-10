@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DEFAULT_BRAND_CONFIG } from '../src/lib/types/brand';
 import { buildBrandCssBlock } from '../src/lib/brand';
-import { loadBrandConfig } from '../src/lib/brand.server';
+import { loadBrandConfig, _resetBrandConfigForTesting } from '../src/lib/brand.server';
 
 vi.mock('node:fs/promises');
 
@@ -79,6 +79,8 @@ describe('buildBrandCssBlock()', () => {
 describe('loadBrandConfig()', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // Reset the module-level cache so each test reads config fresh.
+    _resetBrandConfigForTesting();
   });
 
   afterEach(() => {

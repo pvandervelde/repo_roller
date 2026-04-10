@@ -1,29 +1,25 @@
 import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
 import type { Session } from '$lib/types/session';
+import { parseSessionCookie } from '$lib/session.server';
 
 /** Routes that require an authenticated session. */
 const PROTECTED_PREFIXES = ['/create'];
 
 export const handle: Handle = async ({ event, resolve }) => {
-  // Attempt to restore session from the HTTP-only cookie.
+  // Attempt to restore session from the signed HTTP-only cookie.
   const sessionCookie = event.cookies.get('session');
   if (sessionCookie) {
-    try {
-      const parsed: unknown = JSON.parse(sessionCookie);
-      if (
-        parsed !== null &&
-        typeof parsed === 'object' &&
-        'userLogin' in parsed &&
-        typeof (parsed as Session).userLogin === 'string'
-      ) {
-        event.locals.session = parsed as Session;
-      } else {
-        event.locals.session = null;
-        event.cookies.delete('session', { path: '/' });
-      }
-    } catch {
-      // Malformed cookie — clear it and treat as unauthenticated.
+    const parsed = parseSessionCookie<unknown>(sessionCookie);
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      'userLogin' in (parsed as object) &&
+      typeof (parsed as Session).userLogin === 'string'
+    ) {
+      event.locals.session = parsed as Session;
+    } else {
+      // Invalid or forged cookie — clear it.
       event.locals.session = null;
       event.cookies.delete('session', { path: '/' });
     }

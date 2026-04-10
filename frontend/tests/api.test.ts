@@ -59,13 +59,13 @@ describe('listTemplates()', () => {
       {
         name: 'rust-library',
         description: 'Rust library template',
-        tags: ['rust'],
-        repository_type: { policy: 'fixed', type_name: 'library' },
+        category: 'library',
+        variables: [],
       },
       {
         name: 'python-service',
         description: 'Python service template',
-        tags: ['python'],
+        variables: [],
       },
     ],
   };
@@ -108,18 +108,17 @@ describe('listTemplates()', () => {
 // ---------------------------------------------------------------------------
 
 describe('getTemplateDetails()', () => {
-  const DETAILS_RESPONSE: GetTemplateDetailsResponse = {
+  const DETAILS_RESPONSE = {
     name: 'rust-library',
-    metadata: {
-      author: 'Platform Team',
-      description: 'Rust library with CI/CD',
-      tags: ['rust', 'library'],
-    },
+    description: 'Rust library with CI/CD',
+    category: 'library',
     repository_type: { policy: 'fixed', type_name: 'library' },
-    variables: [
-      { name: 'project_name', required: true },
-      { name: 'author', required: false, default_value: 'Engineering Team' },
-    ],
+    // Backend returns variables as a Record; the client normalizes to an array.
+    variables: {
+      project_name: { description: 'Project name', required: true },
+      author: { description: 'Author', required: false, default: 'Engineering Team' },
+    },
+    configuration: {},
   };
 
   it('calls GET /api/v1/orgs/:org/templates/:name', async () => {
@@ -135,10 +134,10 @@ describe('getTemplateDetails()', () => {
     mockFetch(DETAILS_RESPONSE);
     const result = await getTemplateDetails('myorg', 'rust-library');
     expect(result.name).toBe('rust-library');
-    expect(result.metadata.author).toBe('Platform Team');
+    expect(result.description).toBe('Rust library with CI/CD');
     expect(result.variables).toHaveLength(2);
     expect(result.variables[0].required).toBe(true);
-    expect(result.variables[1].default_value).toBe('Engineering Team');
+    expect(result.variables[1].default).toBe('Engineering Team');
   });
 
   it('throws ApiValidationError on 404 (template not found)', async () => {
@@ -163,7 +162,7 @@ describe('getTemplateDetails()', () => {
 
 describe('validateRepositoryName()', () => {
   it('calls POST /api/v1/repositories/validate-name with correct body', async () => {
-    const response: ValidateRepositoryNameResponse = { valid: true, name: 'my-repo' };
+    const response: ValidateRepositoryNameResponse = { valid: true, available: true };
     mockFetch(response);
     await validateRepositoryName('myorg', 'my-repo');
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
@@ -177,22 +176,22 @@ describe('validateRepositoryName()', () => {
   });
 
   it('returns valid:true for an available name', async () => {
-    mockFetch({ valid: true, name: 'my-repo' });
+    mockFetch({ valid: true, available: true });
     const result = await validateRepositoryName('myorg', 'my-repo');
     expect(result.valid).toBe(true);
-    expect(result.name).toBe('my-repo');
+    expect(result.available).toBe(true);
   });
 
-  it('returns valid:false with errors for an invalid name (still 200)', async () => {
+  it('returns valid:false with messages for an invalid name (still 200)', async () => {
     const response: ValidateRepositoryNameResponse = {
       valid: false,
-      name: 'My@Repo',
-      errors: [{ field: 'name', message: 'Invalid characters', constraint: 'alphanumeric' }],
+      available: false,
+      messages: ['Invalid characters in name'],
     };
     mockFetch(response, 200);
     const result = await validateRepositoryName('myorg', 'My@Repo');
     expect(result.valid).toBe(false);
-    expect(result.errors).toHaveLength(1);
+    expect(result.messages).toHaveLength(1);
   });
 
   it('throws ApiServerError on 500', async () => {
@@ -209,15 +208,15 @@ describe('createRepository()', () => {
   const CREATION_RESPONSE: CreateRepositoryResponse = {
     repository: {
       name: 'my-new-service',
-      full_name: 'myorg/my-new-service',
+      fullName: 'myorg/my-new-service',
       url: 'https://github.com/myorg/my-new-service',
       visibility: 'private',
-      created_at: '2026-03-29T10:00:00Z',
     },
-    configuration: {
+    appliedConfiguration: {
       applied_settings: { repository: { has_issues: true } },
       sources: { 'repository.has_issues': 'global' },
     },
+    createdAt: '2026-03-29T10:00:00Z',
   };
 
   const REQUEST = {
@@ -242,9 +241,9 @@ describe('createRepository()', () => {
   it('returns the created repository info on 201', async () => {
     mockFetch(CREATION_RESPONSE, 201);
     const result = await createRepository(REQUEST);
-    expect(result.repository.full_name).toBe('myorg/my-new-service');
+    expect(result.repository.fullName).toBe('myorg/my-new-service');
     expect(result.repository.url).toBe('https://github.com/myorg/my-new-service');
-    expect(result.configuration.sources['repository.has_issues']).toBe('global');
+    expect((result.appliedConfiguration as Record<string, Record<string, string>>).sources['repository.has_issues']).toBe('global');
   });
 
   it('serialises optional fields (team, visibility, variables) when provided', async () => {

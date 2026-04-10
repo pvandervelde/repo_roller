@@ -23,7 +23,7 @@
 //! See: .llm/rest-api-review-response.md
 
 use axum::{
-    http::{header, Method},
+    http::{header, HeaderValue, Method},
     middleware,
     routing::{get, post},
     Router,
@@ -37,20 +37,17 @@ use tower_http::{
 
 use crate::{handlers, middleware as api_middleware, AppState};
 
-/// Create the complete API router with all routes configured.
+/// Build a CORS layer restricted to the origin specified by the `FRONTEND_ORIGIN`
+/// environment variable.
 ///
-/// This function sets up:
-/// - All endpoint routes
-/// - Authentication middleware
-/// - CORS configuration
-/// - Request tracing
-/// - Timeout handling
-pub fn create_router(state: AppState) -> Router {
-    // Configure CORS for web UI support
-    let cors = CorsLayer::new()
-        // Allow requests from any origin (configure more restrictively in production)
-        .allow_origin(tower_http::cors::Any)
-        // Allow common HTTP methods
+/// If `FRONTEND_ORIGIN` is not set, returns a `CorsLayer` with no allowed origins —
+/// all cross-origin browser requests will be blocked, which is the secure default
+/// for a production deployment where the SvelteKit frontend proxies all API calls.
+///
+/// Panics at startup if `FRONTEND_ORIGIN` is set to a value that is not a valid
+/// HTTP header value (invalid bytes / control characters).
+fn build_cors_layer() -> CorsLayer {
+    let base = CorsLayer::new()
         .allow_methods([
             Method::GET,
             Method::POST,
@@ -58,12 +55,41 @@ pub fn create_router(state: AppState) -> Router {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        // Allow common headers
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
-        // Allow credentials (cookies, authorization headers)
         .allow_credentials(false)
-        // Cache preflight responses for 1 hour
         .max_age(Duration::from_secs(3600));
+
+    match std::env::var("FRONTEND_ORIGIN") {
+        Ok(origin) if !origin.is_empty() => {
+            let value = HeaderValue::from_str(&origin).unwrap_or_else(|_| {
+                panic!(
+                    "FRONTEND_ORIGIN '{}' is not a valid HTTP header value",
+                    origin
+                )
+            });
+            tracing::info!("CORS: allowing requests from origin '{}'", origin);
+            base.allow_origin(value)
+        }
+        _ => {
+            tracing::warn!(
+                "FRONTEND_ORIGIN is not set — CORS will block all cross-origin browser requests. \
+                 Set FRONTEND_ORIGIN to the deployed frontend URL in production."
+            );
+            base
+        }
+    }
+}
+
+/// Create the complete API router with all routes configured.
+///
+/// This function sets up:
+/// - All endpoint routes
+/// - Authentication middleware
+/// - CORS configuration (restricted to FRONTEND_ORIGIN env var)
+/// - Request tracing
+/// - Timeout handling
+pub fn create_router(state: AppState) -> Router {
+    let cors = build_cors_layer();
 
     // Configure request tracing
     let trace_layer = TraceLayer::new_for_http()
@@ -163,7 +189,8 @@ pub fn create_router_without_auth(state: AppState) -> Router {
         trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
     };
 
-    // Configure CORS for web UI support
+    // Test router: CORS wildcard is acceptable here because this router is
+    // only instantiated in unit/integration tests, never in production.
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
         .allow_methods([

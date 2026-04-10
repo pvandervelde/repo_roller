@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
+import { proxyToBackend } from '$lib/proxy.server';
 
 const MOCK_TEAMS = [
     { slug: 'platform-team', name: 'Platform Team' },
@@ -8,9 +9,13 @@ const MOCK_TEAMS = [
     { slug: 'frontend-team', name: 'Frontend Team' },
 ];
 
-export const GET: RequestHandler = () => {
+export const GET: RequestHandler = ({ request, params, locals }) => {
     if (!dev) {
-        return new Response('Not Found', { status: 404 });
+        return proxyToBackend(
+            `/api/v1/orgs/${encodeURIComponent(params.org)}/teams`,
+            request,
+            locals.session,
+        );
     }
     return json({ teams: MOCK_TEAMS });
 };

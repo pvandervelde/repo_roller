@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { PageServerLoad } from './$types';
 import type { Session } from '$lib/types/session';
+import { signSessionCookie } from '$lib/session.server';
 
 /**
  * OAuth callback handler.
@@ -85,13 +86,15 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
     redirect(302, '/auth/denied?reason=identity_failure');
   }
 
-  // Establish session cookie — avatarUrl is optional, retrieve from GitHub response if available.
+  // Establish signed session cookie. The HMAC prevents cookie forgery.
   const session: Session = { userLogin, userAvatarUrl: null };
-  cookies.set('session', JSON.stringify(session), {
+  cookies.set('session', signSessionCookie(session), {
     path: '/',
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
+    // 8-hour session lifetime. Re-authenticate after this window.
+    maxAge: 60 * 60 * 8,
   });
 
   redirect(302, '/create');

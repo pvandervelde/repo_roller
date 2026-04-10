@@ -7,17 +7,20 @@ const templates: TemplateSummary[] = [
     {
         name: 'typescript-service',
         description: 'A Node.js TypeScript microservice',
-        tags: ['typescript', 'node'],
+        category: 'typescript',
+        variables: [],
     },
     {
         name: 'python-library',
         description: 'A reusable Python library',
-        tags: ['python', 'library'],
+        category: 'python',
+        variables: [],
     },
     {
         name: 'frontend-app',
         description: 'SvelteKit frontend application',
-        tags: ['svelte', 'frontend'],
+        category: 'frontend',
+        variables: [],
     },
 ];
 

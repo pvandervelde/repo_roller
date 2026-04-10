@@ -69,28 +69,34 @@ describe('AppShell', () => {
     expect(screen.getByRole('img', { name: 'Acme logo' })).toBeInTheDocument();
   });
 
-  it('renders a <picture> when both logoUrl and logoUrlDark are set', () => {
-    const { container } = render(AppShell, {
+  it('renders the light logo <img> when both logoUrl and logoUrlDark are set (system scheme)', () => {
+    render(AppShell, {
       props: {
         ...baseProps,
         logoUrl: 'https://example.com/logo-light.svg',
         logoUrlDark: 'https://example.com/logo-dark.svg',
       },
     });
-    expect(container.querySelector('picture')).toBeTruthy();
+    // In system scheme without matchMedia (jsdom), the light logo is shown.
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('src', 'https://example.com/logo-light.svg');
   });
 
-  it('<picture> has a dark-mode <source> referencing logoUrlDark', () => {
-    const { container } = render(AppShell, {
+  it('shows the dark logo <img> when color scheme is manually set to dark', async () => {
+    // Pre-populate localStorage so the component initialises in dark scheme.
+    localStorage.setItem('repo-roller-color-scheme', 'dark');
+    render(AppShell, {
       props: {
         ...baseProps,
         logoUrl: 'https://example.com/logo-light.svg',
         logoUrlDark: 'https://example.com/logo-dark.svg',
       },
     });
-    const source = container.querySelector('source[media*="dark"]');
-    expect(source).toBeTruthy();
-    expect(source?.getAttribute('srcset')).toBe('https://example.com/logo-dark.svg');
+    await waitFor(() => {
+      const img = screen.getByRole('img');
+      expect(img).toHaveAttribute('src', 'https://example.com/logo-dark.svg');
+    });
+    localStorage.removeItem('repo-roller-color-scheme');
   });
 
   it('appName text is always present in DOM even when logo is shown (UX-ASSERT-026)', () => {

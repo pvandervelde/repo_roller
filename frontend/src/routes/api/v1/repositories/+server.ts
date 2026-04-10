@@ -1,10 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
+import { proxyToBackend } from '$lib/proxy.server';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
   if (!dev) {
-    return new Response('Not Found', { status: 404 });
+    return proxyToBackend('/api/v1/repositories', request, locals.session);
   }
   const body = (await request.json()) as {
     organization?: string;
@@ -27,25 +28,17 @@ export const POST: RequestHandler = async ({ request }) => {
     {
       repository: {
         name,
-        full_name: `${org}/${name}`,
+        fullName: `${org}/${name}`,
         url: `https://github.com/${org}/${name}`,
         visibility: body.visibility ?? 'private',
+      },
+      appliedConfiguration: {
+        template: body.template,
+        visibility: body.visibility ?? 'private',
+        team: body.team ?? null,
         repository_type: body.repository_type ?? null,
-        created_at: now,
       },
-      configuration: {
-        applied_settings: {
-          template: body.template,
-          visibility: body.visibility ?? 'private',
-          team: body.team ?? null,
-          repository_type: body.repository_type ?? null,
-        },
-        sources: {
-          template: 'template-registry',
-          visibility: 'user-input',
-          team: body.team ? 'user-input' : 'default',
-        },
-      },
+      createdAt: now,
     },
     { status: 201 },
   );
