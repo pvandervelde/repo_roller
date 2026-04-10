@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext } from '@playwright/test';
+import { makeSessionCookie } from './helpers';
 
 /**
  * E2E tests for the repository creation flow.
@@ -7,19 +8,6 @@ import { test, expect, type BrowserContext } from '@playwright/test';
  * All API calls are intercepted via page.route() to avoid requiring a real backend.
  * Authentication is simulated by setting a session cookie before each test.
  */
-
-const SESSION_COOKIE = {
-  name: 'session',
-  value: JSON.stringify({
-    userLogin: 'test-user',
-    userAvatarUrl: 'https://example.com/avatar.png',
-  }),
-  domain: 'localhost',
-  path: '/',
-  httpOnly: true,
-  secure: false,
-  sameSite: 'Lax' as const,
-};
 
 const MOCK_TEMPLATES = [
   {
@@ -54,7 +42,7 @@ const MOCK_TEMPLATE_DETAIL_NO_VARS = {
 // ---------------------------------------------------------------------------
 
 async function addSessionCookie(context: BrowserContext) {
-  await context.addCookies([SESSION_COOKIE]);
+  await context.addCookies([makeSessionCookie()]);
 }
 
 // ---------------------------------------------------------------------------

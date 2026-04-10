@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { makeSessionCookie } from './helpers';
 
 /**
  * E2E tests for the authentication flow.
@@ -8,20 +9,6 @@ import { test, expect } from '@playwright/test';
  * NOTE: Real GitHub OAuth cannot be exercised in automated tests without live credentials.
  * The OAuth callback path (SCR-002) is omitted here and covered by unit tests in tests/.
  */
-
-// A minimal valid session cookie for testing authenticated pages.
-const SESSION_COOKIE = {
-  name: 'session',
-  value: JSON.stringify({
-    userLogin: 'test-user',
-    userAvatarUrl: 'https://example.com/avatar.png',
-  }),
-  domain: 'localhost',
-  path: '/',
-  httpOnly: true,
-  secure: false,
-  sameSite: 'Lax' as const,
-};
 
 // ---------------------------------------------------------------------------
 // SCR-001: Sign-in page
@@ -67,7 +54,7 @@ test.describe('Route guards (UX-ASSERT-001)', () => {
   });
 
   test('session cookie allows access to /create (UX-ASSERT-001)', async ({ page, context }) => {
-    await context.addCookies([SESSION_COOKIE]);
+    await context.addCookies([makeSessionCookie()]);
     await page.goto('/create');
     await expect(page).not.toHaveURL('/sign-in');
   });
@@ -146,7 +133,7 @@ test.describe('Error screen (SCR-006)', () => {
 test.describe('Sign-out flow (UX-ASSERT-004)', () => {
   test('sign-out destroys session and redirects to /sign-in', async ({ page, context }) => {
     // Inject a valid session cookie so the user starts authenticated.
-    await context.addCookies([SESSION_COOKIE]);
+    await context.addCookies([makeSessionCookie()]);
 
     // Confirm the user can reach the authenticated /create route.
     await page.goto('/create');
@@ -161,7 +148,7 @@ test.describe('Sign-out flow (UX-ASSERT-004)', () => {
 
   test('after sign-out, navigating to /create redirects to /sign-in', async ({ page, context }) => {
     // Start authenticated.
-    await context.addCookies([SESSION_COOKIE]);
+    await context.addCookies([makeSessionCookie()]);
     await page.goto('/create');
     await expect(page).not.toHaveURL('/sign-in');
 
