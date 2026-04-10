@@ -577,6 +577,70 @@ fn push_repository_to_github(
     Ok(())
 }
 
+/// Returns `true` when the push error is transient and a retry may succeed.
+///
+/// GitHub's git server can return HTTP 404 or 503 immediately after repository
+/// creation due to replication lag.  These are safe to retry.
+fn is_transient_push_error(error: &RepoRollerError) -> bool {
+    let msg = error.to_string();
+    msg.contains("404") || msg.contains("503")
+}
+
+/// Pushes the local repository to GitHub, retrying on transient errors.
+///
+/// GitHub's git server sometimes returns HTTP 404 or 503 immediately after
+/// a repository is created via the REST API, because the API and git servers
+/// are separate systems with eventual consistency.  This function retries up
+/// to three times with exponential back-off (1 s → 2 s → 4 s) before
+/// propagating the error.
+///
+/// Non-transient errors (e.g. 401 / 403 / invalid URL) are returned
+/// immediately without retrying.
+///
+/// # Errors
+///
+/// Returns `SystemError::Internal` wrapping the last push error if all
+/// attempts are exhausted.
+async fn push_repository_to_github_with_retry(
+    local_repo_path: &TempDir,
+    repo_url: url::Url,
+    default_branch: &str,
+    installation_token: &str,
+) -> RepoRollerResult<()> {
+    const MAX_ATTEMPTS: u32 = 3;
+
+    let mut last_error: Option<RepoRollerError> = None;
+
+    for attempt in 0..MAX_ATTEMPTS {
+        if attempt > 0 {
+            let delay_ms = 1_000u64 << (attempt - 1); // 1 s, 2 s
+            warn!(
+                "Push failed with transient error, retrying in {}ms (attempt {}/{})",
+                delay_ms,
+                attempt + 1,
+                MAX_ATTEMPTS
+            );
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+        }
+
+        match push_repository_to_github(
+            local_repo_path,
+            repo_url.clone(),
+            default_branch,
+            installation_token,
+        ) {
+            Ok(()) => return Ok(()),
+            Err(e) if is_transient_push_error(&e) => {
+                warn!("Push attempt {} failed (transient): {}", attempt + 1, e);
+                last_error = Some(e);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err(last_error.expect("loop always sets last_error before exhausting"))
+}
+
 /// Applies the merged configuration and repository permissions after the
 /// repository has been created and populated on GitHub.
 ///
@@ -1115,12 +1179,15 @@ pub async fn create_repository(
     .await?;
 
     // Step 9: Push local content to the GitHub remote.
-    push_repository_to_github(
+    // Uses retry logic to handle GitHub's eventual consistency between the
+    // REST API and git servers (transient 404/503 immediately after creation).
+    push_repository_to_github_with_retry(
         &local_repo_path,
         repo.url(),
         &default_branch,
         &clients.installation_token,
-    )?;
+    )
+    .await?;
 
     // Steps 10–11: Apply merged configuration and repository permissions.
     apply_post_creation_settings(
