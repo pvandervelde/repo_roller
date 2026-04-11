@@ -139,8 +139,10 @@ test.describe('Sign-out flow (UX-ASSERT-004)', () => {
     await page.goto('/create');
     await expect(page).not.toHaveURL('/sign-in');
 
-    // Click the "Sign out" menu item in the UserBadge dropdown.
-    await page.getByRole('button', { name: /sign out/i }).click();
+    // Open the UserBadge dropdown by clicking the toggle button, then click
+    // the "Sign out" menu item that appears inside the dropdown.
+    await page.getByRole('button', { name: /test-user/i }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
 
     // After sign-out the server clears the cookie and redirects to /sign-in.
     await expect(page).toHaveURL('/sign-in');
@@ -152,8 +154,9 @@ test.describe('Sign-out flow (UX-ASSERT-004)', () => {
     await page.goto('/create');
     await expect(page).not.toHaveURL('/sign-in');
 
-    // Sign out.
-    await page.getByRole('button', { name: /sign out/i }).click();
+    // Open the UserBadge dropdown, then sign out.
+    await page.getByRole('button', { name: /test-user/i }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await expect(page).toHaveURL('/sign-in');
 
     // Attempting to navigate back to /create must redirect to /sign-in because

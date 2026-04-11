@@ -88,6 +88,20 @@ async fn poll_team_permission(
                     "Team permission not yet visible; waiting for GitHub propagation"
                 );
             }
+            // Treat transient (non-GitHub) API errors as "not yet visible" so that
+            // short-lived replication hiccups do not fail the test immediately.
+            Err(ref e) if e.to_string().contains("InvalidResponse") => {
+                eprintln!(
+                    "[poll_team_permission] transient error on attempt {attempt}/{max_attempts} team={team_slug}: {e}"
+                );
+                tracing::warn!(
+                    attempt,
+                    max_attempts,
+                    team = team_slug,
+                    error = %e,
+                    "Transient error polling team permission; will retry"
+                );
+            }
             Err(e) => return Err(e.into()),
         }
     }
@@ -326,8 +340,28 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
         labels.len()
     );
 
-    // Verify webhooks from configuration
-    let webhooks = verification_client.list_webhooks(&org, &repo_name).await?;
+    // Verify webhooks from configuration.
+    // GitHub may return 404 on a newly-created repository while the hooks
+    // endpoint propagates; retry up to 5 times with a short delay.
+    let webhooks = {
+        let mut result = vec![];
+        for attempt in 1u32..=5 {
+            match verification_client.list_webhooks(&org, &repo_name).await {
+                Ok(w) => {
+                    result = w;
+                    break;
+                }
+                Err(ref e) if attempt < 5 && e.to_string().contains("InvalidResponse") => {
+                    eprintln!(
+                        "[list_webhooks] attempt {attempt}/5 returned transient error, retrying…"
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        result
+    };
 
     // Expected webhooks: 1 from global config + 1 from template-test-basic
     assert_eq!(

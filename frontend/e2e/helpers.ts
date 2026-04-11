@@ -18,9 +18,9 @@ export const E2E_SESSION_SECRET = 'e2e-test-session-secret-do-not-use-in-product
  *   <base64url(JSON.stringify(payload))>.<hex(hmac-sha256(data, secret))>
  */
 export function signSessionCookieValue(payload: object): string {
-    const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    const sig = createHmac('sha256', E2E_SESSION_SECRET).update(data).digest('hex');
-    return `${data}.${sig}`;
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = createHmac('sha256', E2E_SESSION_SECRET).update(data).digest('hex');
+  return `${data}.${sig}`;
 }
 
 /**
@@ -28,16 +28,16 @@ export function signSessionCookieValue(payload: object): string {
  * Pass the result directly to `context.addCookies()` in Playwright tests.
  */
 export function makeSessionCookie(): Cookie {
-    return {
-        name: 'session',
-        value: signSessionCookieValue({
-            userLogin: 'test-user',
-            userAvatarUrl: 'https://example.com/avatar.png',
-        }),
-        domain: 'localhost',
-        path: '/',
-        httpOnly: true,
-        secure: false,
-        sameSite: 'Lax',
-    };
+  return {
+    name: 'session',
+    value: signSessionCookieValue({
+      userLogin: 'test-user',
+      userAvatarUrl: 'https://example.com/avatar.png',
+    }),
+    domain: 'localhost',
+    path: '/',
+    httpOnly: true,
+    secure: false,
+    sameSite: 'Lax',
+  };
 }
