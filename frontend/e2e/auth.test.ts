@@ -138,6 +138,9 @@ test.describe('Sign-out flow (UX-ASSERT-004)', () => {
     // Confirm the user can reach the authenticated /create route.
     await page.goto('/create');
     await expect(page).not.toHaveURL('/sign-in');
+    // Wait for SvelteKit hydration to complete (Vite loads page modules dynamically;
+    // they finish loading after the HTML 'load' event, so networkidle is needed).
+    await page.waitForLoadState('networkidle');
 
     // Open the UserBadge dropdown by clicking the toggle button, then click
     // the "Sign out" menu item that appears inside the dropdown.
@@ -153,6 +156,8 @@ test.describe('Sign-out flow (UX-ASSERT-004)', () => {
     await context.addCookies([makeSessionCookie()]);
     await page.goto('/create');
     await expect(page).not.toHaveURL('/sign-in');
+    // Wait for SvelteKit hydration to complete.
+    await page.waitForLoadState('networkidle');
 
     // Open the UserBadge dropdown, then sign out.
     await page.getByRole('button', { name: /test-user/i }).click();

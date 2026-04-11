@@ -11,6 +11,7 @@
   import InlineAlert from '$lib/components/InlineAlert.svelte';
   import CreationOverlay from '$lib/components/CreationOverlay.svelte';
   import { goto } from '$app/navigation';
+  import { enhance } from '$app/forms';
   import {
     listTemplates,
     getTemplateDetails,
@@ -24,6 +25,13 @@
   import type { RepositoryTypeOption } from '$lib/components/RepositoryTypePicker.svelte';
 
   const { data }: { data: PageData } = $props();
+
+  // DOM reference for the hidden sign-out form (used by handleSignOut)
+  let signOutForm: HTMLFormElement | undefined;
+
+  function handleSignOut() {
+    signOutForm?.requestSubmit();
+  }
 
   // ---------------------------------------------------------------------------
   // Wizard state
@@ -315,6 +323,17 @@
   <title>Create repository — {data.brandConfig.appName}</title>
 </svelte:head>
 
+<form
+  bind:this={signOutForm}
+  method="POST"
+  action="?/signOut"
+  aria-hidden="true"
+  style="display: none;"
+  use:enhance
+>
+  <button type="submit" tabindex="-1">Sign out</button>
+</form>
+
 <AppShell
   appName={data.brandConfig.appName}
   logoUrl={data.brandConfig.logoUrl}
@@ -322,6 +341,7 @@
   logoAlt={data.brandConfig.logoAlt}
   userLogin={data.session?.userLogin ?? ''}
   userAvatarUrl={data.session?.userAvatarUrl ?? null}
+  onsignOut={handleSignOut}
 >
   <div class="wizard" aria-hidden={creatingRepo ? 'true' : undefined}>
     <StepProgress {steps} {currentStep} />
