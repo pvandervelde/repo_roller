@@ -269,6 +269,9 @@ async fn test_label_application_idempotency() -> Result<()> {
 
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
+    // Wait for GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Apply labels using LabelManager
     let label_manager = LabelManager::new(github_client.clone());
     let mut label_configs = std::collections::HashMap::new();
