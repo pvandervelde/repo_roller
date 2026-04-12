@@ -239,3 +239,28 @@ Each assertion follows Given / When / Then structure.
   step progress indicators, links, focus rings
 - **Then**: Each element uses the configured colour
 - **And**: No interactive element uses the default blue (`#0969da`) when a custom colour is set
+
+### UX-ASSERT-029: Dark-mode primary colour overrides the light-mode value under dark scheme
+
+- **Given**: Both `brand.primary_color` and `brand.primary_color_dark` are configured at deployment
+- **When**: The operating system / browser `prefers-color-scheme` is set to `dark`
+- **Then**: All interactive elements use the dark-mode colour (`brand.primary_color_dark`)
+- **And**: When `prefers-color-scheme` is set to `light` (or is not set), the light-mode colour
+  is used
+- **And**: No JavaScript or client-side toggle is required — switching is handled by CSS alone
+
+### UX-ASSERT-030: Dark-mode logo is used when configured and system dark mode is active
+
+- **Given**: Both `brand.logo_url` and `brand.logo_url_dark` are configured at deployment
+- **When**: The operating system / browser `prefers-color-scheme` is set to `dark`
+- **Then**: The dark-mode logo image is displayed in the AppShell header and on BrandCard screens
+- **And**: When `prefers-color-scheme` is `light` (or not set), the light-mode logo is displayed
+- **And**: When only `brand.logo_url` is configured (no dark variant), it is used in both modes
+
+### UX-ASSERT-031: Omitting dark-mode brand tokens does not break the UI
+
+- **Given**: `brand.primary_color_dark` and `brand.logo_url_dark` are both absent from the
+  deployment configuration
+- **When**: Any screen renders in a system dark mode environment
+- **Then**: The light-mode primary colour and light-mode logo (or wordmark) are displayed
+- **And**: No missing-image icon, broken layout, or JavaScript error occurs

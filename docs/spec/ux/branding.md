@@ -16,9 +16,11 @@ patterns are fixed. Only the visual tokens and identity markers are configurable
 | Brand element | Config key | Type | Default | Applied to |
 |---|---|---|---|---|
 | Application name | `brand.app_name` | `string` | `"RepoRoller"` | Page titles, headings, sign-in screen |
-| Logo image URL | `brand.logo_url` | `string \| null` | `null` (text wordmark used) | AppShell header, sign-in/callback/access-denied cards |
+| Logo image URL (light) | `brand.logo_url` | `string \| null` | `null` (text wordmark used) | AppShell header, sign-in/callback/access-denied cards |
+| Logo image URL (dark) | `brand.logo_url_dark` | `string \| null` | `null` (falls back to `logo_url`) | Same as above, used when system dark mode is active |
 | Logo alt text | `brand.logo_alt` | `string` | `"[brand.app_name] logo"` | `alt` attribute of logo `<img>` |
-| Primary colour | `brand.primary_color` | CSS hex string | `"#0969da"` (GitHub blue) | Buttons, selected states, links, progress indicators |
+| Primary colour (light) | `brand.primary_color` | CSS hex string | `"#0969da"` (GitHub blue) | Buttons, selected states, links, progress indicators |
+| Primary colour (dark) | `brand.primary_color_dark` | CSS hex string | `null` (falls back to `primary_color`) | Same targets as `primary_color`, applied when `prefers-color-scheme: dark` |
 
 **Intentionally not configurable:**
 
@@ -36,17 +38,19 @@ the browser.
 
 **Configuration source priority** (highest first):
 
-1. Environment variables: `BRAND_APP_NAME`, `BRAND_LOGO_URL`, `BRAND_LOGO_ALT`, `BRAND_PRIMARY_COLOR`
+1. Environment variables: `BRAND_APP_NAME`, `BRAND_LOGO_URL`, `BRAND_LOGO_URL_DARK`, `BRAND_LOGO_ALT`, `BRAND_PRIMARY_COLOR`, `BRAND_PRIMARY_COLOR_DARK`
 2. `brand.toml` file in the deployment directory
 3. Built-in defaults (as listed above)
 
 **Example `brand.toml`:**
 
 ```toml
-app_name    = "Acme Dev Tools"
-logo_url    = "/static/acme-logo.svg"
-logo_alt    = "Acme logo"
-primary_color = "#d4451a"
+app_name           = "Acme Dev Tools"
+logo_url           = "/static/acme-logo-dark-text.svg"   # dark logo mark, for use on light backgrounds
+logo_url_dark      = "/static/acme-logo-light-text.svg"  # light logo mark, for use on dark backgrounds
+logo_alt           = "Acme logo"
+primary_color      = "#d4451a"
+primary_color_dark = "#ff8c69"
 ```
 
 > **Security note**: `brand.toml` is a server-side configuration file. It **must not** be placed
@@ -62,15 +66,64 @@ The SvelteKit server loads branding config once at startup and makes it availabl
 via a root layout `load` function. Components that need branding data receive it as props or
 read it from a Svelte context set at the root layout.
 
-The primary colour is injected as a CSS custom property on the root `<html>` element:
+The primary colour is injected as a CSS custom property via a `<style>` block rendered by the
+root layout at server time:
 
 ```html
-<html style="--brand-primary: #d4451a;">
+<style>
+  :root { --brand-primary: #d4451a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --brand-primary: #ff8c69; }
+  }
+</style>
 ```
 
-All interactive elements (buttons, selected cards, focus rings, progress steps, links) reference
-`var(--brand-primary)` rather than a hardcoded colour value. This means the entire colour scheme
-adapts to a single config value with no component-level changes.
+When `primary_color_dark` is not configured, the `@media` block is omitted and `--brand-primary`
+has a single value for both light and dark mode. All interactive elements (buttons, selected
+cards, focus rings, progress steps, links) reference `var(--brand-primary)` rather than a
+hardcoded colour value. This means the entire colour scheme adapts to the config with no
+component-level changes.
+
+---
+
+## Dark Mode Support
+
+RepoRoller honours the operating-system / browser `prefers-color-scheme` media feature.
+Dark mode colours are opt-in at the operator level; the system remains fully usable without
+them.
+
+### Colour switching
+
+- If `primary_color_dark` is set, the root layout emits a `@media (prefers-color-scheme: dark)`
+  block that overrides `--brand-primary` for dark mode. No JavaScript, no flash, no client-side
+  toggle — it is pure CSS.
+- If `primary_color_dark` is **not** set, the same `--brand-primary` value is used in both light
+  and dark mode. This is acceptable; many brand colours work on both backgrounds.
+
+### Logo switching
+
+- If `logo_url_dark` is set, the component renders a `<picture>` element:
+
+  ```html
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="/static/acme-logo-light-text.svg">
+    <img src="/static/acme-logo-dark-text.svg" alt="Acme logo">
+  </picture>
+  ```
+
+  The `<img>` `src` is the light-mode logo (shown by default and as fallback). The `<source>`
+  provides the dark-mode version.
+
+- If `logo_url_dark` is **not** set, a plain `<img>` is used as before (no `<picture>` wrapper).
+
+- If **neither** `logo_url` **nor** `logo_url_dark` is set, the text wordmark is used regardless
+  of colour scheme.
+
+### Background and surface colours
+
+Light/dark background and surface colours (card backgrounds, page background, text) are handled
+by the component stylesheet via `prefers-color-scheme` CSS media queries. These are **not**
+operator-configurable — only the brand accent colour (`--brand-primary`) and logo are.
 
 ---
 
@@ -78,11 +131,15 @@ adapts to a single config value with no component-level changes.
 
 | Scenario | Rendered as |
 |---|---|
-| `logo_url` is set | `<img src="{logo_url}" alt="{logo_alt}" />` — fixed height, width auto |
-| `logo_url` is null | `<span class="wordmark">{app_name}</span>` — styled text wordmark |
+| Both `logo_url` and `logo_url_dark` set | `<picture>` with dark `<source>` + light `<img>` fallback |
+| Only `logo_url` set | `<img src="{logo_url}" alt="{logo_alt}" />` — fixed height, width auto |
+| Neither set | `<span class="wordmark">{app_name}</span>` — styled text wordmark |
 
-The logo container reserves a fixed height (e.g., 32px in AppShell header, 48px on sign-in card)
+The logo container reserves a fixed height (32px in AppShell header, 48px on BrandCard)
 regardless of which variant is rendered, preventing layout shift between deployments.
+
+> **Note**: `logo_url_dark` without a `logo_url` is not a supported configuration. If only
+> `logo_url_dark` is provided it is ignored; the text wordmark is rendered instead.
 
 ---
 

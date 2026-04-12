@@ -223,6 +223,10 @@ impl RepositoryCleanup {
                             }
                         };
 
+                        // Note: unlike cleanup_repositories_internal, this function
+                        // does not support the max_age_hours == 0 bypass (delete
+                        // regardless of age), because misnamed repositories should
+                        // never be intentionally kept and the bypass is not needed.
                         if created_at < cutoff_time {
                             info!(
                                 repo_name = repo_name,
@@ -397,7 +401,15 @@ impl RepositoryCleanup {
                                 }
                             };
 
-                            if created_at < cutoff_time {
+                            // When max_age_hours == 0 the caller means "delete
+                            // ALL test repos regardless of age" (no age filter).
+                            // This avoids a clock-skew false-negative where
+                            // GitHub's server clock is slightly ahead of the
+                            // runner clock, making a just-created repo appear
+                            // to have a created_at in the future.
+                            let is_old_enough = max_age_hours == 0 || created_at < cutoff_time;
+
+                            if is_old_enough {
                                 info!(
                                     repo_name = repo_name,
                                     created_at = %created_at,

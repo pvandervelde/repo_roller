@@ -1,4 +1,4 @@
-﻿//! Crate for interacting with the GitHub REST API.
+//! Crate for interacting with the GitHub REST API.
 //!
 //! This crate provides a client for making authenticated requests to GitHub,
 //! authenticating as a GitHub App using its ID and private key.
@@ -2179,17 +2179,19 @@ impl RepositoryClient for GitHubClient {
     async fn list_repository_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>, Error> {
         info!("Listing repository labels");
 
-        let result = self
-            .client
-            .issues(owner, repo)
-            .list_labels_for_repo()
-            .send()
-            .await;
+        // Use a direct REST call with per_page=100 so all labels are returned in
+        // a single response instead of only the first page from the octocrab
+        // builder. Repositories rarely exceed 100 labels.
+        let route = format!("/repos/{owner}/{repo}/labels?per_page=100");
+        let result: OctocrabResult<Vec<serde_json::Value>> =
+            self.client.get(&route, None::<&()>).await;
 
         match result {
             Ok(labels) => {
-                let label_names: Vec<String> =
-                    labels.items.into_iter().map(|label| label.name).collect();
+                let label_names: Vec<String> = labels
+                    .into_iter()
+                    .filter_map(|l| l.get("name").and_then(|v| v.as_str()).map(String::from))
+                    .collect();
 
                 info!(count = label_names.len(), "Successfully listed labels");
                 Ok(label_names)
@@ -2434,6 +2436,14 @@ impl RepositoryClient for GitHubClient {
                     "Successfully listed webhooks"
                 );
                 Ok(webhooks)
+            }
+            Err(e) if is_not_found_error(&e) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Webhooks endpoint not found (404)"
+                );
+                Err(Error::NotFound)
             }
             Err(e) => {
                 log_octocrab_error("Failed to list webhooks", e);

@@ -386,6 +386,38 @@ pub struct PreviewConfigurationResponse {
 /// See: specs/interfaces/api-response-types.md#validateorganizationresponse
 pub type ValidateOrganizationResponse = ValidateRepositoryRequestResponse;
 
+/// Summary of a single GitHub organization team.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamSummary {
+    /// URL-safe team slug used in API requests.
+    pub slug: String,
+
+    /// Human-readable team name.
+    pub name: String,
+}
+
+/// HTTP response for listing organization teams.
+///
+/// # Example
+///
+/// ```json
+/// {
+///   "teams": [
+///     { "slug": "backend", "name": "Backend Engineers" },
+///     { "slug": "platform", "name": "Platform Team" }
+///   ]
+/// }
+/// ```
+///
+/// See: specs/interfaces/api-response-types.md#listteamsresponse
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTeamsResponse {
+    /// Organization teams available for repository assignment.
+    pub teams: Vec<TeamSummary>,
+}
+
 #[cfg(test)]
 #[path = "response_tests.rs"]
 mod tests;

@@ -11,6 +11,19 @@ A GitHub app that creates new repositories from templates or as empty repositori
 - **Organization-wide Policies**: Enforce security and branch protection across all repositories
 - **Multiple Interfaces**: CLI, REST API, and MCP server support
 
+## Components
+
+| Directory | Description |
+|---|---|
+| `crates/repo_roller_core/` | Core business logic and domain types |
+| `crates/repo_roller_api/` | REST API server (Axum) |
+| `crates/repo_roller_cli/` | Command-line interface |
+| `crates/github_client/` | GitHub API integration (octocrab) |
+| `crates/config_manager/` | Configuration loading and management |
+| `crates/template_engine/` | Handlebars template processing |
+| `crates/auth_handler/` | GitHub App authentication |
+| `frontend/` | SvelteKit web UI (Node 24, Svelte 5) — see [frontend/](frontend/) |
+
 ## Documentation
 
 - **[Empty Repositories Guide](crates/repo_roller_cli/EMPTY_REPOSITORIES.md)** - Creating repositories without templates

@@ -135,7 +135,7 @@ async fn test_ruleset_creation_via_manager() -> Result<()> {
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
     // Wait for GitHub API to sync
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Apply rulesets using RulesetManager
     let ruleset_manager = RulesetManager::new(github_client.clone());
@@ -218,7 +218,7 @@ async fn test_rulesets_are_idempotent() -> Result<()> {
     info!("✓ Test repository created");
 
     // Wait for GitHub API to sync
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Apply rulesets first time
     let ruleset_manager = RulesetManager::new(github_client.clone());
@@ -315,7 +315,7 @@ async fn test_list_existing_rulesets() -> Result<()> {
     info!("✓ Test repository created");
 
     // Wait for GitHub API to sync
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Create known rulesets
     let ruleset_manager = RulesetManager::new(github_client.clone());
@@ -411,7 +411,7 @@ async fn test_update_existing_rulesets() -> Result<()> {
     info!("✓ Test repository created");
 
     // Wait for GitHub API to sync
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Create initial rulesets
     let ruleset_manager = RulesetManager::new(github_client.clone());
@@ -503,7 +503,7 @@ async fn test_empty_ruleset_configuration() -> Result<()> {
     info!("✓ Test repository created");
 
     // Wait for GitHub API to sync
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Apply empty rulesets
     let ruleset_manager = RulesetManager::new(github_client.clone());

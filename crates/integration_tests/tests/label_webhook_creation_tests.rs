@@ -269,6 +269,9 @@ async fn test_label_application_idempotency() -> Result<()> {
 
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
+    // Wait for GitHub API to sync after repository creation
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Apply labels using LabelManager
     let label_manager = LabelManager::new(github_client.clone());
     let mut label_configs = std::collections::HashMap::new();
@@ -483,10 +486,32 @@ async fn test_webhook_validation_rejects_invalid() -> Result<()> {
         "Should track failed webhook"
     );
 
-    // Verify no webhooks were created
-    let webhooks = github_client
-        .list_webhooks(&config.test_org, repo_name.as_ref())
-        .await?;
+    // Verify no webhooks were created.
+    // GitHub may return 404 for list_webhooks immediately after a repository is
+    // created when no webhook has ever been written (separate replication path).
+    // Retry briefly, treating 404 as an empty list.
+    let webhooks = {
+        let mut result = vec![];
+        for attempt in 0u64..3 {
+            match github_client
+                .list_webhooks(&config.test_org, repo_name.as_ref())
+                .await
+            {
+                Ok(w) => {
+                    result = w;
+                    break;
+                }
+                Err(e) if e.to_string().contains("Resource not found") => {
+                    if attempt < 2 {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                    // treat as empty list on final attempt — GitHub API replication lag
+                }
+                Err(e) => anyhow::bail!("{e}"),
+            }
+        }
+        result
+    };
 
     assert_eq!(
         webhooks.len(),
@@ -542,6 +567,10 @@ async fn test_multiple_labels_batch_creation() -> Result<()> {
 
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
+    // GitHub API eventual consistency: wait for the repository's label endpoint
+    // to become available before applying labels (same pattern as other tests).
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Apply multiple labels using LabelManager
     let label_manager = LabelManager::new(github_client.clone());
     let mut label_configs = std::collections::HashMap::new();
@@ -569,10 +598,23 @@ async fn test_multiple_labels_batch_creation() -> Result<()> {
     assert_eq!(result.created, 5, "Should have created 5 labels");
     assert_eq!(result.failed, 0, "Should have no failures");
 
-    // Verify all labels exist
-    let labels = github_client
-        .list_repository_labels(&config.test_org, repo_name.as_ref())
-        .await?;
+    // Verify all labels exist - retry up to 5 times with 1 s back-off to
+    // account for GitHub API replication lag (write → list endpoint).
+    let labels = {
+        let mut result = vec![];
+        for attempt in 0u64..5 {
+            result = github_client
+                .list_repository_labels(&config.test_org, repo_name.as_ref())
+                .await?;
+            if result.len() >= 5 {
+                break;
+            }
+            if attempt < 4 {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+        result
+    };
 
     for i in 1..=5 {
         let label_name = format!("test-label-{}", i);
