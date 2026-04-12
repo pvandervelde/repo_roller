@@ -23,9 +23,8 @@
         "minor",
         "patch"
       ],
-      "matchCategories": [
-        "security"
-      ],
+      "isVulnerabilityAlert": true,
+      "prCreation": "immediate",
       "minimumReleaseAge": "0 hours",
       "automerge": false,
       "labels": [
