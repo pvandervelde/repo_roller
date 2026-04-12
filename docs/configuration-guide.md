@@ -983,6 +983,19 @@ docker run -d \
 
 ```yaml
 services:
+  backend:
+    image: repo-roller-api:latest
+    ports:
+      - "8080:8080"
+    environment:
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
+      GITHUB_ORG: ${GITHUB_ORG}
+      # API_TOKEN is a shared secret validated by the backend middleware.
+      # It must be a strong random string (not a GitHub token).
+      API_TOKEN: ${BACKEND_API_TOKEN}
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -995,12 +1008,23 @@ services:
       GITHUB_ORG: ${GITHUB_ORG}
       ORIGIN: ${ORIGIN}
       BRAND_APP_NAME: ${BRAND_APP_NAME:-RepoRoller}
+      # BACKEND_API_URL points to the backend service defined above.
+      BACKEND_API_URL: http://backend:8080
+      # BACKEND_API_TOKEN must match the API_TOKEN set on the backend service.
+      BACKEND_API_TOKEN: ${BACKEND_API_TOKEN}
     volumes:
       - /etc/reporoller/brand.toml:/app/brand.toml:ro
     restart: unless-stopped
+    depends_on:
+      - backend
 ```
 
-Use a `.env` file (not committed to source control) to supply the secret values locally.
+> **Note:** `BACKEND_API_TOKEN` is a shared secret between the frontend and
+> backend — it is **not** a GitHub token. Generate a strong random value
+> (e.g. `openssl rand -hex 32`) and keep it in your `.env` file, which must
+> not be committed to source control.
+
+Use a `.env` file (not committed to source control) to supply all secret values locally.
 
 ## Best Practices
 

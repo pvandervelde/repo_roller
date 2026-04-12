@@ -67,6 +67,7 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
 
   // Retrieve GitHub user identity.
   let userLogin: string;
+  let userAvatarUrl: string | null = null;
   try {
     const userRes = await fetch('https://api.github.com/user', {
       headers: {
@@ -82,12 +83,13 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
       redirect(302, '/auth/denied?reason=identity_failure');
     }
     userLogin = userData['login'];
+    userAvatarUrl = typeof userData['avatar_url'] === 'string' ? userData['avatar_url'] : null;
   } catch {
     redirect(302, '/auth/denied?reason=identity_failure');
   }
 
   // Establish signed session cookie. The HMAC prevents cookie forgery.
-  const session: Session = { userLogin, userAvatarUrl: null };
+  const session: Session = { userLogin, userAvatarUrl };
   cookies.set('session', signSessionCookie(session), {
     path: '/',
     httpOnly: true,

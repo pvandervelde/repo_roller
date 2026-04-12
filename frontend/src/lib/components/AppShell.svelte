@@ -49,6 +49,10 @@
 
   let colorScheme = $state<ColorScheme>('system');
 
+  // Tracks the OS dark-mode preference so the logo reacts to OS theme changes
+  // while colorScheme === 'system'. Updated by a MediaQueryList event listener.
+  let osPrefersDark = $state(false);
+
   function applyScheme(scheme: ColorScheme): void {
     if (scheme === 'system') {
       document.documentElement.removeAttribute('data-color-scheme');
@@ -63,6 +67,16 @@
       colorScheme = stored;
     }
     applyScheme(colorScheme);
+
+    // Initialise the OS preference state and subscribe to future changes so
+    // the logo stays in sync while colorScheme === 'system'.
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    osPrefersDark = mq.matches;
+    const handleOsChange = (e: MediaQueryListEvent) => {
+      osPrefersDark = e.matches;
+    };
+    mq.addEventListener('change', handleOsChange);
+    return () => mq.removeEventListener('change', handleOsChange);
   });
 
   function toggleColorScheme(): void {
@@ -94,11 +108,7 @@
   const shouldUseDarkLogo = $derived(
     logoUrlDark !== null &&
       logoUrlDark !== undefined &&
-      (colorScheme === 'dark' ||
-        (colorScheme === 'system' &&
-          typeof window !== 'undefined' &&
-          typeof window.matchMedia === 'function' &&
-          window.matchMedia('(prefers-color-scheme: dark)').matches)),
+      (colorScheme === 'dark' || (colorScheme === 'system' && osPrefersDark)),
   );
 </script>
 

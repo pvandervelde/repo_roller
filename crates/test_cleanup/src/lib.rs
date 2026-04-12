@@ -223,6 +223,10 @@ impl RepositoryCleanup {
                             }
                         };
 
+                        // Note: unlike cleanup_repositories_internal, this function
+                        // does not support the max_age_hours == 0 bypass (delete
+                        // regardless of age), because misnamed repositories should
+                        // never be intentionally kept and the bypass is not needed.
                         if created_at < cutoff_time {
                             info!(
                                 repo_name = repo_name,

@@ -591,7 +591,7 @@ fn is_transient_push_error(error: &RepoRollerError) -> bool {
 /// GitHub's git server sometimes returns HTTP 404 or 503 immediately after
 /// a repository is created via the REST API, because the API and git servers
 /// are separate systems with eventual consistency.  This function retries up
-/// to three times with exponential back-off (1 s → 2 s → 4 s) before
+/// to three times with exponential back-off (1 s → 2 s) before
 /// propagating the error.
 ///
 /// Non-transient errors (e.g. 401 / 403 / invalid URL) are returned
