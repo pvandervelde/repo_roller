@@ -1007,6 +1007,9 @@ services:
       GITHUB_ORG: ${GITHUB_ORG}
       ORIGIN: ${ORIGIN}
       BRAND_APP_NAME: ${BRAND_APP_NAME:-RepoRoller}
+      # SESSION_SECRET is used to sign session cookies. Must be at least
+      # 32 characters. Generate with: openssl rand -hex 32
+      SESSION_SECRET: ${SESSION_SECRET}
       # BACKEND_API_URL points to the backend service defined above.
       BACKEND_API_URL: http://backend:8080
       # BACKEND_API_TOKEN is the GitHub token the frontend server uses when
@@ -1021,11 +1024,18 @@ services:
       - backend
 ```
 
-> **Note:** `BACKEND_API_TOKEN` must be a **GitHub App installation token or
-> PAT** — the backend middleware validates it against the GitHub API. A random
-> string will be rejected by GitHub with a 401, causing every API call from
-> the frontend to fail. Keep the token in your `.env` file, which must not be
-> committed to source control.
+> **Note:** `SESSION_SECRET` must be at least 32 characters. The frontend
+> validates this at sign-in time — a missing or short value will cause 500
+> errors on every OAuth callback and every auth-guarded route. Generate a
+> suitable value with `openssl rand -hex 32`.
+>
+> `BACKEND_API_TOKEN` must be a **GitHub App installation token or PAT** —
+> the backend middleware validates it against the GitHub API. A random string
+> will be rejected by GitHub with a 401, causing every API call from the
+> frontend to fail.
+>
+> Keep all secrets in your `.env` file, which must not be committed to source
+> control.
 
 Use a `.env` file (not committed to source control) to supply all secret values locally.
 
