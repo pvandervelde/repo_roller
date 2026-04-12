@@ -70,13 +70,16 @@
 
     // Initialise the OS preference state and subscribe to future changes so
     // the logo stays in sync while colorScheme === 'system'.
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    osPrefersDark = mq.matches;
-    const handleOsChange = (e: MediaQueryListEvent) => {
-      osPrefersDark = e.matches;
-    };
-    mq.addEventListener('change', handleOsChange);
-    return () => mq.removeEventListener('change', handleOsChange);
+    // Guard is required for test environments (jsdom) that do not implement matchMedia.
+    if (typeof window.matchMedia === 'function') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      osPrefersDark = mq.matches;
+      const handleOsChange = (e: MediaQueryListEvent) => {
+        osPrefersDark = e.matches;
+      };
+      mq.addEventListener('change', handleOsChange);
+      return () => mq.removeEventListener('change', handleOsChange);
+    }
   });
 
   function toggleColorScheme(): void {

@@ -567,6 +567,10 @@ async fn test_multiple_labels_batch_creation() -> Result<()> {
 
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
+    // GitHub API eventual consistency: wait for the repository's label endpoint
+    // to become available before applying labels (same pattern as other tests).
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Apply multiple labels using LabelManager
     let label_manager = LabelManager::new(github_client.clone());
     let mut label_configs = std::collections::HashMap::new();

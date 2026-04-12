@@ -988,12 +988,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      GITHUB_APP_ID: ${GITHUB_APP_ID}
-      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
-      GITHUB_ORG: ${GITHUB_ORG}
-      # API_TOKEN is a shared secret validated by the backend middleware.
-      # It must be a strong random string (not a GitHub token).
-      API_TOKEN: ${BACKEND_API_TOKEN}
+      # FRONTEND_ORIGIN must match the public URL of the frontend service
+      # so the backend's CORS policy allows cross-origin requests.
+      FRONTEND_ORIGIN: ${ORIGIN}
+      METADATA_REPOSITORY_NAME: ${METADATA_REPOSITORY_NAME:-.reporoller}
+      RUST_LOG: info
     restart: unless-stopped
 
   frontend:
@@ -1010,7 +1009,10 @@ services:
       BRAND_APP_NAME: ${BRAND_APP_NAME:-RepoRoller}
       # BACKEND_API_URL points to the backend service defined above.
       BACKEND_API_URL: http://backend:8080
-      # BACKEND_API_TOKEN must match the API_TOKEN set on the backend service.
+      # BACKEND_API_TOKEN is the GitHub token the frontend server uses when
+      # calling the backend on behalf of users. The backend validates it
+      # against the GitHub API, so it must be a valid GitHub App installation
+      # token or a PAT with the required scopes — not a random string.
       BACKEND_API_TOKEN: ${BACKEND_API_TOKEN}
     volumes:
       - /etc/reporoller/brand.toml:/app/brand.toml:ro
@@ -1019,10 +1021,11 @@ services:
       - backend
 ```
 
-> **Note:** `BACKEND_API_TOKEN` is a shared secret between the frontend and
-> backend — it is **not** a GitHub token. Generate a strong random value
-> (e.g. `openssl rand -hex 32`) and keep it in your `.env` file, which must
-> not be committed to source control.
+> **Note:** `BACKEND_API_TOKEN` must be a **GitHub App installation token or
+> PAT** — the backend middleware validates it against the GitHub API. A random
+> string will be rejected by GitHub with a 401, causing every API call from
+> the frontend to fail. Keep the token in your `.env` file, which must not be
+> committed to source control.
 
 Use a `.env` file (not committed to source control) to supply all secret values locally.
 
