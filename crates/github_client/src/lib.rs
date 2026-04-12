@@ -1,4 +1,4 @@
-﻿//! Crate for interacting with the GitHub REST API.
+//! Crate for interacting with the GitHub REST API.
 //!
 //! This crate provides a client for making authenticated requests to GitHub,
 //! authenticating as a GitHub App using its ID and private key.
@@ -2436,6 +2436,14 @@ impl RepositoryClient for GitHubClient {
                     "Successfully listed webhooks"
                 );
                 Ok(webhooks)
+            }
+            Err(e) if is_not_found_error(&e) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Webhooks endpoint not found (404)"
+                );
+                Err(Error::NotFound)
             }
             Err(e) => {
                 log_octocrab_error("Failed to list webhooks", e);

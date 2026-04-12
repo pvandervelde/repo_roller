@@ -501,11 +501,11 @@ async fn test_webhook_validation_rejects_invalid() -> Result<()> {
                     result = w;
                     break;
                 }
-                Err(e) if e.to_string().contains("Not Found") => {
+                Err(e) if e.to_string().contains("Resource not found") => {
                     if attempt < 2 {
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     }
-                    // treat as empty list on final attempt
+                    // treat as empty list on final attempt — GitHub API replication lag
                 }
                 Err(e) => anyhow::bail!("{e}"),
             }
