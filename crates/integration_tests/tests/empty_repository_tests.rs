@@ -263,6 +263,10 @@ async fn test_custom_init_readme_only() -> Result<()> {
         "Custom init repository creation should succeed"
     );
 
+    // GitHub API eventual consistency: wait for the content API to serve the
+    // newly pushed files before verifying.
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
@@ -363,6 +367,10 @@ async fn test_custom_init_gitignore_only() -> Result<()> {
         result.is_ok(),
         "Custom init repository creation should succeed"
     );
+
+    // GitHub API eventual consistency: wait for the content API to serve the
+    // newly pushed files before verifying.
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
@@ -465,6 +473,11 @@ async fn test_custom_init_both_files() -> Result<()> {
         "Custom init repository creation should succeed"
     );
 
+    // GitHub API eventual consistency: wait for the content API to serve the
+    // newly pushed files before verifying. Without this delay, get_file_content
+    // returns 404 immediately after a successful push.
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
     let verification_client = github_client::GitHubClient::new(verification_client);
@@ -561,6 +574,10 @@ async fn test_custom_init_with_template_settings() -> Result<()> {
         result.is_ok(),
         "Custom init with template settings should succeed"
     );
+
+    // GitHub API eventual consistency: wait for the content API to serve the
+    // newly pushed files before verifying.
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Verify repository exists
     let verification_client = github_client::create_token_client(&installation_token)?;
