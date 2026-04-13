@@ -4,9 +4,12 @@ use super::*;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
+    middleware,
 };
 use serde_json::json;
 use tower::ServiceExt;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::routes::create_router_without_auth;
 
@@ -56,12 +59,22 @@ async fn test_health_check_timestamp_format() {
 // Repository Management Handler Tests
 // ============================================================================
 
-/// Test validate_repository_name endpoint with valid name
+/// Test validate_repository_name endpoint with valid name.
 ///
-/// Verifies that a valid repository name returns 200 OK with valid=true.
+/// The handler now requires `AuthContext` and calls the GitHub API for
+/// availability. With a fake token the GitHub API returns an error;
+/// the handler degrades gracefully and still responds 200 with valid=true.
 #[tokio::test]
 async fn test_validate_repository_name_valid() {
-    let app = create_router_without_auth(test_app_state());
+    let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new(
+                    "test-token-123".to_string(),
+                ));
+            next.run(req).await
+        },
+    ));
 
     let request_body = json!({
         "organization": "testorg",
@@ -86,16 +99,25 @@ async fn test_validate_repository_name_valid() {
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], true);
+    // GitHub call fails with fake token — handler degrades: available=true with a warning message.
     assert_eq!(response_json["available"], true);
 }
 
-/// Test validate_repository_name endpoint with invalid name
+/// Test validate_repository_name endpoint with invalid name.
 ///
-/// Verifies that an invalid repository name returns 200 OK with valid=false
-/// and includes validation error details.
+/// Format-invalid names short-circuit before any GitHub API call;
+/// valid=false, available=false is always returned.
 #[tokio::test]
 async fn test_validate_repository_name_invalid() {
-    let app = create_router_without_auth(test_app_state());
+    let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new(
+                    "test-token-123".to_string(),
+                ));
+            next.run(req).await
+        },
+    ));
 
     let request_body = json!({
         "organization": "testorg",
@@ -127,13 +149,20 @@ async fn test_validate_repository_name_invalid() {
     let messages = response_json["messages"].as_array().unwrap();
     assert!(!messages.is_empty());
 }
-/// Test validate_repository_name endpoint with empty name
+/// Test validate_repository_name endpoint with empty name.
 ///
-/// Verifies that empty repository name returns 200 OK with valid=false
-/// and appropriate error message.
+/// Empty names fail the format check and short-circuit; no GitHub call is made.
 #[tokio::test]
 async fn test_validate_repository_name_empty() {
-    let app = create_router_without_auth(test_app_state());
+    let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new(
+                    "test-token-123".to_string(),
+                ));
+            next.run(req).await
+        },
+    ));
 
     let request_body = json!({
         "organization": "testorg",
@@ -158,6 +187,7 @@ async fn test_validate_repository_name_empty() {
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(response_json["valid"], false);
+    assert_eq!(response_json["available"], false);
     assert!(response_json["messages"].is_array());
     assert!(!response_json["messages"].as_array().unwrap().is_empty());
 }
@@ -473,6 +503,151 @@ async fn test_check_org_naming_rules_reserved_word_returns_message() {
     assert!(
         !messages.is_empty(),
         "Expected error messages when the name is a reserved word"
+    );
+}
+
+// ============================================================================
+// check_repository_availability unit tests
+//
+// These tests call the helper directly with a wiremock-backed GitHubClient
+// so they exercise the availability logic without a live GitHub connection.
+// ============================================================================
+
+/// Repository does not exist (GitHub returns 404) → available=true, no message.
+#[tokio::test]
+async fn test_check_repository_availability_not_found_returns_available() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/new-repo"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .personal_token("x".to_string())
+        .build()
+        .unwrap();
+    let client = github_client::GitHubClient::new(octocrab);
+
+    let (available, message) = check_repository_availability(&client, "testorg", "new-repo").await;
+
+    assert!(
+        available,
+        "Repository that does not exist should be available"
+    );
+    assert!(
+        message.is_none(),
+        "No warning message expected when the repository is confirmed free"
+    );
+}
+
+/// Repository already exists (GitHub returns 200) → available=false, message says taken.
+#[tokio::test]
+async fn test_check_repository_availability_exists_returns_not_available() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/existing-repo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 123,
+            "name": "existing-repo",
+            "full_name": "testorg/existing-repo",
+            "private": false,
+            "html_url": "https://github.com/testorg/existing-repo",
+            "url": "https://api.github.com/repos/testorg/existing-repo",
+            "owner": {
+                "login": "testorg",
+                "id": 1,
+                "node_id": "MDQ6VXNlcjE=",
+                "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+                "gravatar_id": "",
+                "url": "https://api.github.com/users/testorg",
+                "html_url": "https://github.com/testorg",
+                "followers_url": "https://api.github.com/users/testorg/followers",
+                "following_url": "https://api.github.com/users/testorg/following{/other_user}",
+                "gists_url": "https://api.github.com/users/testorg/gists{/gist_id}",
+                "starred_url": "https://api.github.com/users/testorg/starred{/owner}{/repo}",
+                "subscriptions_url": "https://api.github.com/users/testorg/subscriptions",
+                "organizations_url": "https://api.github.com/users/testorg/orgs",
+                "repos_url": "https://api.github.com/users/testorg/repos",
+                "events_url": "https://api.github.com/users/testorg/events{/privacy}",
+                "received_events_url": "https://api.github.com/users/testorg/received_events",
+                "type": "Organization",
+                "site_admin": false,
+                "patch_url": null,
+                "email": null
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .personal_token("x".to_string())
+        .build()
+        .unwrap();
+    let client = github_client::GitHubClient::new(octocrab);
+
+    let (available, message) =
+        check_repository_availability(&client, "testorg", "existing-repo").await;
+
+    assert!(
+        !available,
+        "Repository that already exists should not be available"
+    );
+    assert!(
+        message.is_some(),
+        "Expected a message explaining the name is taken"
+    );
+    let msg = message.unwrap();
+    assert!(
+        msg.contains("existing-repo"),
+        "Message should mention the repository name; got: {msg}"
+    );
+}
+
+/// GitHub returns a non-404 error → available=true (warn-only), message warns the check failed.
+#[tokio::test]
+async fn test_check_repository_availability_api_error_returns_available_with_warning() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/some-repo"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .personal_token("x".to_string())
+        .build()
+        .unwrap();
+    let client = github_client::GitHubClient::new(octocrab);
+
+    let (available, message) = check_repository_availability(&client, "testorg", "some-repo").await;
+
+    assert!(
+        available,
+        "API errors should not block the user: available must be true"
+    );
+    assert!(
+        message.is_some(),
+        "Expected a warning message when the availability check fails"
+    );
+    let msg = message.unwrap();
+    assert!(
+        msg.to_lowercase().contains("could not verify"),
+        "Warning should mention that availability could not be verified; got: {msg}"
     );
 }
 

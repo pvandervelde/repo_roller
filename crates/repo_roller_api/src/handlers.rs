@@ -269,22 +269,69 @@ pub(crate) async fn check_org_naming_rules(
     }
 }
 
+/// Check whether a repository name is available in the given organisation by
+/// querying the GitHub API.
+///
+/// This is a best-effort check: API failures degrade gracefully — the caller
+/// still learns `available = true` (warn-only, no 5xx).
+///
+/// # Returns
+///
+/// A tuple of `(available, optional_warning_message)`.  When the repository
+/// exists the first element is `false`; when the check could not be completed
+/// due to an API error the first element is `true` and the second contains a
+/// human-readable warning.
+pub(crate) async fn check_repository_availability(
+    client: &GitHubClient,
+    org: &str,
+    name: &str,
+) -> (bool, Option<String>) {
+    match client.get_repository(org, name).await {
+        Ok(_) => (
+            false,
+            Some(format!(
+                "Repository '{name}' already exists in organisation '{org}'."
+            )),
+        ),
+        Err(github_client::Error::NotFound) => (true, None),
+        Err(e) => {
+            tracing::warn!(
+                org = org,
+                name = name,
+                error = ?e,
+                "GitHub API error while checking repository availability; treating as available"
+            );
+            (
+                true,
+                Some(
+                    "Could not verify name availability with GitHub. \
+                     The name may already exist."
+                        .to_string(),
+                ),
+            )
+        }
+    }
+}
+
 /// POST /api/v1/repositories/validate-name
 ///
 /// Validate a repository name for availability and format.
 ///
-/// Performs two levels of validation:
+/// Performs three levels of validation:
 /// 1. **Format check** (always): GitHub character-set rules.
 /// 2. **Org naming rules** (when authenticated): organisation-level constraints
 ///    loaded from the metadata repository via `RepositoryNamingValidator`.
+/// 3. **GitHub availability check** (when format is valid): calls the GitHub
+///    API to verify the name is not already taken in the organisation.
 ///
-/// Org rule loading degrades gracefully — if the metadata repository cannot be
-/// reached the response falls back to the format check alone.
+/// Org rule loading and the GitHub availability check both degrade gracefully —
+/// if either cannot be reached the response falls back to the checks that did
+/// succeed.
 ///
 /// See: specs/interfaces/api-request-types.md#validaterepositorynamerequest
 pub async fn validate_repository_name(
     State(state): State<AppState>,
-    auth: Option<Extension<AuthContext>>,
+    Extension(auth): Extension<AuthContext>,
     Json(request): Json<ValidateRepositoryNameRequest>,
 ) -> Result<Json<ValidateRepositoryNameResponse>, ApiError> {
     let mut messages = Vec::new();
@@ -310,39 +357,70 @@ pub async fn validate_repository_name(
         }
     }
 
-    // When the format is valid and the request is authenticated, also check
-    // organisation-level naming rules loaded from the metadata repository.
-    if valid {
-        if let Some(Extension(auth_ctx)) = auth {
-            match create_settings_manager(&auth_ctx, &state).await {
-                Ok((_manager, provider)) => {
-                    let naming_messages = check_org_naming_rules(
-                        &request.name,
-                        &request.organization,
-                        provider.as_ref(),
-                    )
+    // Format is a hard gate: invalid names never need a GitHub round-trip.
+    if !valid {
+        return Ok(Json(ValidateRepositoryNameResponse {
+            valid: false,
+            available: false,
+            messages: Some(messages),
+        }));
+    }
+
+    // Apply organisation-level naming rules loaded from the metadata repository.
+    match create_settings_manager(&auth, &state).await {
+        Ok((_manager, provider)) => {
+            let naming_messages =
+                check_org_naming_rules(&request.name, &request.organization, provider.as_ref())
                     .await;
-                    if !naming_messages.is_empty() {
-                        valid = false;
-                        messages.extend(naming_messages);
-                    }
-                }
-                Err(e) => {
-                    // Log the failure but do not surface it as an HTTP error — the
-                    // caller still receives a format-only result rather than a 5xx.
-                    tracing::warn!(
-                        org = %request.organization,
-                        error = ?e,
-                        "Failed to create settings manager for naming rule check; skipping org rules"
-                    );
-                }
+            if !naming_messages.is_empty() {
+                valid = false;
+                messages.extend(naming_messages);
             }
+        }
+        Err(e) => {
+            // Log the failure but do not surface it as an HTTP error — the
+            // caller still receives a format-only result rather than a 5xx.
+            tracing::warn!(
+                org = %request.organization,
+                error = ?e,
+                "Failed to create settings manager for naming rule check; skipping org rules"
+            );
         }
     }
 
-    // Repository availability checking via GitHub API is a future enhancement.
-    // See Task 9.7 - REST API Post-MVP Enhancements.
-    let available = valid;
+    // Check real-time GitHub availability (soft-fail on API error).
+    let available = if valid {
+        match github_client::create_token_client(&auth.token) {
+            Ok(octocrab) => {
+                let github_client = GitHubClient::new(octocrab);
+                let (is_available, availability_message) = check_repository_availability(
+                    &github_client,
+                    &request.organization,
+                    &request.name,
+                )
+                .await;
+                if let Some(msg) = availability_message {
+                    messages.push(msg);
+                }
+                is_available
+            }
+            Err(e) => {
+                tracing::warn!(
+                    org = %request.organization,
+                    error = ?e,
+                    "Failed to create GitHub client for availability check; skipping"
+                );
+                messages.push(
+                    "Could not verify name availability with GitHub. \
+                     The name may already exist."
+                        .to_string(),
+                );
+                true
+            }
+        }
+    } else {
+        false
+    };
 
     let response = ValidateRepositoryNameResponse {
         valid,

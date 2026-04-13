@@ -252,8 +252,7 @@ async fn test_validate_invalid_template() -> Result<()> {
     // Use template-test-invalid if it exists, or expect validation issues
     let result = validate_template(&test_config.test_org, "template-test-invalid", provider).await;
 
-    if result.is_ok() {
-        let validation = result.unwrap();
+    if let Ok(validation) = result {
         // If template exists but is invalid, validation should detect issues
         if validation.template_name == "template-test-invalid" {
             // Either not valid or has warnings

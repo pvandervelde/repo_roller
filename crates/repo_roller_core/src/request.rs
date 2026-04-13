@@ -45,10 +45,11 @@ mod tests;
 /// ```
 ///
 /// See specs/interfaces/repository-creation-modes.md#contentstrategy-enum
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentStrategy {
     /// Fetch and process files from template repository
+    #[default]
     Template,
 
     /// Create no files (empty repository)
@@ -64,12 +65,6 @@ pub enum ContentStrategy {
         /// Create .gitignore file
         include_gitignore: bool,
     },
-}
-
-impl Default for ContentStrategy {
-    fn default() -> Self {
-        Self::Template
-    }
 }
 
 /// Request for creating a new repository with validated types.

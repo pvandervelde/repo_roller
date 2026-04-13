@@ -2634,6 +2634,7 @@ dependencies = [
  "github_client",
  "http-body-util",
  "hyper 1.7.0",
+ "octocrab",
  "prometheus",
  "repo_roller_core",
  "serde",
@@ -2646,6 +2647,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "wiremock 0.6.5",
 ]
 
 [[package]]
