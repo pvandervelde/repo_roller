@@ -872,7 +872,27 @@ pub async fn preview_configuration(
     Json(request): Json<PreviewConfigurationRequest>,
 ) -> Result<Json<PreviewConfigurationResponse>, ApiError> {
     // Create settings manager
-    let (manager, _provider) = create_settings_manager(&auth, &state).await?;
+    let (manager, provider) = create_settings_manager(&auth, &state).await?;
+
+    // Validate repository type exists before merging
+    if let Some(ref repo_type) = request.repository_type {
+        let meta = provider
+            .discover_metadata_repository(&org)
+            .await
+            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+        let type_cfg = provider
+            .load_repository_type_configuration(&meta, repo_type)
+            .await
+            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+        if type_cfg.is_none() {
+            return Err(ApiError::from(RepoRollerError::Configuration(
+                config_manager::ConfigurationError::InvalidConfiguration {
+                    field: "repository_type".to_string(),
+                    reason: format!("Repository type '{}' is not defined", repo_type),
+                },
+            )));
+        }
+    }
 
     // Create configuration context
     let mut context = ConfigurationContext::new(&org, &request.template);
@@ -899,11 +919,23 @@ pub async fn preview_configuration(
         ))
     })?;
 
-    // Extract source attribution from the merged configuration's source trace.
-    // Source tracing maps each configuration key to the file/level it came from.
-    // This requires the ConfigurationMerger to propagate source metadata through
-    // the merge chain, which is not yet implemented in the merger.
-    let sources = std::collections::HashMap::new();
+    // Extract source attribution from the merged configuration's source trace
+    let sources: std::collections::HashMap<String, String> = merged
+        .source_trace
+        .configured_fields()
+        .into_iter()
+        .filter_map(|field| {
+            merged.source_trace.get_source(field).map(|src| {
+                let level = match src {
+                    config_manager::ConfigurationSource::Global => "global",
+                    config_manager::ConfigurationSource::RepositoryType => "repository_type",
+                    config_manager::ConfigurationSource::Team => "team",
+                    config_manager::ConfigurationSource::Template => "template",
+                };
+                (field.to_string(), level.to_string())
+            })
+        })
+        .collect();
 
     let response = PreviewConfigurationResponse {
         merged_configuration,
