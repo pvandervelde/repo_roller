@@ -46,6 +46,11 @@ pub struct AppState {
     /// Cloned (Arc clone, not a new allocation) for each handler invocation so
     /// that metric values accumulate across requests.
     pub event_metrics: std::sync::Arc<repo_roller_core::event_metrics::PrometheusEventMetrics>,
+    /// Optional GitHub API base URL override.
+    ///
+    /// When `None` the default `https://api.github.com` is used. Set this to
+    /// target a GitHub Enterprise instance or (in tests) a wiremock server.
+    pub(crate) github_api_base_url: Option<String>,
 }
 
 impl AppState {
@@ -61,7 +66,17 @@ impl AppState {
             event_metrics: std::sync::Arc::new(
                 repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
             ),
+            github_api_base_url: None,
         }
+    }
+
+    /// Override the GitHub API base URL.
+    ///
+    /// Useful for GitHub Enterprise deployments and for pointing at a mock
+    /// server in integration tests.
+    pub fn with_github_api_base_url(mut self, url: impl Into<String>) -> Self {
+        self.github_api_base_url = Some(url.into());
+        self
     }
 }
 

@@ -38,23 +38,45 @@ use config_manager::{
 use github_client::GitHubClient;
 use repo_roller_core::{RepoRollerError, RepositoryNamingValidator};
 
+/// Build an `OrganizationSettingsManager` and `MetadataRepositoryProvider` from
+/// an already-constructed `GitHubClient`.
+///
+/// The caller is responsible for constructing the client; this helper wires it
+/// into the metadata provider, template loader, and settings manager.
+///
+/// `client` is cloned once (cheap: shares the underlying connection pool) to
+/// satisfy both the metadata provider and the template repository.
+async fn create_settings_manager_from_client(
+    client: GitHubClient,
+    state: &AppState,
+) -> Result<
+    (
+        OrganizationSettingsManager,
+        Arc<dyn MetadataRepositoryProvider>,
+    ),
+    ApiError,
+> {
+    let provider_config = MetadataProviderConfig::explicit(&state.metadata_repository_name);
+    let metadata_provider = GitHubMetadataProvider::new(client.clone(), provider_config);
+    let provider_arc = Arc::new(metadata_provider) as Arc<dyn MetadataRepositoryProvider>;
+
+    let template_repo = Arc::new(config_manager::GitHubTemplateRepository::new(Arc::new(
+        client,
+    )));
+    let template_loader = Arc::new(config_manager::TemplateLoader::new(template_repo));
+
+    let manager = OrganizationSettingsManager::new(provider_arc.clone(), template_loader);
+    Ok((manager, provider_arc))
+}
+
 /// Create an OrganizationSettingsManager and MetadataRepositoryProvider for a request.
 ///
 /// Creates a GitHub client using the authentication token from the request context,
-/// then creates a metadata provider and settings manager.
-///
-/// # Arguments
-///
-/// * `auth` - Authentication context with bearer token
-/// * `state` - Application state with configuration
-///
-/// # Returns
-///
-/// Returns tuple of (manager, provider) for use in handlers.
+/// then delegates to [`create_settings_manager_from_client`].
 ///
 /// # Errors
 ///
-/// Returns ApiError if GitHub client creation fails.
+/// Returns `ApiError` if GitHub client creation fails.
 async fn create_settings_manager(
     auth: &AuthContext,
     state: &AppState,
@@ -65,28 +87,12 @@ async fn create_settings_manager(
     ),
     ApiError,
 > {
-    // Create GitHub client with installation token
-    let octocrab = github_client::create_token_client(&auth.token)
-        .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
-
-    let github_client = GitHubClient::new(octocrab.clone());
-
-    // Create metadata provider
-    let provider_config = MetadataProviderConfig::explicit(&state.metadata_repository_name);
-    let metadata_provider = GitHubMetadataProvider::new(github_client, provider_config);
-    let provider_arc = Arc::new(metadata_provider) as Arc<dyn MetadataRepositoryProvider>;
-
-    // Create template loader for template configuration resolution
-    let template_client = GitHubClient::new(octocrab);
-    let template_repo = Arc::new(config_manager::GitHubTemplateRepository::new(Arc::new(
-        template_client,
-    )));
-    let template_loader = Arc::new(config_manager::TemplateLoader::new(template_repo));
-
-    // Create settings manager
-    let manager = OrganizationSettingsManager::new(provider_arc.clone(), template_loader);
-
-    Ok((manager, provider_arc))
+    let client =
+        github_client::create_github_client(&auth.token, state.github_api_base_url.as_deref())
+            .map_err(|e| {
+                ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e))
+            })?;
+    create_settings_manager_from_client(client, state).await
 }
 
 /// Validate a repository name against GitHub naming rules.
@@ -275,6 +281,15 @@ pub(crate) async fn check_org_naming_rules(
 /// This is a best-effort check: API failures degrade gracefully — the caller
 /// still learns `available = true` (warn-only, no 5xx).
 ///
+/// ## Degraded path
+///
+/// Any non-404 error — including `403 Forbidden` (token lacks read access to a
+/// private repository that actually exists) — is treated as a transient failure
+/// and mapped to `available = true` with a warning message. This is intentional
+/// per UX-ASSERT-028: the user may still proceed, but is cautioned that the
+/// check could not be completed. Callers should not infer that a `403` means
+/// the repository is free.
+///
 /// # Returns
 ///
 /// A tuple of `(available, optional_warning_message)`.  When the repository
@@ -318,15 +333,20 @@ pub(crate) async fn check_repository_availability(
 /// Validate a repository name for availability and format.
 ///
 /// Performs three levels of validation:
-/// 1. **Format check** (always): GitHub character-set rules.
-/// 2. **Org naming rules** (when authenticated): organisation-level constraints
-///    loaded from the metadata repository via `RepositoryNamingValidator`.
-/// 3. **GitHub availability check** (when format is valid): calls the GitHub
-///    API to verify the name is not already taken in the organisation.
+/// 1. **Format check** (hard gate, no network): GitHub character-set rules and
+///    empty-value guards for both `name` and `organization`.
+/// 2. **Org naming rules** (soft-fail): organisation-level constraints loaded
+///    from the metadata repository via `RepositoryNamingValidator`.
+/// 3. **GitHub availability check** (soft-fail): calls the GitHub API to verify
+///    the name is not already taken in the organisation.
 ///
-/// Org rule loading and the GitHub availability check both degrade gracefully —
-/// if either cannot be reached the response falls back to the checks that did
-/// succeed.
+/// A single `GitHubClient` is constructed per request and shared between steps
+/// 2 and 3 to avoid redundant HTTP connection-pool creation. The base URL can
+/// be overridden via `AppState::github_api_base_url` (e.g. for GitHub
+/// Enterprise or mock servers in integration tests).
+///
+/// Both network checks degrade gracefully — failures produce warn-only
+/// messages in the response rather than a 5xx.
 ///
 /// See: specs/interfaces/api-request-types.md#validaterepositorynamerequest
 pub async fn validate_repository_name(
@@ -337,27 +357,21 @@ pub async fn validate_repository_name(
     let mut messages = Vec::new();
     let mut valid = true;
 
-    // Check if name is empty.
+    // ── Format validation (hard gate: no network calls) ──────────────────────
     if request.name.is_empty() {
         messages.push("Repository name cannot be empty".to_string());
         valid = false;
     }
-
-    // Check basic GitHub format rules.
     if !is_valid_repository_name(&request.name) {
         messages.push(
             "Repository name can only contain lowercase letters, numbers, hyphens, and underscores"
                 .to_string(),
         );
         valid = false;
-
-        // Provide a specific message for uppercase characters.
         if request.name.chars().any(|c| c.is_uppercase()) {
             messages.push("Repository name cannot contain uppercase letters".to_string());
         }
     }
-
-    // Format is a hard gate: invalid names never need a GitHub round-trip.
     if !valid {
         return Ok(Json(ValidateRepositoryNameResponse {
             valid: false,
@@ -366,8 +380,43 @@ pub async fn validate_repository_name(
         }));
     }
 
-    // Apply organisation-level naming rules loaded from the metadata repository.
-    match create_settings_manager(&auth, &state).await {
+    // ── Organisation validation (hard gate: no network calls) ────────────────
+    if request.organization.is_empty() {
+        return Ok(Json(ValidateRepositoryNameResponse {
+            valid: false,
+            available: false,
+            messages: Some(vec!["Organization name cannot be empty".to_string()]),
+        }));
+    }
+
+    // ── Build a single GitHub client for all subsequent API calls ─────────────
+    // One client is reused for both the org naming-rules check and the
+    // availability check, avoiding redundant HTTP connection-pool creation.
+    // The base URL can be overridden via AppState::github_api_base_url (for
+    // GitHub Enterprise deployments or mock servers in integration tests).
+    let github_client = match github_client::create_github_client(
+        &auth.token,
+        state.github_api_base_url.as_deref(),
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                org = %request.organization,
+                error = ?e,
+                "Failed to create GitHub client; skipping naming rules and availability check"
+            );
+            return Ok(Json(ValidateRepositoryNameResponse {
+                valid: true,
+                available: true,
+                messages: Some(vec!["Could not verify name availability with GitHub. \
+                     The name may already exist."
+                    .to_string()]),
+            }));
+        }
+    };
+
+    // ── Org naming rules (soft-fail) ──────────────────────────────────────────
+    match create_settings_manager_from_client(github_client.clone(), &state).await {
         Ok((_manager, provider)) => {
             let naming_messages =
                 check_org_naming_rules(&request.name, &request.organization, provider.as_ref())
@@ -378,8 +427,6 @@ pub async fn validate_repository_name(
             }
         }
         Err(e) => {
-            // Log the failure but do not surface it as an HTTP error — the
-            // caller still receives a format-only result rather than a 5xx.
             tracing::warn!(
                 org = %request.organization,
                 error = ?e,
@@ -388,41 +435,20 @@ pub async fn validate_repository_name(
         }
     }
 
-    // Check real-time GitHub availability (soft-fail on API error).
+    // ── Real-time name availability check (soft-fail) ─────────────────────────
     let available = if valid {
-        match github_client::create_token_client(&auth.token) {
-            Ok(octocrab) => {
-                let github_client = GitHubClient::new(octocrab);
-                let (is_available, availability_message) = check_repository_availability(
-                    &github_client,
-                    &request.organization,
-                    &request.name,
-                )
+        let (is_available, availability_message) =
+            check_repository_availability(&github_client, &request.organization, &request.name)
                 .await;
-                if let Some(msg) = availability_message {
-                    messages.push(msg);
-                }
-                is_available
-            }
-            Err(e) => {
-                tracing::warn!(
-                    org = %request.organization,
-                    error = ?e,
-                    "Failed to create GitHub client for availability check; skipping"
-                );
-                messages.push(
-                    "Could not verify name availability with GitHub. \
-                     The name may already exist."
-                        .to_string(),
-                );
-                true
-            }
+        if let Some(msg) = availability_message {
+            messages.push(msg);
         }
+        is_available
     } else {
         false
     };
 
-    let response = ValidateRepositoryNameResponse {
+    Ok(Json(ValidateRepositoryNameResponse {
         valid,
         available,
         messages: if messages.is_empty() {
@@ -430,9 +456,7 @@ pub async fn validate_repository_name(
         } else {
             Some(messages)
         },
-    };
-
-    Ok(Json(response))
+    }))
 }
 
 /// POST /api/v1/repositories/validate
