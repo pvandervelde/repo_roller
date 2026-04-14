@@ -2629,6 +2629,7 @@ dependencies = [
  "async-trait",
  "auth_handler",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "config_manager",
  "github_client",
