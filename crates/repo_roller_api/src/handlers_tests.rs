@@ -817,8 +817,6 @@ async fn test_validate_repository_name_empty_org_returns_invalid() {
 /// connection.
 #[tokio::test]
 async fn test_list_organization_teams_route_is_registered() {
-    use axum::middleware;
-
     // Build a router that injects a fake AuthContext so the handler can
     // extract it, then let the GitHub API call fail naturally.
     let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
