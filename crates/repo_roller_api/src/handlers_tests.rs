@@ -846,3 +846,473 @@ async fn test_list_organization_teams_route_is_registered() {
         "Expected route to be registered; got 404 which means the route is missing"
     );
 }
+
+// ============================================================================
+// preview_configuration handler tests
+// ============================================================================
+
+/// Build a base64-encoded file-content API response for a given TOML string.
+///
+/// Mirrors the format that the GitHub REST API returns for `GET
+/// /repos/{owner}/{repo}/contents/{path}` when the path is a file.
+/// Includes all fields required by octocrab 0.47's `Content` struct
+/// (`url` and `_links.self` are required non-optional).
+fn file_content_response(
+    org: &str,
+    repo: &str,
+    file_path: &str,
+    toml_content: &str,
+) -> serde_json::Value {
+    use base64::{engine::general_purpose, Engine as _};
+    let encoded = general_purpose::STANDARD.encode(toml_content.as_bytes());
+    let api_url = format!("https://api.github.com/repos/{org}/{repo}/contents/{file_path}");
+    let html_url = format!("https://github.com/{org}/{repo}/blob/main/{file_path}");
+    json!({
+        "name": file_path.split('/').next_back().unwrap_or(file_path),
+        "path": file_path,
+        "sha": "abc123def456",
+        "size": toml_content.len(),
+        "type": "file",
+        "content": encoded,
+        "encoding": "base64",
+        "url": api_url,
+        "html_url": html_url,
+        "git_url": null,
+        "download_url": null,
+        "_links": {
+            "self": api_url,
+            "git": null,
+            "html": html_url
+        }
+    })
+}
+
+/// Build a minimal but deserializable GitHub repository JSON object.
+///
+/// Octocrab's `Repository` type requires several URL-shaped fields to
+/// deserialise without error. This helper provides the minimum required set
+/// without triggering the default `json!` macro recursion limit.
+fn repo_json(org: &str, name: &str) -> serde_json::Value {
+    let base = format!("https://api.github.com/repos/{org}/{name}");
+    let html = format!("https://github.com/{org}/{name}");
+    let user_base = format!("https://api.github.com/users/{org}");
+    let user_html = format!("https://github.com/{org}");
+
+    let owner = json!({
+        "login": org, "id": 1, "node_id": "MDQ6VXNlcjE=",
+        "avatar_url": format!("{user_base}/avatars"),
+        "gravatar_id": "",
+        "url": user_base,
+        "html_url": user_html,
+        "followers_url": format!("{user_base}/followers"),
+        "following_url": format!("{user_base}/following{{/other_user}}"),
+        "gists_url": format!("{user_base}/gists{{/gist_id}}"),
+        "starred_url": format!("{user_base}/starred{{/owner}}{{/repo}}"),
+        "subscriptions_url": format!("{user_base}/subscriptions"),
+        "organizations_url": format!("{user_base}/orgs"),
+        "repos_url": format!("{user_base}/repos"),
+        "events_url": format!("{user_base}/events{{/privacy}}"),
+        "received_events_url": format!("{user_base}/received_events"),
+        "type": "Organization", "site_admin": false,
+        "patch_url": null, "email": null
+    });
+
+    let mut obj = serde_json::Map::new();
+    obj.insert("id".into(), json!(1));
+    obj.insert("node_id".into(), json!("MDEwOlJlcG9zaXRvcnkx"));
+    obj.insert("name".into(), json!(name));
+    obj.insert("full_name".into(), json!(format!("{org}/{name}")));
+    obj.insert("private".into(), json!(false));
+    obj.insert("html_url".into(), json!(html));
+    obj.insert("url".into(), json!(base.clone()));
+    obj.insert("forks_url".into(), json!(format!("{base}/forks")));
+    obj.insert("keys_url".into(), json!(format!("{base}/keys{{/key_id}}")));
+    obj.insert(
+        "collaborators_url".into(),
+        json!(format!("{base}/collaborators{{/collaborator}}")),
+    );
+    obj.insert("teams_url".into(), json!(format!("{base}/teams")));
+    obj.insert("hooks_url".into(), json!(format!("{base}/hooks")));
+    obj.insert(
+        "issue_events_url".into(),
+        json!(format!("{base}/issues/events{{/number}}")),
+    );
+    obj.insert("events_url".into(), json!(format!("{base}/events")));
+    obj.insert(
+        "assignees_url".into(),
+        json!(format!("{base}/assignees{{/user}}")),
+    );
+    obj.insert(
+        "branches_url".into(),
+        json!(format!("{base}/branches{{/branch}}")),
+    );
+    obj.insert("tags_url".into(), json!(format!("{base}/tags")));
+    obj.insert(
+        "blobs_url".into(),
+        json!(format!("{base}/git/blobs{{/sha}}")),
+    );
+    obj.insert(
+        "git_tags_url".into(),
+        json!(format!("{base}/git/tags{{/sha}}")),
+    );
+    obj.insert(
+        "git_refs_url".into(),
+        json!(format!("{base}/git/refs{{/sha}}")),
+    );
+    obj.insert(
+        "trees_url".into(),
+        json!(format!("{base}/git/trees{{/sha}}")),
+    );
+    obj.insert(
+        "statuses_url".into(),
+        json!(format!("{base}/statuses/{{sha}}")),
+    );
+    obj.insert("languages_url".into(), json!(format!("{base}/languages")));
+    obj.insert("stargazers_url".into(), json!(format!("{base}/stargazers")));
+    obj.insert(
+        "contributors_url".into(),
+        json!(format!("{base}/contributors")),
+    );
+    obj.insert(
+        "subscribers_url".into(),
+        json!(format!("{base}/subscribers")),
+    );
+    obj.insert(
+        "subscription_url".into(),
+        json!(format!("{base}/subscription")),
+    );
+    obj.insert(
+        "commits_url".into(),
+        json!(format!("{base}/commits{{/sha}}")),
+    );
+    obj.insert(
+        "git_commits_url".into(),
+        json!(format!("{base}/git/commits{{/sha}}")),
+    );
+    obj.insert(
+        "comments_url".into(),
+        json!(format!("{base}/comments{{/number}}")),
+    );
+    obj.insert(
+        "issue_comment_url".into(),
+        json!(format!("{base}/issues/comments{{/number}}")),
+    );
+    obj.insert(
+        "contents_url".into(),
+        json!(format!("{base}/contents/{{+path}}")),
+    );
+    obj.insert(
+        "compare_url".into(),
+        json!(format!("{base}/compare/{{base}}...{{head}}")),
+    );
+    obj.insert("merges_url".into(), json!(format!("{base}/merges")));
+    obj.insert(
+        "archive_url".into(),
+        json!(format!("{base}/{{archive_format}}{{/ref}}")),
+    );
+    obj.insert("downloads_url".into(), json!(format!("{base}/downloads")));
+    obj.insert(
+        "issues_url".into(),
+        json!(format!("{base}/issues{{/number}}")),
+    );
+    obj.insert(
+        "pulls_url".into(),
+        json!(format!("{base}/pulls{{/number}}")),
+    );
+    obj.insert(
+        "milestones_url".into(),
+        json!(format!("{base}/milestones{{/number}}")),
+    );
+    obj.insert(
+        "notifications_url".into(),
+        json!(format!("{base}/notifications{{?since,all,participating}}")),
+    );
+    obj.insert(
+        "labels_url".into(),
+        json!(format!("{base}/labels{{/name}}")),
+    );
+    obj.insert(
+        "releases_url".into(),
+        json!(format!("{base}/releases{{/id}}")),
+    );
+    obj.insert(
+        "deployments_url".into(),
+        json!(format!("{base}/deployments")),
+    );
+    obj.insert(
+        "git_url".into(),
+        json!(format!("git://github.com/{org}/{name}.git")),
+    );
+    obj.insert(
+        "ssh_url".into(),
+        json!(format!("git@github.com:{org}/{name}.git")),
+    );
+    obj.insert(
+        "clone_url".into(),
+        json!(format!("https://github.com/{org}/{name}.git")),
+    );
+    obj.insert(
+        "svn_url".into(),
+        json!(format!("https://github.com/{org}/{name}")),
+    );
+    obj.insert("homepage".into(), serde_json::Value::Null);
+    obj.insert("size".into(), json!(0));
+    obj.insert("stargazers_count".into(), json!(0));
+    obj.insert("watchers_count".into(), json!(0));
+    obj.insert("language".into(), serde_json::Value::Null);
+    obj.insert("has_issues".into(), json!(true));
+    obj.insert("has_projects".into(), json!(true));
+    obj.insert("has_downloads".into(), json!(true));
+    obj.insert("has_wiki".into(), json!(false));
+    obj.insert("has_pages".into(), json!(false));
+    obj.insert("has_discussions".into(), json!(false));
+    obj.insert("forks_count".into(), json!(0));
+    obj.insert("archived".into(), json!(false));
+    obj.insert("disabled".into(), json!(false));
+    obj.insert("open_issues_count".into(), json!(0));
+    obj.insert("default_branch".into(), json!("main"));
+    obj.insert("created_at".into(), json!("2024-01-01T00:00:00Z"));
+    obj.insert("updated_at".into(), json!("2024-01-01T00:00:00Z"));
+    obj.insert("pushed_at".into(), json!("2024-01-01T00:00:00Z"));
+    obj.insert("owner".into(), owner);
+    serde_json::Value::Object(obj)
+}
+
+/// Mount all GitHub API mocks required to satisfy a `resolve_configuration` call
+/// for the given org + template name (no repository type, no team).
+///
+/// Mocked endpoints:
+/// - `GET /repos/{org}/.reporoller` (metadata repo discovery)
+/// - `GET /repos/{org}/.reporoller/contents/global/defaults.toml` (global defaults)
+/// - `GET /repos/{org}/{template}` (template existence check)
+/// - `GET /repos/{org}/{template}/contents/.reporoller/template.toml` (template config)
+///
+/// Optional files (standard-labels, webhooks) are intentionally left un-mocked so
+/// that wiremock returns 404; the provider treats those as empty/absent and continues.
+async fn mount_resolve_mocks(server: &MockServer, org: &str, template: &str) {
+    let minimal_defaults_toml = "[repository]\nissues = true\nwiki = false\n";
+    let minimal_template_toml = format!(
+        "[template]\nname = \"{template}\"\ndescription = \"Test template\"\nauthor = \"Test Author\"\ntags = []\n"
+    );
+
+    // Metadata repository discovery: GET /repos/{org}/.reporoller
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{org}/.reporoller")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(repo_json(org, ".reporoller")))
+        .mount(server)
+        .await;
+
+    // Global defaults
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/repos/{org}/.reporoller/contents/global/defaults.toml"
+        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                org,
+                ".reporoller",
+                "global/defaults.toml",
+                minimal_defaults_toml,
+            )),
+        )
+        .mount(server)
+        .await;
+
+    // Template existence check
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{org}/{template}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(repo_json(org, template)))
+        .mount(server)
+        .await;
+
+    // Template configuration file
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/repos/{org}/{template}/contents/.reporoller/template.toml"
+        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                org,
+                template,
+                ".reporoller/template.toml",
+                &minimal_template_toml,
+            )),
+        )
+        .mount(server)
+        .await;
+}
+
+/// Happy-path: returns merged configuration and populated sources map.
+///
+/// Asserts that:
+/// - Status is 200
+/// - `mergedConfiguration` is a JSON object
+/// - `sources` is a JSON object with at least one entry (the merger records
+///   Global sources when global defaults specify repository settings)
+#[tokio::test]
+async fn test_preview_configuration_returns_merged_config_with_sources() {
+    let mock_server = MockServer::start().await;
+    mount_resolve_mocks(&mock_server, "testorg", "rust-service").await;
+
+    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let app = create_router_without_auth(state).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new("x".to_string()));
+            next.run(req).await
+        },
+    ));
+
+    let request_body = json!({ "template": "rust-service" });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "Expected 200; body: {}",
+        String::from_utf8_lossy(&body)
+    );
+    let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        resp["mergedConfiguration"].is_object(),
+        "mergedConfiguration must be a JSON object; got: {}",
+        resp["mergedConfiguration"]
+    );
+    let sources = resp["sources"]
+        .as_object()
+        .expect("sources must be a JSON object");
+    assert!(
+        !sources.is_empty(),
+        "sources must contain at least one entry when global defaults define repository settings"
+    );
+    // Every source value must be one of the four recognised levels.
+    let valid_levels = ["global", "repository_type", "team", "template"];
+    for (key, val) in sources {
+        let level = val.as_str().unwrap_or("");
+        assert!(
+            valid_levels.contains(&level),
+            "source '{key}' has unexpected level '{level}'"
+        );
+    }
+}
+
+/// Missing template: returns 404.
+///
+/// When `GET /repos/{org}/{template}` returns 404 (template repository does not
+/// exist), `preview_configuration` must propagate the error as HTTP 404.
+#[tokio::test]
+async fn test_preview_configuration_template_not_found_returns_404() {
+    let mock_server = MockServer::start().await;
+
+    // Metadata repo discovery succeeds.
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/.reporoller"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(repo_json("testorg", ".reporoller")))
+        .mount(&mock_server)
+        .await;
+
+    // Global defaults succeeds.
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/testorg/.reporoller/contents/global/defaults.toml",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                "testorg",
+                ".reporoller",
+                "global/defaults.toml",
+                "[repository]\nissues = true\n",
+            )),
+        )
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/ghost-template"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let app = create_router_without_auth(state).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new("x".to_string()));
+            next.run(req).await
+        },
+    ));
+
+    let request_body = json!({ "template": "ghost-template" });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Expected 404 when template does not exist"
+    );
+}
+
+/// Unknown repository type: returns 400.
+///
+/// When `repository_type` is provided but no `types/{type}/config.toml` exists
+/// in the metadata repository, `preview_configuration` must return 400.
+#[tokio::test]
+async fn test_preview_configuration_unknown_repository_type_returns_400() {
+    let mock_server = MockServer::start().await;
+
+    // Metadata repo discovery succeeds (needed for the pre-check).
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/.reporoller"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(repo_json("testorg", ".reporoller")))
+        .mount(&mock_server)
+        .await;
+
+    // `types/nonexistent/config.toml` is intentionally NOT mocked; wiremock
+    // returns 404 by default, which the provider converts to Ok(None).
+
+    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let app = create_router_without_auth(state).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new("x".to_string()));
+            next.run(req).await
+        },
+    ));
+
+    let request_body = json!({
+        "template": "rust-service",
+        "repositoryType": "nonexistent"
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/orgs/testorg/configuration/preview")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Expected 400 when repository_type does not exist"
+    );
+}
