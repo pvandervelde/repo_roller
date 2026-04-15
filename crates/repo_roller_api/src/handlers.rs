@@ -876,6 +876,9 @@ pub async fn preview_configuration(
 
     // Validate repository type exists before merging
     if let Some(ref repo_type) = request.repository_type {
+        // TODO: cache metadata repo discovery to avoid repeat call in resolve_configuration
+        // (resolve_configuration re-runs discover_metadata_repository and
+        // load_repository_type_configuration internally, resulting in 2 extra round-trips)
         let meta = provider
             .discover_metadata_repository(&org)
             .await
@@ -911,15 +914,9 @@ pub async fn preview_configuration(
         .await
         .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
-    // Convert merged configuration to JSON
-    let merged_configuration = serde_json::to_value(&merged).map_err(|e| {
-        ApiError::from(anyhow::anyhow!(
-            "Failed to serialize merged configuration: {}",
-            e
-        ))
-    })?;
-
-    // Extract source attribution from the merged configuration's source trace
+    // Extract source attribution before serialising. source_trace is excluded
+    // from JSON serialisation via #[serde(skip)], so we read it here while
+    // the domain value is still available.
     let sources: std::collections::HashMap<String, String> = merged
         .source_trace
         .configured_fields()
@@ -937,9 +934,25 @@ pub async fn preview_configuration(
         })
         .collect();
 
+    // Convert merged configuration to JSON.
+    // source_trace is excluded from the output by #[serde(skip)].
+    let merged_json = serde_json::to_value(&merged).map_err(|e| {
+        ApiError::from(anyhow::anyhow!(
+            "Failed to serialize merged configuration: {}",
+            e
+        ))
+    })?;
+
+    let validation = crate::models::response::ConfigurationPreviewValidation {
+        valid: true,
+        warnings: vec![],
+        errors: vec![],
+    };
+
     let response = PreviewConfigurationResponse {
-        merged_configuration,
+        merged: merged_json,
         sources,
+        validation,
     };
 
     Ok(Json(response))

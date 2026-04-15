@@ -165,6 +165,47 @@ pub struct ValidationResult {
     pub severity: ValidationSeverity,
 }
 
+/// A single configuration validation issue.
+///
+/// Used in [`ConfigurationPreviewValidation`] to describe a specific
+/// constraint violation discovered during configuration preview.
+///
+/// See: specs/interfaces/api-response-types.md#validationissue
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationIssue {
+    /// Field path that failed validation (dot notation, e.g. `repository.visibility`)
+    pub field: String,
+
+    /// Human-readable error message
+    pub message: String,
+
+    /// Machine-readable constraint identifier (e.g. `visibility.allowed_values`)
+    pub constraint: String,
+}
+
+/// Validation summary returned by the configuration preview endpoint.
+///
+/// Summarises whether the resolved merged configuration is valid and lists
+/// any warnings or errors found.  The preview endpoint always returns HTTP 200;
+/// this struct carries the validation outcome inside the response body.
+///
+/// See: specs/interfaces/api-response-types.md#previewconfigurationresponse
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigurationPreviewValidation {
+    /// Whether the merged configuration is valid
+    pub valid: bool,
+
+    /// Informational warnings (configuration is valid but has notable settings)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+
+    /// Validation errors that make the configuration invalid
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<ValidationIssue>,
+}
+
 /// Validation severity level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -357,7 +398,7 @@ pub struct GlobalDefaultsResponse {
 ///
 /// ```json
 /// {
-///   "mergedConfiguration": {
+///   "merged": {
 ///     "visibility": "private",
 ///     "features": ["issues"],
 ///     "teamPermissions": {...}
@@ -366,6 +407,10 @@ pub struct GlobalDefaultsResponse {
 ///     "visibility": "team",
 ///     "features": "template",
 ///     "teamPermissions": "type"
+///   },
+///   "validation": {
+///     "valid": true,
+///     "warnings": []
 ///   }
 /// }
 /// ```
@@ -375,10 +420,13 @@ pub struct GlobalDefaultsResponse {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewConfigurationResponse {
     /// Merged configuration result
-    pub merged_configuration: serde_json::Value,
+    pub merged: serde_json::Value,
 
     /// Source of each configuration value (for traceability)
     pub sources: HashMap<String, String>, // key -> source (e.g., "visibility" -> "team")
+
+    /// Validation summary for the merged configuration
+    pub validation: ConfigurationPreviewValidation,
 }
 
 /// HTTP response for organization settings validation.

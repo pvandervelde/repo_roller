@@ -1185,9 +1185,9 @@ async fn test_preview_configuration_returns_merged_config_with_sources() {
     let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(
-        resp["mergedConfiguration"].is_object(),
-        "mergedConfiguration must be a JSON object; got: {}",
-        resp["mergedConfiguration"]
+        resp["merged"].is_object(),
+        "merged must be a JSON object; got: {}",
+        resp["merged"]
     );
     let sources = resp["sources"]
         .as_object()
@@ -1205,6 +1205,14 @@ async fn test_preview_configuration_returns_merged_config_with_sources() {
             "source '{key}' has unexpected level '{level}'"
         );
     }
+    let validation = resp["validation"]
+        .as_object()
+        .expect("validation must be a JSON object");
+    assert_eq!(
+        validation.get("valid").and_then(|v| v.as_bool()),
+        Some(true),
+        "validation.valid must be true for a successful preview"
+    );
 }
 
 /// Missing template: returns 404.
