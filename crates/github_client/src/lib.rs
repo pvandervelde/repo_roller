@@ -3720,17 +3720,24 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
         .map_err(|_| Error::ApiError())
 }
 
-/// Creates a [`GitHubClient`] from a personal access token.
+/// Creates an [`Octocrab`] client from a personal access token.
 ///
 /// The optional `base_url` parameter overrides the default GitHub API base URL
 /// (`https://api.github.com`). Pass a value when targeting a GitHub Enterprise
 /// instance or a mock server in tests.
 ///
+/// This function is useful when both a [`GitHubClient`] and a raw
+/// [`Octocrab`] instance are needed from the same token (e.g. to share with
+/// components that accept [`Arc<Octocrab>`] directly).
+///
 /// # Errors
 ///
 /// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
 /// example, when `base_url` is syntactically invalid).
-pub fn create_github_client(token: &str, base_url: Option<&str>) -> Result<GitHubClient, Error> {
+pub fn create_octocrab_client(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<std::sync::Arc<Octocrab>, Error> {
     let octocrab = if let Some(url) = base_url {
         Octocrab::builder()
             .personal_token(token.to_string())
@@ -3744,7 +3751,22 @@ pub fn create_github_client(token: &str, base_url: Option<&str>) -> Result<GitHu
             .build()
             .map_err(|_| Error::ApiError())?
     };
-    Ok(GitHubClient::new(octocrab))
+    Ok(std::sync::Arc::new(octocrab))
+}
+
+/// Creates a [`GitHubClient`] from a personal access token.
+///
+/// The optional `base_url` parameter overrides the default GitHub API base URL
+/// (`https://api.github.com`). Pass a value when targeting a GitHub Enterprise
+/// instance or a mock server in tests.
+///
+/// # Errors
+///
+/// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
+/// example, when `base_url` is syntactically invalid).
+pub fn create_github_client(token: &str, base_url: Option<&str>) -> Result<GitHubClient, Error> {
+    let octocrab = create_octocrab_client(token, base_url)?;
+    Ok(GitHubClient::new(octocrab.as_ref().clone()))
 }
 
 /// Helper function to log Octocrab errors with appropriate detail.
