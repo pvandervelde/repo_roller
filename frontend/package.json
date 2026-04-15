@@ -11,7 +11,10 @@
   "pnpm": {
     "approvedBuilds": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "cookie": ">=0.7.0"
+    }
   },
   "scripts": {
     "dev": "vite dev",
