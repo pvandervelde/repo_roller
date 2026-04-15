@@ -943,6 +943,9 @@ pub async fn preview_configuration(
         ))
     })?;
 
+    // TODO: populate from a dedicated validation pass if/when soft warnings are introduced.
+    // Hard validation failures propagate as HTTP errors from resolve_configuration, so this
+    // field carries only advisory information when the merge succeeds.
     let validation = crate::models::response::ConfigurationPreviewValidation {
         valid: true,
         warnings: vec![],

@@ -118,8 +118,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: frontend
+      - name: Install osv-scanner
+        uses: taiki-e/install-action@osv-scanner
       - name: Security audit
-        run: pnpm audit --audit-level=high
+        # pnpm audit uses npm registry endpoints that are being retired (HTTP 410).
+        # osv-scanner queries OSV.dev directly from the lockfile without a registry call.
+        run: osv-scanner --lockfile=pnpm-lock.yaml
         working-directory: frontend
       - name: ESLint
         run: pnpm run lint
