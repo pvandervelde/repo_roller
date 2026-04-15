@@ -872,7 +872,30 @@ pub async fn preview_configuration(
     Json(request): Json<PreviewConfigurationRequest>,
 ) -> Result<Json<PreviewConfigurationResponse>, ApiError> {
     // Create settings manager
-    let (manager, _provider) = create_settings_manager(&auth, &state).await?;
+    let (manager, provider) = create_settings_manager(&auth, &state).await?;
+
+    // Validate repository type exists before merging
+    if let Some(ref repo_type) = request.repository_type {
+        // TODO: cache metadata repo discovery to avoid repeat call in resolve_configuration
+        // (resolve_configuration re-runs discover_metadata_repository and
+        // load_repository_type_configuration internally, resulting in 2 extra round-trips)
+        let meta = provider
+            .discover_metadata_repository(&org)
+            .await
+            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+        let type_cfg = provider
+            .load_repository_type_configuration(&meta, repo_type)
+            .await
+            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+        if type_cfg.is_none() {
+            return Err(ApiError::from(RepoRollerError::Configuration(
+                config_manager::ConfigurationError::InvalidConfiguration {
+                    field: "repository_type".to_string(),
+                    reason: format!("Repository type '{}' is not defined", repo_type),
+                },
+            )));
+        }
+    }
 
     // Create configuration context
     let mut context = ConfigurationContext::new(&org, &request.template);
@@ -891,23 +914,48 @@ pub async fn preview_configuration(
         .await
         .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
 
-    // Convert merged configuration to JSON
-    let merged_configuration = serde_json::to_value(&merged).map_err(|e| {
+    // Extract source attribution before serialising. source_trace is excluded
+    // from JSON serialisation via #[serde(skip)], so we read it here while
+    // the domain value is still available.
+    let sources: std::collections::HashMap<String, String> = merged
+        .source_trace
+        .configured_fields()
+        .into_iter()
+        .filter_map(|field| {
+            merged.source_trace.get_source(field).map(|src| {
+                let level = match src {
+                    config_manager::ConfigurationSource::Global => "global",
+                    config_manager::ConfigurationSource::RepositoryType => "repository_type",
+                    config_manager::ConfigurationSource::Team => "team",
+                    config_manager::ConfigurationSource::Template => "template",
+                };
+                (field.to_string(), level.to_string())
+            })
+        })
+        .collect();
+
+    // Convert merged configuration to JSON.
+    // source_trace is excluded from the output by #[serde(skip)].
+    let merged_json = serde_json::to_value(&merged).map_err(|e| {
         ApiError::from(anyhow::anyhow!(
             "Failed to serialize merged configuration: {}",
             e
         ))
     })?;
 
-    // Extract source attribution from the merged configuration's source trace.
-    // Source tracing maps each configuration key to the file/level it came from.
-    // This requires the ConfigurationMerger to propagate source metadata through
-    // the merge chain, which is not yet implemented in the merger.
-    let sources = std::collections::HashMap::new();
+    // TODO: populate from a dedicated validation pass if/when soft warnings are introduced.
+    // Hard validation failures propagate as HTTP errors from resolve_configuration, so this
+    // field carries only advisory information when the merge succeeds.
+    let validation = crate::models::response::ConfigurationPreviewValidation {
+        valid: true,
+        warnings: vec![],
+        errors: vec![],
+    };
 
     let response = PreviewConfigurationResponse {
-        merged_configuration,
+        merged: merged_json,
         sources,
+        validation,
     };
 
     Ok(Json(response))

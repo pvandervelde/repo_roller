@@ -161,6 +161,10 @@ pub struct MergedConfiguration {
     /// Source trace tracking which configuration source provided each setting.
     ///
     /// Used for auditing, debugging, and understanding configuration precedence.
+    /// Excluded from serialization so it does not leak into HTTP API responses;
+    /// callers that need source attribution should extract it explicitly before
+    /// serialising the parent struct.
+    #[serde(skip)]
     pub source_trace: ConfigurationSourceTrace,
 }
 

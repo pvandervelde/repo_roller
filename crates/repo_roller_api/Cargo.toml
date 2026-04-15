@@ -45,6 +45,7 @@ prometheus = "0.13"
 uuid.workspace = true
 
 [dev-dependencies]
+base64 = "0.22"
 http-body-util = "=0.1.3"
 tower = { workspace = true, features = ["util"] }
 hyper = { workspace = true, features = ["full"] }

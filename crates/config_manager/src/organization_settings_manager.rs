@@ -367,38 +367,6 @@ impl OrganizationSettingsManager {
                 .await
             {
                 Ok(cfg) => cfg,
-                Err(crate::errors::ConfigurationError::TemplateNotFound { .. })
-                | Err(crate::errors::ConfigurationError::TemplateConfigurationMissing { .. }) => {
-                    // Missing template or configuration should not be fatal for non-template flows.
-                    warn!(
-                        "Template not found or missing configuration; using minimal template configuration"
-                    );
-                    TemplateConfig {
-                        template: TemplateMetadata {
-                            name: context.template().to_string(),
-                            description: String::new(),
-                            author: String::new(),
-                            tags: vec![],
-                        },
-                        repository_type: None,
-                        variables: None,
-                        repository: None,
-                        pull_requests: None,
-                        branch_protection: None,
-                        labels: None,
-                        webhooks: None,
-                        environments: None,
-                        github_apps: None,
-                        rulesets: None,
-                        default_visibility: None,
-                        templating: None,
-                        notifications: None,
-                        permissions: None,
-                        teams: None,
-                        collaborators: None,
-                        naming_rules: None,
-                    }
-                }
                 Err(e) => {
                     warn!("Failed to load template configuration: {}", e);
                     return Err(e);
