@@ -6,6 +6,7 @@ name: E2E Containerized Tests
 #   - INTEGRATION_TEST_GITHUB_APP_ID: GitHub App ID for authentication
 #   - INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY: GitHub App private key (PEM format)
 #   - INTEGRATION_TEST_ORG: Test organization name
+#   - INTEGRATION_TEST_USER_TOKEN: GitHub user PAT used as the caller Bearer token in E2E requests
 #
 # Configuration:
 #   - METADATA_REPOSITORY_NAME: ".reporoller-test" (test metadata repository)
@@ -79,6 +80,7 @@ jobs:
           GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
           GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
           TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+          TEST_CALLER_TOKEN: ${{ secrets.INTEGRATION_TEST_USER_TOKEN }}
         run: |
           echo "Validating E2E test environment..."
 
@@ -94,6 +96,11 @@ jobs:
 
           if [ -z "$TEST_ORG" ]; then
             echo "❌ INTEGRATION_TEST_ORG secret not set"
+            exit 1
+          fi
+
+          if [ -z "$TEST_CALLER_TOKEN" ]; then
+            echo "❌ INTEGRATION_TEST_USER_TOKEN secret not set"
             exit 1
           fi
 
@@ -113,6 +120,7 @@ jobs:
           GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
           GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
           TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+          TEST_CALLER_TOKEN: ${{ secrets.INTEGRATION_TEST_USER_TOKEN }}
           METADATA_REPOSITORY_NAME: ".reporoller-test"
           TEST_TEMPLATE: "template-test-basic"
           RUST_LOG: info

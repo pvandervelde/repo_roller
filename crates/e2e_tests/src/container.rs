@@ -34,6 +34,15 @@ pub struct ApiContainerConfig {
 
     /// Container port (host port)
     pub port: u16,
+
+    /// Caller token used as the `Authorization: Bearer` header in API requests.
+    ///
+    /// Represents a user identity token (PAT or OAuth token) — the same kind of
+    /// token the frontend would forward after a user authenticates with GitHub.
+    /// This token is **not** passed to the container; the container uses the
+    /// GitHub App credentials (`github_app_id` / `github_app_private_key`) for
+    /// all GitHub operations internally.
+    pub caller_token: String,
 }
 
 impl ApiContainerConfig {
@@ -49,6 +58,7 @@ impl ApiContainerConfig {
             .unwrap_or_else(|_| "8080".to_string())
             .parse()
             .context("Invalid TEST_API_PORT")?;
+        let caller_token = env::var("TEST_CALLER_TOKEN").context("TEST_CALLER_TOKEN not set")?;
 
         Ok(Self {
             github_app_id,
@@ -56,6 +66,7 @@ impl ApiContainerConfig {
             test_org,
             metadata_repo,
             port,
+            caller_token,
         })
     }
 }
