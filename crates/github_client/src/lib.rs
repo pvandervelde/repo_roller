@@ -3720,6 +3720,33 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
         .map_err(|_| Error::ApiError())
 }
 
+/// Creates an [`Octocrab`] client from a personal access token.
+///
+/// The optional `base_url` parameter overrides the default GitHub API base URL
+/// (`https://api.github.com`). Pass a value when targeting a GitHub Enterprise
+/// instance or a mock server in tests.
+///
+/// This function is useful when both a [`GitHubClient`] and a raw
+/// [`Octocrab`] instance are needed from the same token (e.g. to share with
+/// components that accept [`Arc<Octocrab>`] directly).
+///
+/// # Errors
+///
+/// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
+/// example, when `base_url` is syntactically invalid).
+#[instrument(skip(token))]
+pub fn create_octocrab_client(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<std::sync::Arc<Octocrab>, Error> {
+    let mut builder = Octocrab::builder().personal_token(token.to_string());
+    if let Some(url) = base_url {
+        builder = builder.base_uri(url).map_err(|_| Error::ApiError())?;
+    }
+    let octocrab = builder.build().map_err(|_| Error::ApiError())?;
+    Ok(std::sync::Arc::new(octocrab))
+}
+
 /// Creates a [`GitHubClient`] from a personal access token.
 ///
 /// The optional `base_url` parameter overrides the default GitHub API base URL
@@ -3730,21 +3757,10 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
 ///
 /// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
 /// example, when `base_url` is syntactically invalid).
+#[instrument(skip(token))]
 pub fn create_github_client(token: &str, base_url: Option<&str>) -> Result<GitHubClient, Error> {
-    let octocrab = if let Some(url) = base_url {
-        Octocrab::builder()
-            .personal_token(token.to_string())
-            .base_uri(url)
-            .map_err(|_| Error::ApiError())?
-            .build()
-            .map_err(|_| Error::ApiError())?
-    } else {
-        Octocrab::builder()
-            .personal_token(token.to_string())
-            .build()
-            .map_err(|_| Error::ApiError())?
-    };
-    Ok(GitHubClient::new(octocrab))
+    let octocrab = create_octocrab_client(token, base_url)?;
+    Ok(GitHubClient::new(octocrab.as_ref().clone()))
 }
 
 /// Helper function to log Octocrab errors with appropriate detail.

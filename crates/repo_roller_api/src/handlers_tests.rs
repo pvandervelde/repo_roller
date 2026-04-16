@@ -750,9 +750,17 @@ async fn test_validate_repository_name_returns_available_false_when_repo_exists(
         response_json["available"], false,
         "name is already taken; available must be false"
     );
+    let msgs = response_json["messages"]
+        .as_array()
+        .expect("messages must be an array when name is taken");
     assert!(
-        response_json["messages"].is_array(),
-        "messages should be present when name is taken"
+        !msgs.is_empty(),
+        "at least one message must describe why the name is unavailable"
+    );
+    let first_msg = msgs[0].as_str().expect("message element must be a string");
+    assert!(
+        first_msg.contains("already exists"),
+        "message should indicate the repository already exists; got: {first_msg}"
     );
 }
 

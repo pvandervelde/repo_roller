@@ -138,11 +138,16 @@ pub async fn create_repository(
     let domain_request =
         http_create_repository_request_to_domain(request.clone(), actor_login.clone())?;
 
-    // Create GitHub client for template operations
-    let github_octocrab = std::sync::Arc::new(
-        github_client::create_token_client(&auth.token)
-            .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?,
-    );
+    // Create GitHub client for template operations.
+    // Use create_octocrab_client so that AppState::github_api_base_url is
+    // respected, enabling mock-server injection in tests.
+    let github_octocrab =
+        github_client::create_octocrab_client(&auth.token, state.github_api_base_url.as_deref())
+            .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
+    // GitHubClient::new() takes Octocrab by value. The Arc is not used for
+    // sharing here — github_client and environment_detector each hold their own
+    // independent Octocrab instance (with separate connection pools), the same
+    // as they did before this refactor.
     let github_client = github_client::GitHubClient::new(github_octocrab.as_ref().clone());
 
     // Create metadata provider for template discovery and loading
@@ -1051,14 +1056,15 @@ pub async fn validate_organization(
 ///
 /// See: specs/interfaces/api-response-types.md#listteamsresponse
 pub async fn list_organization_teams(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(org): Path<String>,
 ) -> Result<Json<ListTeamsResponse>, ApiError> {
-    // Create a GitHub client with the request's installation token.
-    let octocrab = github_client::create_token_client(&auth.token)
-        .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
-    let github_client = GitHubClient::new(octocrab);
+    // Use create_github_client so AppState::github_api_base_url is respected,
+    // enabling mock-server injection in tests.
+    let github_client =
+        github_client::create_github_client(&auth.token, state.github_api_base_url.as_deref())
+            .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
 
     let teams = github_client
         .list_organization_teams(&org)
