@@ -3734,23 +3734,16 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
 ///
 /// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
 /// example, when `base_url` is syntactically invalid).
+#[instrument(skip(token))]
 pub fn create_octocrab_client(
     token: &str,
     base_url: Option<&str>,
 ) -> Result<std::sync::Arc<Octocrab>, Error> {
-    let octocrab = if let Some(url) = base_url {
-        Octocrab::builder()
-            .personal_token(token.to_string())
-            .base_uri(url)
-            .map_err(|_| Error::ApiError())?
-            .build()
-            .map_err(|_| Error::ApiError())?
-    } else {
-        Octocrab::builder()
-            .personal_token(token.to_string())
-            .build()
-            .map_err(|_| Error::ApiError())?
-    };
+    let mut builder = Octocrab::builder().personal_token(token.to_string());
+    if let Some(url) = base_url {
+        builder = builder.base_uri(url).map_err(|_| Error::ApiError())?;
+    }
+    let octocrab = builder.build().map_err(|_| Error::ApiError())?;
     Ok(std::sync::Arc::new(octocrab))
 }
 
@@ -3764,6 +3757,7 @@ pub fn create_octocrab_client(
 ///
 /// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
 /// example, when `base_url` is syntactically invalid).
+#[instrument(skip(token))]
 pub fn create_github_client(token: &str, base_url: Option<&str>) -> Result<GitHubClient, Error> {
     let octocrab = create_octocrab_client(token, base_url)?;
     Ok(GitHubClient::new(octocrab.as_ref().clone()))

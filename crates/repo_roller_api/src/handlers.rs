@@ -144,6 +144,10 @@ pub async fn create_repository(
     let github_octocrab =
         github_client::create_octocrab_client(&auth.token, state.github_api_base_url.as_deref())
             .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
+    // GitHubClient::new() takes Octocrab by value. The Arc is not used for
+    // sharing here — github_client and environment_detector each hold their own
+    // independent Octocrab instance (with separate connection pools), the same
+    // as they did before this refactor.
     let github_client = github_client::GitHubClient::new(github_octocrab.as_ref().clone());
 
     // Create metadata provider for template discovery and loading
