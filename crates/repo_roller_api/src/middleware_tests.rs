@@ -107,8 +107,8 @@ fn test_extract_bearer_token_wrong_scheme() {
 /// Test AuthContext creation
 #[test]
 fn test_auth_context_creation() {
-    let context = AuthContext::new("test_token".to_string());
-    assert_eq!(context.token, "test_token");
+    let context = AuthContext::new();
+    assert!(context.user_login.is_none());
 }
 
 /// Test tracing middleware adds request logging

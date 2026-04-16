@@ -8,6 +8,8 @@
 //! - `API_HOST`: Host to bind to (default: 0.0.0.0)
 //! - `RUST_LOG`: Log level (default: info)
 //! - `METADATA_REPOSITORY_NAME`: Name of metadata repository (default: .reporoller)
+//! - `GITHUB_APP_ID`: GitHub App ID (required)
+//! - `GITHUB_APP_PRIVATE_KEY`: GitHub App private key in PEM format (required)
 
 use std::env;
 
@@ -30,7 +32,8 @@ pub const DEFAULT_PORT: u16 = 8080;
 /// Application state shared across handlers
 ///
 /// Contains shared configuration for API handlers.
-/// Actual service instances are created per-request using authentication context.
+/// GitHub operations use installation tokens minted from the stored App
+/// credentials; no caller-supplied token is forwarded to the GitHub API.
 ///
 /// Event metrics are initialised once at startup and cloned per request so that
 /// Prometheus counters accumulate across requests and remain scrapable at a
@@ -51,15 +54,32 @@ pub struct AppState {
     /// When `None` the default `https://api.github.com` is used. Set this to
     /// target a GitHub Enterprise instance or (in tests) a wiremock server.
     pub(crate) github_api_base_url: Option<String>,
+    /// GitHub App ID used to mint installation tokens for GitHub API operations.
+    pub(crate) github_app_id: u64,
+    /// GitHub App private key (PEM format) used to mint installation tokens.
+    ///
+    /// Never logged — the value must not appear in traces or error messages.
+    pub(crate) github_app_private_key: String,
+    /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
+    ///
+    /// When `Some`, `get_installation_token` returns this value without calling
+    /// the real GitHub API. Always `None` in production.
+    pub(crate) mock_installation_token: Option<String>,
 }
 
 impl AppState {
-    /// Create new application state with configuration
+    /// Create new application state with configuration.
     ///
     /// # Arguments
     ///
     /// * `metadata_repository_name` - Name of the metadata repository
-    pub fn new(metadata_repository_name: impl Into<String>) -> Self {
+    /// * `github_app_id` - GitHub App ID for minting installation tokens
+    /// * `github_app_private_key` - GitHub App private key (PEM format)
+    pub fn new(
+        metadata_repository_name: impl Into<String>,
+        github_app_id: u64,
+        github_app_private_key: impl Into<String>,
+    ) -> Self {
         let registry = prometheus::Registry::new();
         Self {
             metadata_repository_name: metadata_repository_name.into(),
@@ -67,6 +87,9 @@ impl AppState {
                 repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
             ),
             github_api_base_url: None,
+            github_app_id,
+            github_app_private_key: github_app_private_key.into(),
+            mock_installation_token: None,
         }
     }
 
@@ -78,11 +101,63 @@ impl AppState {
         self.github_api_base_url = Some(url.into());
         self
     }
+
+    /// Inject a pre-minted installation token used in unit tests.
+    ///
+    /// When set, `get_installation_token` returns this token without calling
+    /// the GitHub App API, allowing tests to point the GitHub client at a
+    /// wiremock server without real App credentials.
+    #[cfg(test)]
+    pub fn with_mock_installation_token(mut self, token: impl Into<String>) -> Self {
+        self.mock_installation_token = Some(token.into());
+        self
+    }
+
+    /// Mint a GitHub App installation token for `org`.
+    ///
+    /// In production this uses the stored `github_app_id` and
+    /// `github_app_private_key` to request a token from the GitHub API.
+    /// In tests the value set by `with_mock_installation_token` is returned
+    /// directly, bypassing the real App authentication flow.
+    pub(crate) async fn get_installation_token(
+        &self,
+        org: &str,
+    ) -> Result<String, crate::errors::ApiError> {
+        if let Some(ref token) = self.mock_installation_token {
+            return Ok(token.clone());
+        }
+        use auth_handler::UserAuthenticationService as _;
+        let auth_service = auth_handler::GitHubAuthService::new(
+            self.github_app_id,
+            self.github_app_private_key.clone(),
+        );
+        auth_service
+            .get_installation_token_for_org(org)
+            .await
+            .map_err(|e| {
+                crate::errors::ApiError::internal(format!(
+                    "Failed to get GitHub App installation token for organisation '{}': {}",
+                    org, e
+                ))
+            })
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new(".reporoller")
+        Self {
+            metadata_repository_name: ".reporoller".to_string(),
+            event_metrics: {
+                let registry = prometheus::Registry::new();
+                std::sync::Arc::new(
+                    repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
+                )
+            },
+            github_api_base_url: None,
+            github_app_id: 0,
+            github_app_private_key: String::new(),
+            mock_installation_token: None,
+        }
     }
 }
 
@@ -105,13 +180,23 @@ async fn main() -> anyhow::Result<()> {
     let metadata_repo =
         env::var("METADATA_REPOSITORY_NAME").unwrap_or_else(|_| ".reporoller".to_string());
 
+    let github_app_id = env::var("GITHUB_APP_ID")
+        .expect("GITHUB_APP_ID environment variable is required")
+        .parse::<u64>()
+        .expect("GITHUB_APP_ID must be a valid number");
+
+    // GITHUB_APP_PRIVATE_KEY is a secret — never log its value.
+    let github_app_private_key = env::var("GITHUB_APP_PRIVATE_KEY")
+        .expect("GITHUB_APP_PRIVATE_KEY environment variable is required");
+
     // Create app state and server
-    let state = AppState::new(metadata_repo.clone());
+    let state = AppState::new(metadata_repo.clone(), github_app_id, github_app_private_key);
     let server = ApiServer::new(config, state);
 
     tracing::info!("Starting RepoRoller API server");
     tracing::info!("API version: {}", API_VERSION);
     tracing::info!("Metadata repository: {}", metadata_repo);
+    tracing::info!("GitHub App ID: {}", github_app_id);
 
     // Start server with graceful shutdown
     server.serve().await

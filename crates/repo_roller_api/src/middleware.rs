@@ -24,8 +24,6 @@ use repo_roller_core::AuthenticationError;
 /// This is stored in request extensions and can be extracted by handlers.
 #[derive(Debug, Clone)]
 pub struct AuthContext {
-    /// Bearer token from Authorization header
-    pub token: String,
     /// GitHub login of the authenticated actor, if determinable.
     ///
     /// Populated by a best-effort call to the GitHub `/user` API endpoint.
@@ -40,11 +38,8 @@ impl AuthContext {
     /// Only used in tests — production code constructs `AuthContext` directly
     /// inside `auth_middleware` after token validation.
     #[cfg(test)]
-    pub fn new(token: String) -> Self {
-        Self {
-            token,
-            user_login: None,
-        }
+    pub fn new() -> Self {
+        Self { user_login: None }
     }
 }
 
@@ -90,7 +85,7 @@ pub async fn auth_middleware(
     let user_login = try_get_user_login(&token).await;
 
     // Create authentication context
-    let auth_context = AuthContext { token, user_login };
+    let auth_context = AuthContext { user_login };
 
     // Attach context to request extensions
     request.extensions_mut().insert(auth_context);

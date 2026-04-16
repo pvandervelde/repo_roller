@@ -21,7 +21,7 @@ fn test_server_creation() {
 /// Verify the server builds a router using the configured state.
 #[test]
 fn test_server_router_uses_state() {
-    let state = AppState::new("custom-metadata-repo");
+    let state = AppState::new("custom-metadata-repo", 0, "");
     let config = ApiConfig {
         host: "127.0.0.1".to_string(),
         port: 9090,
