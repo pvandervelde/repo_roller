@@ -59,6 +59,11 @@ pub struct AppState {
     /// Stored as an `Arc` so that cloned `AppState` values (one per request)
     /// share the same underlying service without copying the private key.
     pub(crate) auth_service: std::sync::Arc<auth_handler::GitHubAuthService>,
+    /// HMAC-SHA256 secret used to sign and verify backend-issued JWTs.
+    ///
+    /// Loaded from the `JWT_SECRET` environment variable at startup.
+    /// Must be at least 32 bytes.  Never logged.
+    pub(crate) jwt_secret: secrecy::SecretString,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling
@@ -79,6 +84,7 @@ impl AppState {
         metadata_repository_name: impl Into<String>,
         github_app_id: u64,
         github_app_private_key: impl Into<String>,
+        jwt_secret: impl Into<String>,
     ) -> Self {
         let registry = prometheus::Registry::new();
         Self {
@@ -91,6 +97,7 @@ impl AppState {
                 github_app_id,
                 github_app_private_key,
             )),
+            jwt_secret: secrecy::SecretString::from(jwt_secret.into()),
             #[cfg(test)]
             mock_installation_token: None,
         }
@@ -156,6 +163,8 @@ impl Default for AppState {
             },
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
+            // Fixed 32-byte secret used only in tests.
+            jwt_secret: secrecy::SecretString::from("test-jwt-secret-key-minimum-32b!".to_string()),
             mock_installation_token: None,
         }
     }
@@ -189,8 +198,20 @@ async fn main() -> anyhow::Result<()> {
     let github_app_private_key = env::var("GITHUB_APP_PRIVATE_KEY")
         .expect("GITHUB_APP_PRIVATE_KEY environment variable is required");
 
+    // JWT_SECRET signs backend-issued JWTs — never log its value.
+    let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET environment variable is required");
+    assert!(
+        jwt_secret.len() >= 32,
+        "JWT_SECRET must be at least 32 characters"
+    );
+
     // Create app state and server
-    let state = AppState::new(metadata_repo.clone(), github_app_id, github_app_private_key);
+    let state = AppState::new(
+        metadata_repo.clone(),
+        github_app_id,
+        github_app_private_key,
+        jwt_secret,
+    );
     let server = ApiServer::new(config, state);
 
     tracing::info!("Starting RepoRoller API server");

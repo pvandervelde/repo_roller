@@ -1109,6 +1109,75 @@ pub async fn list_organization_teams(
     }))
 }
 
+/// POST /api/v1/auth/token
+///
+/// Exchange a GitHub user token for a short-lived backend-signed JWT.
+///
+/// The frontend calls this endpoint once after the user authenticates with
+/// GitHub (via OAuth or PAT).  The backend validates the GitHub token against
+/// the GitHub API, resolves the user's GitHub login, and returns a signed JWT
+/// that can be presented as `Authorization: Bearer` on all subsequent requests.
+///
+/// This is the only endpoint that calls GitHub to validate a user token; all
+/// other protected endpoints validate the backend JWT locally.
+///
+/// # Responses
+///
+/// - `200 OK` — JWT issued successfully
+/// - `401 Unauthorized` — GitHub token is invalid or expired
+/// - `500 Internal Server Error` — JWT signing failure
+pub async fn exchange_github_token(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<TokenExchangeResponse>, crate::middleware::AuthError> {
+    use crate::middleware::{
+        extract_bearer_token, generate_backend_jwt, try_get_user_login, validate_github_token,
+        JWT_EXPIRY_SECS,
+    };
+    use secrecy::ExposeSecret;
+
+    // Extract the GitHub user token from the Authorization header.
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or(crate::middleware::AuthError::MissingToken)?;
+
+    let github_token = extract_bearer_token(auth_header)?;
+
+    // Validate the GitHub token \u2014 the one and only place we call GitHub for auth.
+    validate_github_token(&github_token).await?;
+
+    // Resolve the user's GitHub login (best-effort; falls back to "unknown").
+    let user_login = try_get_user_login(&github_token)
+        .await
+        .unwrap_or_else(|| "unknown".to_string());
+
+    tracing::info!(user_login = %user_login, "Issuing backend JWT after GitHub token exchange");
+
+    // Sign a backend JWT.
+    let token = generate_backend_jwt(&user_login, state.jwt_secret.expose_secret())?;
+
+    Ok(Json(TokenExchangeResponse {
+        token,
+        token_type: "Bearer".to_string(),
+        expires_in: JWT_EXPIRY_SECS,
+    }))
+}
+
+/// Response body for `POST /api/v1/auth/token`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenExchangeResponse {
+    /// The backend-signed JWT to use as `Authorization: Bearer` on subsequent requests.
+    pub token: String,
+
+    /// Always `"Bearer"`.
+    pub token_type: String,
+
+    /// Lifetime of the token in seconds.
+    pub expires_in: u64,
+}
+
 /// GET /api/v1/health
 ///
 /// Health check endpoint.
