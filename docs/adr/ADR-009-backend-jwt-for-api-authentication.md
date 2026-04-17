@@ -45,6 +45,7 @@ All protected API endpoints then validate the backend JWT **locally** using the
 shared `JWT_SECRET` — no GitHub API call is made per request.
 
 **Do:**
+
 - Load `JWT_SECRET` from the environment (minimum 32 bytes); panic at startup
   if absent or too short.
 - Store `JWT_SECRET` with the same care as `GITHUB_APP_PRIVATE_KEY` (Key Vault
@@ -52,6 +53,7 @@ shared `JWT_SECRET` — no GitHub API call is made per request.
 - Use `secrecy::SecretString` for in-memory storage; never log the value.
 
 **Don't:**
+
 - Forward a GitHub token to any API endpoint other than `POST /auth/token`.
 - Accept raw GitHub tokens on protected endpoints (they are rejected as
   malformed JWTs by `auth_middleware`).

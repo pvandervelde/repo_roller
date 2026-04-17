@@ -7,6 +7,7 @@ name: E2E Containerized Tests
 #   - INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY: GitHub App private key (PEM format)
 #   - INTEGRATION_TEST_ORG: Test organization name
 #   - INTEGRATION_TEST_USER_TOKEN: GitHub user PAT used as the caller Bearer token in E2E requests
+#   - INTEGRATION_TEST_JWT_SECRET: Secret (>= 32 bytes) for signing backend JWTs in the API container
 #
 # Configuration:
 #   - METADATA_REPOSITORY_NAME: ".reporoller-test" (test metadata repository)
@@ -81,6 +82,7 @@ jobs:
           GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
           TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
           TEST_CALLER_TOKEN: ${{ secrets.INTEGRATION_TEST_USER_TOKEN }}
+          INTEGRATION_TEST_JWT_SECRET: ${{ secrets.INTEGRATION_TEST_JWT_SECRET }}
         run: |
           echo "Validating E2E test environment..."
 
@@ -104,6 +106,11 @@ jobs:
             exit 1
           fi
 
+          if [ -z "$INTEGRATION_TEST_JWT_SECRET" ]; then
+            echo "❌ INTEGRATION_TEST_JWT_SECRET secret not set"
+            exit 1
+          fi
+
           echo "✅ All required secrets are configured"
           echo "📋 GitHub App ID: $GITHUB_APP_ID"
           echo "📋 Test Organization: $TEST_ORG"
@@ -121,6 +128,7 @@ jobs:
           GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
           TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
           TEST_CALLER_TOKEN: ${{ secrets.INTEGRATION_TEST_USER_TOKEN }}
+          INTEGRATION_TEST_JWT_SECRET: ${{ secrets.INTEGRATION_TEST_JWT_SECRET }}
           METADATA_REPOSITORY_NAME: ".reporoller-test"
           TEST_TEMPLATE: "template-test-basic"
           RUST_LOG: info

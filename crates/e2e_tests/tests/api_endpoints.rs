@@ -142,6 +142,7 @@ async fn test_e2e_create_empty_repository_without_template() -> Result<()> {
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("empty-no-template");
 
@@ -160,7 +161,7 @@ async fn test_e2e_create_empty_repository_without_template() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -222,6 +223,7 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("empty-with-template");
     let template = std::env::var("TEST_TEMPLATE").unwrap_or_else(|_| "default".to_string());
@@ -242,7 +244,7 @@ async fn test_e2e_create_empty_repository_with_template_settings() -> Result<()>
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -454,6 +456,7 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("init-readme");
 
@@ -474,7 +477,7 @@ async fn test_e2e_create_custom_init_readme_only() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -751,6 +754,7 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("perm-teams-config");
     let client = Client::new();
@@ -767,7 +771,7 @@ async fn test_e2e_permission_teams_applied_from_config() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -931,6 +935,7 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("perm-ceiling");
     let client = Client::new();
@@ -950,7 +955,7 @@ async fn test_e2e_permission_request_team_capped_at_ceiling() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1040,6 +1045,7 @@ async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("perm-locked");
     let client = Client::new();
@@ -1058,7 +1064,7 @@ async fn test_e2e_permission_locked_org_team_preserved() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1164,6 +1170,7 @@ async fn test_e2e_permission_collaborator_applied_from_request() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("perm-collab");
     let client = Client::new();
@@ -1182,7 +1189,7 @@ async fn test_e2e_permission_collaborator_applied_from_request() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1259,6 +1266,7 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
 
     // Uncomment to build during test: container.build_image().await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     let repo_name = generate_e2e_test_repo_name("init-both");
 
@@ -1279,7 +1287,7 @@ async fn test_e2e_create_custom_init_both_files() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1555,6 +1563,7 @@ async fn test_e2e_naming_rules_valid_name_accepted() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     // Name deliberately avoids 'noncompliant' -- pass the naming rule.
     let repo_name = generate_e2e_test_repo_name("naming-valid");
@@ -1569,7 +1578,7 @@ async fn test_e2e_naming_rules_valid_name_accepted() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1634,6 +1643,7 @@ async fn test_e2e_naming_rules_violation_rejected() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     // This name contains 'noncompliant' matching the forbidden_patterns rule
     // in the test metadata; must be rejected without creating any repository.
@@ -1649,7 +1659,7 @@ async fn test_e2e_naming_rules_violation_rejected() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1721,6 +1731,7 @@ async fn test_e2e_naming_rules_concat_template_violation_rejected() -> Result<()
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     // "badtemplate-repo" satisfies the global rule (no "noncompliant") but
     // violates the template-test-basic rule (forbidden_patterns = ["badtemplate"]).
@@ -1737,7 +1748,7 @@ async fn test_e2e_naming_rules_concat_template_violation_rejected() -> Result<()
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
@@ -1807,6 +1818,7 @@ async fn test_e2e_naming_rules_concat_valid_name_with_template() -> Result<()> {
 
     let mut container = ApiContainer::new(config.clone()).await?;
     let base_url = container.start().await?;
+    let api_token = container.get_api_token(&base_url).await?;
 
     // Standard E2E name — contains neither "noncompliant" nor "badtemplate".
     let repo_name = generate_e2e_test_repo_name("naming-concat");
@@ -1822,7 +1834,7 @@ async fn test_e2e_naming_rules_concat_valid_name_with_template() -> Result<()> {
 
     let response = client
         .post(format!("{}/api/v1/repositories", base_url))
-        .header("Authorization", format!("Bearer {}", config.caller_token))
+        .header("Authorization", format!("Bearer {}", api_token))
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()

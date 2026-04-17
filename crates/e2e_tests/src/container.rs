@@ -17,6 +17,8 @@ use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
 
+use reqwest::Client as ReqwestClient;
+
 /// Configuration for running API container in tests
 #[derive(Clone)]
 pub struct ApiContainerConfig {
@@ -43,6 +45,13 @@ pub struct ApiContainerConfig {
     /// GitHub App credentials (`github_app_id` / `github_app_private_key`) for
     /// all GitHub operations internally.
     pub caller_token: String,
+
+    /// JWT secret passed to the API container as `JWT_SECRET`.
+    ///
+    /// The container uses this to sign backend JWTs issued by
+    /// `POST /api/v1/auth/token`. Loaded from `INTEGRATION_TEST_JWT_SECRET`.
+    /// Must be at least 32 bytes.
+    pub jwt_secret: String,
 }
 
 impl ApiContainerConfig {
@@ -59,6 +68,8 @@ impl ApiContainerConfig {
             .parse()
             .context("Invalid TEST_API_PORT")?;
         let caller_token = env::var("TEST_CALLER_TOKEN").context("TEST_CALLER_TOKEN not set")?;
+        let jwt_secret = env::var("INTEGRATION_TEST_JWT_SECRET")
+            .context("INTEGRATION_TEST_JWT_SECRET not set")?;
 
         Ok(Self {
             github_app_id,
@@ -67,6 +78,7 @@ impl ApiContainerConfig {
             metadata_repo,
             port,
             caller_token,
+            jwt_secret,
         })
     }
 }
@@ -164,6 +176,7 @@ impl ApiContainer {
                 self.config.github_app_private_key
             ),
             format!("METADATA_REPOSITORY_NAME={}", self.config.metadata_repo),
+            format!("JWT_SECRET={}", self.config.jwt_secret),
             "RUST_LOG=info".to_string(),
             "API_HOST=0.0.0.0".to_string(),
             "API_PORT=8080".to_string(),
@@ -401,6 +414,43 @@ impl ApiContainer {
         }
 
         Ok(output)
+    }
+
+    /// Exchange the caller's GitHub PAT for a backend JWT via `POST /api/v1/auth/token`.
+    ///
+    /// The returned JWT is ready for use as `Authorization: Bearer` on all
+    /// protected API endpoints.
+    pub async fn get_api_token(&self, base_url: &str) -> Result<String> {
+        let client = ReqwestClient::new();
+        let response = client
+            .post(format!("{}/api/v1/auth/token", base_url))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.caller_token),
+            )
+            .send()
+            .await
+            .context("Token exchange request to /api/v1/auth/token failed")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "Token exchange failed with status {}: {}",
+                response.status(),
+                response.text().await.unwrap_or_default()
+            );
+        }
+
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .context("Failed to parse /api/v1/auth/token response as JSON")?;
+
+        let token = json["token"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing 'token' field in /api/v1/auth/token response"))?
+            .to_string();
+
+        Ok(token)
     }
 }
 
