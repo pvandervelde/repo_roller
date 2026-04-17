@@ -15,6 +15,7 @@
 //!
 //! See: .llm/rest-api-implementation-guide.md
 
+use async_trait::async_trait;
 use axum::{
     extract::{Path, State},
     Extension, Json,
@@ -37,6 +38,23 @@ use config_manager::{
 use github_client::GitHubClient;
 use repo_roller_core::{RepoRollerError, RepositoryNamingValidator};
 
+/// Thin `UserAuthenticationService` adapter that returns a pre-minted token.
+///
+/// Used inside `create_repository` so the domain layer can obtain a token
+/// without a second GitHub API round-trip: the installation token is minted
+/// once at the handler level and wrapped here for the domain service call.
+struct PreMintedTokenAuthService(String);
+
+#[async_trait]
+impl auth_handler::UserAuthenticationService for PreMintedTokenAuthService {
+    async fn get_installation_token_for_org(
+        &self,
+        _org_name: &str,
+    ) -> auth_handler::AuthResult<String> {
+        Ok(self.0.clone())
+    }
+}
+
 /// Build an `OrganizationSettingsManager` and `MetadataRepositoryProvider` from
 /// an already-constructed `GitHubClient`.
 ///
@@ -45,7 +63,7 @@ use repo_roller_core::{RepoRollerError, RepositoryNamingValidator};
 ///
 /// `client` is cloned once (cheap: shares the underlying connection pool) to
 /// satisfy both the metadata provider and the template repository.
-async fn create_settings_manager_from_client(
+fn create_settings_manager_from_client(
     client: GitHubClient,
     state: &AppState,
 ) -> Result<
@@ -93,7 +111,7 @@ async fn create_settings_manager(
         state.github_api_base_url.as_deref(),
     )
     .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
-    create_settings_manager_from_client(client, state).await
+    create_settings_manager_from_client(client, state)
 }
 
 /// Validate a repository name against GitHub naming rules.
@@ -164,12 +182,9 @@ pub async fn create_repository(
         config_manager::MetadataProviderConfig::explicit(&state.metadata_repository_name),
     ));
 
-    // Authentication service uses the App credentials to mint a fresh installation
-    // token for git operations performed inside the domain layer.
-    let auth_service = auth_handler::GitHubAuthService::new(
-        state.github_app_id,
-        state.github_app_private_key.clone(),
-    );
+    // Authentication service wraps the already-minted token so the domain
+    // layer can obtain it without a second GitHub API round-trip.
+    let auth_service = PreMintedTokenAuthService(installation_token.clone());
 
     // Create visibility providers
     let visibility_policy_provider = std::sync::Arc::new(
@@ -422,11 +437,14 @@ pub async fn validate_repository_name(
     };
 
     // ── Org naming rules (soft-fail) ──────────────────────────────────────────
-    match create_settings_manager_from_client(github_client.clone(), &state).await {
+    match create_settings_manager_from_client(github_client.clone(), &state) {
         Ok((_manager, provider)) => {
-            let naming_messages =
-                check_org_naming_rules(&request.name, &request.organization, provider.as_ref())
-                    .await;
+            let naming_messages = check_org_naming_rules(
+                &request.name,
+                &request.organization,
+                provider.as_ref() as &dyn MetadataRepositoryProvider,
+            )
+            .await;
             if !naming_messages.is_empty() {
                 valid = false;
                 messages.extend(naming_messages);

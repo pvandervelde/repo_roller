@@ -5,6 +5,7 @@
 use crate::{AuthError, AuthResult, UserAuthenticationService};
 use async_trait::async_trait;
 use github_client::{create_app_client, GitHubClient};
+use secrecy::{ExposeSecret, SecretString};
 
 /// GitHub App authentication service
 ///
@@ -30,7 +31,9 @@ use github_client::{create_app_client, GitHubClient};
 /// ```
 pub struct GitHubAuthService {
     app_id: u64,
-    private_key: String,
+    /// PEM-encoded private key.  Wrapped in `SecretString` so that the value is
+    /// zeroed on drop and cannot be printed via `Display` or `Debug`.
+    private_key: SecretString,
 }
 
 impl GitHubAuthService {
@@ -42,10 +45,10 @@ impl GitHubAuthService {
     ///
     /// # Returns
     /// New `GitHubAuthService` instance
-    pub fn new(app_id: u64, private_key: String) -> Self {
+    pub fn new(app_id: u64, private_key: impl Into<String>) -> Self {
         Self {
             app_id,
-            private_key,
+            private_key: SecretString::from(private_key.into()),
         }
     }
 }
@@ -54,7 +57,7 @@ impl GitHubAuthService {
 impl UserAuthenticationService for GitHubAuthService {
     async fn get_installation_token_for_org(&self, org_name: &str) -> AuthResult<String> {
         // Create app client using stored credentials
-        let app_client = create_app_client(self.app_id, &self.private_key)
+        let app_client = create_app_client(self.app_id, self.private_key.expose_secret())
             .await
             .map_err(|_e| AuthError::InvalidCredentials)?;
 

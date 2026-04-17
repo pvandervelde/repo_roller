@@ -54,16 +54,16 @@ pub struct AppState {
     /// When `None` the default `https://api.github.com` is used. Set this to
     /// target a GitHub Enterprise instance or (in tests) a wiremock server.
     pub(crate) github_api_base_url: Option<String>,
-    /// GitHub App ID used to mint installation tokens for GitHub API operations.
-    pub(crate) github_app_id: u64,
-    /// GitHub App private key (PEM format) used to mint installation tokens.
+    /// GitHub App authentication service used to mint installation tokens.
     ///
-    /// Never logged — the value must not appear in traces or error messages.
-    pub(crate) github_app_private_key: String,
+    /// Stored as an `Arc` so that cloned `AppState` values (one per request)
+    /// share the same underlying service without copying the private key.
+    pub(crate) auth_service: std::sync::Arc<auth_handler::GitHubAuthService>,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling
     /// the real GitHub API. Always `None` in production.
+    #[cfg(test)]
     pub(crate) mock_installation_token: Option<String>,
 }
 
@@ -87,8 +87,11 @@ impl AppState {
                 repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
             ),
             github_api_base_url: None,
-            github_app_id,
-            github_app_private_key: github_app_private_key.into(),
+            auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(
+                github_app_id,
+                github_app_private_key,
+            )),
+            #[cfg(test)]
             mock_installation_token: None,
         }
     }
@@ -115,23 +118,20 @@ impl AppState {
 
     /// Mint a GitHub App installation token for `org`.
     ///
-    /// In production this uses the stored `github_app_id` and
-    /// `github_app_private_key` to request a token from the GitHub API.
+    /// In production this uses the stored `GitHubAuthService` (holding the App
+    /// credentials) to request a token from the GitHub API.
     /// In tests the value set by `with_mock_installation_token` is returned
     /// directly, bypassing the real App authentication flow.
     pub(crate) async fn get_installation_token(
         &self,
         org: &str,
     ) -> Result<String, crate::errors::ApiError> {
+        #[cfg(test)]
         if let Some(ref token) = self.mock_installation_token {
             return Ok(token.clone());
         }
         use auth_handler::UserAuthenticationService as _;
-        let auth_service = auth_handler::GitHubAuthService::new(
-            self.github_app_id,
-            self.github_app_private_key.clone(),
-        );
-        auth_service
+        self.auth_service
             .get_installation_token_for_org(org)
             .await
             .map_err(|e| {
@@ -143,6 +143,7 @@ impl AppState {
     }
 }
 
+#[cfg(test)]
 impl Default for AppState {
     fn default() -> Self {
         Self {
@@ -154,8 +155,7 @@ impl Default for AppState {
                 )
             },
             github_api_base_url: None,
-            github_app_id: 0,
-            github_app_private_key: String::new(),
+            auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
             mock_installation_token: None,
         }
     }
