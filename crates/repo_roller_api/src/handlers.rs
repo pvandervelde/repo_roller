@@ -1148,6 +1148,13 @@ pub async fn exchange_github_token(
     validate_github_token(&github_token).await?;
 
     // Resolve the user's GitHub login (best-effort; falls back to "unknown").
+    //
+    // GET /user is not available for GitHub App installation tokens, which are
+    // not scoped to a user. Falling back to "unknown" preserves compatibility
+    // with installation-token callers while still issuing a valid JWT. For
+    // PAT/OAuth callers (the normal frontend path), GET /user succeeds because
+    // validate_github_token (GET /rate_limit) ran first and would have rejected
+    // any expired token, making a transient failure here very unlikely.
     let user_login = try_get_user_login(&github_token)
         .await
         .unwrap_or_else(|| "unknown".to_string());
