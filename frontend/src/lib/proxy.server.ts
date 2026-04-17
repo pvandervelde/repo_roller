@@ -7,11 +7,11 @@
  *
  * Environment variables:
  *   BACKEND_API_URL   Required. Base URL of the Rust API, e.g. http://api:3000
- *   BACKEND_API_TOKEN Optional. Bearer token for backend authentication.
  *
  * MUST NOT be imported from client-side code.
  */
 import { env } from '$env/dynamic/private';
+import type { Session } from '$lib/types/session';
 
 // Headers that must not be forwarded to the backend.
 const HOP_BY_HOP = ['host', 'cookie', 'authorization', 'connection', 'transfer-encoding'];
@@ -27,7 +27,7 @@ const HOP_BY_HOP = ['host', 'cookie', 'authorization', 'connection', 'transfer-e
 export async function proxyToBackend(
   path: string,
   request: Request,
-  session: unknown,
+  session: Session | null,
 ): Promise<Response> {
   if (!session) {
     return new Response(
@@ -52,10 +52,7 @@ export async function proxyToBackend(
       forwardHeaders.set(key, value);
     }
   }
-  const token = env.BACKEND_API_TOKEN;
-  if (token) {
-    forwardHeaders.set('Authorization', `Bearer ${token}`);
-  }
+  forwardHeaders.set('Authorization', `Bearer ${session.backendToken}`);
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const body = hasBody ? await request.arrayBuffer() : undefined;
