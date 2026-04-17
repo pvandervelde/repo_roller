@@ -38,6 +38,23 @@ use config_manager::{
 use github_client::GitHubClient;
 use repo_roller_core::{RepoRollerError, RepositoryNamingValidator};
 
+/// Thin `UserAuthenticationService` adapter that returns a pre-minted token.
+///
+/// Used inside `create_repository` so the domain layer can obtain a token
+/// without a second GitHub API round-trip: the installation token is minted
+/// once at the handler level and wrapped here for the domain service call.
+struct PreMintedTokenAuthService(String);
+
+#[async_trait]
+impl auth_handler::UserAuthenticationService for PreMintedTokenAuthService {
+    async fn get_installation_token_for_org(
+        &self,
+        _org_name: &str,
+    ) -> auth_handler::AuthResult<String> {
+        Ok(self.0.clone())
+    }
+}
+
 /// Build an `OrganizationSettingsManager` and `MetadataRepositoryProvider` from
 /// an already-constructed `GitHubClient`.
 ///
@@ -46,7 +63,7 @@ use repo_roller_core::{RepoRollerError, RepositoryNamingValidator};
 ///
 /// `client` is cloned once (cheap: shares the underlying connection pool) to
 /// satisfy both the metadata provider and the template repository.
-async fn create_settings_manager_from_client(
+fn create_settings_manager_from_client(
     client: GitHubClient,
     state: &AppState,
 ) -> Result<
@@ -71,14 +88,15 @@ async fn create_settings_manager_from_client(
 
 /// Create an OrganizationSettingsManager and MetadataRepositoryProvider for a request.
 ///
-/// Creates a GitHub client using the authentication token from the request context,
-/// then delegates to [`create_settings_manager_from_client`].
+/// Mints a GitHub App installation token for `org`, creates a GitHub client
+/// authenticated with that token, then delegates to
+/// [`create_settings_manager_from_client`].
 ///
 /// # Errors
 ///
-/// Returns `ApiError` if GitHub client creation fails.
+/// Returns `ApiError` if token minting or GitHub client creation fails.
 async fn create_settings_manager(
-    auth: &AuthContext,
+    org: &str,
     state: &AppState,
 ) -> Result<
     (
@@ -87,12 +105,13 @@ async fn create_settings_manager(
     ),
     ApiError,
 > {
-    let client =
-        github_client::create_github_client(&auth.token, state.github_api_base_url.as_deref())
-            .map_err(|e| {
-                ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e))
-            })?;
-    create_settings_manager_from_client(client, state).await
+    let installation_token = state.get_installation_token(org).await?;
+    let client = github_client::create_github_client(
+        &installation_token,
+        state.github_api_base_url.as_deref(),
+    )
+    .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
+    create_settings_manager_from_client(client, state)
 }
 
 /// Validate a repository name against GitHub naming rules.
@@ -138,12 +157,19 @@ pub async fn create_repository(
     let domain_request =
         http_create_repository_request_to_domain(request.clone(), actor_login.clone())?;
 
+    // Mint an installation token for the target organisation.
+    // Using the App credentials stored in AppState ensures repository creation
+    // runs with the App's permissions, not the caller's user token.
+    let installation_token = state.get_installation_token(&request.organization).await?;
+
     // Create GitHub client for template operations.
     // Use create_octocrab_client so that AppState::github_api_base_url is
     // respected, enabling mock-server injection in tests.
-    let github_octocrab =
-        github_client::create_octocrab_client(&auth.token, state.github_api_base_url.as_deref())
-            .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
+    let github_octocrab = github_client::create_octocrab_client(
+        &installation_token,
+        state.github_api_base_url.as_deref(),
+    )
+    .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
     // GitHubClient::new() takes Octocrab by value. The Arc is not used for
     // sharing here — github_client and environment_detector each hold their own
     // independent Octocrab instance (with separate connection pools), the same
@@ -156,10 +182,9 @@ pub async fn create_repository(
         config_manager::MetadataProviderConfig::explicit(&state.metadata_repository_name),
     ));
 
-    // Create authentication service that returns the installation token we already have
-    // The auth middleware has already validated this token with GitHub
-    let token = auth.token.clone();
-    let auth_service = TokenAuthService::new(token);
+    // Authentication service wraps the already-minted token so the domain
+    // layer can obtain it without a second GitHub API round-trip.
+    let auth_service = PreMintedTokenAuthService(installation_token.clone());
 
     // Create visibility providers
     let visibility_policy_provider = std::sync::Arc::new(
@@ -196,31 +221,6 @@ pub async fn create_repository(
     let http_response = domain_repository_creation_result_to_http(result, &request);
 
     Ok((axum::http::StatusCode::CREATED, Json(http_response)))
-}
-
-/// Simple auth service implementation that returns a pre-validated token.
-///
-/// This is used when the API layer has already validated the GitHub installation token
-/// via the auth middleware. We just need to provide it to the domain layer.
-struct TokenAuthService {
-    token: String,
-}
-
-impl TokenAuthService {
-    fn new(token: String) -> Self {
-        Self { token }
-    }
-}
-
-#[async_trait]
-impl auth_handler::UserAuthenticationService for TokenAuthService {
-    async fn get_installation_token_for_org(
-        &self,
-        _org: &str,
-    ) -> Result<String, auth_handler::AuthError> {
-        // Token is already validated by middleware, just return it
-        Ok(self.token.clone())
-    }
 }
 
 /// Load and apply organisation-level naming rules to `name`.
@@ -356,7 +356,7 @@ pub(crate) async fn check_repository_availability(
 /// See: specs/interfaces/api-request-types.md#validaterepositorynamerequest
 pub async fn validate_repository_name(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Json(request): Json<ValidateRepositoryNameRequest>,
 ) -> Result<Json<ValidateRepositoryNameResponse>, ApiError> {
     let mut messages = Vec::new();
@@ -395,12 +395,28 @@ pub async fn validate_repository_name(
     }
 
     // ── Build a single GitHub client for all subsequent API calls ─────────────
-    // One client is reused for both the org naming-rules check and the
-    // availability check, avoiding redundant HTTP connection-pool creation.
+    // An installation token is minted from the App credentials stored in AppState.
     // The base URL can be overridden via AppState::github_api_base_url (for
     // GitHub Enterprise deployments or mock servers in integration tests).
+    let installation_token = match state.get_installation_token(&request.organization).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(
+                org = %request.organization,
+                error = ?e,
+                "Failed to get installation token; skipping naming rules and availability check"
+            );
+            return Ok(Json(ValidateRepositoryNameResponse {
+                valid: true,
+                available: true,
+                messages: Some(vec!["Could not verify name availability with GitHub. \
+                     The name may already exist."
+                    .to_string()]),
+            }));
+        }
+    };
     let github_client = match github_client::create_github_client(
-        &auth.token,
+        &installation_token,
         state.github_api_base_url.as_deref(),
     ) {
         Ok(c) => c,
@@ -421,11 +437,14 @@ pub async fn validate_repository_name(
     };
 
     // ── Org naming rules (soft-fail) ──────────────────────────────────────────
-    match create_settings_manager_from_client(github_client.clone(), &state).await {
+    match create_settings_manager_from_client(github_client.clone(), &state) {
         Ok((_manager, provider)) => {
-            let naming_messages =
-                check_org_naming_rules(&request.name, &request.organization, provider.as_ref())
-                    .await;
+            let naming_messages = check_org_naming_rules(
+                &request.name,
+                &request.organization,
+                provider.as_ref() as &dyn MetadataRepositoryProvider,
+            )
+            .await;
             if !naming_messages.is_empty() {
                 valid = false;
                 messages.extend(naming_messages);
@@ -549,11 +568,11 @@ pub async fn validate_repository_request(
 /// See: specs/interfaces/api-request-types.md#listtemplatesrequest
 pub async fn list_templates(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<ListTemplatesParams>,
 ) -> Result<Json<ListTemplatesResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     // List templates using the metadata provider
     let template_names = provider.list_templates(&params.org).await.map_err(|e| {
@@ -610,11 +629,11 @@ pub async fn list_templates(
 /// See: specs/interfaces/api-request-types.md#gettemplatedetailsrequest
 pub async fn get_template_details(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<GetTemplateDetailsParams>,
 ) -> Result<Json<TemplateDetailsResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     // Load template configuration
     let config = provider
@@ -684,11 +703,11 @@ pub async fn get_template_details(
 /// See: specs/interfaces/api-request-types.md#validatetemplaterequest
 pub async fn validate_template(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<ValidateTemplateParams>,
 ) -> Result<Json<ValidateTemplateResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     // Try to load template configuration - if it fails, template is invalid
     match provider
@@ -752,11 +771,11 @@ pub async fn validate_template(
 /// See: specs/interfaces/api-request-types.md#listrepositorytypesrequest
 pub async fn list_repository_types(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<ListRepositoryTypesParams>,
 ) -> Result<Json<ListRepositoryTypesResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     // Discover metadata repository
     let metadata_repo = provider
@@ -794,11 +813,11 @@ pub async fn list_repository_types(
 /// See: specs/interfaces/api-request-types.md#getrepositorytypeconfigrequest
 pub async fn get_repository_type_config(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<GetRepositoryTypeConfigParams>,
 ) -> Result<Json<RepositoryTypeConfigResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     // Discover metadata repository
     let metadata_repo = provider
@@ -840,11 +859,11 @@ pub async fn get_repository_type_config(
 /// See: specs/interfaces/api-request-types.md#getglobaldefaultsrequest
 pub async fn get_global_defaults(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<GetGlobalDefaultsParams>,
 ) -> Result<Json<GlobalDefaultsResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     // Discover metadata repository
     let metadata_repo = provider
@@ -872,12 +891,12 @@ pub async fn get_global_defaults(
 /// See: specs/interfaces/api-request-types.md#previewconfigurationrequest
 pub async fn preview_configuration(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(org): Path<String>,
     Json(request): Json<PreviewConfigurationRequest>,
 ) -> Result<Json<PreviewConfigurationResponse>, ApiError> {
     // Create settings manager
-    let (manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (manager, provider) = create_settings_manager(&org, &state).await?;
 
     // Validate repository type exists before merging
     if let Some(ref repo_type) = request.repository_type {
@@ -973,11 +992,11 @@ pub async fn preview_configuration(
 /// See: specs/interfaces/api-request-types.md#validateorganizationrequest
 pub async fn validate_organization(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(params): Path<ValidateOrganizationParams>,
 ) -> Result<Json<ValidateOrganizationResponse>, ApiError> {
     // Create settings manager and provider
-    let (_manager, provider) = create_settings_manager(&auth, &state).await?;
+    let (_manager, provider) = create_settings_manager(&params.org, &state).await?;
 
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -1057,14 +1076,17 @@ pub async fn validate_organization(
 /// See: specs/interfaces/api-response-types.md#listteamsresponse
 pub async fn list_organization_teams(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    Extension(_auth): Extension<AuthContext>,
     Path(org): Path<String>,
 ) -> Result<Json<ListTeamsResponse>, ApiError> {
-    // Use create_github_client so AppState::github_api_base_url is respected,
-    // enabling mock-server injection in tests.
-    let github_client =
-        github_client::create_github_client(&auth.token, state.github_api_base_url.as_deref())
-            .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
+    // Mint an installation token and create the GitHub client.
+    // AppState::github_api_base_url is respected for Enterprise / test scenarios.
+    let installation_token = state.get_installation_token(&org).await?;
+    let github_client = github_client::create_github_client(
+        &installation_token,
+        state.github_api_base_url.as_deref(),
+    )
+    .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
 
     let teams = github_client
         .list_organization_teams(&org)
@@ -1085,6 +1107,82 @@ pub async fn list_organization_teams(
     Ok(Json(ListTeamsResponse {
         teams: team_summaries,
     }))
+}
+
+/// POST /api/v1/auth/token
+///
+/// Exchange a GitHub user token for a short-lived backend-signed JWT.
+///
+/// The frontend calls this endpoint once after the user authenticates with
+/// GitHub (via OAuth or PAT).  The backend validates the GitHub token against
+/// the GitHub API, resolves the user's GitHub login, and returns a signed JWT
+/// that can be presented as `Authorization: Bearer` on all subsequent requests.
+///
+/// This is the only endpoint that calls GitHub to validate a user token; all
+/// other protected endpoints validate the backend JWT locally.
+///
+/// # Responses
+///
+/// - `200 OK` — JWT issued successfully
+/// - `401 Unauthorized` — GitHub token is invalid or expired
+/// - `500 Internal Server Error` — JWT signing failure
+pub async fn exchange_github_token(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<TokenExchangeResponse>, crate::middleware::AuthError> {
+    use crate::middleware::{
+        extract_bearer_token, generate_backend_jwt, try_get_user_login, validate_github_token,
+        JWT_EXPIRY_SECS,
+    };
+    use secrecy::ExposeSecret;
+
+    // Extract the GitHub user token from the Authorization header.
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or(crate::middleware::AuthError::MissingToken)?;
+
+    let github_token = extract_bearer_token(auth_header)?;
+
+    // Validate the GitHub token \u2014 the one and only place we call GitHub for auth.
+    validate_github_token(&github_token).await?;
+
+    // Resolve the user's GitHub login (best-effort; falls back to "unknown").
+    //
+    // GET /user is not available for GitHub App installation tokens, which are
+    // not scoped to a user. Falling back to "unknown" preserves compatibility
+    // with installation-token callers while still issuing a valid JWT. For
+    // PAT/OAuth callers (the normal frontend path), GET /user succeeds because
+    // validate_github_token (GET /rate_limit) ran first and would have rejected
+    // any expired token, making a transient failure here very unlikely.
+    let user_login = try_get_user_login(&github_token)
+        .await
+        .unwrap_or_else(|| "unknown".to_string());
+
+    tracing::info!(user_login = %user_login, "Issuing backend JWT after GitHub token exchange");
+
+    // Sign a backend JWT.
+    let token = generate_backend_jwt(&user_login, state.jwt_secret.expose_secret())?;
+
+    Ok(Json(TokenExchangeResponse {
+        token,
+        token_type: "Bearer".to_string(),
+        expires_in: JWT_EXPIRY_SECS,
+    }))
+}
+
+/// Response body for `POST /api/v1/auth/token`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenExchangeResponse {
+    /// The backend-signed JWT to use as `Authorization: Bearer` on subsequent requests.
+    pub token: String,
+
+    /// Always `"Bearer"`.
+    pub token_type: String,
+
+    /// Lifetime of the token in seconds.
+    pub expires_in: u64,
 }
 
 /// GET /api/v1/health

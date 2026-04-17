@@ -33,6 +33,7 @@ export function makeSessionCookie(): Cookie {
     value: signSessionCookieValue({
       userLogin: 'test-user',
       userAvatarUrl: 'https://example.com/avatar.png',
+      backendToken: 'e2e-test-jwt',
     }),
     domain: 'localhost',
     path: '/',

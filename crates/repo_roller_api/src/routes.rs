@@ -113,13 +113,18 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Organization-specific routes
         .nest("/orgs/:org", organization_routes())
-        // Add auth middleware only to protected routes
-        .layer(middleware::from_fn(api_middleware::auth_middleware));
+        // Auth middleware reads jwt_secret from AppState; from_fn_with_state
+        // supplies the state to the middleware function.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            api_middleware::auth_middleware,
+        ));
 
     // API v1 routes (includes both protected and public routes)
     let api_v1 = Router::new()
         .merge(protected_routes)
-        // Health check (no auth required - added after auth middleware)
+        // Public routes (no authentication required)
+        .route("/auth/token", post(handlers::exchange_github_token))
         .route("/health", get(handlers::health_check))
         // Add remaining middleware layers
         .layer(middleware::from_fn(api_middleware::tracing_middleware))

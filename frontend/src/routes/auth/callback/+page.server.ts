@@ -88,8 +88,41 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
     redirect(302, '/auth/denied?reason=identity_failure');
   }
 
+  // Exchange the GitHub OAuth token for a short-lived backend JWT.
+  // The backend validates the GitHub token once and returns a signed JWT
+  // (ADR-009) that is used as the Bearer on all subsequent API requests.
+  //
+  // Note: BACKEND_API_URL must be set for the full OAuth login flow to work.
+  // Local development using the dev-login shortcut (/dev-login) is unaffected
+  // because it bypasses this code path entirely. Developers who need to test
+  // the complete OAuth+exchange flow locally must run the Rust API locally and
+  // set BACKEND_API_URL (e.g. http://localhost:3000) in their .env file.
+  let backendToken: string;
+  const backendUrl = env.BACKEND_API_URL?.replace(/\/$/, '');
+  if (!backendUrl) {
+    redirect(302, '/auth/denied?reason=configuration_error');
+  }
+  try {
+    const exchangeRes = await fetch(`${backendUrl}/api/v1/auth/token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!exchangeRes.ok) {
+      redirect(302, '/auth/denied?reason=token_exchange_failed');
+    }
+    const exchangeData = (await exchangeRes.json()) as Record<string, unknown>;
+    if (typeof exchangeData['token'] !== 'string' || !exchangeData['token']) {
+      redirect(302, '/auth/denied?reason=token_exchange_failed');
+    }
+    backendToken = exchangeData['token'];
+  } catch {
+    redirect(302, '/auth/denied?reason=network_error');
+  }
+
   // Establish signed session cookie. The HMAC prevents cookie forgery.
-  const session: Session = { userLogin, userAvatarUrl };
+  const session: Session = { userLogin, userAvatarUrl, backendToken };
   cookies.set('session', signSessionCookie(session), {
     path: '/',
     httpOnly: true,

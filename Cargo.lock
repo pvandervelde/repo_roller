@@ -162,6 +162,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "github_client",
+ "secrecy",
  "thiserror 2.0.17",
 ]
 
@@ -2635,9 +2636,11 @@ dependencies = [
  "github_client",
  "http-body-util",
  "hyper 1.7.0",
+ "jsonwebtoken",
  "octocrab",
  "prometheus",
  "repo_roller_core",
+ "secrecy",
  "serde",
  "serde_json",
  "template_engine",

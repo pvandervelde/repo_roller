@@ -45,9 +45,16 @@ Use **GitHub App with Installation Tokens** as primary authentication method:
 
 **Token Storage:**
 
-- Cloud deployment: Azure Key Vault
+- Cloud deployment: Azure Key Vault (target state; see migration note below)
 - CLI: System keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- Never in configuration files or environment variables
+- Never in configuration files
+
+> **Interim deployment note**: The initial cloud deployment loads
+> `GITHUB_APP_PRIVATE_KEY` from an environment variable injected by the
+> container orchestrator (not a config file). The key is immediately wrapped in
+> `secrecy::SecretString` and zeroed on drop. Migration to Azure Key Vault
+> is tracked as a follow-up hardening task. The same interim approach applies
+> to `JWT_SECRET` (see ADR-009).
 
 **Secondary method (CLI only):**
 Personal Access Token (PAT) supported for users who cannot install GitHub App.

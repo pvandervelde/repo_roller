@@ -69,9 +69,7 @@ async fn test_validate_repository_name_valid() {
     let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new(
-                    "test-token-123".to_string(),
-                ));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -128,9 +126,7 @@ async fn test_validate_repository_name_invalid() {
     let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new(
-                    "test-token-123".to_string(),
-                ));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -173,9 +169,7 @@ async fn test_validate_repository_name_empty() {
     let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new(
-                    "test-token-123".to_string(),
-                ));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -714,12 +708,14 @@ async fn test_validate_repository_name_returns_available_false_when_repo_exists(
         .await;
 
     // Point the handler's GitHub client at the mock server.
-    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let state = AppState::default()
+        .with_github_api_base_url(mock_server.uri())
+        .with_mock_installation_token("x");
 
     let app = create_router_without_auth(state).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new("x".to_string()));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -770,9 +766,7 @@ async fn test_validate_repository_name_empty_org_returns_invalid() {
     let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new(
-                    "test-token-123".to_string(),
-                ));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -814,12 +808,9 @@ async fn test_validate_repository_name_empty_org_returns_invalid() {
 
 /// Verify that GET /api/v1/orgs/:org/teams is routed correctly.
 ///
-/// The handler requires a real GitHub token to call the GitHub API.  With the
-/// no-auth test router we inject a thin fake `AuthContext` to get past the
-/// extension extraction, and the handler will attempt (and fail) the GitHub
-/// API call because the token is not a valid installation token.
-/// That results in a 500 from `create_token_client` / the octocrab client
-/// rather than a 404 (which would mean the route is missing).
+/// The handler mints a GitHub App installation token from AppState. With the
+/// default test AppState (app_id=0, empty key) the minting call will fail,
+/// resulting in a 500 rather than a 404 (which would mean the route is missing).
 ///
 /// This test therefore verifies route wiring without needing a live GitHub
 /// connection.
@@ -830,9 +821,7 @@ async fn test_list_organization_teams_route_is_registered() {
     let app = create_router_without_auth(test_app_state()).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new(
-                    "test-token".to_string(),
-                ));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -1162,11 +1151,13 @@ async fn test_preview_configuration_returns_merged_config_with_sources() {
     let mock_server = MockServer::start().await;
     mount_resolve_mocks(&mock_server, "testorg", "rust-service").await;
 
-    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let state = AppState::default()
+        .with_github_api_base_url(mock_server.uri())
+        .with_mock_installation_token("x");
     let app = create_router_without_auth(state).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new("x".to_string()));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -1262,11 +1253,13 @@ async fn test_preview_configuration_template_not_found_returns_404() {
         .mount(&mock_server)
         .await;
 
-    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let state = AppState::default()
+        .with_github_api_base_url(mock_server.uri())
+        .with_mock_installation_token("x");
     let app = create_router_without_auth(state).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new("x".to_string()));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));
@@ -1305,11 +1298,13 @@ async fn test_preview_configuration_unknown_repository_type_returns_400() {
     // `types/nonexistent/config.toml` is intentionally NOT mocked; wiremock
     // returns 404 by default, which the provider converts to Ok(None).
 
-    let state = AppState::default().with_github_api_base_url(mock_server.uri());
+    let state = AppState::default()
+        .with_github_api_base_url(mock_server.uri())
+        .with_mock_installation_token("x");
     let app = create_router_without_auth(state).layer(middleware::from_fn(
         |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
             req.extensions_mut()
-                .insert(crate::middleware::AuthContext::new("x".to_string()));
+                .insert(crate::middleware::AuthContext::new());
             next.run(req).await
         },
     ));

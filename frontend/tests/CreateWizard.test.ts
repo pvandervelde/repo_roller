@@ -52,7 +52,7 @@ function makeProps() {
   return {
     data: {
       brandConfig,
-      session: { userLogin: 'jdoe', userAvatarUrl: null },
+      session: { userLogin: 'jdoe', userAvatarUrl: null, backendToken: 'test-jwt' },
       userLogin: 'jdoe',
       organization: 'test-org',
     },
