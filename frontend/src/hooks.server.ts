@@ -15,7 +15,9 @@ export const handle: Handle = async ({ event, resolve }) => {
       parsed !== null &&
       typeof parsed === 'object' &&
       'userLogin' in (parsed as object) &&
-      typeof (parsed as Session).userLogin === 'string'
+      typeof (parsed as Session).userLogin === 'string' &&
+      typeof (parsed as Session).backendToken === 'string' &&
+      (parsed as Session).backendToken.length > 0
     ) {
       event.locals.session = parsed as Session;
     } else {

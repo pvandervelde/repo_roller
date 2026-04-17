@@ -15,6 +15,7 @@ const brandConfig = {
 const session = {
   userLogin: 'alice',
   userAvatarUrl: 'https://example.com/avatar.png',
+  backendToken: 'test-jwt',
 };
 
 function makeProps(reason: ErrorReason, hasSession = true) {

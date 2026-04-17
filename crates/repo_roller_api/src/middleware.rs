@@ -85,10 +85,15 @@ pub(crate) fn generate_backend_jwt(user_login: &str, secret: &str) -> Result<Str
 /// Rejects tokens with invalid signatures, expired timestamps, or wrong
 /// algorithm.  Uses HS256 with the provided secret bytes.
 fn validate_backend_jwt(token: &str, secret: &str) -> Result<Claims, AuthError> {
+    // Use 30-second leeway to tolerate minor clock drift between the issuing
+    // server and the validating server without meaningfully extending the
+    // effective 8-hour session window.
+    let mut validation = Validation::default();
+    validation.leeway = 30;
     jsonwebtoken::decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     )
     .map(|data| data.claims)
     .map_err(|e| match e.kind() {
