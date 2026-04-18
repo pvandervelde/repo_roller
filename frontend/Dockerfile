@@ -34,7 +34,7 @@ FROM node:24-slim AS runtime
 
 # Run as a non-root user for security hardening.
 RUN addgroup --system --gid 1001 nodejs \
- && adduser --system --uid 1001 --ingroup nodejs nodeuser
+    && adduser --system --uid 1001 --ingroup nodejs nodeuser
 
 WORKDIR /app
 

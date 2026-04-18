@@ -27,9 +27,14 @@ memory-bank/
 # Ignore the test config file
 config.toml
 
+# Local secrets — never commit
+.env
+examples/local-stack/.env
+
 .llm/
 lcov.info
 .aider*
 
 # Ignore the review files
 reviews/
+examples/local-stack/.env.local

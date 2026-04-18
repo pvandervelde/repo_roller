@@ -21,10 +21,18 @@ This guide explains how to configure RepoRoller using the hierarchical configura
 - [Permission Audit Logging](#permission-audit-logging)
 - [Override Controls](#override-controls)
 - [Examples](#examples)
-- [Web Frontend Deployment](#web-frontend-deployment)
-  - [Branding Configuration](#branding-configuration)
-  - [GitHub OAuth App Setup](#github-oauth-app-setup)
+- [Deployment](#deployment)
+  - [Architecture Overview](#architecture-overview)
+  - [Prerequisites](#prerequisites)
+    - [1. Metadata Repository](#1-metadata-repository)
+    - [2. GitHub App (backend)](#2-github-app-backend)
+    - [3. GitHub OAuth App (frontend)](#3-github-oauth-app-frontend)
+    - [4. Generate Secrets](#4-generate-secrets)
+  - [Environment Variable Reference](#environment-variable-reference)
+    - [Backend (Rust API)](#backend-rust-api)
+    - [Frontend (SvelteKit)](#frontend-sveltekit)
   - [Docker Deployment](#docker-deployment)
+  - [Branding Configuration](#branding-configuration)
 
 ## Overview
 
@@ -870,33 +878,292 @@ required_checks = [
 
 ---
 
-## Web Frontend Deployment
+## Deployment
 
-The RepoRoller web frontend is a SvelteKit application compiled to a standalone Node.js server
-using `@sveltejs/adapter-node`. It can be deployed as a Docker container alongside the Rust API
-server.
+RepoRoller runs as **two containers** that must be deployed together and able to reach each
+other over a private network:
+
+| Container | Image source | Default port | Role |
+|-----------|-------------|--------------|------|
+| **backend** | `crates/repo_roller_api/Dockerfile` (built from repo root) | `8080` | Rust API — creates repositories, reads metadata, mints JWTs |
+| **frontend** | `frontend/Dockerfile` | `3000` | SvelteKit Node server — browser UI, GitHub OAuth, proxies API calls |
+
+Only the **frontend** port needs to be reachable from end-users' browsers. The backend port
+should be reachable only from the frontend container (private network / service-to-service
+traffic). Do **not** expose the backend API directly to the internet if you can avoid it —
+it relies on backend-signed JWTs for authentication, not on network isolation, but reducing
+the attack surface is good practice.
+
+### Architecture Overview
+
+```
+                Browser
+                   │
+              port 3000
+                   │
+         ┌─────────▼──────────┐
+         │  frontend container │  (SvelteKit Node)
+         │                     │
+         │  • GitHub OAuth flow│
+         │  • Signs session    │
+         │    cookie (SESSION_ │
+         │    SECRET)          │
+         │  • Proxies /api/v1/*│
+         │    with backend JWT │
+         └────────┬────────────┘
+                  │ http://backend:8080  (internal only)
+             port 8080
+                  │
+         ┌────────▼────────────┐
+         │  backend container  │  (Rust / Axum)
+         │                     │
+         │  • POST /auth/token │ ◀── exchanges GitHub OAuth token for
+         │    → issues JWT       │     a short-lived backend JWT (JWT_SECRET)
+         │  • Protected /api/  │
+         │    v1/* endpoints   │
+         │  • Reads metadata   │
+         │    repo from GitHub │
+         │  • Creates repos    │
+         │    via GitHub App   │
+         │    (GITHUB_APP_ID + │
+         │    PRIVATE_KEY)     │
+         └─────────────────────┘
+                  │
+          GitHub API (api.github.com)
+```
+
+**Authentication chain (one login session):**
+
+1. User visits the frontend and clicks **Sign in with GitHub**.
+2. Frontend redirects to GitHub OAuth (`GITHUB_CLIENT_ID`).
+3. GitHub redirects back to `/auth/callback` with an authorization code.
+4. Frontend exchanges the code for a **GitHub user token** (using `GITHUB_CLIENT_SECRET`).
+5. Frontend calls `POST /api/v1/auth/token` on the backend, sending the GitHub user token.
+6. Backend validates the GitHub token once, then issues a short-lived **backend JWT** signed
+   with `JWT_SECRET` (8-hour TTL).
+7. Frontend stores the backend JWT inside a HMAC-signed session cookie (`SESSION_SECRET`).
+8. All subsequent API calls from the frontend carry the backend JWT as `Authorization: Bearer`.
+   The backend verifies it locally — no GitHub API call per request.
+
+---
+
+### Prerequisites
+
+Before starting a container, you need three things set up in GitHub and four secrets generated
+locally.
+
+#### 1. Metadata Repository
+
+Create a repository named `.reporoller` (or a custom name passed as
+`METADATA_REPOSITORY_NAME`) inside your GitHub organization. This holds the hierarchical
+configuration that controls repository creation defaults. See the
+[Configuration Files](#configuration-files) section for the expected directory structure.
+
+The GitHub App (step 2) must have read access to this repository.
+
+#### 2. GitHub App (backend)
+
+The backend uses a **GitHub App** to create repositories and read organization settings. The
+App acts as a service identity for the tool — its actions appear in audit logs as the App,
+not as a user.
+
+**Create the App:**
+
+1. Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
+   (or your organization settings page for an org-owned App).
+2. Fill in the registration form:
+   - **GitHub App name**: `RepoRoller` (must be unique on GitHub)
+   - **Homepage URL**: your deployment URL or the repo URL
+   - **Webhook**: uncheck *Active* — RepoRoller does not receive webhooks
+3. Under **Repository permissions**, grant:
+
+   | Permission | Access |
+   |---|---|
+   | Administration | Read & write |
+   | Contents | Read & write |
+   | Metadata | Read-only |
+   | Pull requests | Read & write |
+
+4. Under **Organization permissions**, grant:
+
+   | Permission | Access |
+   |---|---|
+   | Members | Read-only |
+
+5. Set **Where can this GitHub App be installed?** to *Only on this account* (unless you
+   plan to offer the tool across multiple organizations).
+6. Click **Create GitHub App**.
+7. Note the **App ID** shown at the top of the App settings page — this is `GITHUB_APP_ID`.
+8. Scroll to **Private keys** and click **Generate a private key**. Save the downloaded
+   `.pem` file — this is `GITHUB_APP_PRIVATE_KEY`.
+9. On the App's settings page click **Install App** and install it into your organization,
+   granting access to **All repositories** (or at minimum the metadata repository and any
+   repositories the tool will create).
+
+**Convert the private key to an environment variable:**
+
+The PEM file contains literal newlines. To pass it as a single-line environment variable,
+collapse the newlines to `\n`:
+
+```bash
+# macOS / Linux
+awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' your-app.private-key.pem
+
+# PowerShell (Windows)
+(Get-Content your-app.private-key.pem -Raw) -replace "`r`n","`n" -replace "`n","\\n"
+```
+
+Use the resulting single-line string as the value of `GITHUB_APP_PRIVATE_KEY`.
+
+> **Security**: The private key is equivalent to a password for your GitHub App. Store it in
+> a secrets manager (e.g. Azure Key Vault, AWS Secrets Manager, HashiCorp Vault) rather than
+> in plain `.env` files in production. Never commit it to source control.
+
+#### 3. GitHub OAuth App (frontend)
+
+The frontend uses a separate **GitHub OAuth App** to authenticate end-users in the browser.
+This is distinct from the GitHub App above.
+
+1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App** (or your
+   organization's equivalent path).
+2. Fill in the form:
+   - **Application name**: `RepoRoller` (or your branded name)
+   - **Homepage URL**: your public frontend URL, e.g. `https://reporoller.acme.example`
+   - **Authorization callback URL**: `<ORIGIN>/auth/callback`
+     e.g. `https://reporoller.acme.example/auth/callback`
+     For local testing: `http://localhost:3000/auth/callback`
+3. Click **Register application**.
+4. Copy the **Client ID** → `GITHUB_CLIENT_ID`.
+5. Click **Generate a new client secret** → `GITHUB_CLIENT_SECRET`.
+
+> **Note**: The OAuth App's callback URL must **exactly** match the `ORIGIN` environment
+> variable you set on the frontend container. A mismatch causes GitHub to reject the OAuth
+> callback with an error.
+
+#### 4. Generate Secrets
+
+Two random secrets are required. Generate them with Node.js or openssl:
+
+```bash
+# Node.js
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+
+# openssl
+openssl rand -hex 48
+```
+
+Run the command **twice** to produce two independent values:
+
+- `SESSION_SECRET` — signs the browser session cookie (frontend)
+- `JWT_SECRET` — signs backend-issued authentication tokens (backend)
+
+These must be kept separate. Treat both as passwords.
+
+---
+
+### Environment Variable Reference
+
+#### Backend (Rust API)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GITHUB_APP_ID` | ✅ | — | Numeric App ID from the GitHub App settings page |
+| `GITHUB_APP_PRIVATE_KEY` | ✅ | — | PEM private key (single-line, `\n`-escaped) |
+| `JWT_SECRET` | ✅ | — | HS256 signing key for backend-issued JWTs. Min 32 chars. |
+| `METADATA_REPOSITORY_NAME` | | `.reporoller` | Name of the config repository in your GitHub org |
+| `API_HOST` | | `0.0.0.0` | Interface to bind to |
+| `API_PORT` | | `8080` | Port to listen on |
+| `RUST_LOG` | | `info` | Log level: `error`, `warn`, `info`, `debug`, `trace` |
+
+#### Frontend (SvelteKit)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GITHUB_CLIENT_ID` | ✅ | — | OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | ✅ | — | OAuth App client secret |
+| `GITHUB_ORG` | ✅ | — | GitHub organization slug (e.g. `acme-corp`) |
+| `ORIGIN` | ✅ | — | Public URL of the frontend, e.g. `https://reporoller.acme.example`. Must match the OAuth App callback URL base. Required by SvelteKit for CSRF protection. |
+| `SESSION_SECRET` | ✅ | — | HMAC-SHA256 key for signing session cookies. Min 32 chars. |
+| `BACKEND_API_URL` | ✅ | — | Base URL of the backend container, e.g. `http://backend:8080`. Must be reachable from the frontend container. |
+| `NODE_ENV` | | `production` | Set to `production` for container deployments |
+| `BRAND_APP_NAME` | | `RepoRoller` | Application name shown in the header and page title |
+| `BRAND_LOGO_URL` | | *(none)* | URL for the light-mode logo image |
+| `BRAND_LOGO_URL_DARK` | | *(none)* | URL for the dark-mode logo (requires `BRAND_LOGO_URL`) |
+| `BRAND_LOGO_ALT` | | `<name> logo` | Alt text for the logo image |
+| `BRAND_PRIMARY_COLOR` | | `#0969da` | CSS accent colour (hex, rgb, etc.) |
+| `BRAND_PRIMARY_COLOR_DARK` | | *(none)* | Accent colour override for dark mode |
+
+---
+
+### Docker Deployment
+
+A ready-to-use Docker Compose file is provided at
+[`examples/local-stack/docker-compose.yml`](../examples/local-stack/docker-compose.yml)
+alongside an annotated [`.env.example`](../examples/local-stack/.env.example).
+
+#### Quick start
+
+```bash
+cd examples/local-stack
+cp .env.example .env
+# Fill in all required values in .env (see Environment Variable Reference above)
+docker compose up --build
+```
+
+The frontend will be available at `http://localhost:3000`. Sign in with GitHub to start
+creating repositories.
+
+#### Building images individually
+
+```bash
+# Build from the repository root
+docker build -t repo-roller-api -f crates/repo_roller_api/Dockerfile .
+docker build -t repo-roller-frontend frontend/
+```
+
+#### Networking
+
+When running both containers on the same Docker network (as in the Compose file), use the
+service name as the hostname in `BACKEND_API_URL`:
+
+```
+BACKEND_API_URL=http://backend:8080
+```
+
+When deploying to a managed container platform (e.g. Azure Container Apps, AWS ECS, Fly.io),
+set `BACKEND_API_URL` to the **internal** service URL provided by the platform. The backend
+should not be reachable via a public hostname.
+
+#### Health check
+
+The backend exposes a health check endpoint. Docker and orchestrators can use it to determine
+when the container is ready:
+
+```
+GET /health  →  200 OK
+```
+
+The Compose file configures this automatically. When deploying manually:
+
+```bash
+# Liveness probe
+curl -f http://localhost:8080/health
+```
+
+The frontend `depends_on` the backend's health check passing before it starts, ensuring the
+backend is ready to accept the token-exchange request during the first login.
+
+---
 
 ### Branding Configuration
 
 The frontend supports custom branding through two mechanisms (highest priority first):
 
-1. **Environment variables** — set at container startup time
-2. **`brand.toml`** — a TOML config file in the server's working directory
+1. **Environment variables** — set at container startup time (see table above)
+2. **`brand.toml`** — a TOML config file mounted into the container
 
 > **Security**: `brand.toml` must **not** be placed inside `frontend/static/`. It is a
-> server-side file that is never served to browsers. Place it next to the built server
-> (e.g. `/app/brand.toml` inside the container, or mount it as a volume).
-
-#### Branding Environment Variables
-
-| Variable                 | Description                                                      | Default        |
-|--------------------------|------------------------------------------------------------------|----------------|
-| `BRAND_APP_NAME`         | Application name in the header and page title                    | `RepoRoller`   |
-| `BRAND_LOGO_URL`         | URL for the light-mode logo image                                | *(none)*       |
-| `BRAND_LOGO_URL_DARK`    | URL for the dark-mode logo (requires `BRAND_LOGO_URL`)           | *(none)*       |
-| `BRAND_LOGO_ALT`         | Alt text for the logo image                                      | `<name> logo`  |
-| `BRAND_PRIMARY_COLOR`    | CSS accent colour (hex, rgb, etc.)                               | `#0969da`      |
-| `BRAND_PRIMARY_COLOR_DARK` | Accent colour override for dark mode                           | *(none)*       |
+> server-side file that is never served to browsers. Mount it as a volume at `/app/brand.toml`.
 
 #### `brand.toml` Example
 
@@ -910,134 +1177,16 @@ logo_alt = "Acme logo"
 primary_color = "#e63946"
 ```
 
----
-
-### GitHub OAuth App Setup
-
-The frontend uses GitHub's OAuth flow for user authentication. You must create a GitHub OAuth
-App in your organization before deploying.
-
-#### Steps
-
-1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App** (or your
-   organization's equivalent path).
-2. Fill in the form:
-   - **Application name**: `RepoRoller` (or your branded name)
-   - **Homepage URL**: your public URL, e.g. `https://reporoller.acme.example`
-   - **Authorization callback URL**: `https://reporoller.acme.example/auth/callback`
-3. Click **Register application**.
-4. Copy the **Client ID** and generate a **Client secret**.
-5. Set the following environment variables when running the frontend container:
-
-| Variable               | Description                                           |
-|------------------------|-------------------------------------------------------|
-| `GITHUB_CLIENT_ID`     | OAuth App client ID (from step 4)                     |
-| `GITHUB_CLIENT_SECRET` | OAuth App client secret — treat as a password         |
-| `GITHUB_ORG`           | GitHub organization slug (e.g. `acme`)                |
-| `ORIGIN`               | Public URL of the frontend, e.g. `https://reporoller.acme.example` — required by the SvelteKit Node adapter for CSRF protection |
-
-> **Security**: `GITHUB_CLIENT_SECRET` is sensitive. Pass it via a secrets manager or
-> `--env-file` rather than embedding it in container images or Docker Compose files
-> committed to source control.
-
----
-
-### Docker Deployment
-
-The frontend ships with a multi-stage `Dockerfile` at `frontend/Dockerfile`.
-
-#### Build and run
-
-```bash
-# Build the image from the frontend directory
-docker build -t repo-roller-frontend frontend/
-
-# Run with the required environment variables
-docker run -d \
-  --name repo-roller-frontend \
-  -p 3000:3000 \
-  -e GITHUB_CLIENT_ID=Iv1.abc123 \
-  -e GITHUB_CLIENT_SECRET=<secret> \
-  -e GITHUB_ORG=my-org \
-  -e ORIGIN=https://reporoller.example.com \
-  -e BRAND_APP_NAME="My RepoRoller" \
-  repo-roller-frontend
-```
-
-To use `brand.toml` instead of individual environment variables, mount it as a volume at
-`/app/brand.toml`:
+Mount it when running the container:
 
 ```bash
 docker run -d \
   --name repo-roller-frontend \
   -p 3000:3000 \
-  -e GITHUB_CLIENT_ID=Iv1.abc123 \
-  -e GITHUB_CLIENT_SECRET=<secret> \
-  -e GITHUB_ORG=my-org \
-  -e ORIGIN=https://reporoller.example.com \
+  # ... other env vars ...
   -v /etc/reporoller/brand.toml:/app/brand.toml:ro \
   repo-roller-frontend
 ```
-
-#### Docker Compose example
-
-```yaml
-services:
-  backend:
-    image: repo-roller-api:latest
-    ports:
-      - "8080:8080"
-    environment:
-      # FRONTEND_ORIGIN must match the public URL of the frontend service
-      # so the backend's CORS policy allows cross-origin requests.
-      FRONTEND_ORIGIN: ${ORIGIN}
-      METADATA_REPOSITORY_NAME: ${METADATA_REPOSITORY_NAME:-.reporoller}
-      RUST_LOG: info
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
-      GITHUB_ORG: ${GITHUB_ORG}
-      ORIGIN: ${ORIGIN}
-      BRAND_APP_NAME: ${BRAND_APP_NAME:-RepoRoller}
-      # SESSION_SECRET is used to sign session cookies. Must be at least
-      # 32 characters. Generate with: openssl rand -hex 32
-      SESSION_SECRET: ${SESSION_SECRET}
-      # BACKEND_API_URL points to the backend service defined above.
-      BACKEND_API_URL: http://backend:8080
-      # BACKEND_API_TOKEN is the GitHub token the frontend server uses when
-      # calling the backend on behalf of users. The backend validates it
-      # against the GitHub API, so it must be a valid GitHub App installation
-      # token or a PAT with the required scopes — not a random string.
-      BACKEND_API_TOKEN: ${BACKEND_API_TOKEN}
-    volumes:
-      - /etc/reporoller/brand.toml:/app/brand.toml:ro
-    restart: unless-stopped
-    depends_on:
-      - backend
-```
-
-> **Note:** `SESSION_SECRET` must be at least 32 characters. The frontend
-> validates this at sign-in time — a missing or short value will cause 500
-> errors on every OAuth callback and every auth-guarded route. Generate a
-> suitable value with `openssl rand -hex 32`.
->
-> `BACKEND_API_TOKEN` must be a **GitHub App installation token or PAT** —
-> the backend middleware validates it against the GitHub API. A random string
-> will be rejected by GitHub with a 401, causing every API call from the
-> frontend to fail.
->
-> Keep all secrets in your `.env` file, which must not be committed to source
-> control.
-
-Use a `.env` file (not committed to source control) to supply all secret values locally.
 
 ## Best Practices
 
