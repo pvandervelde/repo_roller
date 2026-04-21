@@ -1148,6 +1148,8 @@ The Compose file configures this automatically. When deploying manually:
 ```bash
 # Liveness probe
 curl -f http://localhost:8080/health
+# or with wget (available in the backend container)
+wget --no-verbose --tries=1 --spider http://localhost:8080/health
 ```
 
 The frontend `depends_on` the backend's health check passing before it starts, ensuring the
