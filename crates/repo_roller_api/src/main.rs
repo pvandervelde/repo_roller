@@ -195,8 +195,12 @@ async fn main() -> anyhow::Result<()> {
         .expect("GITHUB_APP_ID must be a valid number");
 
     // GITHUB_APP_PRIVATE_KEY is a secret — never log its value.
+    // Normalize literal \n sequences to real newlines so the key works whether
+    // it was stored with escaped newlines (common in env files and CI secrets)
+    // or with real newlines (common when read directly from a .pem file).
     let github_app_private_key = env::var("GITHUB_APP_PRIVATE_KEY")
-        .expect("GITHUB_APP_PRIVATE_KEY environment variable is required");
+        .expect("GITHUB_APP_PRIVATE_KEY environment variable is required")
+        .replace("\\n", "\n");
 
     // JWT_SECRET signs backend-issued JWTs — never log its value.
     let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET environment variable is required");

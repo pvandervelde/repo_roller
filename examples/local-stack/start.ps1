@@ -62,7 +62,7 @@ try
         Write-Host ''
         Write-Host "ACTION REQUIRED: open $EnvFile and fill in these variables:" -ForegroundColor Yellow
         Write-Host '  GITHUB_APP_ID            Numeric App ID from your GitHub App settings page' -ForegroundColor Yellow
-        Write-Host '  GITHUB_APP_PRIVATE_KEY   Full PEM private key (collapse newlines to \n first)' -ForegroundColor Yellow
+        Write-Host '  GITHUB_APP_PRIVATE_KEY   Full PEM private key (keep newlines, or collapse to \n)' -ForegroundColor Yellow
         Write-Host '  GITHUB_CLIENT_ID         OAuth App client ID' -ForegroundColor Yellow
         Write-Host '  GITHUB_CLIENT_SECRET     OAuth App client secret' -ForegroundColor Yellow
         Write-Host '  GITHUB_ORG               Your GitHub organization slug (e.g. acme-corp)' -ForegroundColor Yellow
