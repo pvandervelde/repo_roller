@@ -10,7 +10,7 @@
 #   # Fill in all required values in .env
 #   docker compose up --build
 #
-# The frontend will be available at http://localhost:3000
+# The frontend will be available at http://localhost:3001
 # The backend API will be available at http://localhost:8080
 
 services:
@@ -40,7 +40,7 @@ services:
 
       # CORS — must match the public URL of the frontend so the browser is
       # allowed to make cross-origin requests to the backend API.
-      FRONTEND_ORIGIN: "${ORIGIN:-http://localhost:3000}"
+      FRONTEND_ORIGIN: "${ORIGIN:-http://localhost:3001}"
     restart: unless-stopped
     healthcheck:
       # The backend exposes GET /api/v1/health — use wget (available in debian:slim)
@@ -56,7 +56,7 @@ services:
       context: ../../frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       NODE_ENV: production
 
@@ -69,8 +69,8 @@ services:
 
       # Public URL of the frontend. Required by SvelteKit for CSRF protection
       # and for OAuth redirect URL construction.
-      # For local testing: http://localhost:3000
-      ORIGIN: "${ORIGIN:-http://localhost:3000}"
+      # For local testing: http://localhost:3001
+      ORIGIN: "${ORIGIN:-http://localhost:3001}"
 
       # HMAC secret used to sign session cookies.
       # Must be at least 32 characters. Rotate to invalidate all live sessions.

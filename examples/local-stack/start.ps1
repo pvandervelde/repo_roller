@@ -195,7 +195,7 @@ try
 
     Write-Host ''
     Write-Host 'Starting RepoRoller stack...' -ForegroundColor Cyan
-    Write-Host '  Frontend : http://localhost:3000' -ForegroundColor Cyan
+    Write-Host '  Frontend : http://localhost:3001' -ForegroundColor Cyan
     Write-Host '  Backend  : http://localhost:8080/health' -ForegroundColor Cyan
     Write-Host ''
 
