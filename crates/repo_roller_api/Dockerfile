@@ -26,11 +26,13 @@ RUN cargo build --release --package repo_roller_api
 # Stage 2: Runtime
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
 
-# Install runtime dependencies (OpenSSL for HTTPS, git for template cloning)
+# Install runtime dependencies (OpenSSL for HTTPS, git for template cloning,
+# wget for the Docker health check probe against GET /health)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     git \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
