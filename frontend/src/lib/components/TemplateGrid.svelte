@@ -47,16 +47,18 @@
 </script>
 
 <div class="template-grid">
-  <div class="template-grid__search">
-    <label for="template-search" class="template-grid__search-label">Search templates</label>
-    <input
-      id="template-search"
-      type="search"
-      class="template-grid__search-input"
-      placeholder="Search templates"
-      bind:value={searchQuery}
-    />
-  </div>
+  {#if !loading}
+    <div class="template-grid__search">
+      <label for="template-search" class="template-grid__search-label">Search templates</label>
+      <input
+        id="template-search"
+        type="search"
+        class="template-grid__search-input"
+        placeholder="Search templates"
+        bind:value={searchQuery}
+      />
+    </div>
+  {/if}
 
   {#if error}
     <InlineAlert
@@ -65,8 +67,9 @@
       action={{ label: 'Try again', onClick: () => onretry?.() }}
     />
   {:else if loading}
+    <p role="status" aria-live="polite" class="template-grid__loading-status">Loading templates…</p>
     <div class="template-grid__cards template-grid__cards--loading">
-      {#each [0, 1, 2] as _}
+      {#each [0, 1, 2, 3, 4, 5, 6, 7] as _}
         <TemplateCard name="" description="" selected={false} loading={true} />
       {/each}
     </div>
@@ -145,5 +148,13 @@
     color: var(--color-text-muted);
     text-align: center;
     padding: 2rem 1rem;
+  }
+
+  .template-grid__loading-status {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    text-align: center;
+    padding: 0.25rem 0;
+    margin: 0;
   }
 </style>
