@@ -1035,3 +1035,27 @@ async fn test_error_missing_configuration_file_clear() {
     );
     assert!(err_msg.contains("missing") || err_msg.contains("exists but"));
 }
+
+// ============================================================================
+// Keyring Constant Tests
+// ============================================================================
+
+/// Verify that template_cmd uses the canonical keyring constants from auth_cmd.
+///
+/// Credentials are stored by `auth github` using auth_cmd's service name and key names.
+/// If template_cmd uses different values, keyring lookups silently fail at runtime.
+#[test]
+fn test_keyring_constants_match_auth_cmd_canonical_values() {
+    assert_eq!(
+        KEY_RING_SERVICE_NAME, "repo_roller_cli",
+        "service name must match auth_cmd so credentials saved by 'auth github' are found"
+    );
+    assert_eq!(
+        KEY_RING_APP_ID, "github_app_id",
+        "app ID key must match auth_cmd"
+    );
+    assert_eq!(
+        KEY_RING_APP_PRIVATE_KEY_PATH, "github_private_key_path",
+        "private key path key must match auth_cmd so the correct keyring entry is read"
+    );
+}
