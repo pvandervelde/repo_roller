@@ -1031,7 +1031,7 @@ This is distinct from the GitHub App above.
    - **Homepage URL**: your public frontend URL, e.g. `https://reporoller.acme.example`
    - **Authorization callback URL**: `<ORIGIN>/auth/callback`
      e.g. `https://reporoller.acme.example/auth/callback`
-     For local testing: `http://localhost:3000/auth/callback`
+     For local testing: `http://localhost:3001/auth/callback`
 3. Click **Register application**.
 4. Copy the **Client ID** → `GITHUB_CLIENT_ID`.
 5. Click **Generate a new client secret** → `GITHUB_CLIENT_SECRET`.
@@ -1110,7 +1110,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The frontend will be available at `http://localhost:3000`. Sign in with GitHub to start
+The frontend will be available at `http://localhost:3001`. Sign in with GitHub to start
 creating repositories.
 
 #### Building images individually
@@ -1140,16 +1140,16 @@ The backend exposes a health check endpoint. Docker and orchestrators can use it
 when the container is ready:
 
 ```
-GET /health  →  200 OK
+GET /api/v1/health  →  200 OK
 ```
 
 The Compose file configures this automatically. When deploying manually:
 
 ```bash
 # Liveness probe
-curl -f http://localhost:8080/health
+curl -f http://localhost:8080/api/v1/health
 # or with wget (available in the backend container)
-wget --no-verbose --tries=1 --spider http://localhost:8080/health
+wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/health
 ```
 
 The frontend `depends_on` the backend's health check passing before it starts, ensuring the
