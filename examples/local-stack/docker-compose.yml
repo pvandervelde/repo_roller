@@ -1,0 +1,89 @@
+# Docker Compose configuration for running RepoRoller locally against a real GitHub org.
+#
+# Prerequisites:
+#   1. A GitHub App installed on your org (provides GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY)
+#   2. A GitHub OAuth App registered for the frontend (provides GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET)
+#   3. A metadata repository (default name: .reporoller) in your org
+#
+# Quick start:
+#   cp .env.example .env
+#   # Fill in all required values in .env
+#   docker compose up --build
+#
+# The frontend will be available at http://localhost:3001
+# The backend API will be available at http://localhost:8081
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: crates/repo_roller_api/Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      # Server bind configuration
+      API_HOST: "0.0.0.0"
+      API_PORT: "8080"
+      RUST_LOG: "${RUST_LOG:-info}"
+
+      # Metadata repository in the GitHub org containing RepoRoller config
+      METADATA_REPOSITORY_NAME: "${METADATA_REPOSITORY_NAME:-.reporoller}"
+
+      # GitHub App credentials — required for minting installation tokens
+      GITHUB_APP_ID: "${GITHUB_APP_ID}"
+      GITHUB_APP_PRIVATE_KEY: "${GITHUB_APP_PRIVATE_KEY}"
+
+      # JWT secret used to sign backend-issued session tokens.
+      # Must be at least 32 characters. Must match nothing in the frontend —
+      # the frontend exchanges a GitHub OAuth token for this JWT.
+      JWT_SECRET: "${JWT_SECRET}"
+
+      # CORS — must match the public URL of the frontend so the browser is
+      # allowed to make cross-origin requests to the backend API.
+      FRONTEND_ORIGIN: "${ORIGIN:-http://localhost:3001}"
+    restart: unless-stopped
+    healthcheck:
+      # The backend exposes GET /api/v1/health — use wget (available in debian:slim)
+      # rather than the binary flag, which is not implemented.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: production
+
+      # GitHub OAuth App credentials — required for the sign-in flow
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
+
+      # GitHub organization slug (e.g. "my-company")
+      GITHUB_ORG: "${GITHUB_ORG}"
+
+      # Public URL of the frontend. Required by SvelteKit for CSRF protection
+      # and for OAuth redirect URL construction.
+      # For local testing: http://localhost:3001
+      ORIGIN: "${ORIGIN:-http://localhost:3001}"
+
+      # HMAC secret used to sign session cookies.
+      # Must be at least 32 characters. Rotate to invalidate all live sessions.
+      # Generate: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      SESSION_SECRET: "${SESSION_SECRET}"
+
+      # URL of the backend API container; must be reachable from within the
+      # Docker network. The alias "backend" matches the service name above.
+      BACKEND_API_URL: "http://backend:8080"
+
+      # Optional branding overrides
+      BRAND_APP_NAME: "${BRAND_APP_NAME:-RepoRoller}"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

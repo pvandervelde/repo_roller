@@ -145,8 +145,8 @@ async fn test_get_template_info_with_variables() -> Result<()> {
     let config = MetadataProviderConfig::explicit(".reporoller-test");
     let provider = Arc::new(GitHubMetadataProvider::new(github_client, config));
 
-    // Note: The test templates in glitchgrove don't actually have [variables] sections
-    // This test verifies that templates without variables return empty vectors
+    // template-test-variables declares 7 variables used for content substitution:
+    // project_name, version, author_name, author_email, project_description, license, environment
     let result =
         get_template_info(&test_config.test_org, "template-test-variables", provider).await;
 
@@ -157,13 +157,31 @@ async fn test_get_template_info_with_variables() -> Result<()> {
     );
     let info = result.unwrap();
 
-    // template-test-variables has no actual [variables] section in the test data
-    // This is expected - the template name is for testing variable substitution
-    // in file content, not for testing variable definitions in template.toml
-    assert!(
-        info.variables.is_empty(),
-        "template-test-variables should have no variables defined"
+    // Verify all 7 declared variables are present
+    assert_eq!(
+        info.variables.len(),
+        7,
+        "template-test-variables should have 7 variables defined, got: {:?}",
+        info.variables
     );
+
+    let var_names: Vec<&str> = info.variables.iter().map(|v| v.name.as_str()).collect();
+    for expected in [
+        "project_name",
+        "version",
+        "author_name",
+        "author_email",
+        "project_description",
+        "license",
+        "environment",
+    ] {
+        assert!(
+            var_names.contains(&expected),
+            "Expected variable '{}' not found in {:?}",
+            expected,
+            var_names
+        );
+    }
 
     // Verify other metadata is present
     assert_eq!(info.name, "template-test-variables");

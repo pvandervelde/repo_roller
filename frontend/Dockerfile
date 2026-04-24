@@ -10,13 +10,14 @@ RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 # Copy only the files needed to install dependencies so that this layer is
-# cached independently of source changes.
-COPY package.json pnpm-lock.yaml ./
+# cached independently of source changes. .npmrc must be included here because
+# pnpm reads it during install (e.g. public-hoist-pattern settings).
+COPY package.json pnpm-lock.yaml .npmrc ./
 
-# --ignore-scripts prevents postinstall hooks from running in CI/build contexts.
-# esbuild is the only approved build script and is handled by the approvedBuilds
-# list in package.json; all other lifecycle scripts are untrusted.
-RUN pnpm install --frozen-lockfile --ignore-scripts
+# approvedBuilds in package.json restricts postinstall scripts to esbuild only.
+# Do NOT add --ignore-scripts here — it overrides approvedBuilds and prevents
+# esbuild from installing its native binary, which vite requires at build time.
+RUN pnpm install --frozen-lockfile
 
 # Copy the rest of the source and build.
 COPY . .
@@ -34,7 +35,7 @@ FROM node:24-slim AS runtime
 
 # Run as a non-root user for security hardening.
 RUN addgroup --system --gid 1001 nodejs \
- && adduser --system --uid 1001 --ingroup nodejs nodeuser
+    && adduser --system --uid 1001 --ingroup nodejs nodeuser
 
 WORKDIR /app
 
