@@ -263,7 +263,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 
     let app_id_str = app_id_entry
         .get_password()
-        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}. Run 'repo-roller auth setup' to configure GitHub App credentials.", e)))?;
 
     let app_id: u64 = app_id_str
         .parse()
@@ -275,7 +275,7 @@ async fn create_metadata_provider() -> Result<Arc<dyn MetadataRepositoryProvider
 
     let key_path = key_path_entry
         .get_password()
-        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}. Run 'repo-roller auth setup' to configure GitHub App credentials.", e)))?;
 
     // Read private key file
     let private_key = std::fs::read_to_string(&key_path).map_err(|e| {
@@ -322,7 +322,7 @@ async fn create_settings_manager() -> Result<OrganizationSettingsManager, Error>
         .map_err(|e| Error::Auth(format!("Failed to access keyring for app ID: {}", e)))?;
     let app_id_str = app_id_entry
         .get_password()
-        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to get app ID from keyring: {}. Run 'repo-roller auth setup' to configure GitHub App credentials.", e)))?;
     let app_id: u64 = app_id_str
         .parse()
         .map_err(|e| Error::Auth(format!("Invalid app ID format: {}", e)))?;
@@ -331,7 +331,7 @@ async fn create_settings_manager() -> Result<OrganizationSettingsManager, Error>
         .map_err(|e| Error::Auth(format!("Failed to access keyring for key path: {}", e)))?;
     let key_path = key_path_entry
         .get_password()
-        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}", e)))?;
+        .map_err(|e| Error::Auth(format!("Failed to get key path from keyring: {}. Run 'repo-roller auth setup' to configure GitHub App credentials.", e)))?;
 
     // Read private key file
     let private_key = std::fs::read_to_string(&key_path).map_err(|e| {
