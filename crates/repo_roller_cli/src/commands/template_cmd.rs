@@ -27,13 +27,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, instrument};
 
+use crate::commands::auth_cmd::{
+    KEY_RING_APP_ID, KEY_RING_APP_PRIVATE_KEY_PATH, KEY_RING_SERVICE_NAME,
+};
 use crate::config::{get_config_path, AppConfig, DEFAULT_METADATA_REPOSITORY_NAME};
 use crate::errors::Error;
-
-// Keyring constants (shared with create_cmd and auth_cmd)
-const KEY_RING_SERVICE_NAME: &str = "repo_roller";
-const KEY_RING_APP_ID: &str = "github_app_id";
-const KEY_RING_APP_PRIVATE_KEY_PATH: &str = "github_app_private_key_path";
 
 // ============================================================================
 // CLI-Specific Types
