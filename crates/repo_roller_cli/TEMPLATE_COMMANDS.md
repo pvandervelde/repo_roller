@@ -98,27 +98,44 @@ Configuration: 3 sections defined
 
 Validate a template's structure and configuration.
 
+Three invocation modes are supported:
+
+1. **Local path** (`--path`): validates a template directory on disk without requiring GitHub credentials for structural checks.
+2. **Remote by name** (`--org` + `--template`): clones the template from GitHub into a temporary directory then validates locally.
+3. **Local path with remote checks** (`--path` + `--org`): validates the local directory and also verifies the repository type against the organization's metadata repository (requires credentials).
+
 **Usage:**
 
 ```bash
-repo-roller template validate --org <ORGANIZATION> --template <TEMPLATE_NAME> [--format <FORMAT>]
+repo-roller template validate [--path <DIR>] [--org <ORGANIZATION>] [--template <TEMPLATE_NAME>] [--format <FORMAT>]
 ```
 
 **Arguments:**
 
-- `--org <ORGANIZATION>`: Organization name (required)
-- `--template <TEMPLATE_NAME>`: Template repository name (required)
+- `--path <DIR>`: Local directory containing the template repository. When the directory exists, validates the template locally without a GitHub API call for structural checks. If absent or the directory does not exist, `--org` and `--template` are used to clone the remote template first.
+- `--org <ORGANIZATION>`: Organization name. Optional when `--path` is given; required otherwise.
+- `--template <TEMPLATE_NAME>`: Template repository name. Optional when `--path` is given; required otherwise.
 - `--format <FORMAT>`: Output format - `json` or `pretty` (default: `pretty`)
+
+At least one of `--path` or the combination `--org` + `--template` must be provided.
 
 **Example:**
 
 ```bash
-# Validate template in pretty format
+# Validate a local template directory (no GitHub credentials needed)
+repo-roller template validate --path ./my-template
+
+# Validate a local directory and also check the repository type remotely
+repo-roller template validate --path ./my-template --org myorg
+
+# Validate a remote template by cloning it first
 repo-roller template validate --org myorg --template rust-library
 
-# Validate template as JSON
+# Validate a remote template and output JSON
 repo-roller template validate --org myorg --template rust-library --format json
 ```
+
+**Remote type-validity checks** run automatically when an organization context is available (via `--org` or a detected GitHub remote in `.git/config`). If GitHub credentials are not configured, the remote check is skipped with a warning and structural validation still proceeds.
 
 **Output (Pretty Format - Valid Template):**
 

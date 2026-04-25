@@ -623,12 +623,157 @@ pub async fn validate_template(
 /// Returns `TemplateValidationResult`. Remote type checks are skipped (with a warning)
 /// when `provider` or `org` is `None`.
 async fn validate_loaded_template(
-    _template_name: &str,
-    _config: TemplateConfig,
-    _provider: Option<Arc<dyn MetadataRepositoryProvider>>,
-    _org: Option<&str>,
+    template_name: &str,
+    config: TemplateConfig,
+    provider: Option<Arc<dyn MetadataRepositoryProvider>>,
+    org: Option<&str>,
 ) -> Result<TemplateValidationResult, Error> {
-    todo!("validate_loaded_template not yet implemented")
+    let mut issues = Vec::new();
+    let mut warnings = Vec::new();
+
+    // --- Validate template metadata ---
+    if config.template.name.is_empty() {
+        issues.push(ValidationIssue {
+            severity: "error".to_string(),
+            location: "template.name".to_string(),
+            message: "Template name cannot be empty".to_string(),
+        });
+    }
+
+    if config.template.description.is_empty() {
+        warnings.push(ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "Template description is empty or missing".to_string(),
+        });
+    }
+
+    if config.template.author.is_empty() {
+        issues.push(ValidationIssue {
+            severity: "error".to_string(),
+            location: "template.author".to_string(),
+            message: "Template author cannot be empty".to_string(),
+        });
+    }
+
+    if config.template.tags.is_empty() {
+        warnings.push(ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "No tags defined for template categorization".to_string(),
+        });
+    }
+
+    // --- Validate variables ---
+    if let Some(ref variables) = config.variables {
+        if variables.is_empty() {
+            warnings.push(ValidationWarning {
+                category: "best_practice".to_string(),
+                message: "No variables defined - template is not customizable".to_string(),
+            });
+        }
+
+        for (var_name, var_def) in variables {
+            // Variable names: alphanumeric + underscore only
+            if !var_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                issues.push(ValidationIssue {
+                    severity: "error".to_string(),
+                    location: format!("variables.{}", var_name),
+                    message: format!(
+                        "Variable name '{}' contains invalid characters. Only alphanumeric and underscore allowed.",
+                        var_name
+                    ),
+                });
+            }
+
+            // Contradiction: required=true with a default value
+            if var_def.required.unwrap_or(false) && var_def.default.is_some() {
+                issues.push(ValidationIssue {
+                    severity: "error".to_string(),
+                    location: format!("variables.{}", var_name),
+                    message: format!(
+                        "Variable '{}' is marked as required but has a default value (contradiction)",
+                        var_name
+                    ),
+                });
+            }
+
+            // Recommendation: required variables should have an example
+            if var_def.required.unwrap_or(false) && var_def.example.is_none() {
+                warnings.push(ValidationWarning {
+                    category: "best_practice".to_string(),
+                    message: format!("Required variable '{}' has no example value", var_name),
+                });
+            }
+        }
+    } else {
+        warnings.push(ValidationWarning {
+            category: "best_practice".to_string(),
+            message: "No variables defined - template is not customizable".to_string(),
+        });
+    }
+
+    // --- Validate repository type (remote check when provider + org available) ---
+    if let Some(ref repo_type_spec) = config.repository_type {
+        if let (Some(provider_ref), Some(org_str)) = (&provider, org) {
+            match provider_ref.discover_metadata_repository(org_str).await {
+                Ok(metadata_repo) => {
+                    match provider_ref
+                        .list_available_repository_types(&metadata_repo)
+                        .await
+                    {
+                        Ok(available_types) => {
+                            if !available_types.contains(&repo_type_spec.repository_type) {
+                                issues.push(ValidationIssue {
+                                    severity: "error".to_string(),
+                                    location: "repository_type.type".to_string(),
+                                    message: format!(
+                                        "Repository type '{}' does not exist in organization. Available types: {}",
+                                        repo_type_spec.repository_type,
+                                        available_types.join(", ")
+                                    ),
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            warnings.push(ValidationWarning {
+                                category: "validation_incomplete".to_string(),
+                                message: format!(
+                                    "Could not verify repository type '{}': {}",
+                                    repo_type_spec.repository_type, e
+                                ),
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    warnings.push(ValidationWarning {
+                        category: "validation_incomplete".to_string(),
+                        message: format!(
+                            "Could not discover metadata repository to verify repository type: {}",
+                            e
+                        ),
+                    });
+                }
+            }
+        } else {
+            // No provider or no org — skip remote type check with an informational warning.
+            warnings.push(ValidationWarning {
+                category: "validation_incomplete".to_string(),
+                message: format!(
+                    "Could not verify repository type '{}': no organization context or credentials available",
+                    repo_type_spec.repository_type
+                ),
+            });
+        }
+    }
+
+    let valid = issues.is_empty();
+
+    Ok(TemplateValidationResult {
+        template_name: template_name.to_string(),
+        valid,
+        issues,
+        warnings,
+    })
 }
 
 /// Load and parse a `TemplateConfig` from a local template repository directory.
@@ -644,8 +789,22 @@ async fn validate_loaded_template(
 ///
 /// * `Error::Config` - The `.reporoller/template.toml` file is missing or the TOML
 ///   content cannot be parsed.
-pub(crate) fn load_template_config_from_path(_path: &Path) -> Result<TemplateConfig, Error> {
-    todo!("load_template_config_from_path not yet implemented")
+pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConfig, Error> {
+    let config_path = path.join(".reporoller").join("template.toml");
+    let content = std::fs::read_to_string(&config_path).map_err(|e| {
+        Error::Config(format!(
+            "Failed to read .reporoller/template.toml from {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    toml::from_str::<TemplateConfig>(&content).map_err(|e| {
+        Error::Config(format!(
+            "Failed to parse .reporoller/template.toml in {}: {}",
+            path.display(),
+            e
+        ))
+    })
 }
 
 /// Detect the GitHub organization and repository from a local git repository's remote URL.
@@ -661,8 +820,29 @@ pub(crate) fn load_template_config_from_path(_path: &Path) -> Result<TemplateCon
 /// * `Some((org, repo))` — when a GitHub remote URL is found.
 /// * `None` — when no `.git/config` exists, the file cannot be read, or it contains
 ///   no GitHub remote.
-pub(crate) fn detect_github_remote(_path: &Path) -> Option<(String, String)> {
-    todo!("detect_github_remote not yet implemented")
+pub(crate) fn detect_github_remote(path: &Path) -> Option<(String, String)> {
+    let git_config_path = path.join(".git").join("config");
+    let content = std::fs::read_to_string(&git_config_path).ok()?;
+
+    // HTTPS: https://github.com/ORG/REPO[.git]
+    let https_re =
+        regex::Regex::new(r"https://github\.com/([^/\s]+)/([^/\s]+?)(?:\.git)?(?:\s|$)").ok()?;
+    if let Some(caps) = https_re.captures(&content) {
+        if let (Some(org), Some(repo)) = (caps.get(1), caps.get(2)) {
+            return Some((org.as_str().to_string(), repo.as_str().to_string()));
+        }
+    }
+
+    // SSH: git@github.com:ORG/REPO[.git]
+    let ssh_re =
+        regex::Regex::new(r"git@github\.com:([^:/\s]+)/([^/\s]+?)(?:\.git)?(?:\s|$)").ok()?;
+    if let Some(caps) = ssh_re.captures(&content) {
+        if let (Some(org), Some(repo)) = (caps.get(1), caps.get(2)) {
+            return Some((org.as_str().to_string(), repo.as_str().to_string()));
+        }
+    }
+
+    None
 }
 
 /// Shell out to `git clone <url> <dest>` and map failures to `Error::GitHub`.
@@ -674,8 +854,26 @@ pub(crate) fn detect_github_remote(_path: &Path) -> Option<(String, String)> {
 /// # Errors
 ///
 /// * `Error::GitHub` — `git` cannot be executed or exits with a non-zero status.
-pub(crate) fn run_git_clone(_url: &str, _dest: &Path) -> Result<(), Error> {
-    todo!("run_git_clone not yet implemented")
+pub(crate) fn run_git_clone(url: &str, dest: &Path) -> Result<(), Error> {
+    let dest_str = dest.to_str().ok_or_else(|| {
+        Error::GitHub("Clone destination path contains non-UTF-8 characters".to_string())
+    })?;
+
+    let output = std::process::Command::new("git")
+        .args(["clone", url, dest_str])
+        .output()
+        .map_err(|e| Error::GitHub(format!("Failed to execute git: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Error::GitHub(format!(
+            "git clone '{}' failed: {}",
+            url,
+            stderr.trim()
+        )));
+    }
+
+    Ok(())
 }
 
 /// Clone a GitHub template repository to a local directory.
