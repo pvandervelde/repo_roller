@@ -62,4 +62,12 @@ pub enum Error {
     /// typically due to broken pipes or terminal issues.
     #[error("Failed to flush the std out buffer.")]
     StdOutFlushFailed,
+
+    /// A GitHub operation failed (clone, API call, etc.).
+    ///
+    /// This error is returned when a GitHub-facing operation fails, such as
+    /// `git clone` returning a non-zero exit code or a network error preventing
+    /// the operation from completing.
+    #[error("GitHub error: {0}")]
+    GitHub(String),
 }

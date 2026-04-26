@@ -24,6 +24,7 @@ use config_manager::{
 use github_client::GitHubClient;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, instrument};
 
@@ -173,14 +174,31 @@ pub enum TemplateCommands {
     ///
     /// Validates the template configuration file (template.toml) including
     /// structure, variable definitions, and repository type specification.
+    ///
+    /// Three invocation modes:
+    /// 1. `--path <DIR>` — validates the local directory directly (no GitHub call needed).
+    /// 2. `--org ORG --template NAME` — clones the template from GitHub to a temporary
+    ///    directory then validates locally. The temporary directory is deleted afterwards.
+    /// 3. Both `--path` and `--org`/`--template` — if the path exists it is validated
+    ///    locally with remote type checks using the explicit org; if the path does not
+    ///    exist, falls back to mode 2 (clone to a temp directory).
     Validate {
-        /// Organization name.
+        /// Organization name (optional when --path is given).
         #[arg(long)]
-        org: String,
+        org: Option<String>,
 
-        /// Template name to validate.
+        /// Template name to validate (optional when --path is given).
         #[arg(long)]
-        template: String,
+        template: Option<String>,
+
+        /// Local path to a template repository directory.
+        ///
+        /// When specified and the directory exists, validates the template locally
+        /// without requiring GitHub credentials for structural checks. If absent or
+        /// the directory does not exist, --org and --template are used to clone
+        /// the remote template to a temporary directory first.
+        #[arg(long)]
+        path: Option<String>,
 
         /// Output format (json or pretty).
         #[arg(long, default_value = "pretty")]
@@ -219,8 +237,9 @@ pub async fn execute(cmd: &TemplateCommands) -> Result<(), Error> {
         TemplateCommands::Validate {
             org,
             template,
+            path,
             format,
-        } => template_validate(org, template, format).await,
+        } => template_validate(org.as_deref(), template.as_deref(), path.as_deref(), format).await,
     }
 }
 
@@ -528,6 +547,8 @@ pub async fn get_template_info(
 /// not as function errors.
 ///
 /// See: specs/interfaces/cli-template-operations.md
+// Used by integration tests in crates/integration_tests
+#[allow(dead_code)]
 pub async fn validate_template(
     org: &str,
     template_name: &str,
@@ -536,7 +557,6 @@ pub async fn validate_template(
     debug!("Validating template {}/{}", org, template_name);
 
     let mut issues = Vec::new();
-    let mut warnings = Vec::new();
 
     // Try to load template configuration
     let config = match provider
@@ -578,12 +598,42 @@ pub async fn validate_template(
                 template_name: template_name.to_string(),
                 valid: false,
                 issues,
-                warnings,
+                warnings: vec![],
             });
         }
     };
 
-    // Validate template metadata
+    // Delegate all structural and remote checks to the shared helper.
+    validate_loaded_template(template_name, config, Some(provider), Some(org)).await
+}
+
+/// Run structural and remote validation checks on an already-loaded `TemplateConfig`.
+///
+/// This is the shared validation core used by both the remote path (where the config
+/// is fetched via a `MetadataRepositoryProvider`) and the local-path / clone path
+/// (where the config is parsed from disk).
+///
+/// # Arguments
+///
+/// * `template_name` - Template name (used in the returned result).
+/// * `config` - Already-parsed template configuration.
+/// * `provider` - Optional authenticated provider for remote type-validity checks.
+/// * `org` - Optional organization name, required for remote type-validity checks.
+///
+/// # Returns
+///
+/// Returns `TemplateValidationResult`. Remote type checks are skipped (with a warning)
+/// when `provider` or `org` is `None`.
+async fn validate_loaded_template(
+    template_name: &str,
+    config: TemplateConfig,
+    provider: Option<Arc<dyn MetadataRepositoryProvider>>,
+    org: Option<&str>,
+) -> Result<TemplateValidationResult, Error> {
+    let mut issues = Vec::new();
+    let mut warnings = Vec::new();
+
+    // --- Validate template metadata ---
     if config.template.name.is_empty() {
         issues.push(ValidationIssue {
             severity: "error".to_string(),
@@ -614,7 +664,7 @@ pub async fn validate_template(
         });
     }
 
-    // Validate variables
+    // --- Validate variables ---
     if let Some(ref variables) = config.variables {
         if variables.is_empty() {
             warnings.push(ValidationWarning {
@@ -624,7 +674,7 @@ pub async fn validate_template(
         }
 
         for (var_name, var_def) in variables {
-            // Validate variable name (alphanumeric + underscore only)
+            // Variable names: alphanumeric + underscore only
             if !var_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 issues.push(ValidationIssue {
                     severity: "error".to_string(),
@@ -636,7 +686,7 @@ pub async fn validate_template(
                 });
             }
 
-            // Check for contradiction: required + default
+            // Contradiction: required=true with a default value
             if var_def.required.unwrap_or(false) && var_def.default.is_some() {
                 issues.push(ValidationIssue {
                     severity: "error".to_string(),
@@ -648,7 +698,7 @@ pub async fn validate_template(
                 });
             }
 
-            // Warn about required variables without examples
+            // Recommendation: required variables should have an example
             if var_def.required.unwrap_or(false) && var_def.example.is_none() {
                 warnings.push(ValidationWarning {
                     category: "best_practice".to_string(),
@@ -663,50 +713,58 @@ pub async fn validate_template(
         });
     }
 
-    // Validate repository type if specified
+    // --- Validate repository type (remote check when provider + org available) ---
     if let Some(ref repo_type_spec) = config.repository_type {
-        // We need to discover the metadata repository to check available types
-        // For now, we'll try to get available types if possible
-        // If it fails, we'll note it as a warning rather than an error
-        match provider.discover_metadata_repository(org).await {
-            Ok(metadata_repo) => {
-                match provider
-                    .list_available_repository_types(&metadata_repo)
-                    .await
-                {
-                    Ok(available_types) => {
-                        if !available_types.contains(&repo_type_spec.repository_type) {
-                            issues.push(ValidationIssue {
-                                severity: "error".to_string(),
-                                location: "repository_type.type".to_string(),
+        if let (Some(provider_ref), Some(org_str)) = (&provider, org) {
+            match provider_ref.discover_metadata_repository(org_str).await {
+                Ok(metadata_repo) => {
+                    match provider_ref
+                        .list_available_repository_types(&metadata_repo)
+                        .await
+                    {
+                        Ok(available_types) => {
+                            if !available_types.contains(&repo_type_spec.repository_type) {
+                                issues.push(ValidationIssue {
+                                    severity: "error".to_string(),
+                                    location: "repository_type.type".to_string(),
+                                    message: format!(
+                                        "Repository type '{}' does not exist in organization. Available types: {}",
+                                        repo_type_spec.repository_type,
+                                        available_types.join(", ")
+                                    ),
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            warnings.push(ValidationWarning {
+                                category: "validation_incomplete".to_string(),
                                 message: format!(
-                                    "Repository type '{}' does not exist in organization. Available types: {}",
-                                    repo_type_spec.repository_type,
-                                    available_types.join(", ")
+                                    "Could not verify repository type '{}': {}",
+                                    repo_type_spec.repository_type, e
                                 ),
                             });
                         }
                     }
-                    Err(e) => {
-                        warnings.push(ValidationWarning {
-                            category: "validation_incomplete".to_string(),
-                            message: format!(
-                                "Could not verify repository type '{}': {}",
-                                repo_type_spec.repository_type, e
-                            ),
-                        });
-                    }
+                }
+                Err(e) => {
+                    warnings.push(ValidationWarning {
+                        category: "validation_incomplete".to_string(),
+                        message: format!(
+                            "Could not discover metadata repository to verify repository type: {}",
+                            e
+                        ),
+                    });
                 }
             }
-            Err(e) => {
-                warnings.push(ValidationWarning {
-                    category: "validation_incomplete".to_string(),
-                    message: format!(
-                        "Could not discover metadata repository to verify repository type: {}",
-                        e
-                    ),
-                });
-            }
+        } else {
+            // No provider or no org — skip remote type check with an informational warning.
+            warnings.push(ValidationWarning {
+                category: "validation_incomplete".to_string(),
+                message: format!(
+                    "Could not verify repository type '{}': no organization context or credentials available",
+                    repo_type_spec.repository_type
+                ),
+            });
         }
     }
 
@@ -718,6 +776,165 @@ pub async fn validate_template(
         issues,
         warnings,
     })
+}
+
+/// Load and parse a `TemplateConfig` from a local template repository directory.
+///
+/// Reads `.reporoller/template.toml` relative to `path` and deserializes it with
+/// `toml::from_str`.
+///
+/// # Arguments
+///
+/// * `path` - Root directory of a local template repository.
+///
+/// # Errors
+///
+/// * `Error::Config` - The `.reporoller/template.toml` file is missing or the TOML
+///   content cannot be parsed.
+pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConfig, Error> {
+    let config_path = path.join(".reporoller").join("template.toml");
+    let content = std::fs::read_to_string(&config_path).map_err(|e| {
+        Error::Config(format!(
+            "Failed to read .reporoller/template.toml from {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    toml::from_str::<TemplateConfig>(&content).map_err(|e| {
+        Error::Config(format!(
+            "Failed to parse .reporoller/template.toml in {}: {}",
+            path.display(),
+            e
+        ))
+    })
+}
+
+/// Detect the GitHub organization and repository from a local git repository's remote URL.
+///
+/// Parses `.git/config` in `path` looking for a GitHub remote URL in HTTPS or SSH format:
+/// - HTTPS: `https://github.com/ORG/REPO[.git]`
+/// - SSH:   `git@github.com:ORG/REPO[.git]`
+///
+/// The lookup is deterministic: the `origin` remote is checked first. If `origin` does not
+/// have a GitHub URL, the first other GitHub URL in the file is returned. This avoids
+/// ordering-dependent results in repositories with multiple remotes.
+///
+/// # Returns
+///
+/// * `Some((org, repo))` — when a GitHub remote URL is found.
+/// * `None` — when no `.git/config` exists, the file cannot be read, or it contains
+///   no GitHub remote.
+pub(crate) fn detect_github_remote(path: &Path) -> Option<(String, String)> {
+    let git_config_path = path.join(".git").join("config");
+    let content = std::fs::read_to_string(&git_config_path).ok()?;
+
+    // Attempt to extract the URL from the [remote "origin"] section specifically.
+    // This makes the result deterministic in repos with multiple remotes.
+    let origin_url = extract_origin_url(&content);
+
+    // If origin has a GitHub URL, use it. Otherwise fall back to the first GitHub
+    // URL found anywhere in the file.
+    origin_url
+        .and_then(parse_github_url)
+        .or_else(|| extract_any_github_url(&content))
+}
+
+/// Extract the `url` value from the `[remote "origin"]` section of a git config string.
+fn extract_origin_url(content: &str) -> Option<&str> {
+    // Find the [remote "origin"] header, then scan forward for the first `url =` line.
+    let origin_header_re = regex::Regex::new(r#"(?m)^\[remote\s+"origin"\]"#).ok()?;
+    let header_match = origin_header_re.find(content)?;
+    let after_header = &content[header_match.end()..];
+
+    // The section ends at the next `[` header or end-of-string.
+    let section_end = after_header
+        .find('[') // next section
+        .unwrap_or(after_header.len());
+    let section = &after_header[..section_end];
+
+    let url_re = regex::Regex::new(r"(?m)^\s*url\s*=\s*(\S+)").ok()?;
+    url_re
+        .captures(section)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str())
+}
+
+/// Parse a GitHub org and repo name from a single remote URL string (HTTPS or SSH).
+fn parse_github_url(url: &str) -> Option<(String, String)> {
+    // HTTPS: https://github.com/ORG/REPO[.git]
+    let https_re =
+        regex::Regex::new(r"https://github\.com/([^/\s]+)/([^/\s]+?)(?:\.git)?$").ok()?;
+    if let Some(caps) = https_re.captures(url) {
+        if let (Some(org), Some(repo)) = (caps.get(1), caps.get(2)) {
+            return Some((org.as_str().to_string(), repo.as_str().to_string()));
+        }
+    }
+    // SSH: git@github.com:ORG/REPO[.git]
+    let ssh_re = regex::Regex::new(r"git@github\.com:([^:/\s]+)/([^/\s]+?)(?:\.git)?$").ok()?;
+    if let Some(caps) = ssh_re.captures(url) {
+        if let (Some(org), Some(repo)) = (caps.get(1), caps.get(2)) {
+            return Some((org.as_str().to_string(), repo.as_str().to_string()));
+        }
+    }
+    None
+}
+
+/// Scan an entire git config string for the first GitHub URL found (any remote).
+fn extract_any_github_url(content: &str) -> Option<(String, String)> {
+    let url_re = regex::Regex::new(r"(?m)^\s*url\s*=\s*(\S+)").ok()?;
+    for caps in url_re.captures_iter(content) {
+        if let Some(url_match) = caps.get(1) {
+            if let Some(result) = parse_github_url(url_match.as_str()) {
+                return Some(result);
+            }
+        }
+    }
+    None
+}
+
+/// Shell out to `git clone <url> <dest>` and map failures to `Error::GitHub`.
+///
+/// Used as the testable inner function behind `clone_template_to_dir`.
+/// Tests can call this directly with a local `file://` URL or bare-repo path
+/// without touching the network.
+///
+/// # Errors
+///
+/// * `Error::GitHub` — `git` cannot be executed or exits with a non-zero status.
+pub(crate) fn run_git_clone(url: &str, dest: &Path) -> Result<(), Error> {
+    let dest_str = dest.to_str().ok_or_else(|| {
+        Error::GitHub("Clone destination path contains non-UTF-8 characters".to_string())
+    })?;
+
+    let output = std::process::Command::new("git")
+        .args(["clone", url, dest_str])
+        .output()
+        .map_err(|e| Error::GitHub(format!("Failed to execute git: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Error::GitHub(format!(
+            "git clone '{}' failed: {}",
+            url,
+            stderr.trim()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Clone a GitHub template repository to a local directory.
+///
+/// Constructs `https://github.com/{org}/{template}` and delegates to [`run_git_clone`].
+///
+/// # Errors
+///
+/// * `Error::GitHub` — the clone failed (network error, repository not found, or
+///   not authorized). For private repositories, configure git credentials first
+///   (e.g. `gh auth setup-git` or a `.netrc` credential helper).
+pub(crate) fn clone_template_to_dir(org: &str, template: &str, dest: &Path) -> Result<(), Error> {
+    let url = format!("https://github.com/{}/{}", org, template);
+    run_git_clone(&url, dest)
 }
 
 // ============================================================================
@@ -921,36 +1138,99 @@ async fn template_info(org: &str, template: &str, format: &str) -> Result<(), Er
 
 /// Validates a template configuration.
 ///
+/// Routes between three modes depending on the supplied arguments:
+/// 1. `--path` exists on disk → load `template.toml` locally; attempt remote type checks
+///    if a GitHub remote is detected or `--org` is given.
+/// 2. `--path` absent/nonexistent **and** `--org` + `--template` supplied → clone to a
+///    temporary directory then validate locally with optional remote type checks.
+/// 3. Neither usable path nor org+template → `Error::InvalidArguments`.
+///
 /// # Arguments
 ///
-/// * `org` - Organization name
-/// * `template` - Template name
-/// * `format` - Output format ("json" or "pretty")
+/// * `org` - Organisation name (optional when `--path` is given).
+/// * `template` - Template name (optional when `--path` is given).
+/// * `path` - Local directory containing the template repository (optional).
+/// * `format` - Output format ("json" or "pretty").
 #[instrument]
-async fn template_validate(org: &str, template: &str, format: &str) -> Result<(), Error> {
+async fn template_validate(
+    org: Option<&str>,
+    template: Option<&str>,
+    path: Option<&str>,
+    format: &str,
+) -> Result<(), Error> {
     debug!(
         message = "Validating template",
         org = org,
         template = template,
+        path = path,
         format = format
     );
 
-    // Create authenticated metadata provider
-    let provider = create_metadata_provider().await?;
+    let path_dir = path.map(std::path::Path::new);
 
-    // Validate template
-    let result = validate_template(org, template, provider).await?;
+    let (template_name, validation_result) = if let Some(dir) = path_dir.filter(|p| p.exists()) {
+        // --- Local-path branch (task 2.3) ---
+        let config = load_template_config_from_path(dir)?;
+        let name = config.template.name.clone();
 
-    // Format and display output
-    let output = format_validation_result(&result, format)?;
+        // Determine org from git remote detection (task 3.2) or explicit --org.
+        let detected_org: Option<String> = detect_github_remote(dir)
+            .map(|(o, _)| o)
+            .or_else(|| org.map(str::to_string));
+
+        // If an org is known, attempt a provider for remote type-validity checks.
+        // Credential failures are non-fatal — skip remote checks with a warning.
+        let provider_opt = if detected_org.is_some() {
+            match create_metadata_provider().await {
+                Ok(p) => Some(p),
+                Err(_) => {
+                    tracing::warn!("Skipping remote type checks: GitHub credentials not available");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let eff_org = detected_org.as_deref();
+        let result = validate_loaded_template(&name, config, provider_opt, eff_org).await?;
+        (name, result)
+    } else if let (Some(org_val), Some(tmpl_val)) = (org, template) {
+        // --- Clone branch (task 4.2) ---
+        let tmp = tempfile::TempDir::new()
+            .map_err(|e| Error::Config(format!("Failed to create temp directory: {}", e)))?;
+
+        clone_template_to_dir(org_val, tmpl_val, tmp.path())?;
+
+        let config = load_template_config_from_path(tmp.path())?;
+        let name = config.template.name.clone();
+
+        // Org is known from --org; attempt remote type-validity checks.
+        let provider_opt = match create_metadata_provider().await {
+            Ok(p) => Some(p),
+            Err(_) => {
+                tracing::warn!("Skipping remote type checks: GitHub credentials not available");
+                None
+            }
+        };
+
+        let result = validate_loaded_template(&name, config, provider_opt, Some(org_val)).await?;
+        // `tmp` drops here, cleaning up the cloned directory.
+        (name, result)
+    } else {
+        return Err(Error::InvalidArguments(
+            "Specify either --path <DIR> or both --org <ORG> and --template <TEMPLATE>".to_string(),
+        ));
+    };
+
+    let output = format_validation_result(&validation_result, format)?;
     println!("{}", output);
 
-    // Return error if validation failed
-    if !result.valid {
+    if !validation_result.valid {
         return Err(Error::Config(format!(
             "Template '{}' validation failed with {} issue(s)",
-            template,
-            result.issues.len()
+            template_name,
+            validation_result.issues.len()
         )));
     }
 

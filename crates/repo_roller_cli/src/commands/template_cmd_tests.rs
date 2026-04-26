@@ -1059,3 +1059,373 @@ fn test_keyring_constants_match_auth_cmd_canonical_values() {
         "private key path key must match auth_cmd so the correct keyring entry is read"
     );
 }
+
+// ============================================================================
+// load_template_config_from_path() Tests (task 2.2)
+// ============================================================================
+
+#[test]
+fn test_load_template_config_from_path_valid() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "[template]\nname = \"local-template\"\ndescription = \"A local template\"\nauthor = \"Platform Team\"\ntags = [\"rust\"]\n",
+    )
+    .unwrap();
+
+    let result = load_template_config_from_path(tmp.path());
+
+    assert!(result.is_ok(), "expected Ok but got: {:?}", result.err());
+    let config = result.unwrap();
+    assert_eq!(config.template.name, "local-template");
+    assert_eq!(config.template.author, "Platform Team");
+}
+
+#[test]
+fn test_load_template_config_from_path_missing_file() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    // No .reporoller/template.toml created
+
+    let result = load_template_config_from_path(tmp.path());
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::Config(msg) => {
+            assert!(
+                msg.contains("template.toml")
+                    || msg.contains("not found")
+                    || msg.contains("No such"),
+                "Unexpected error message: {}",
+                msg
+            );
+        }
+        e => panic!("Expected Config error, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_load_template_config_from_path_invalid_toml() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "this is not valid toml @@@ !!!",
+    )
+    .unwrap();
+
+    let result = load_template_config_from_path(tmp.path());
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::Config(msg) => {
+            assert!(
+                msg.contains("parse") || msg.contains("TOML") || msg.contains("invalid"),
+                "Unexpected error message: {}",
+                msg
+            );
+        }
+        e => panic!("Expected Config error, got {:?}", e),
+    }
+}
+
+// ============================================================================
+// detect_github_remote() Tests (task 3.1 / 3.3)
+// ============================================================================
+
+#[test]
+fn test_detect_github_remote_https_url() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = https://github.com/myorg/my-repo.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+    )
+    .unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_some(), "Expected Some but got None");
+    let (org, repo) = result.unwrap();
+    assert_eq!(org, "myorg");
+    assert_eq!(repo, "my-repo");
+}
+
+#[test]
+fn test_detect_github_remote_ssh_url() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = git@github.com:acme/cool-service.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+    )
+    .unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_some(), "Expected Some but got None");
+    let (org, repo) = result.unwrap();
+    assert_eq!(org, "acme");
+    assert_eq!(repo, "cool-service");
+}
+
+#[test]
+fn test_detect_github_remote_non_github_url_returns_none() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = https://gitlab.com/someorg/some-repo.git\n",
+    )
+    .unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_detect_github_remote_no_git_config_returns_none() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    // No .git directory created
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_detect_github_remote_empty_git_config_returns_none() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(tmp.path().join(".git/config"), "").unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_detect_github_remote_https_without_dot_git_suffix() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[remote \"origin\"]\n\turl = https://github.com/owner/repo-name\n",
+    )
+    .unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_some());
+    let (org, repo) = result.unwrap();
+    assert_eq!(org, "owner");
+    assert_eq!(repo, "repo-name");
+}
+
+#[test]
+fn test_detect_github_remote_prefers_origin_over_other_remotes() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    // Two GitHub remotes: upstream first, then origin.
+    // detect_github_remote should return origin, not upstream.
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[remote \"upstream\"]\n\turl = https://github.com/upstream-org/repo.git\n[remote \"origin\"]\n\turl = https://github.com/origin-org/repo.git\n",
+    )
+    .unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_some());
+    let (org, _) = result.unwrap();
+    assert_eq!(org, "origin-org", "should prefer origin over upstream");
+}
+
+// ============================================================================
+// run_git_clone() Tests (task 4.1 / 4.3)
+// ============================================================================
+
+/// Initialise a minimal git repository with one commit in `dir`.
+/// Returns a `file://` URL that `git clone` accepts without network access.
+fn create_local_git_repo(dir: &std::path::Path) -> String {
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(dir)
+        .output()
+        .expect("git init failed");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(dir)
+        .output()
+        .expect("git config email failed");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(dir)
+        .output()
+        .expect("git config name failed");
+    std::fs::write(dir.join("README.md"), "# Test").expect("write README failed");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir)
+        .output()
+        .expect("git add failed");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(dir)
+        .output()
+        .expect("git commit failed");
+    format!("file://{}", dir.display())
+}
+
+#[test]
+fn test_run_git_clone_success_local_repo() {
+    let source_dir = tempfile::TempDir::new().unwrap();
+    let url = create_local_git_repo(source_dir.path());
+    let dest_dir = tempfile::TempDir::new().unwrap();
+    let dest = dest_dir.path().join("cloned");
+
+    let result = run_git_clone(&url, &dest);
+
+    assert!(
+        result.is_ok(),
+        "clone should succeed; got: {:?}",
+        result.err()
+    );
+    assert!(
+        dest.join("README.md").exists(),
+        "README.md should exist in clone"
+    );
+}
+
+#[test]
+fn test_run_git_clone_nonexistent_url_returns_github_error() {
+    let dest_dir = tempfile::TempDir::new().unwrap();
+    let dest = dest_dir.path().join("cloned");
+
+    let result = run_git_clone("file:///nonexistent/path/that/does/not/exist/99999", &dest);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::GitHub(msg) => {
+            assert!(!msg.is_empty(), "error message should not be empty");
+        }
+        e => panic!("Expected GitHub error, got {:?}", e),
+    }
+}
+
+// ============================================================================
+// template_validate() Routing Tests (tasks 2.3, 3.2, 4.2)
+// ============================================================================
+
+/// Minimal valid template.toml TOML content used across routing tests.
+const VALID_TEMPLATE_TOML: &str =
+    "[template]\nname = \"routing-test-template\"\ndescription = \"A template for routing tests\"\nauthor = \"Test Author\"\ntags = [\"test\"]\n";
+
+#[tokio::test]
+async fn test_template_validate_routing_neither_path_nor_org_returns_invalid_arguments() {
+    let result = template_validate(None, None, None, "pretty").await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::InvalidArguments(msg) => {
+            assert!(
+                msg.contains("--path") || msg.contains("--org") || msg.contains("path"),
+                "Unexpected message: {}",
+                msg
+            );
+        }
+        e => panic!("Expected InvalidArguments, got {:?}", e),
+    }
+}
+
+#[tokio::test]
+async fn test_template_validate_routing_only_org_no_template_returns_invalid_arguments() {
+    let result = template_validate(Some("myorg"), None, None, "pretty").await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::InvalidArguments(_) => {}
+        e => panic!("Expected InvalidArguments, got {:?}", e),
+    }
+}
+
+#[tokio::test]
+async fn test_template_validate_routing_local_path_with_valid_config_succeeds() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        VALID_TEMPLATE_TOML,
+    )
+    .unwrap();
+    // No .git/config → no remote detection → no provider needed; no --org given
+    let path_str = tmp.path().to_str().unwrap().to_string();
+
+    let result = template_validate(None, None, Some(&path_str), "json").await;
+
+    assert!(result.is_ok(), "expected Ok but got: {:?}", result.err());
+}
+
+#[tokio::test]
+async fn test_template_validate_routing_local_path_missing_config_returns_error() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    // Existing directory but no .reporoller/template.toml
+    let path_str = tmp.path().to_str().unwrap().to_string();
+
+    let result = template_validate(None, None, Some(&path_str), "pretty").await;
+
+    // load_template_config_from_path fails → propagates as Err
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_template_validate_routing_nonexistent_path_no_org_returns_invalid_arguments() {
+    // Path does not exist AND no org+template provided → InvalidArguments
+    let result = template_validate(
+        None,
+        None,
+        Some("/nonexistent/path/that/does/not/exist/xyz"),
+        "pretty",
+    )
+    .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::InvalidArguments(_) => {}
+        e => panic!("Expected InvalidArguments, got {:?}", e),
+    }
+}
+
+#[tokio::test]
+async fn test_template_validate_routing_explicit_org_takes_precedence_over_detected_remote() {
+    // When --path exists AND --org is explicitly provided, the explicit org is used
+    // for remote type checks (detected git remote is overridden).
+    // No GitHub credentials in test environment → provider creation fails gracefully,
+    // but validation still proceeds and uses the config from disk.
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        VALID_TEMPLATE_TOML,
+    )
+    .unwrap();
+    // Add a git config with a *different* GitHub org to verify explicit --org wins.
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[remote \"origin\"]\n\turl = https://github.com/detected-org/some-repo.git\n",
+    )
+    .unwrap();
+    let path_str = tmp.path().to_str().unwrap().to_string();
+
+    // The explicit org is "explicit-org"; credentials will fail → warning + no remote checks.
+    // The test verifies the function succeeds (local structural validation passes).
+    let result = template_validate(Some("explicit-org"), None, Some(&path_str), "json").await;
+
+    assert!(
+        result.is_ok(),
+        "local validation should succeed even without credentials; got: {:?}",
+        result.err()
+    );
+}

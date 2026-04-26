@@ -240,62 +240,102 @@ pub async fn get_template_info(
 
 ### validate_template
 
+`validate_template` is the **remote-only** entry point retained for test compatibility. For the full
+three-mode dispatch used by the CLI, see `template_validate` (private) and the helpers documented below.
+
 ```rust
-/// Validate a template's structure and configuration.
+/// Validate a template's structure and configuration (remote provider path).
 ///
-/// Performs comprehensive validation including:
-/// - Template repository accessibility
-/// - `.reporoller/template.toml` existence and parse validity
-/// - Required metadata fields presence
-/// - Variable definition completeness
-/// - Repository type reference validity (if type specified)
-/// - Configuration consistency
+/// Loads the template configuration via the supplied provider, then delegates
+/// all structural and remote checks to `validate_loaded_template`.
 ///
 /// # Arguments
 ///
 /// * `org` - Organization name
 /// * `template_name` - Template repository name
-/// * `provider` - Metadata repository provider (authenticated)
-///
-/// # Returns
-///
-/// Returns `TemplateValidationResult` with validation status and any issues found.
-///
-/// # Errors
-///
-/// * `Error::Auth` - Authentication failed
-/// * `Error::GitHub` - GitHub API errors (network, permissions)
-///
-/// Note: Template configuration errors are returned in the validation result,
-/// not as function errors.
-///
-/// # Example
-///
-/// ```no_run
-/// # use repo_roller_cli::commands::template_cmd::{validate_template, TemplateValidationResult};
-/// # use config_manager::MetadataRepositoryProvider;
-/// # use std::sync::Arc;
-/// # async fn example(provider: Arc<dyn MetadataRepositoryProvider>) -> Result<(), Box<dyn std::error::Error>> {
-/// let result = validate_template("myorg", "rust-library", provider).await?;
-/// if result.valid {
-///     println!("✓ Template is valid");
-/// } else {
-///     println!("✗ Validation failed:");
-///     for issue in result.issues {
-///         println!("  - {}: {}", issue.location, issue.message);
-///     }
-/// }
-/// # Ok(())
-/// # }
-/// ```
-///
-/// See: specs/interfaces/cli-template-operations.md
+/// * `provider` - Authenticated metadata repository provider
 pub async fn validate_template(
     org: &str,
     template_name: &str,
     provider: Arc<dyn MetadataRepositoryProvider>,
 ) -> Result<TemplateValidationResult, Error>
 ```
+
+### validate_loaded_template
+
+Shared validation core called by all three invocation modes.
+
+```rust
+/// Run structural and remote validation checks on an already-loaded TemplateConfig.
+///
+/// # Arguments
+///
+/// * `template_name` - Template name (used in the returned result).
+/// * `config` - Already-parsed template configuration.
+/// * `provider` - Optional authenticated provider for remote type-validity checks.
+/// * `org` - Optional organization name; required for remote type-validity checks.
+///
+/// Remote type checks are skipped (with a warning) when `provider` or `org` is `None`.
+async fn validate_loaded_template(
+    template_name: &str,
+    config: TemplateConfig,
+    provider: Option<Arc<dyn MetadataRepositoryProvider>>,
+    org: Option<&str>,
+) -> Result<TemplateValidationResult, Error>
+```
+
+### load_template_config_from_path
+
+```rust
+/// Load and parse a TemplateConfig from a local template repository directory.
+///
+/// Reads `.reporoller/template.toml` relative to `path`.
+///
+/// # Errors
+///
+/// * `Error::Config` - file missing or TOML parse failure.
+pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConfig, Error>
+```
+
+### detect_github_remote
+
+```rust
+/// Detect the GitHub org and repo from a local git repository's .git/config.
+///
+/// Checks the `origin` remote first; falls back to the first other GitHub remote.
+/// Supports HTTPS (`https://github.com/ORG/REPO`) and SSH (`git@github.com:ORG/REPO`) URLs.
+///
+/// Returns `None` when no GitHub remote is found or the file cannot be read.
+pub(crate) fn detect_github_remote(path: &Path) -> Option<(String, String)>
+```
+
+### clone_template_to_dir / run_git_clone
+
+```rust
+/// Clone a GitHub template repository to a local directory.
+///
+/// Constructs `https://github.com/{org}/{template}` and shells out to `git clone`.
+/// For private repositories, configure git credentials before calling
+/// (e.g. `gh auth setup-git`).
+///
+/// # Errors
+///
+/// * `Error::GitHub` - clone failed (network, repo not found, auth required).
+pub(crate) fn clone_template_to_dir(org: &str, template: &str, dest: &Path) -> Result<(), Error>
+
+/// Shell out to `git clone <url> <dest>`. Used directly in tests with file:// URLs.
+pub(crate) fn run_git_clone(url: &str, dest: &Path) -> Result<(), Error>
+```
+
+### Three-mode dispatch
+
+The private `template_validate` function routes between three modes:
+
+1. **`--path <DIR>` (directory exists)** — parse config from disk; attempt remote type checks if an org is known (via `--org` or `.git/config` detection) and credentials are available.
+2. **`--org ORG --template NAME` (no existing path)** — clone to `tempfile::TempDir`, validate the clone.
+3. **Neither usable source** — return `Error::InvalidArguments`.
+
+
 
 ## Translation Functions
 
