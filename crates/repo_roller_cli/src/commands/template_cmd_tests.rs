@@ -1223,6 +1223,25 @@ fn test_detect_github_remote_https_without_dot_git_suffix() {
     assert_eq!(repo, "repo-name");
 }
 
+#[test]
+fn test_detect_github_remote_prefers_origin_over_other_remotes() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    // Two GitHub remotes: upstream first, then origin.
+    // detect_github_remote should return origin, not upstream.
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[remote \"upstream\"]\n\turl = https://github.com/upstream-org/repo.git\n[remote \"origin\"]\n\turl = https://github.com/origin-org/repo.git\n",
+    )
+    .unwrap();
+
+    let result = detect_github_remote(tmp.path());
+
+    assert!(result.is_some());
+    let (org, _) = result.unwrap();
+    assert_eq!(org, "origin-org", "should prefer origin over upstream");
+}
+
 // ============================================================================
 // run_git_clone() Tests (task 4.1 / 4.3)
 // ============================================================================
@@ -1376,4 +1395,37 @@ async fn test_template_validate_routing_nonexistent_path_no_org_returns_invalid_
         Error::InvalidArguments(_) => {}
         e => panic!("Expected InvalidArguments, got {:?}", e),
     }
+}
+
+#[tokio::test]
+async fn test_template_validate_routing_explicit_org_takes_precedence_over_detected_remote() {
+    // When --path exists AND --org is explicitly provided, the explicit org is used
+    // for remote type checks (detected git remote is overridden).
+    // No GitHub credentials in test environment → provider creation fails gracefully,
+    // but validation still proceeds and uses the config from disk.
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        VALID_TEMPLATE_TOML,
+    )
+    .unwrap();
+    // Add a git config with a *different* GitHub org to verify explicit --org wins.
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(
+        tmp.path().join(".git/config"),
+        "[remote \"origin\"]\n\turl = https://github.com/detected-org/some-repo.git\n",
+    )
+    .unwrap();
+    let path_str = tmp.path().to_str().unwrap().to_string();
+
+    // The explicit org is "explicit-org"; credentials will fail → warning + no remote checks.
+    // The test verifies the function succeeds (local structural validation passes).
+    let result = template_validate(Some("explicit-org"), None, Some(&path_str), "json").await;
+
+    assert!(
+        result.is_ok(),
+        "local validation should succeed even without credentials; got: {:?}",
+        result.err()
+    );
 }

@@ -177,10 +177,11 @@ pub enum TemplateCommands {
     ///
     /// Three invocation modes:
     /// 1. `--path <DIR>` — validates the local directory directly (no GitHub call needed).
-    /// 2. `--org ORG --template NAME` — clones the template from GitHub to a temp directory
-    ///    then validates locally.
-    /// 3. Both `--path` and `--org`/`--template` — uses the local path; if the path does not
-    ///    exist the remote template is cloned there.
+    /// 2. `--org ORG --template NAME` — clones the template from GitHub to a temporary
+    ///    directory then validates locally. The temporary directory is deleted afterwards.
+    /// 3. Both `--path` and `--org`/`--template` — if the path exists it is validated
+    ///    locally with remote type checks using the explicit org; if the path does not
+    ///    exist, falls back to mode 2 (clone to a temp directory).
     Validate {
         /// Organization name (optional when --path is given).
         #[arg(long)]
@@ -546,7 +547,8 @@ pub async fn get_template_info(
 /// not as function errors.
 ///
 /// See: specs/interfaces/cli-template-operations.md
-#[allow(dead_code)] // used from tests via `use super::*`
+// Used by integration tests in crates/integration_tests
+#[allow(dead_code)]
 pub async fn validate_template(
     org: &str,
     template_name: &str,
@@ -813,7 +815,9 @@ pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConf
 /// - HTTPS: `https://github.com/ORG/REPO[.git]`
 /// - SSH:   `git@github.com:ORG/REPO[.git]`
 ///
-/// Returns the first match found (typically the `origin` remote).
+/// The lookup is deterministic: the `origin` remote is checked first. If `origin` does not
+/// have a GitHub URL, the first other GitHub URL in the file is returned. This avoids
+/// ordering-dependent results in repositories with multiple remotes.
 ///
 /// # Returns
 ///
@@ -824,24 +828,67 @@ pub(crate) fn detect_github_remote(path: &Path) -> Option<(String, String)> {
     let git_config_path = path.join(".git").join("config");
     let content = std::fs::read_to_string(&git_config_path).ok()?;
 
+    // Attempt to extract the URL from the [remote "origin"] section specifically.
+    // This makes the result deterministic in repos with multiple remotes.
+    let origin_url = extract_origin_url(&content);
+
+    // If origin has a GitHub URL, use it. Otherwise fall back to the first GitHub
+    // URL found anywhere in the file.
+    origin_url
+        .and_then(parse_github_url)
+        .or_else(|| extract_any_github_url(&content))
+}
+
+/// Extract the `url` value from the `[remote "origin"]` section of a git config string.
+fn extract_origin_url(content: &str) -> Option<&str> {
+    // Find the [remote "origin"] header, then scan forward for the first `url =` line.
+    let origin_header_re = regex::Regex::new(r#"(?m)^\[remote\s+"origin"\]"#).ok()?;
+    let header_match = origin_header_re.find(content)?;
+    let after_header = &content[header_match.end()..];
+
+    // The section ends at the next `[` header or end-of-string.
+    let section_end = after_header
+        .find('[') // next section
+        .unwrap_or(after_header.len());
+    let section = &after_header[..section_end];
+
+    let url_re = regex::Regex::new(r"(?m)^\s*url\s*=\s*(\S+)").ok()?;
+    url_re
+        .captures(section)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str())
+}
+
+/// Parse a GitHub org and repo name from a single remote URL string (HTTPS or SSH).
+fn parse_github_url(url: &str) -> Option<(String, String)> {
     // HTTPS: https://github.com/ORG/REPO[.git]
     let https_re =
-        regex::Regex::new(r"https://github\.com/([^/\s]+)/([^/\s]+?)(?:\.git)?(?:\s|$)").ok()?;
-    if let Some(caps) = https_re.captures(&content) {
+        regex::Regex::new(r"https://github\.com/([^/\s]+)/([^/\s]+?)(?:\.git)?$").ok()?;
+    if let Some(caps) = https_re.captures(url) {
         if let (Some(org), Some(repo)) = (caps.get(1), caps.get(2)) {
             return Some((org.as_str().to_string(), repo.as_str().to_string()));
         }
     }
-
     // SSH: git@github.com:ORG/REPO[.git]
-    let ssh_re =
-        regex::Regex::new(r"git@github\.com:([^:/\s]+)/([^/\s]+?)(?:\.git)?(?:\s|$)").ok()?;
-    if let Some(caps) = ssh_re.captures(&content) {
+    let ssh_re = regex::Regex::new(r"git@github\.com:([^:/\s]+)/([^/\s]+?)(?:\.git)?$").ok()?;
+    if let Some(caps) = ssh_re.captures(url) {
         if let (Some(org), Some(repo)) = (caps.get(1), caps.get(2)) {
             return Some((org.as_str().to_string(), repo.as_str().to_string()));
         }
     }
+    None
+}
 
+/// Scan an entire git config string for the first GitHub URL found (any remote).
+fn extract_any_github_url(content: &str) -> Option<(String, String)> {
+    let url_re = regex::Regex::new(r"(?m)^\s*url\s*=\s*(\S+)").ok()?;
+    for caps in url_re.captures_iter(content) {
+        if let Some(url_match) = caps.get(1) {
+            if let Some(result) = parse_github_url(url_match.as_str()) {
+                return Some(result);
+            }
+        }
+    }
     None
 }
 
@@ -882,8 +929,9 @@ pub(crate) fn run_git_clone(url: &str, dest: &Path) -> Result<(), Error> {
 ///
 /// # Errors
 ///
-/// * `Error::GitHub` — the clone failed (network error, repository not found,
-///   authentication required, etc.).
+/// * `Error::GitHub` — the clone failed (network error, repository not found, or
+///   not authorized). For private repositories, configure git credentials first
+///   (e.g. `gh auth setup-git` or a `.netrc` credential helper).
 pub(crate) fn clone_template_to_dir(org: &str, template: &str, dest: &Path) -> Result<(), Error> {
     let url = format!("https://github.com/{}/{}", org, template);
     run_git_clone(&url, dest)
@@ -1150,7 +1198,7 @@ async fn template_validate(
     } else if let (Some(org_val), Some(tmpl_val)) = (org, template) {
         // --- Clone branch (task 4.2) ---
         let tmp = tempfile::TempDir::new()
-            .map_err(|e| Error::GitHub(format!("Failed to create temp directory: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Failed to create temp directory: {}", e)))?;
 
         clone_template_to_dir(org_val, tmpl_val, tmp.path())?;
 
