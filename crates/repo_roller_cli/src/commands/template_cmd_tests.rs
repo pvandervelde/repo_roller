@@ -1429,3 +1429,162 @@ async fn test_template_validate_routing_explicit_org_takes_precedence_over_detec
         result.err()
     );
 }
+
+// ============================================================================
+// check_template_toml_unknown_keys() Tests
+// ============================================================================
+
+/// Write a minimal valid `template.toml` to `dir/.reporoller/template.toml` with
+/// an extra top-level section appended.
+fn write_template_toml_with_extra_key(dir: &std::path::Path, extra_key: &str) {
+    std::fs::create_dir_all(dir.join(".reporoller")).unwrap();
+    std::fs::write(
+        dir.join(".reporoller/template.toml"),
+        format!(
+            "[template]\nname = \"t\"\ndescription = \"\"\nauthor = \"a\"\ntags = []\n\n[{extra_key}]\n",
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_check_unknown_keys_no_unknown_keys_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "[template]\nname = \"t\"\ndescription = \"\"\nauthor = \"a\"\ntags = []\n",
+    )
+    .unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(
+        warnings.is_empty(),
+        "expected no warnings but got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_singular_variable_key_returns_warning() {
+    // `[variable.xxx]` is a common typo for `[variables.xxx]`
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_template_toml_with_extra_key(tmp.path(), "variable");
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].category, "unknown_key");
+    assert!(
+        warnings[0].message.contains("variable"),
+        "warning should mention the unknown key; got: {}",
+        warnings[0].message
+    );
+    assert!(
+        warnings[0].message.contains("variables"),
+        "warning should suggest the correct key; got: {}",
+        warnings[0].message
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_all_known_keys_returns_empty() {
+    // Build a TOML that uses every known top-level section to ensure none are
+    // accidentally treated as unknown.
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    let content = r#"
+[template]
+name = "t"
+description = ""
+author = "a"
+tags = []
+
+[variables.foo]
+description = "a foo"
+
+[repository]
+has_wiki = false
+
+[pull_requests]
+allow_squash_merge = true
+
+[branch_protection]
+
+[templating]
+exclude_patterns = []
+"#;
+    std::fs::write(tmp.path().join(".reporoller/template.toml"), content).unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(
+        warnings.is_empty(),
+        "expected no warnings but got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_completely_unknown_key_returns_warning() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_template_toml_with_extra_key(tmp.path(), "custom_stuff");
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].message.contains("custom_stuff"));
+}
+
+#[test]
+fn test_check_unknown_keys_multiple_unknown_keys_returns_one_warning_each() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "[template]\nname = \"t\"\ndescription = \"\"\nauthor = \"a\"\ntags = []\n\n[variable]\n\n[webhook]\n",
+    )
+    .unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert_eq!(warnings.len(), 2);
+    let messages: Vec<&str> = warnings.iter().map(|w| w.message.as_str()).collect();
+    assert!(
+        messages.iter().any(|m| m.contains("variable")),
+        "expected warning for 'variable'"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("webhook")),
+        "expected warning for 'webhook'"
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_missing_file_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    // No .reporoller/template.toml created
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn test_check_unknown_keys_invalid_toml_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "@@@ not valid toml",
+    )
+    .unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(
+        warnings.is_empty(),
+        "invalid TOML should return empty (parse errors handled elsewhere)"
+    );
+}
