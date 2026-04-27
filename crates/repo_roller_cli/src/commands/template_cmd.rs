@@ -809,6 +809,36 @@ pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConf
     })
 }
 
+/// The complete set of valid top-level keys in `.reporoller/template.toml`.
+///
+/// This list mirrors the public fields of `TemplateConfig` exactly.  It is used
+/// by [`check_template_toml_unknown_keys`] to detect typos or stale sections in
+/// template files.
+///
+/// **Maintenance**: this constant must be updated whenever a field is added to
+/// or removed from `TemplateConfig`.  The test
+/// `test_known_keys_sync_with_template_config` enforces this at test time.
+pub(crate) const TEMPLATE_CONFIG_KNOWN_KEYS: &[&str] = &[
+    "template",
+    "repository_type",
+    "variables",
+    "repository",
+    "pull_requests",
+    "branch_protection",
+    "labels",
+    "webhooks",
+    "environments",
+    "github_apps",
+    "rulesets",
+    "default_visibility",
+    "templating",
+    "notifications",
+    "permissions",
+    "teams",
+    "collaborators",
+    "naming_rules",
+];
+
 /// Return `ValidationWarning`s for any top-level key in `.reporoller/template.toml` that is
 /// not a field of `TemplateConfig`.
 ///
@@ -819,27 +849,6 @@ pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConf
 /// Silently returns an empty list when the file cannot be read or parsed; the
 /// actual errors are already handled by `load_template_config_from_path`.
 pub(crate) fn check_template_toml_unknown_keys(path: &Path) -> Vec<ValidationWarning> {
-    const KNOWN_KEYS: &[&str] = &[
-        "template",
-        "repository_type",
-        "variables",
-        "repository",
-        "pull_requests",
-        "branch_protection",
-        "labels",
-        "webhooks",
-        "environments",
-        "github_apps",
-        "rulesets",
-        "default_visibility",
-        "templating",
-        "notifications",
-        "permissions",
-        "teams",
-        "collaborators",
-        "naming_rules",
-    ];
-
     let config_path = path.join(".reporoller").join("template.toml");
     let content = match std::fs::read_to_string(&config_path) {
         Ok(c) => c,
@@ -853,14 +862,14 @@ pub(crate) fn check_template_toml_unknown_keys(path: &Path) -> Vec<ValidationWar
     let mut warnings = vec![];
     if let Some(table) = value.as_table() {
         for key in table.keys() {
-            if !KNOWN_KEYS.contains(&key.as_str()) {
+            if !TEMPLATE_CONFIG_KNOWN_KEYS.contains(&key.as_str()) {
                 warnings.push(ValidationWarning {
                     category: "unknown_key".to_string(),
                     message: format!(
                         "Unknown top-level key '{}' in template.toml - this section will be \
                          ignored. Did you mean one of: {}?",
                         key,
-                        KNOWN_KEYS.join(", ")
+                        TEMPLATE_CONFIG_KNOWN_KEYS.join(", ")
                     ),
                 });
             }

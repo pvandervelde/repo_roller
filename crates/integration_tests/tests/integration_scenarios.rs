@@ -362,10 +362,32 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
 
     let deleted_repos = cleanup.cleanup_orphaned_repositories(0).await?;
 
-    // Verify that our test repository was cleaned up
+    // Verify that our test repository was cleaned up.
+    //
+    // We use two complementary checks to guard against GitHub API eventual
+    // consistency: the org listing used by cleanup_orphaned_repositories can
+    // lag for freshly-created repos, so a just-created repo may not appear in
+    // the deleted list even though cleanup ran successfully.
+    //
+    // Check 1: repo_name appears in the cleanup return value (normal path).
+    // Check 2: repo is no longer accessible via direct GET (handles listing lag).
+    //
+    // Either condition is sufficient. The test fails only if the repo is *still*
+    // accessible after cleanup AND was not reported as deleted.
+    let post_cleanup_accessible = github_client
+        .get_repository(&config.test_org, &repo_name)
+        .await
+        .is_ok();
+
     assert!(
+        deleted_repos.contains(&repo_name) || !post_cleanup_accessible,
+        "Cleanup should have deleted repository '{}'. \
+         Found in deleted list: {}. \
+         Still accessible via API after cleanup: {}. \
+         Full deleted list: {:?}",
+        repo_name,
         deleted_repos.contains(&repo_name),
-        "Should have deleted the test repository. Deleted: {:?}",
+        post_cleanup_accessible,
         deleted_repos
     );
 
