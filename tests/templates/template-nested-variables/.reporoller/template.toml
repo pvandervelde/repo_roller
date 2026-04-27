@@ -3,3 +3,13 @@ name = "template-nested-variables"
 description = "Template with nested variable references for complex substitution tests"
 author = "RepoRoller Test Suite"
 tags = ["test", "edge-case", "variables"]
+
+[variables.first_name]
+description = "First name (used to derive full_name)"
+required = true
+example = "Jane"
+
+[variables.last_name]
+description = "Last name (used to derive full_name)"
+required = true
+example = "Smith"
