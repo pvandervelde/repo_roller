@@ -1429,3 +1429,316 @@ async fn test_template_validate_routing_explicit_org_takes_precedence_over_detec
         result.err()
     );
 }
+
+// ============================================================================
+// check_template_toml_unknown_keys() Tests
+// ============================================================================
+
+/// Write a minimal valid `template.toml` to `dir/.reporoller/template.toml` with
+/// an extra top-level section appended.
+fn write_template_toml_with_extra_key(dir: &std::path::Path, extra_key: &str) {
+    std::fs::create_dir_all(dir.join(".reporoller")).unwrap();
+    std::fs::write(
+        dir.join(".reporoller/template.toml"),
+        format!(
+            "[template]\nname = \"t\"\ndescription = \"\"\nauthor = \"a\"\ntags = []\n\n[{extra_key}]\n",
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_check_unknown_keys_no_unknown_keys_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "[template]\nname = \"t\"\ndescription = \"\"\nauthor = \"a\"\ntags = []\n",
+    )
+    .unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(
+        warnings.is_empty(),
+        "expected no warnings but got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_singular_variable_key_returns_warning() {
+    // `[variable.xxx]` is a common typo for `[variables.xxx]`
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_template_toml_with_extra_key(tmp.path(), "variable");
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].category, "unknown_key");
+    assert!(
+        warnings[0].message.contains("variable"),
+        "warning should mention the unknown key; got: {}",
+        warnings[0].message
+    );
+    assert!(
+        warnings[0].message.contains("variables"),
+        "warning should suggest the correct key; got: {}",
+        warnings[0].message
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_all_known_keys_returns_empty() {
+    // Build a TOML that uses every one of the 18 known top-level keys to ensure
+    // none are accidentally treated as unknown.  array-of-tables sections use
+    // minimal valid content; scalar `default_visibility` uses a bare key-value.
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    let content = r#"
+default_visibility = "private"
+
+[template]
+name = "t"
+description = ""
+author = "a"
+tags = []
+
+[repository_type]
+type = "service"
+policy = "fixed"
+
+[variables.foo]
+description = "a foo"
+
+[repository]
+
+[pull_requests]
+
+[branch_protection]
+
+[templating]
+
+[notifications]
+
+[permissions]
+
+[[labels]]
+name = "bug"
+color = "ee0701"
+description = ""
+
+[[webhooks]]
+url = "https://example.com/hook"
+content_type = "json"
+active = true
+events = ["push"]
+
+[[environments]]
+name = "staging"
+
+[[github_apps]]
+app_id = 123
+
+[[rulesets]]
+name = "main-protection"
+rules = []
+
+[[teams]]
+slug = "platform-team"
+access_level = "write"
+
+[[collaborators]]
+username = "dev-user"
+access_level = "write"
+
+[[naming_rules]]
+"#;
+    std::fs::write(tmp.path().join(".reporoller/template.toml"), content).unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(
+        warnings.is_empty(),
+        "expected no warnings but got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn test_known_keys_sync_with_template_config() {
+    // Build a TemplateConfig with every optional field populated and serialise
+    // it with serde_json.  The resulting JSON object must have exactly the same
+    // top-level keys as TEMPLATE_CONFIG_KNOWN_KEYS.
+    //
+    // This is the compile/test-time guard against KNOWN_KEYS drifting from the
+    // actual fields of TemplateConfig.  If a new field is added to TemplateConfig
+    // without updating TEMPLATE_CONFIG_KNOWN_KEYS, the serialised output will
+    // contain a key not present in TEMPLATE_CONFIG_KNOWN_KEYS and this test fails.
+    use config_manager::settings::{
+        DefaultCollaboratorConfig, DefaultTeamConfig, EnvironmentConfig, GitHubAppConfig,
+        NotificationsConfig, RulesetConfig, TemplatePermissionsConfig,
+    };
+    use config_manager::{
+        RepositoryNamingRulesConfig, RepositoryTypePolicy, RepositoryTypeSpec, RepositoryVisibility,
+    };
+    use template_engine::TemplatingConfig;
+
+    let config = TemplateConfig {
+        template: TemplateMetadata {
+            name: "t".to_string(),
+            description: String::new(),
+            author: "a".to_string(),
+            tags: vec![],
+        },
+        repository_type: Some(RepositoryTypeSpec {
+            repository_type: "svc".to_string(),
+            policy: RepositoryTypePolicy::Fixed,
+        }),
+        variables: Some(HashMap::from([(
+            "x".to_string(),
+            TemplateVariable {
+                description: "d".to_string(),
+                example: None,
+                required: None,
+                pattern: None,
+                min_length: None,
+                max_length: None,
+                options: None,
+                default: None,
+            },
+        )])),
+        repository: Some(RepositorySettings::default()),
+        pull_requests: Some(PullRequestSettings::default()),
+        branch_protection: Some(BranchProtectionSettings::default()),
+        labels: Some(vec![LabelConfig {
+            name: "bug".to_string(),
+            color: "ee0701".to_string(),
+            description: String::new(),
+        }]),
+        webhooks: Some(vec![WebhookConfig {
+            url: "https://example.com".to_string(),
+            content_type: "json".to_string(),
+            secret: None,
+            active: true,
+            events: vec!["push".to_string()],
+        }]),
+        environments: Some(vec![EnvironmentConfig {
+            name: "prod".to_string(),
+            protection_rules: None,
+            deployment_branch_policy: None,
+        }]),
+        github_apps: Some(vec![GitHubAppConfig {
+            app_id: 1,
+            permissions: HashMap::from([("contents".to_string(), "read".to_string())]),
+        }]),
+        rulesets: Some(vec![RulesetConfig {
+            name: "main".to_string(),
+            target: "branch".to_string(),
+            enforcement: "active".to_string(),
+            bypass_actors: vec![],
+            conditions: None,
+            rules: vec![],
+        }]),
+        default_visibility: Some(RepositoryVisibility::Private),
+        templating: Some(TemplatingConfig {
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+        }),
+        notifications: Some(NotificationsConfig::default()),
+        permissions: Some(TemplatePermissionsConfig::default()),
+        teams: Some(vec![DefaultTeamConfig {
+            slug: "team".to_string(),
+            access_level: "write".to_string(),
+            locked: false,
+        }]),
+        collaborators: Some(vec![DefaultCollaboratorConfig {
+            username: "user".to_string(),
+            access_level: "write".to_string(),
+            locked: false,
+        }]),
+        naming_rules: Some(vec![RepositoryNamingRulesConfig::default()]),
+    };
+
+    let serialized =
+        serde_json::to_value(&config).expect("TemplateConfig serialization must succeed");
+    let actual_keys: std::collections::BTreeSet<&str> = serialized
+        .as_object()
+        .expect("serialized TemplateConfig must be a JSON object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+
+    let known_keys: std::collections::BTreeSet<&str> =
+        TEMPLATE_CONFIG_KNOWN_KEYS.iter().copied().collect();
+
+    assert_eq!(
+        actual_keys, known_keys,
+        "TEMPLATE_CONFIG_KNOWN_KEYS must exactly match the serialized field names of a \
+         fully-populated TemplateConfig. Update TEMPLATE_CONFIG_KNOWN_KEYS whenever a \
+         field is added to or removed from TemplateConfig."
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_completely_unknown_key_returns_warning() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_template_toml_with_extra_key(tmp.path(), "custom_stuff");
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].message.contains("custom_stuff"));
+}
+
+#[test]
+fn test_check_unknown_keys_multiple_unknown_keys_returns_one_warning_each() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "[template]\nname = \"t\"\ndescription = \"\"\nauthor = \"a\"\ntags = []\n\n[variable]\n\n[webhook]\n",
+    )
+    .unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert_eq!(warnings.len(), 2);
+    let messages: Vec<&str> = warnings.iter().map(|w| w.message.as_str()).collect();
+    assert!(
+        messages.iter().any(|m| m.contains("variable")),
+        "expected warning for 'variable'"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("webhook")),
+        "expected warning for 'webhook'"
+    );
+}
+
+#[test]
+fn test_check_unknown_keys_missing_file_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    // No .reporoller/template.toml created
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn test_check_unknown_keys_invalid_toml_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".reporoller")).unwrap();
+    std::fs::write(
+        tmp.path().join(".reporoller/template.toml"),
+        "@@@ not valid toml",
+    )
+    .unwrap();
+
+    let warnings = check_template_toml_unknown_keys(tmp.path());
+
+    assert!(
+        warnings.is_empty(),
+        "invalid TOML should return empty (parse errors handled elsewhere)"
+    );
+}

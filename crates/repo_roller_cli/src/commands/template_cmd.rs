@@ -809,6 +809,75 @@ pub(crate) fn load_template_config_from_path(path: &Path) -> Result<TemplateConf
     })
 }
 
+/// The complete set of valid top-level keys in `.reporoller/template.toml`.
+///
+/// This list mirrors the public fields of `TemplateConfig` exactly.  It is used
+/// by [`check_template_toml_unknown_keys`] to detect typos or stale sections in
+/// template files.
+///
+/// **Maintenance**: this constant must be updated whenever a field is added to
+/// or removed from `TemplateConfig`.  The test
+/// `test_known_keys_sync_with_template_config` enforces this at test time.
+pub(crate) const TEMPLATE_CONFIG_KNOWN_KEYS: &[&str] = &[
+    "template",
+    "repository_type",
+    "variables",
+    "repository",
+    "pull_requests",
+    "branch_protection",
+    "labels",
+    "webhooks",
+    "environments",
+    "github_apps",
+    "rulesets",
+    "default_visibility",
+    "templating",
+    "notifications",
+    "permissions",
+    "teams",
+    "collaborators",
+    "naming_rules",
+];
+
+/// Return `ValidationWarning`s for any top-level key in `.reporoller/template.toml` that is
+/// not a field of `TemplateConfig`.
+///
+/// `serde` silently ignores unknown fields by default.  Common typos (e.g.
+/// `[variable.xxx]` instead of `[variables.xxx]`) therefore look like an absent
+/// section rather than a parse error. This helper makes those problems visible.
+///
+/// Silently returns an empty list when the file cannot be read or parsed; the
+/// actual errors are already handled by `load_template_config_from_path`.
+pub(crate) fn check_template_toml_unknown_keys(path: &Path) -> Vec<ValidationWarning> {
+    let config_path = path.join(".reporoller").join("template.toml");
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let value: toml::Value = match toml::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+
+    let mut warnings = vec![];
+    if let Some(table) = value.as_table() {
+        for key in table.keys() {
+            if !TEMPLATE_CONFIG_KNOWN_KEYS.contains(&key.as_str()) {
+                warnings.push(ValidationWarning {
+                    category: "unknown_key".to_string(),
+                    message: format!(
+                        "Unknown top-level key '{}' in template.toml - this section will be \
+                         ignored. Did you mean one of: {}?",
+                        key,
+                        TEMPLATE_CONFIG_KNOWN_KEYS.join(", ")
+                    ),
+                });
+            }
+        }
+    }
+    warnings
+}
+
 /// Detect the GitHub organization and repository from a local git repository's remote URL.
 ///
 /// Parses `.git/config` in `path` looking for a GitHub remote URL in HTTPS or SSH format:
@@ -1193,7 +1262,12 @@ async fn template_validate(
         };
 
         let eff_org = detected_org.as_deref();
-        let result = validate_loaded_template(&name, config, provider_opt, eff_org).await?;
+        let mut result = validate_loaded_template(&name, config, provider_opt, eff_org).await?;
+        // Surface any unrecognised top-level keys (e.g. `[variable.x]` instead of
+        // `[variables.x]`) that serde would otherwise silently ignore.
+        result
+            .warnings
+            .append(&mut check_template_toml_unknown_keys(dir));
         (name, result)
     } else if let (Some(org_val), Some(tmpl_val)) = (org, template) {
         // --- Clone branch (task 4.2) ---
@@ -1214,7 +1288,12 @@ async fn template_validate(
             }
         };
 
-        let result = validate_loaded_template(&name, config, provider_opt, Some(org_val)).await?;
+        let mut result =
+            validate_loaded_template(&name, config, provider_opt, Some(org_val)).await?;
+        // Surface any unrecognised top-level keys in the cloned template.toml.
+        result
+            .warnings
+            .append(&mut check_template_toml_unknown_keys(tmp.path()));
         // `tmp` drops here, cleaning up the cloned directory.
         (name, result)
     } else {

@@ -9,30 +9,34 @@ tags = ["test", "variables"]
 [variables.project_name]
 description = "Name of the project"
 required = true
+example = "my-awesome-project"
 
 [variables.version]
 description = "Initial version"
-required = true
 default = "0.1.0"
+example = "0.1.0"
 
 [variables.author_name]
 description = "Author full name"
 required = true
+example = "Jane Smith"
 
 [variables.author_email]
 description = "Author email address"
 required = true
+example = "jane@example.com"
 
 [variables.project_description]
 description = "Short description of the project"
 required = true
+example = "A brief description of what this project does"
 
 [variables.license]
 description = "SPDX license identifier (e.g. MIT, Apache-2.0)"
-required = true
 default = "MIT"
+example = "MIT"
 
 [variables.environment]
 description = "Target environment (e.g. development, production)"
-required = true
 default = "development"
+example = "development"

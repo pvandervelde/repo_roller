@@ -3,3 +3,8 @@ name = "template-variable-paths"
 description = "Template with variables in file and directory paths for path substitution tests"
 author = "RepoRoller Test Suite"
 tags = ["test", "edge-case", "variables", "paths"]
+
+[variables.project_name]
+description = "Name of the project (used in file and directory names)"
+required = true
+example = "my-project"
