@@ -511,7 +511,9 @@ pub struct ProcessedTemplate {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TemplatingConfig {
+    #[serde(default)]
     pub include_patterns: Vec<String>,
+    #[serde(default)]
     pub exclude_patterns: Vec<String>,
 }
 
