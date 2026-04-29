@@ -1,9 +1,12 @@
-# RepoRoller REST API
+# RepoRoller REST API (crate)
 
 [![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-A production-ready REST API for automated GitHub repository creation with organization-specific configuration management.
+This crate implements the Axum-based HTTP server that exposes the RepoRoller REST API.
+
+> **User documentation** — for API endpoint references, request/response schemas, and usage
+> examples, see [docs/user/reference/api/](../../docs/user/reference/api/index.md).
 
 ## Table of Contents
 
