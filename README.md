@@ -26,10 +26,11 @@ A GitHub app that creates new repositories from templates or as empty repositori
 
 ## Documentation
 
-- **[Empty Repositories Guide](crates/repo_roller_cli/EMPTY_REPOSITORIES.md)** - Creating repositories without templates
-- **[Template Commands](crates/repo_roller_cli/TEMPLATE_COMMANDS.md)** - Working with template repositories
-- **[REST API Documentation](crates/repo_roller_api/README.md)** - HTTP API reference
-- **[Specifications](specs/README.md)** - Architecture and design specifications
+- **[User Documentation](docs/user/index.md)** - Complete user-facing documentation (tutorials, how-to guides, reference, explanation)
+- **[Configuration Reference](docs/user/reference/configuration/index.md)** - TOML schema for all configuration files
+- **[CLI Reference](docs/user/reference/cli/index.md)** - All `repo-roller` subcommands and flags
+- **[REST API Reference](docs/user/reference/api/index.md)** - HTTP endpoint reference
+- **[Specifications](docs/spec/README.md)** - Internal architecture and design specifications
 
 ## Quick Start
 
