@@ -18,9 +18,9 @@ Defines the template's metadata, the variables users fill in at creation time, a
 | Field | TOML type | Required | Description |
 |---|---|---|---|
 | `name` | string | Yes | Template identifier used in CLI and API calls. Must be unique within the organisation. |
-| `description` | string | No | Human-readable description shown in the web UI and CLI `template info` output. |
-| `author` | string | No | Author or team name |
-| `tags` | array of string | No | Tags for discoverability (e.g. `["rust", "microservice"]`) |
+| `description` | string | Yes | Human-readable description shown in the web UI and CLI `template info` output. |
+| `author` | string | Yes | Author or team name |
+| `tags` | array of string | Yes | Tags for discoverability. Use an empty array (`[]`) when no tags are needed. |
 
 ```toml
 [template]
@@ -34,31 +34,37 @@ tags        = ["rust", "microservice", "backend"]
 
 ## `[repository]` — repository settings override
 
-Overrides type and global repository settings for repositories created from this template.
+Overrides global repository settings for repositories created from this template.
 
 Supports the same fields as [global-config.md](global-config.md#repository--repository-feature-settings).
 
-Additionally supports a `repository_type` field:
+---
+
+## `[repository_type]` — repository type policy
+
+A **top-level** section (not nested under `[repository]`) that forces or suggests a repository type.
 
 | Field | TOML type | Required | Description |
 |---|---|---|---|
-| `repository_type` | inline table | No | Forces or suggests a repository type for repositories created from this template |
+| `type` | string | Yes | Repository type slug. Must match a type defined in the metadata repository. |
+| `policy` | string | Yes | See policy values below. |
 
 Repository type policies:
 
 | Policy | Description |
 |---|---|
 | `fixed` | Repositories created from this template always use this type. Users cannot override it. |
-| `default` | This type is pre-selected but users can choose another. |
-| `allowed` | No restriction on type; this is the default when `repository_type` is not set. |
+| `preferable` | This type is pre-selected but users can choose another type during creation. |
+
+Omit the entire `[repository_type]` section to place no restriction on repository type.
 
 ```toml
 [repository]
 has_wiki = false
 
-[repository.repository_type]
-type_name = "service"
-policy    = "fixed"
+[repository_type]
+type   = "service"
+policy = "fixed"
 ```
 
 ---
@@ -100,6 +106,7 @@ max_length  = 5
 | `pattern` | string | No | Regular expression the value must match |
 | `min_length` | integer | No | Minimum number of characters |
 | `max_length` | integer | No | Maximum number of characters |
+| `options` | array of string | No | Restricts the value to one of the listed strings. The web UI presents these as a dropdown. |
 
 ---
 
@@ -149,15 +156,17 @@ Rulesets applied to repositories. Additive. Same schema as global configuration.
 
 ## `[templating]` — file processing rules
 
-Controls which files are copied to created repositories and which are processed for variable substitution.
+Controls which files in the template repository are processed for variable substitution.
 
 | Field | TOML type | Default | Description |
 |---|---|---|---|
-| `exclude_patterns` | array of string | `[]` | Glob patterns for files/directories to exclude from output repos. `.reporoller/` is always excluded. |
-| `process_extensions` | array of string | All text files | File extensions to process for variable substitution. When set, only files with these extensions are processed. |
+| `include_patterns` | array of string | `[]` (all files) | Glob patterns for files to include in variable substitution. When empty, all files are processed. When set, only matching files are processed. |
+| `exclude_patterns` | array of string | `[]` | Glob patterns for files/directories to skip entirely. `.reporoller/` is always excluded regardless of this setting. |
 
 ```toml
 [templating]
-exclude_patterns   = ["README.md", ".github/workflows/test-template.yml"]
-process_extensions = [".toml", ".rs", ".md", ".yml", ".json"]
+include_patterns = ["**/*.toml", "**/*.rs", "**/*.md", "**/*.yml", "**/*.json"]
+exclude_patterns = ["README.md", ".github/workflows/test-template.yml"]
 ```
+
+> **Note:** Both fields accept standard glob patterns (e.g. `**/*.rs` for all Rust files, `src/**` for everything under `src/`). They are not simple file-extension lists.

@@ -17,18 +17,53 @@ RepoRoller uses [Handlebars](https://handlebarsjs.com/) for variable substitutio
 {{variable_name}}
 ```
 
-Substitutes the value of `variable_name`. HTML-special characters (`<`, `>`, `&`, `"`) are escaped. Use triple braces to suppress escaping:
+Substitutes the value of `variable_name`. **Double braces HTML-encode special characters** (see warning below). Use triple braces to output the raw value without encoding:
 
 ```handlebars
 {{{variable_name}}}
 ```
 
-**Example:**
+> **Warning — HTML encoding in non-HTML files**
+>
+> `{{variable}}` encodes the following characters before inserting them:
+>
+> | Character | Encoded as |
+> |-----------|------------|
+> | `<`  | `&lt;`   |
+> | `>`  | `&gt;`   |
+> | `&`  | `&amp;`  |
+> | `"`  | `&quot;` |
+> | `'`  | `&#x27;` |
+> | `=`  | `&#x3D;` |
+> | `` ` `` | `&#x60;` |
+>
+> This is correct and safe for **HTML or Markdown files** rendered in a browser.
+>
+> For **non-HTML files** — shell scripts, Makefiles, YAML, TOML, Rust source files — encoding will corrupt your content (`&&` becomes `&amp;&amp;`, backticks become `&#x60;`, etc.).
+>
+> **Use `{{{triple braces}}}` for all non-HTML file types.** This passes values through byte-for-byte with no encoding.
+
+**Example — Markdown (double braces are fine):**
 
 ```markdown
 # {{repo_name}}
 
 Service URL: https://{{org_name}}.example.com/{{service_name}}
+```
+
+**Example — Shell script (use triple braces):**
+
+```bash
+#!/bin/bash
+set -e
+{{{build_command}}}
+```
+
+**Example — YAML (use triple braces):**
+
+```yaml
+command: {{{command}}}
+args: {{{args}}}
 ```
 
 ---
