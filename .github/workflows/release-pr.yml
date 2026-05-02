@@ -38,7 +38,9 @@ jobs:
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
       - name: Install cargo binstall
-        uses: cargo-bins/cargo-binstall@main
+        # Pin to a fixed tag rather than @main to reduce supply-chain risk and
+        # avoid breakage from upstream changes to the main branch.
+        uses: cargo-bins/cargo-binstall@v1
 
       - name: Install Conventional Commits Next Version
         run: cargo binstall -y conventional_commits_next_version
