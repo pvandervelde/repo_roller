@@ -44,7 +44,9 @@ jobs:
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
       - name: Install cargo binstall
-        uses: cargo-bins/cargo-binstall@main
+        # Pin to a fixed tag rather than @main to reduce supply-chain risk in a
+        # workflow with contents: write + packages: write permissions.
+        uses: cargo-bins/cargo-binstall@v1
 
       - name: Install git-cliff
         run: cargo binstall -y git-cliff
@@ -118,15 +120,14 @@ jobs:
 
           echo "Pushed ${IMAGE_NAME}:${TAG}"
 
-          # Also tag as latest if this is a stable release
+          # Also tag as latest if this is a stable release.
+          # Use imagetools create to re-tag the existing manifest rather than
+          # rebuilding so that OCI labels are preserved.
           if [ "${IS_PRERELEASE}" = "false" ]; then
             echo "Tagging as latest"
-            docker buildx build \
-              --platform linux/amd64 \
-              --file crates/repo_roller_api/Dockerfile \
+            docker buildx imagetools create \
               --tag "${IMAGE_NAME}:latest" \
-              --push \
-              .
+              "${IMAGE_NAME}:${TAG}"
             echo "Pushed ${IMAGE_NAME}:latest"
           fi
 
@@ -156,15 +157,14 @@ jobs:
 
           echo "Pushed ${IMAGE_NAME}:${TAG}"
 
-          # Also tag as latest if this is a stable release
+          # Also tag as latest if this is a stable release.
+          # Use imagetools create to re-tag the existing manifest rather than
+          # rebuilding so that OCI labels are preserved.
           if [ "${IS_PRERELEASE}" = "false" ]; then
             echo "Tagging as latest"
-            docker buildx build \
-              --platform linux/amd64 \
-              --file frontend/Dockerfile \
+            docker buildx imagetools create \
               --tag "${IMAGE_NAME}:latest" \
-              --push \
-              frontend/
+              "${IMAGE_NAME}:${TAG}"
             echo "Pushed ${IMAGE_NAME}:latest"
           fi
 
@@ -274,9 +274,42 @@ jobs:
           FRONTEND_IMAGE="ghcr.io/${{ github.repository_owner }}/repo_roller_frontend"
 
           # Append installation section to the git-cliff generated notes.
-          # Using 'INSTRUCTIONS' as the heredoc delimiter for static text to
-          # avoid escaping issues, and plain EOF where variable expansion is needed.
-          cat >> release_notes.md << 'INSTRUCTIONS'
+          # printf is used instead of heredocs to keep all lines at the correct
+          # YAML indentation level (heredoc terminators at column 0 break YAML).
+          {
+            printf '\n---\n\n## Installation\n\n### Container Images\n\n'
+            printf '**API:** `docker pull %s:%s`\n\n' "${API_IMAGE}" "${TAG}"
+            printf '**Frontend:** `docker pull %s:%s`\n\n' "${FRONTEND_IMAGE}" "${TAG}"
+          } >> release_notes.md
+
+          if [ -f "repo-roller-v${VERSION}-x86_64-linux.tar.gz" ]; then
+            {
+              printf '### CLI \xe2\x80\x94 Linux (x86_64)\n'
+              printf '```bash\n'
+              printf 'curl -L https://github.com/${{ github.repository }}/releases/download/%s/repo-roller-v%s-x86_64-linux.tar.gz | tar xz\n' "${TAG}" "${VERSION}"
+              printf 'sudo mv repo-roller /usr/local/bin/\n'
+              printf '```\n\n'
+            } >> release_notes.md
+          fi
+
+          if [ -f "repo-roller-v${VERSION}-x86_64-windows.zip" ]; then
+            {
+              printf '### CLI \xe2\x80\x94 Windows (x86_64)\n'
+              printf '```powershell\n'
+              printf 'Invoke-WebRequest -Uri https://github.com/${{ github.repository }}/releases/download/%s/repo-roller-v%s-x86_64-windows.zip -OutFile repo-roller.zip\n' "${TAG}" "${VERSION}"
+              printf 'Expand-Archive repo-roller.zip\n'
+              printf 'Move-Item repo-roller\\repo-roller.exe $env:SystemRoot\\System32\\\n'
+              printf '```\n\n'
+            } >> release_notes.md
+          fi
+
+          {
+            printf '### Verify\n'
+            printf '```bash\n'
+            printf 'repo-roller --version\n'
+            printf '```\n'
+            printf '> Checksums: download the `.sha256` files alongside each binary to verify integrity.\n'
+          } >> release_notes.md
 
           gh release edit "${TAG}" --notes-file release_notes.md
 
@@ -289,27 +322,20 @@ jobs:
           TAG="${{ steps.create_release.outputs.TAG }}"
 
           echo "Container build failed - rolling back release"
-
-          # Delete the release
           gh release delete "${TAG}" --yes || true
-
-          # Delete the tag
           git push origin --delete "${TAG}" || true
-
           exit 1
 
       - name: Report binary build failures
         if: steps.build_binaries.outputs.linux_built == 'false' ||
           steps.build_binaries.outputs.windows_built == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.create_release.outputs.TAG }}"
-
           FAILED=""
           if [ "${{ steps.build_binaries.outputs.linux_built }}" = "false" ]; then
-            FAILED="${FAILED}- Linux (x86_64-unknown-linux-gnu)\n"
+            FAILED="${FAILED}  - Linux (x86_64-unknown-linux-gnu)\n"
           fi
           if [ "${{ steps.build_binaries.outputs.windows_built }}" = "false" ]; then
-            FAILED="${FAILED}- Windows (x86_64-pc-windows-gnu)\n"
+            FAILED="${FAILED}  - Windows (x86_64-pc-windows-gnu)\n"
           fi
+          printf "::warning::Some binary builds failed for release ${{ steps.create_release.outputs.TAG }}:\n%s" "${FAILED}"
+          exit 1
