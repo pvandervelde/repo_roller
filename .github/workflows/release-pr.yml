@@ -230,7 +230,8 @@ jobs:
           git checkout -B "${BRANCH_NAME}"
 
           # Clean up temporary files that shouldn't be committed
-          rm -f release_notes.md pr_body.md
+          # Note: release_notes.md is intentionally kept for the PR body step below
+          rm -f pr_body.md
 
           # Add Cargo.toml changes
           git add Cargo.toml
@@ -248,7 +249,8 @@ jobs:
           git push origin "${BRANCH_NAME}" --force
 
       - name: Create or update release PR
-        if: steps.check_changes.outputs.has_changes == 'true' && steps.create_branch.outputs.committed == 'true'
+        if: steps.check_changes.outputs.has_changes == 'true' &&
+          steps.create_branch.outputs.committed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -305,7 +307,8 @@ jobs:
           fi
 
       - name: Skip release PR creation (no version file changes)
-        if: steps.check_changes.outputs.has_changes == 'true' && steps.create_branch.outputs.committed == 'false'
+        if: steps.check_changes.outputs.has_changes == 'true' &&
+          steps.create_branch.outputs.committed == 'false'
         run: |
           echo "Cargo.toml already at target version ${{ steps.calc_version.outputs.NEXT_VERSION }}. No PR needed."
 

@@ -360,7 +360,42 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
     let cleanup =
         integration_tests::utils::RepositoryCleanup::new(cleanup_client, config.test_org.clone());
 
-    let deleted_repos = cleanup.cleanup_orphaned_repositories(0).await?;
+    // Attempt cleanup up to 3 times to handle GitHub API eventual consistency:
+    // a newly-created repo may not appear in the org listing on the first call
+    // (list API lags behind the resource API) but WILL appear in subsequent calls.
+    let mut deleted_repos = Vec::new();
+    let max_attempts = 3;
+    let retry_delay = tokio::time::Duration::from_secs(10);
+
+    for attempt in 1..=max_attempts {
+        deleted_repos = cleanup.cleanup_orphaned_repositories(0).await?;
+
+        if deleted_repos.contains(&repo_name) {
+            // Repo was found and deleted by cleanup — success.
+            break;
+        }
+
+        let still_accessible = github_client
+            .get_repository(&config.test_org, &repo_name)
+            .await
+            .is_ok();
+
+        if !still_accessible {
+            // Repo is gone (listing lag meant cleanup deleted it but didn't
+            // return the name, or it was deleted by a concurrent cleanup run).
+            break;
+        }
+
+        if attempt < max_attempts {
+            info!(
+                attempt = attempt,
+                repo_name = repo_name,
+                "Repo still accessible after cleanup attempt {}; retrying after delay",
+                attempt
+            );
+            tokio::time::sleep(retry_delay).await;
+        }
+    }
 
     // Verify that our test repository was cleaned up.
     //
@@ -373,7 +408,7 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
     // Check 2: repo is no longer accessible via direct GET (handles listing lag).
     //
     // Either condition is sufficient. The test fails only if the repo is *still*
-    // accessible after cleanup AND was not reported as deleted.
+    // accessible after all cleanup attempts AND was not reported as deleted.
     let post_cleanup_accessible = github_client
         .get_repository(&config.test_org, &repo_name)
         .await
@@ -381,11 +416,12 @@ async fn test_orphaned_repository_cleanup() -> Result<()> {
 
     assert!(
         deleted_repos.contains(&repo_name) || !post_cleanup_accessible,
-        "Cleanup should have deleted repository '{}'. \
+        "Cleanup should have deleted repository '{}' (tried {} times). \
          Found in deleted list: {}. \
          Still accessible via API after cleanup: {}. \
          Full deleted list: {:?}",
         repo_name,
+        max_attempts,
         deleted_repos.contains(&repo_name),
         post_cleanup_accessible,
         deleted_repos
