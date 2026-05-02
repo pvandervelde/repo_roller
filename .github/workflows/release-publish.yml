@@ -43,13 +43,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
-      - name: Install cargo binstall
-        # Pin to a fixed tag rather than @main to reduce supply-chain risk in a
-        # workflow with contents: write + packages: write permissions.
-        uses: cargo-bins/cargo-binstall@v1
-
       - name: Install git-cliff
-        run: cargo binstall -y git-cliff
+        run: cargo install git-cliff --locked
 
       - name: Generate release notes
         run: |

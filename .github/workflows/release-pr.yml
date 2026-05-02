@@ -37,14 +37,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
-      - name: Install cargo binstall
-        uses: cargo-bins/cargo-binstall@main
-
       - name: Install Conventional Commits Next Version
-        run: cargo binstall -y conventional_commits_next_version
+        run: cargo install conventional_commits_next_version --locked
 
       - name: Install git-cliff
-        run: cargo binstall -y git-cliff
+        run: cargo install git-cliff --locked
 
       - name: Calculate next version
         id: calc_version
