@@ -43,12 +43,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
-      - name: Install cargo binstall
-        # Pinned to v1.9.0 commit SHA to avoid breakage from upstream changes.
-        uses: cargo-bins/cargo-binstall@23ee8ab6b7397851bc11705bcdf46f2519ea0285 # v1.9.0
-
       - name: Install git-cliff
-        run: cargo binstall -y git-cliff
+        run: cargo install git-cliff --locked
 
       - name: Generate release notes
         run: |
