@@ -17,7 +17,7 @@ members = [
 [workspace.package]
 authors = ["Patrick van der Velde"]
 repository = "https://github.com/pvandervelde/RepoRoller"
-version = "0.8.1"
+version = "0.8.2"
 license = "Apache-2.0"
 license-file = "LICENSE"
 
