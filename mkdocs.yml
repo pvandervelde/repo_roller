@@ -1,0 +1,120 @@
+site_name: RepoRoller Documentation
+site_description: >-
+  User documentation for RepoRoller — create GitHub repositories from curated
+  templates with consistent security policies, branch-protection rules, team
+  permissions, and labels enforced automatically.
+site_url: https://pvandervelde.github.io/repo_roller/
+repo_url: https://github.com/pvandervelde/repo_roller
+repo_name: pvandervelde/repo_roller
+docs_dir: docs/user
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - tutorials/index.md
+      - Quickstart: tutorials/quickstart.md
+      - Set up RepoRoller: tutorials/set-up-reporoller.md
+      - Create your first repository: tutorials/create-first-repository.md
+      - Create your first template: tutorials/create-first-template.md
+      - Tour of the web UI: tutorials/tour-of-the-web-ui.md
+  - How-to guides:
+      - how-to/index.md
+      - Create:
+          - how-to/create/index.md
+          - From a template: how-to/create/from-template.md
+          - Empty repository: how-to/create/empty-repository.md
+          - With README and .gitignore: how-to/create/with-readme-and-gitignore.md
+          - Using the REST API: how-to/create/using-the-rest-api.md
+      - Configure:
+          - how-to/configure/index.md
+          - Branch protection rules: how-to/configure/branch-protection-rules.md
+          - Global defaults: how-to/configure/global-defaults.md
+          - Labels: how-to/configure/labels.md
+          - Outbound notifications: how-to/configure/outbound-notifications.md
+          - Register a template: how-to/configure/register-template.md
+          - Repository types: how-to/configure/repository-types.md
+          - Team configuration: how-to/configure/team-configuration.md
+          - Team permissions: how-to/configure/team-permissions.md
+          - Template configuration: how-to/configure/template-configuration.md
+          - Validate configuration: how-to/configure/validate-configuration.md
+          - Webhooks: how-to/configure/webhooks.md
+      - Author templates:
+          - how-to/author-templates/index.md
+          - Create a template repository: how-to/author-templates/create-template-repository.md
+          - Define template variables: how-to/author-templates/define-template-variables.md
+          - Use variables in filenames: how-to/author-templates/use-variables-in-filenames.md
+          - Use variables in files: how-to/author-templates/use-variables-in-files.md
+          - Configure template labels: how-to/author-templates/configure-template-labels.md
+      - Deploy:
+          - how-to/deploy/index.md
+          - Deploy with Docker: how-to/deploy/deploy-with-docker.md
+          - Register a GitHub App: how-to/deploy/register-github-app.md
+          - Register an OAuth App: how-to/deploy/register-oauth-app.md
+          - Create metadata repository: how-to/deploy/create-metadata-repository.md
+          - Configure branding: how-to/deploy/configure-branding.md
+      - Integrate:
+          - how-to/integrate/index.md
+          - Automate with the CLI: how-to/integrate/automate-with-cli.md
+          - Use the REST API: how-to/integrate/use-rest-api.md
+  - Explanation:
+      - explanation/index.md
+      - System overview: explanation/system-overview.md
+      - Core concepts: explanation/core-concepts.md
+      - Authentication and authorization: explanation/authentication-and-authorization.md
+      - Configuration hierarchy: explanation/configuration-hierarchy.md
+      - Metadata repository: explanation/metadata-repository.md
+      - Permissions model: explanation/permissions-model.md
+      - Repository visibility: explanation/repository-visibility.md
+      - Template processing: explanation/template-processing.md
+  - Reference:
+      - reference/index.md
+      - API:
+          - reference/api/index.md
+          - Repositories: reference/api/repositories.md
+          - Templates: reference/api/templates.md
+      - CLI:
+          - reference/cli/index.md
+          - create: reference/cli/create.md
+          - template: reference/cli/template.md
+          - validate: reference/cli/validate.md
+          - make-template: reference/cli/make-template.md
+      - Configuration:
+          - reference/configuration/index.md
+          - Global config: reference/configuration/global-config.md
+          - Team config: reference/configuration/team-config.md
+          - Template config: reference/configuration/template-config.md
+          - Type config: reference/configuration/type-config.md
+      - Template authoring:
+          - reference/template-authoring/index.md
+          - Handlebars syntax: reference/template-authoring/handlebars-syntax.md
+          - Built-in variables: reference/template-authoring/built-in-variables.md
+          - Template manifest: reference/template-authoring/template-manifest.md
+          - Label schema: reference/template-authoring/label-schema.md
+      - Metadata repository: reference/metadata-repository.md
+      - Environment variables: reference/environment-variables.md
