@@ -87,10 +87,18 @@ manifest_files = [
 # ─────────────────────────────────────────────────────────────────────────────
 # GitHub releases
 # ─────────────────────────────────────────────────────────────────────────────
-# NOTE: The [releases] section is intentionally omitted.
-# .github/workflows/release.yml handles tagging and GitHub release creation
-# when a release/* PR is merged. Enabling release-regent's release creation
-# here would race with that workflow and cause duplicate-release errors.
+# release-regent creates the GitHub Release when the release PR is merged.
+# The separate .github/workflows/release.yml workflow is triggered on the
+# `release: [published]` event and handles building CLI binaries and Docker
+# images, then uploads them as release assets.
+
+[releases]
+# Create a GitHub Release automatically when the release PR is merged.
+enabled = true
+
+# Publish the release immediately (not as a draft) so the
+# `release: [published]` event fires and triggers the artifact workflow.
+draft = false
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Changelog

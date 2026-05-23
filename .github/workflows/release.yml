@@ -1,0 +1,178 @@
+name: Release
+
+# Triggered by release-regent when it publishes a GitHub Release after a
+# release/* PR is merged.  This workflow builds CLI binaries for the
+# supported platforms and a Docker image for the API server, then uploads
+# them as assets on the release.
+
+on:
+    release:
+        types: [published]
+
+permissions:
+    contents: write # upload release assets
+    packages: write # push to GHCR
+
+jobs:
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLI binaries
+    # ─────────────────────────────────────────────────────────────────────────
+    build-cli:
+        name: Build CLI — ${{ matrix.target }}
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - target: x86_64-unknown-linux-gnu
+                      os: ubuntu-latest
+                      archive_ext: tar.gz
+                    - target: aarch64-unknown-linux-gnu
+                      os: ubuntu-latest
+                      archive_ext: tar.gz
+                    - target: x86_64-apple-darwin
+                      os: macos-latest
+                      archive_ext: tar.gz
+                    - target: aarch64-apple-darwin
+                      os: macos-latest
+                      archive_ext: tar.gz
+                    - target: x86_64-pc-windows-msvc
+                      os: windows-latest
+                      archive_ext: zip
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
+
+            - name: Install cross-compilation tools (aarch64-linux)
+              if: matrix.target == 'aarch64-unknown-linux-gnu'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y gcc-aarch64-linux-gnu
+
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+              with:
+                  key: ${{ matrix.target }}
+
+            - name: Build CLI binary
+              env:
+                  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+              run: |
+                  cargo build --release --package repo_roller_cli --target ${{ matrix.target }}
+
+            - name: Package binary (Unix)
+              if: matrix.archive_ext == 'tar.gz'
+              run: |
+                  VERSION="${{ github.event.release.tag_name }}"
+                  ARCHIVE="repo_roller_cli-${VERSION}-${{ matrix.target }}.tar.gz"
+                  cp target/${{ matrix.target }}/release/repo_roller_cli repo_roller_cli
+                  tar -czf "${ARCHIVE}" repo_roller_cli
+                  echo "ASSET_PATH=${ARCHIVE}" >> $GITHUB_ENV
+
+            - name: Package binary (Windows)
+              if: matrix.archive_ext == 'zip'
+              shell: pwsh
+              run: |
+                  $version = "${{ github.event.release.tag_name }}"
+                  $archive = "repo_roller_cli-${version}-${{ matrix.target }}.zip"
+                  Copy-Item "target\${{ matrix.target }}\release\repo_roller_cli.exe" "repo_roller_cli.exe"
+                  Compress-Archive -Path "repo_roller_cli.exe" -DestinationPath $archive
+                  "ASSET_PATH=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+            - name: Upload CLI binary to release
+              uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2
+              with:
+                  files: ${{ env.ASSET_PATH }}
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # API Docker image
+    # ─────────────────────────────────────────────────────────────────────────
+    build-api-image:
+        name: Build API Docker image
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3
+
+            - name: Log in to GitHub Container Registry
+              uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract Docker metadata
+              id: meta
+              uses: docker/metadata-action@902fa8ec7d6ecbea8a986b5e040ecfe2aa9c17e1 # v5
+              with:
+                  images: ghcr.io/${{ github.repository }}/api
+                  tags: |
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
+                      type=semver,pattern={{major}}
+                      type=raw,value=latest
+
+            - name: Build and push API image
+              uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6
+              with:
+                  context: .
+                  file: crates/repo_roller_api/Dockerfile
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  platforms: linux/amd64,linux/arm64
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Frontend Docker image
+    # ─────────────────────────────────────────────────────────────────────────
+    build-frontend-image:
+        name: Build frontend Docker image
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3
+
+            - name: Log in to GitHub Container Registry
+              uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract Docker metadata
+              id: meta
+              uses: docker/metadata-action@902fa8ec7d6ecbea8a986b5e040ecfe2aa9c17e1 # v5
+              with:
+                  images: ghcr.io/${{ github.repository }}/frontend
+                  tags: |
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
+                      type=semver,pattern={{major}}
+                      type=raw,value=latest
+
+            - name: Build and push frontend image
+              uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6
+              with:
+                  context: frontend
+                  file: frontend/Dockerfile
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  platforms: linux/amd64,linux/arm64
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
