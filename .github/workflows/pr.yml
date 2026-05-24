@@ -1,0 +1,832 @@
+name: PR Pipeline
+
+# Single workflow for all pull request checks.
+#
+# Structure:
+#   Security gate (OSV + cargo-audit) runs first.
+#   All build, lint, and test jobs are blocked until the gate passes.
+#   workflow_dispatch allows manual runs against any branch.
+#
+# Required secrets:
+#   CODECOV_TOKEN                        - Codecov upload token
+#   INTEGRATION_TEST_GITHUB_APP_ID       - GitHub App ID for integration tests
+#   INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY - GitHub App private key (PEM)
+#   INTEGRATION_TEST_ORG                 - Test organisation name
+#   INTEGRATION_TEST_USER_TOKEN          - Caller Bearer token for E2E requests
+#   INTEGRATION_TEST_JWT_SECRET          - Secret (>=32 bytes) for backend JWTs
+
+on:
+    pull_request:
+        branches:
+            - master
+    workflow_dispatch:
+
+concurrency:
+    group: pr-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    # ── Security gate (runs first, blocks everything else) ────────────────────
+
+    osv-scan-rust:
+        name: OSV Rust Scan
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - name: Install osv-scanner
+              uses: taiki-e/install-action@osv-scanner
+            - name: Scan Rust dependencies
+              run: osv-scanner --lockfile=Cargo.lock
+
+    cargo-audit:
+        name: Cargo Audit
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+            - name: Install cargo-audit
+              uses: taiki-e/install-action@cargo-audit
+            - name: Run security audit
+              run: cargo audit
+
+    osv-scan-js:
+        name: OSV JS Scan
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - name: Install osv-scanner
+              uses: taiki-e/install-action@osv-scanner
+            - name: Scan JS dependencies
+              run: osv-scanner --lockfile=frontend/pnpm-lock.yaml
+
+    security-gate:
+        name: Security Gate
+        needs: [osv-scan-rust, cargo-audit, osv-scan-js]
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo "All security checks passed"
+
+    # ── Path change detection (gates expensive crate jobs) ───────────────────
+
+    changes:
+        name: Detect changes
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        outputs:
+            e2e: ${{ steps.set-outputs.outputs.e2e }}
+            integration: ${{ steps.set-outputs.outputs.integration }}
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: dorny/paths-filter@v3
+              id: filter
+              if: github.event_name == 'pull_request'
+              with:
+                  filters: |
+                      e2e:
+                        - 'crates/**'
+                        - '!crates/integration_tests/**'
+                        - '.github/workflows/pr.yml'
+                      integration:
+                        - 'crates/**'
+                        - 'Cargo.toml'
+                        - 'Cargo.lock'
+                        - '.github/workflows/pr.yml'
+            - name: Set job outputs
+              id: set-outputs
+              run: |
+                  if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+                    echo "e2e=true" >> $GITHUB_OUTPUT
+                    echo "integration=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "e2e=${{ steps.filter.outputs.e2e }}" >> $GITHUB_OUTPUT
+                    echo "integration=${{ steps.filter.outputs.integration }}" >> $GITHUB_OUTPUT
+                  fi
+
+    # ── Rust lint ─────────────────────────────────────────────────────────────
+
+    check:
+        name: Check
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  profile: minimal
+                  toolchain: stable
+                  override: true
+            - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+              with:
+                  command: check
+
+    rustfmt:
+        name: rustfmt
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: stable
+                  profile: minimal
+                  override: true
+                  components: rustfmt
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+            - name: Check formatting
+              run: cargo fmt --all -- --check
+
+    clippy:
+        name: Clippy
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            checks: write
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: stable
+                  components: clippy
+                  override: true
+            - uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # v1
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  args: --all-features
+                  name: Clippy Output
+
+    cargo-deny:
+        name: Cargo Deny
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
+              with:
+                  # advisories are covered by osv-scan-rust and cargo-audit in the security gate
+                  command: check bans licenses sources
+
+    # ── Rust tests ────────────────────────────────────────────────────────────
+
+    calculate-version:
+        name: Calculate version
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+
+            - name: Install cargo binstall
+              uses: cargo-bins/cargo-binstall@main
+
+            - name: Install Conventional Commits Next Version
+              run: cargo install conventional_commits_next_version
+
+            - name: Install git-cliff
+              run: cargo install git-cliff
+
+            - name: Install cargo typos
+              run: cargo install typos-cli
+
+            - name: Calculate next version
+              id: calc_version
+              run: |
+                  if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+                    LATEST_TAG=$(git describe --tags --abbrev=0)
+                    LATEST_COMMIT=$(git rev-parse $LATEST_TAG)
+                    NEXT_VERSION=$(conventional_commits_next_version --from-version ${LATEST_TAG} --calculation-mode Batch ${LATEST_COMMIT} )
+                  else
+                    FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
+                    NEXT_VERSION=$(conventional_commits_next_version --from-version "0.0.0" --calculation-mode Batch ${FIRST_COMMIT})
+                  fi
+                  echo "NEXT_VERSION=${NEXT_VERSION}" >> $GITHUB_OUTPUT
+                  echo "The next version is: ${NEXT_VERSION}"
+
+            - name: Show stale release branches
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  NEXT_VERSION="${{ steps.calc_version.outputs.NEXT_VERSION }}"
+                  echo "Next calculated version: ${NEXT_VERSION}"
+                  git fetch origin 'refs/heads/release/*:refs/remotes/origin/release/*'
+                  for branch in $(git branch -r --list 'origin/release/*' | sed 's|origin/||'); do
+                    branch_version=$(echo "$branch" | sed 's|release/||')
+                    echo "Found existing release branch: ${branch} (version: ${branch_version})"
+                    if [[ "$branch_version" != "$NEXT_VERSION" ]]; then
+                      echo "Branch ${branch} is stale (version ${branch_version} != ${NEXT_VERSION}). Cleaning up..."
+                      PR_NUMBER=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+                      if [[ -n "$PR_NUMBER" ]]; then
+                        echo "PR #${PR_NUMBER} is on stale branch ${branch}..."
+                      else
+                        echo "No open PR found for stale branch ${branch}."
+                      fi
+                      echo "stale remote branch ${branch}..."
+                    fi
+                  done
+
+            - name: Check if release branch already exists
+              id: check_branch
+              run: |
+                  NEXT_VERSION="${{ steps.calc_version.outputs.NEXT_VERSION }}"
+                  BRANCH_NAME="release/${NEXT_VERSION}"
+                  if git rev-parse --verify --quiet "origin/${BRANCH_NAME}"; then
+                    echo "Branch ${BRANCH_NAME} already exists."
+                    echo "exists=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "Branch ${BRANCH_NAME} does not exist."
+                    echo "exists=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Generate Changelog Section
+              id: generate_changelog
+              run: |
+                  NEXT_VERSION="${{ steps.calc_version.outputs.NEXT_VERSION }}"
+                  git-cliff --tag "${NEXT_VERSION}" --unreleased --strip all > release_notes.md
+                  echo "Generated release notes for ${NEXT_VERSION}"
+                  if [ -s release_notes.md ]; then
+                    echo "has_notes=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "No relevant commits found for changelog."
+                    echo "has_notes=false" >> $GITHUB_OUTPUT
+                  fi
+
+    test:
+        name: unit-tests
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust
+              run: rustup update stable
+
+            - name: Install cargo-llvm-cov
+              uses: taiki-e/install-action@92f69c195229fe62d58b4d697ab4bc75def98e76 # v2
+              with:
+                  tool: cargo-llvm-cov@0.6.10
+
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+
+            - name: Generate code coverage
+              run: |
+                  cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json --lib --bins
+
+            - name: Upload coverage to Codecov
+              uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
+                  files: codecov.json
+                  flags: rust
+                  fail_ci_if_error: true
+
+    doc-test:
+        name: doc-tests
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust
+              run: rustup update stable
+
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+
+            - name: Run doc-tests
+              run: cargo test --doc --all-features --workspace --exclude integration_tests
+
+    # ── Frontend ──────────────────────────────────────────────────────────────
+
+    frontend-lint:
+        name: Frontend ESLint & Prettier
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  package_json_file: frontend/package.json
+            - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+              with:
+                  node-version-file: frontend/.node-version
+            - name: Get pnpm store directory
+              shell: bash
+              run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+            - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ${{ env.STORE_PATH }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pnpm-store-
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile --ignore-scripts
+              working-directory: frontend
+            # osv-scanner for frontend deps is handled by osv-scan-js in the security gate
+            - name: ESLint
+              run: pnpm run lint
+              working-directory: frontend
+            - name: Prettier format check
+              run: pnpm run format:check
+              working-directory: frontend
+
+    frontend-type-check:
+        name: Frontend TypeScript & Svelte type-check
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  package_json_file: frontend/package.json
+            - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+              with:
+                  node-version-file: frontend/.node-version
+            - name: Get pnpm store directory
+              shell: bash
+              run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+            - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ${{ env.STORE_PATH }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pnpm-store-
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile --ignore-scripts
+              working-directory: frontend
+            - name: Generate SvelteKit types
+              run: pnpm run prepare
+              working-directory: frontend
+            - name: Svelte type-check
+              run: pnpm run check
+              working-directory: frontend
+
+    frontend-unit-tests:
+        name: Frontend unit tests
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  package_json_file: frontend/package.json
+            - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+              with:
+                  node-version-file: frontend/.node-version
+            - name: Get pnpm store directory
+              shell: bash
+              run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+            - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ${{ env.STORE_PATH }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pnpm-store-
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile --ignore-scripts
+              working-directory: frontend
+            - name: Run unit tests with coverage
+              run: pnpm run test:coverage
+              working-directory: frontend
+            - name: Upload coverage to Codecov
+              uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
+                  files: frontend/coverage/lcov.info
+                  flags: frontend
+                  fail_ci_if_error: true
+
+    frontend-build:
+        name: Frontend production build
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        env:
+            # Dummy values required by SvelteKit env validation at build time
+            GITHUB_CLIENT_ID: build-placeholder
+            GITHUB_CLIENT_SECRET: build-placeholder
+            GITHUB_ORG: build-placeholder
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  package_json_file: frontend/package.json
+            - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+              with:
+                  node-version-file: frontend/.node-version
+            - name: Get pnpm store directory
+              shell: bash
+              run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+            - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ${{ env.STORE_PATH }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pnpm-store-
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile --ignore-scripts
+              working-directory: frontend
+            - name: Build for production
+              run: pnpm run build
+              working-directory: frontend
+
+    frontend-e2e:
+        name: Frontend E2E tests
+        needs: [security-gate]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  package_json_file: frontend/package.json
+            - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+              with:
+                  node-version-file: frontend/.node-version
+            - name: Get pnpm store directory
+              shell: bash
+              run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+            - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ${{ env.STORE_PATH }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pnpm-store-
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile --ignore-scripts
+              working-directory: frontend
+            - name: Install Playwright browsers
+              run: pnpm exec playwright install --with-deps chromium
+              working-directory: frontend
+            - name: Run E2E tests
+              run: pnpm run test:e2e
+              working-directory: frontend
+
+    # ── E2E Container Tests ───────────────────────────────────────────────────
+
+    e2e-tests:
+        name: E2E Container Tests
+        needs: [security-gate, changes]
+        if: needs.changes.outputs.e2e == 'true'
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+
+        permissions:
+            contents: read
+            issues: write
+            pull-requests: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust dependencies
+              uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+              with:
+                  key: e2e-tests
+                  cache-on-failure: true
+
+            - name: Verify Docker is available
+              run: |
+                  echo "Checking Docker daemon..."
+                  docker info
+                  echo "✓ Docker is available"
+
+            - name: Build Docker image
+              run: |
+                  echo "🐳 Building repo_roller_api Docker image..."
+                  docker build -t repo_roller_api:test -f crates/repo_roller_api/Dockerfile .
+                  echo "✓ Docker image built successfully"
+
+            - name: Verify Docker image
+              run: |
+                  echo "Verifying Docker image..."
+                  docker images | grep repo_roller_api
+                  echo "✓ Image verified"
+
+            - name: Validate environment setup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  TEST_CALLER_TOKEN: ${{ secrets.INTEGRATION_TEST_USER_TOKEN }}
+                  INTEGRATION_TEST_JWT_SECRET: ${{ secrets.INTEGRATION_TEST_JWT_SECRET }}
+              run: |
+                  echo "Validating E2E test environment..."
+
+                  if [ -z "$GITHUB_APP_ID" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$GITHUB_APP_PRIVATE_KEY" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$TEST_ORG" ]; then
+                    echo "❌ INTEGRATION_TEST_ORG secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$TEST_CALLER_TOKEN" ]; then
+                    echo "❌ INTEGRATION_TEST_USER_TOKEN secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$INTEGRATION_TEST_JWT_SECRET" ]; then
+                    echo "❌ INTEGRATION_TEST_JWT_SECRET secret not set"
+                    exit 1
+                  fi
+
+                  echo "✅ All required secrets are configured"
+                  echo "📋 GitHub App ID: $GITHUB_APP_ID"
+                  echo "📋 Test Organization: $TEST_ORG"
+                  echo "📋 Metadata Repository: $METADATA_REPOSITORY_NAME"
+                  echo ""
+                  echo "⚠️  IMPORTANT: The metadata repository must exist in the test organization!"
+                  echo "   Expected location: $TEST_ORG/.reporoller-test"
+                  echo "   If tests fail with 404/500 errors, verify:"
+                  echo "   1. Repository exists: https://github.com/$TEST_ORG/.reporoller-test"
+                  echo "   2. GitHub App has access to the repository"
+
+            - name: Run E2E containerized tests
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  TEST_CALLER_TOKEN: ${{ secrets.INTEGRATION_TEST_USER_TOKEN }}
+                  INTEGRATION_TEST_JWT_SECRET: ${{ secrets.INTEGRATION_TEST_JWT_SECRET }}
+                  METADATA_REPOSITORY_NAME: ".reporoller-test"
+                  TEST_TEMPLATE: "template-test-basic"
+                  RUST_LOG: info
+              run: |
+                  echo "🚀 Running E2E containerized tests..."
+                  echo "⚠ Tests run sequentially to avoid port conflicts"
+                  cargo test \
+                    --package e2e_tests \
+                    -- --test-threads=1 \
+                    --nocapture
+
+            - name: Cleanup Docker resources
+              if: always()
+              run: |
+                  echo "🧹 Cleaning up Docker resources..."
+                  docker ps -a | grep repo_roller_api_test | awk '{print $1}' | xargs -r docker rm -f
+                  docker images | grep repo_roller_api | grep test | awk '{print $3}' | xargs -r docker rmi -f
+                  echo "✓ Docker cleanup complete"
+
+            - name: Upload test logs
+              if: failure()
+              uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+              with:
+                  name: e2e-test-logs
+                  path: |
+                      *.log
+                      target/debug/deps/e2e_containerized-*.log
+                  retention-days: 7
+                  if-no-files-found: ignore
+
+            - name: Comment on PR with results
+              if: github.event_name == 'pull_request' && always()
+              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+              with:
+                  script: |
+                      const success = '${{ job.status }}' === 'success';
+                      const statusEmoji = success ? '✅' : '❌';
+                      const statusText = success ? 'PASSED' : 'FAILED';
+
+                      const commentBody = `
+                      ## ${statusEmoji} E2E Containerized Tests ${statusText}
+
+                      **Workflow**: \`${{ github.workflow }}\`
+                      **Run ID**: [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+                      **Commit**: \`${{ github.sha }}\`
+
+                      ${success ?
+                        '🎉 All E2E containerized tests passed! The API works correctly in Docker container.' :
+                        '⚠️ E2E containerized tests failed. Please review the logs and fix any issues.'
+                      }
+
+                      ### What was tested:
+                      - ✓ Docker image build
+                      - ✓ Container startup and health check
+                      - ✓ HTTP endpoints via external client
+                      - ✓ Complete request/response cycle
+                      - ✓ Production deployment environment
+
+                      <!-- e2e-tests-comment -->
+                      `;
+
+                      const { data: comments } = await github.rest.issues.listComments({
+                        issue_number: context.issue.number,
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                      });
+
+                      const botComment = comments.find(comment =>
+                        comment.user.type === 'Bot' &&
+                        comment.user.login === 'github-actions[bot]' &&
+                        comment.body.includes('<!-- e2e-tests-comment -->')
+                      );
+
+                      if (botComment) {
+                        await github.rest.issues.updateComment({
+                          comment_id: botComment.id,
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          body: commentBody
+                        });
+                      } else {
+                        await github.rest.issues.createComment({
+                          issue_number: context.issue.number,
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          body: commentBody
+                        });
+                      }
+
+    # ── Integration Tests ─────────────────────────────────────────────────────
+
+    integration-tests:
+        name: Integration Tests
+        needs: [security-gate, changes]
+        if: needs.changes.outputs.integration == 'true'
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+
+        permissions:
+            contents: read
+            issues: write
+            pull-requests: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust dependencies
+              uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+              with:
+                  key: integration-tests
+                  cache-on-failure: true
+
+            - name: Build integration tests
+              run: |
+                  echo "Building integration tests..."
+                  cargo test --package integration_tests --no-run
+                  echo "Integration tests built successfully"
+
+            - name: Validate environment setup
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+              run: |
+                  echo "Validating integration test environment..."
+
+                  if [ -z "$GITHUB_APP_ID" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_ID secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$GITHUB_APP_PRIVATE_KEY" ]; then
+                    echo "❌ INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY secret not set"
+                    exit 1
+                  fi
+
+                  if [ -z "$TEST_ORG" ]; then
+                    echo "❌ INTEGRATION_TEST_ORG secret not set"
+                    exit 1
+                  fi
+
+                  echo "✅ All required secrets are configured"
+                  echo "📋 GitHub App ID: $GITHUB_APP_ID"
+                  echo "📋 Test Organization: $TEST_ORG"
+
+            - name: Run integration tests
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  RUST_LOG: info
+              run: |
+                  echo "🧪 Running full integration test suite..."
+                  cargo test --package integration_tests -- --nocapture --test-threads=1
+
+            - name: Upload test report
+              if: always()
+              uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+              with:
+                  name: integration-test-report
+                  path: integration-test-report.md
+                  retention-days: 30
+
+            - name: Upload test logs
+              if: failure()
+              uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+              with:
+                  name: integration-test-logs
+                  path: |
+                      *.log
+                      target/debug/deps/integration_tests-*.log
+                  retention-days: 7
+                  if-no-files-found: ignore
+
+            - name: Emergency cleanup on failure
+              if: failure()
+              env:
+                  GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+                  GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+                  TEST_ORG: ${{ secrets.INTEGRATION_TEST_ORG }}
+                  RUST_LOG: warn
+              run: |
+                  echo "🚨 Test run failed, attempting emergency cleanup..."
+                  cargo test --package integration_tests test_cleanup_orphaned_repositories -- --nocapture || true
+                  echo "Emergency cleanup completed (best effort)"
+
+            - name: Comment on PR with results
+              if: github.event_name == 'pull_request' && always()
+              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+              with:
+                  script: |
+                      const fs = require('fs');
+
+                      let reportContent = '';
+                      try {
+                        reportContent = fs.readFileSync('integration-test-report.md', 'utf8');
+                      } catch (error) {
+                        reportContent = '❌ Integration test report not generated - tests may have failed to start.';
+                      }
+
+                      const success = '${{ job.status }}' === 'success';
+                      const statusEmoji = success ? '✅' : '❌';
+                      const statusText = success ? 'PASSED' : 'FAILED';
+
+                      const commentBody = `
+                      ## ${statusEmoji} Integration Tests ${statusText}
+
+                      **Workflow**: \`${{ github.workflow }}\`
+                      **Run ID**: [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+                      **Commit**: \`${{ github.sha }}\`
+
+                      <details>
+                      <summary>📊 Detailed Test Report</summary>
+
+                      \`\`\`
+                      ${reportContent}
+                      \`\`\`
+
+                      </details>
+
+                      ${success ?
+                        '🎉 All integration tests passed! The changes are ready for review.' :
+                        '⚠️ Integration tests failed. Please review the logs and fix any issues before merging.'
+                      }
+
+                      <!-- integration-tests-comment -->
+                      `;
+
+                      const { data: comments } = await github.rest.issues.listComments({
+                        issue_number: context.issue.number,
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                      });
+
+                      const botComment = comments.find(comment =>
+                        comment.user.type === 'Bot' &&
+                        comment.user.login === 'github-actions[bot]' &&
+                        comment.body.includes('<!-- integration-tests-comment -->')
+                      );
+
+                      if (botComment) {
+                        await github.rest.issues.updateComment({
+                          comment_id: botComment.id,
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          body: commentBody
+                        });
+                      } else {
+                        await github.rest.issues.createComment({
+                          issue_number: context.issue.number,
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          body: commentBody
+                        });
+                      }
