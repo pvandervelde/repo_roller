@@ -10,19 +10,19 @@ version.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
+base64.workspace = true
+chrono.workspace = true
 github_client = { path = "../github_client" }
 jsonschema = "0.33"
 octocrab.workspace = true
 schemars = { version = "1.0", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
+serde.workspace = true
 serde_json.workspace = true
 template_engine = { path = "../template_engine" }
 thiserror = { workspace = true }
-toml = "0.9"
+toml.workspace = true
 tracing = { workspace = true }
-url = "2.5"
+url.workspace = true
 
 [dev-dependencies]
 futures = "=0.3.31"

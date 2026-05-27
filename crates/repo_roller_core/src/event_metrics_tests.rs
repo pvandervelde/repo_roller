@@ -92,7 +92,7 @@ mod prometheus_metrics_tests {
         // Verify expected metric names exist
         let metric_names: Vec<String> = metric_families
             .iter()
-            .map(|mf| mf.get_name().to_string())
+            .map(|mf| mf.name().to_string())
             .collect();
 
         assert!(
@@ -293,18 +293,20 @@ mod prometheus_metrics_tests {
     fn find_counter_value(metric_families: &[prometheus::proto::MetricFamily], name: &str) -> f64 {
         metric_families
             .iter()
-            .find(|mf| mf.get_name() == name)
-            .and_then(|mf| mf.get_metric().first())
-            .map(|m| m.get_counter().get_value())
+            .find(|mf| mf.name() == name)
+            .and_then(|mf: &prometheus::proto::MetricFamily| mf.metric.first())
+            .and_then(|m: &prometheus::proto::Metric| m.counter.as_ref())
+            .map(|c: &prometheus::proto::Counter| c.value())
             .unwrap_or(0.0)
     }
 
     fn find_gauge_value(metric_families: &[prometheus::proto::MetricFamily], name: &str) -> f64 {
         metric_families
             .iter()
-            .find(|mf| mf.get_name() == name)
-            .and_then(|mf| mf.get_metric().first())
-            .map(|m| m.get_gauge().get_value())
+            .find(|mf| mf.name() == name)
+            .and_then(|mf: &prometheus::proto::MetricFamily| mf.metric.first())
+            .and_then(|m: &prometheus::proto::Metric| m.gauge.as_ref())
+            .map(|g: &prometheus::proto::Gauge| g.value())
             .unwrap_or(0.0)
     }
 
@@ -314,9 +316,9 @@ mod prometheus_metrics_tests {
     ) -> Option<&'a prometheus::proto::Histogram> {
         metric_families
             .iter()
-            .find(|mf| mf.get_name() == name)
-            .and_then(|mf| mf.get_metric().first())
-            .map(|m| m.get_histogram())
+            .find(|mf| mf.name() == name)
+            .and_then(|mf: &prometheus::proto::MetricFamily| mf.metric.first())
+            .and_then(|m: &prometheus::proto::Metric| m.histogram.as_ref())
     }
 }
 

@@ -17,30 +17,25 @@ template_engine = { path = "../template_engine" }
 config_manager = { path = "../config_manager" }
 test_utils = { path = "../test_utils" }
 test_cleanup = { path = "../test_cleanup" }
-tokio = { version = "1", features = [
-    "macros",
-    "rt-multi-thread",
-    "test-util",
-    "time",
-] }
-tempfile = "3.0"
-clap = { version = "4.0", features = ["derive"] }
-anyhow = "1"
-serde = { version = "1", features = ["derive"] }
+tokio.workspace = true
+tempfile.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde.workspace = true
 serde_json.workspace = true
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.0", features = ["v4"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+uuid.workspace = true
 regex.workspace = true
-wiremock = "0.5"
-prometheus = "0.13"
-hmac = "0.12"
-sha2 = "0.10"
-hex = "0.4"
-toml = "0.8"
-base64 = "0.21"
-reqwest = "0.12"
+wiremock.workspace = true
+prometheus.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
+toml.workspace = true
+base64.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 tokio-test = "=0.4.4"

@@ -10,29 +10,29 @@ github_client = { path = "../github_client" }
 test_utils = { path = "../test_utils" }
 
 # Async runtime
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util", "time"] }
+tokio.workspace = true
 futures-util = "0.3"
 
 # Error handling
-anyhow = "1"
+anyhow.workspace = true
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 serde_json.workspace = true
 
 # Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 # Time utilities
-chrono = { version = "0.4", features = ["serde"] }
+chrono.workspace = true
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json"] }
+reqwest.workspace = true
 
 # Docker container testing
 testcontainers = "0.23"
 bollard = "0.17"
 
 # Utilities
-uuid = { version = "1.0", features = ["v4"] }
+uuid.workspace = true
