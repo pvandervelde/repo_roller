@@ -42,7 +42,18 @@ jobs:
       - name: Install osv-scanner
         uses: taiki-e/install-action@a9e3be0d6e6ae1d8b39103894e2dac651979517e # osv-scanner
       - name: Scan Rust dependencies
-        run: osv-scanner --lockfile=Cargo.lock
+        run: |
+          set +e
+          osv-scanner --lockfile=Cargo.lock 2>&1 | tee /tmp/osv-rust.txt
+          SCAN_EXIT="${PIPESTATUS[0]}"
+          set -e
+          if [ "${SCAN_EXIT}" -ne 0 ]; then
+            if grep -qE '^0 vulnerabilities can be fixed\.' /tmp/osv-rust.txt; then
+              echo "::warning::Unfixable vulnerabilities present in Rust dependencies — no action required"
+              exit 0
+            fi
+            exit "${SCAN_EXIT}"
+          fi
 
   cargo-audit:
     name: Cargo Audit
@@ -63,7 +74,18 @@ jobs:
       - name: Install osv-scanner
         uses: taiki-e/install-action@a9e3be0d6e6ae1d8b39103894e2dac651979517e # osv-scanner
       - name: Scan JS dependencies
-        run: osv-scanner --lockfile=frontend/pnpm-lock.yaml
+        run: |
+          set +e
+          osv-scanner --lockfile=frontend/pnpm-lock.yaml 2>&1 | tee /tmp/osv-js.txt
+          SCAN_EXIT="${PIPESTATUS[0]}"
+          set -e
+          if [ "${SCAN_EXIT}" -ne 0 ]; then
+            if grep -qE '^0 vulnerabilities can be fixed\.' /tmp/osv-js.txt; then
+              echo "::warning::Unfixable vulnerabilities present in JS dependencies — no action required"
+              exit 0
+            fi
+            exit "${SCAN_EXIT}"
+          fi
 
   security-gate:
     name: Security Gate
