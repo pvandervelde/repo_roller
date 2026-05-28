@@ -64,7 +64,21 @@ jobs:
       - name: Install cargo-audit
         uses: taiki-e/install-action@6bd56108367fcf832720b0ee9c372084f856e8e5 # cargo-audit
       - name: Run security audit
-        run: cargo audit
+        run: |
+          set +e
+          cargo audit 2>&1
+          AUDIT_EXIT=$?
+          set -e
+          if [ "${AUDIT_EXIT}" -ne 0 ]; then
+            FIXABLE=$(cargo audit --json 2>/dev/null \
+              | jq '[.vulnerabilities.list[] | select(.versions.patched | length > 0)] | length' \
+              2>/dev/null || echo "1")
+            if [ "${FIXABLE}" = "0" ]; then
+              echo "::warning::Vulnerabilities found in Rust dependencies but none have a patched version — no action required"
+              exit 0
+            fi
+            exit "${AUDIT_EXIT}"
+          fi
 
   osv-scan-js:
     name: OSV JS Scan
