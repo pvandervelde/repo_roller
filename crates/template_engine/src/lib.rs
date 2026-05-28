@@ -817,13 +817,13 @@ impl TemplateProcessor {
 
             // Check file path template for variables
             let path_vars = self.handlebars_engine.extract_variables(file_path);
-            all_required_vars.extend(path_vars.into_iter());
+            all_required_vars.extend(path_vars);
 
             // Check file content for variables (only for text files)
             if self.is_text_file(content) {
                 let content_str = String::from_utf8_lossy(content);
                 let content_vars = self.handlebars_engine.extract_variables(&content_str);
-                all_required_vars.extend(content_vars.into_iter());
+                all_required_vars.extend(content_vars);
             }
         }
 
