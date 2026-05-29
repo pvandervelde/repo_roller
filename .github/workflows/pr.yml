@@ -479,6 +479,7 @@ jobs:
     needs: [security-gate, changes]
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
@@ -636,6 +637,7 @@ jobs:
 
       - name: Comment on PR with results
         if: github.event_name == 'pull_request' && always()
+        continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
@@ -796,6 +798,7 @@ jobs:
 
       - name: Comment on PR with results
         if: github.event_name == 'pull_request' && always()
+        continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |

@@ -121,18 +121,15 @@ fn validate_safe_path(file_path: &str, repo_path: &Path) -> Result<(), SystemErr
                     ),
                 });
             }
-            std::path::Component::CurDir => {
-                // Current directory (.) is suspicious when it appears alone
-                // but we'll allow it in paths like "./file.txt" by checking if it's the only component
-                if path.components().count() == 1 {
-                    return Err(SystemError::FileSystem {
-                        operation: "validate path".to_string(),
-                        reason: format!(
-                            "Unsafe path: Path consisting only of '.' is not allowed: {}",
-                            file_path
-                        ),
-                    });
-                }
+            std::path::Component::CurDir if path.components().count() == 1 => {
+                // Path consisting only of '.' is not allowed
+                return Err(SystemError::FileSystem {
+                    operation: "validate path".to_string(),
+                    reason: format!(
+                        "Unsafe path: Path consisting only of '.' is not allowed: {}",
+                        file_path
+                    ),
+                });
             }
             _ => {}
         }
