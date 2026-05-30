@@ -11,29 +11,29 @@ version.workspace = true
 [dependencies]
 async-trait.workspace = true
 auth_handler = { path = "../auth_handler" }
-chrono = { version = "0.4", features = ["serde"] }
+chrono.workspace = true
 config_manager = { path = "../config_manager" }
 git2 = "0.20"
 github_client = { path = "../github_client" }
-hex = "0.4"
-hmac = "0.12"
-prometheus = "0.13"
+hex.workspace = true
+hmac.workspace = true
+prometheus.workspace = true
 regex.workspace = true
-reqwest = { version = "0.12", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
+reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
+sha2.workspace = true
 std_prelude = "0.2.12"
 temp-dir = "0.1.16"
 template_engine = { path = "../template_engine" }
 thiserror = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time"] }
+tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
-uuid = { version = "1.0", features = ["serde", "v4"] }
-walkdir = "2.5"
+uuid.workspace = true
+walkdir.workspace = true
 
 [dev-dependencies]
 octocrab.workspace = true
 tracing-test = "0.2"
-wiremock = "=0.6.5"
+wiremock.workspace = true

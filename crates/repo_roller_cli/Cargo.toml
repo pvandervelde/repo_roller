@@ -12,7 +12,7 @@ version.workspace = true
 async-trait.workspace = true
 auth_handler = { path = "../auth_handler" }
 chrono.workspace = true
-clap = { version = "4.5.4", features = ["derive"] }
+clap.workspace = true
 colored = "2.1"
 config_manager = { path = "../config_manager" }
 github_client = { path = "../github_client" }
@@ -22,15 +22,15 @@ keyring = { version = "3.6.2", features = [
     "windows-native",
 ] }
 octocrab.workspace = true
-prometheus = "0.13"
+prometheus.workspace = true
 regex.workspace = true
 repo_roller_core = { path = "../repo_roller_core" }
-serde = { version = "1.0", features = ["derive"] }
+serde.workspace = true
 serde_json.workspace = true
-tempfile = "3.19.1"
+tempfile.workspace = true
 template_engine = { path = "../template_engine" }
 thiserror = { workspace = true }
-tokio = { version = "1.45.1", features = ["full"] }
-toml = "0.9.0"
+tokio.workspace = true
+toml.workspace = true
 tracing.workspace = true
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+tracing-subscriber.workspace = true

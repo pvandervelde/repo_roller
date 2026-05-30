@@ -14,11 +14,11 @@
     "automerge": false
   },
   "osvVulnerabilityAlerts": true,
-  "minimumReleaseAge": "48 hours",
+  "minimumReleaseAge": "72 hours",
   "internalChecksFilter": "strict",
   "packageRules": [
     {
-      "description": "Security patches bypass the 48h delay — merge fast but still require review",
+      "description": "Security patches bypass the 72h delay — merge fast but still require review",
       "matchUpdateTypes": [
         "minor",
         "patch"

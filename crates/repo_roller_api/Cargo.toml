@@ -32,8 +32,8 @@ thiserror.workspace = true
 anyhow.workspace = true
 
 # JWT authentication
-jsonwebtoken = "9"
-secrecy = "0.10"
+jsonwebtoken.workspace = true
+secrecy.workspace = true
 
 # Logging and tracing
 tracing.workspace = true
@@ -43,18 +43,18 @@ tracing-subscriber.workspace = true
 chrono.workspace = true
 
 # Metrics
-prometheus = "0.13"
+prometheus.workspace = true
 
 # UUID for request IDs
 uuid.workspace = true
 
 [dev-dependencies]
-base64 = "0.22"
+base64.workspace = true
 http-body-util = "=0.1.3"
 tower = { workspace = true, features = ["util"] }
 hyper = { workspace = true, features = ["full"] }
 octocrab.workspace = true
-wiremock = "=0.6.5"
+wiremock.workspace = true
 
 [[bin]]
 name = "repo_roller_api"
