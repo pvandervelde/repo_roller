@@ -58,6 +58,10 @@ use thiserror::Error;
 #[path = "handlebars_tests.rs"]
 mod handlebars_tests;
 
+#[cfg(test)]
+#[path = "handlebars_proptests.rs"]
+mod handlebars_proptests;
+
 // ================================
 // Custom Handlebars Helpers
 // ================================

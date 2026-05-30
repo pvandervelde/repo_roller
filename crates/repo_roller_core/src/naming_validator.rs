@@ -42,6 +42,10 @@ use crate::errors::ValidationError;
 #[path = "naming_validator_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "naming_validator_proptests.rs"]
+mod proptests;
+
 /// Stateless validator for repository naming rules.
 ///
 /// Validates a repository name against a list of `RepositoryNamingRulesConfig`
