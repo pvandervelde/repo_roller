@@ -152,6 +152,81 @@ fn test_generate_backend_jwt_roundtrip() {
     assert_eq!(token.split('.').count(), 3);
 }
 
+/// Test that a JWT with an expiry well in the past (beyond the 30-second leeway) is rejected.
+///
+/// The middleware uses a 30-second leeway. Tokens expired more than 30 seconds ago
+/// must be rejected, while tokens expired within the leeway window may still be accepted.
+#[tokio::test]
+async fn test_expired_jwt_rejected() {
+    use jsonwebtoken::{EncodingKey, Header};
+
+    let secret = "test-jwt-secret-key-minimum-32b!";
+    // Set exp to a fixed timestamp in the distant past — well beyond any leeway.
+    let past = 1_000_000usize;
+    let claims = Claims {
+        sub: "alice".to_string(),
+        iat: past,
+        exp: past + 3600,
+    };
+    let expired_token = jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .expect("encoding must succeed");
+
+    let state = AppState::default();
+    let app = Router::new()
+        .route("/test", get(test_handler))
+        .route_layer(middleware::from_fn_with_state(state, auth_middleware));
+
+    let request = Request::builder()
+        .uri("/test")
+        .header(header::AUTHORIZATION, format!("Bearer {}", expired_token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "An expired JWT must be rejected"
+    );
+}
+
+/// Test that a JWT signed with an empty sub claim is accepted at the JWT level
+/// (the claim is structurally valid) and the empty login propagates into AuthContext.
+///
+/// The middleware does not reject empty sub — that is a business-level concern
+/// handled by downstream handlers. This test pins the current behaviour so any
+/// future change to add sub-validation is made explicitly.
+#[tokio::test]
+async fn test_jwt_with_empty_sub_is_accepted_by_middleware() {
+    let secret = "test-jwt-secret-key-minimum-32b!";
+    // generate_backend_jwt accepts any &str including "".
+    let token = generate_backend_jwt("", secret).expect("JWT generation must succeed");
+
+    let state = AppState::default();
+    let app = Router::new()
+        .route("/test", get(test_handler))
+        .route_layer(middleware::from_fn_with_state(state, auth_middleware));
+
+    let request = Request::builder()
+        .uri("/test")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    // The middleware validates the JWT signature and expiry only; an empty sub is
+    // structurally valid and must not be rejected at this layer.
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "A structurally valid JWT with an empty sub should pass middleware validation"
+    );
+}
+
 /// Test tracing middleware adds request logging
 #[tokio::test]
 async fn test_tracing_middleware_logs_requests() {

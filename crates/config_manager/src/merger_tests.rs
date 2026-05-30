@@ -1311,3 +1311,182 @@ fn test_all_branch_protection_settings_fields() {
         Some(ConfigurationSource::Global)
     );
 }
+
+// ============================================================================
+// Naming Rule Merging Tests  (replaces earlier label-merger tests)
+// ============================================================================
+//
+// Note: `ConfigurationMerger::merge_configurations` does NOT populate
+// `MergedConfiguration::labels`; that field is filled by
+// `OrganizationSettingsManager` (steps 6.5/6.6) after the merge returns.
+// Label behaviour is therefore tested in `organization_settings_manager_tests`.
+// The following tests verify the closest analogous additive-collection
+// behaviour that IS handled by the merger: `naming_rules`.
+
+/// Naming rules from repository type and template are merged additively.
+///
+/// Both layers define a rule; after merging both must be present — no rule
+/// is silently dropped by a higher-precedence level.
+#[test]
+fn test_naming_rules_merge_additively_from_repository_type_and_template() {
+    use crate::settings::naming::RepositoryNamingRulesConfig;
+
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+
+    let repo_type = RepositoryTypeConfig {
+        naming_rules: Some(vec![RepositoryNamingRulesConfig {
+            description: Some("Repository type rule".to_string()),
+            allowed_pattern: Some("^[a-z].*$".to_string()),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    };
+
+    let template = NewTemplateConfig {
+        template: TemplateMetadata {
+            name: "test".to_string(),
+            description: "test".to_string(),
+            author: "test".to_string(),
+            tags: vec![],
+        },
+        naming_rules: Some(vec![RepositoryNamingRulesConfig {
+            description: Some("Template rule: must end with -service".to_string()),
+            allowed_pattern: Some(".*-service$".to_string()),
+            ..Default::default()
+        }]),
+        repository: None,
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        rulesets: None,
+        variables: None,
+        default_visibility: None,
+        templating: None,
+        notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
+        labels: None,
+    };
+
+    let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);
+    assert!(
+        result.is_ok(),
+        "Naming rule merging should succeed: {:?}",
+        result.err()
+    );
+
+    let merged = result.unwrap();
+
+    assert_eq!(
+        merged.naming_rules.len(),
+        2,
+        "Naming rules from both repository type and template must be present; got {} rules",
+        merged.naming_rules.len()
+    );
+    let descriptions: Vec<&str> = merged
+        .naming_rules
+        .iter()
+        .filter_map(|r| r.description.as_deref())
+        .collect();
+    assert!(
+        descriptions.contains(&"Repository type rule"),
+        "Repository type naming rule must be present"
+    );
+    assert!(
+        descriptions.contains(&"Template rule: must end with -service"),
+        "Template naming rule must be present"
+    );
+}
+
+/// When naming rules are present at three levels (global, repository type,
+/// template) all three sets are concatenated additively.
+#[test]
+fn test_naming_rules_accumulated_from_three_levels() {
+    use crate::settings::naming::RepositoryNamingRulesConfig;
+
+    let merger = ConfigurationMerger::new();
+
+    let global = GlobalDefaults {
+        naming_rules: Some(vec![RepositoryNamingRulesConfig {
+            description: Some("Global: lowercase only".to_string()),
+            allowed_pattern: Some("^[a-z0-9-]+$".to_string()),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    };
+
+    let repo_type = RepositoryTypeConfig {
+        naming_rules: Some(vec![RepositoryNamingRulesConfig {
+            description: Some("Type: must start with 'svc-'".to_string()),
+            allowed_pattern: Some("^svc-.*$".to_string()),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    };
+
+    let template = NewTemplateConfig {
+        template: TemplateMetadata {
+            name: "test".to_string(),
+            description: "test".to_string(),
+            author: "test".to_string(),
+            tags: vec![],
+        },
+        naming_rules: Some(vec![RepositoryNamingRulesConfig {
+            description: Some("Template: must end with '-api'".to_string()),
+            allowed_pattern: Some(".*-api$".to_string()),
+            ..Default::default()
+        }]),
+        repository: None,
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        rulesets: None,
+        variables: None,
+        default_visibility: None,
+        templating: None,
+        notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
+        labels: None,
+    };
+
+    let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);
+    assert!(result.is_ok(), "Three-level naming rule merge must succeed");
+
+    let merged = result.unwrap();
+    assert_eq!(
+        merged.naming_rules.len(),
+        3,
+        "All three naming rules must be present; got {}",
+        merged.naming_rules.len()
+    );
+}
+
+/// Verify that when no level provides labels the merged map is empty.
+///
+/// Labels in `MergedConfiguration` are populated by `OrganizationSettingsManager`,
+/// not by `ConfigurationMerger`. The merger always returns an empty label map.
+#[test]
+fn test_no_labels_across_all_levels_yields_empty_map() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+    let template = create_test_template(); // has labels: None
+
+    let result = merger.merge_configurations(&global, None, None, &template);
+    assert!(result.is_ok(), "Merge should succeed");
+
+    let merged = result.unwrap();
+    assert!(
+        merged.labels.is_empty(),
+        "No labels provided means empty merged map"
+    );
+}

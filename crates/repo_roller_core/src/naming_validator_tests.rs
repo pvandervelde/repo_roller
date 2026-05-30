@@ -380,3 +380,139 @@ fn test_invalid_forbidden_pattern_regex_returns_error() {
 
     assert!(v.validate("any-name", &rules).is_err());
 }
+
+// ============================================================================
+// Off-by-one boundary tests
+// ============================================================================
+
+/// A name of exactly min_length - 1 characters is rejected.
+///
+/// This is the tightest possible boundary: one character below the minimum.
+/// Distinct from the existing test which uses a name 3 chars below the minimum.
+#[test]
+fn test_min_length_rejects_name_one_shorter_than_minimum() {
+    let v = RepositoryNamingValidator::new();
+    let rules = vec![RepositoryNamingRulesConfig {
+        min_length: Some(5),
+        ..Default::default()
+    }];
+
+    // "abcd" is 4 chars — exactly min-1
+    let err = v.validate("abcd", &rules).unwrap_err();
+    assert!(
+        err.to_string().contains("too short"),
+        "Name one char below min should be rejected with 'too short': {err}"
+    );
+}
+
+/// A name of exactly max_length + 1 characters is rejected.
+///
+/// This is the tightest possible boundary: one character above the maximum.
+/// Distinct from the existing test which uses a name far above the maximum.
+#[test]
+fn test_max_length_rejects_name_one_longer_than_maximum() {
+    let v = RepositoryNamingValidator::new();
+    let rules = vec![RepositoryNamingRulesConfig {
+        max_length: Some(4),
+        ..Default::default()
+    }];
+
+    // "abcde" is 5 chars — exactly max+1
+    let err = v.validate("abcde", &rules).unwrap_err();
+    assert!(
+        err.to_string().contains("too long"),
+        "Name one char above max should be rejected with 'too long': {err}"
+    );
+}
+
+// ============================================================================
+// Empty name edge cases
+// ============================================================================
+
+/// An empty name is rejected when min_length > 0.
+#[test]
+fn test_empty_name_rejected_by_min_length() {
+    let v = RepositoryNamingValidator::new();
+    let rules = vec![RepositoryNamingRulesConfig {
+        min_length: Some(1),
+        ..Default::default()
+    }];
+
+    assert!(
+        v.validate("", &rules).is_err(),
+        "Empty name should be rejected when min_length is 1"
+    );
+}
+
+/// An empty name is rejected by a required_prefix rule.
+#[test]
+fn test_empty_name_rejected_by_required_prefix() {
+    let v = RepositoryNamingValidator::new();
+    let rules = vec![RepositoryNamingRulesConfig {
+        required_prefix: Some("svc-".to_string()),
+        ..Default::default()
+    }];
+
+    assert!(
+        v.validate("", &rules).is_err(),
+        "Empty name does not have the required prefix and must be rejected"
+    );
+}
+
+/// An empty name is rejected by a required_suffix rule.
+#[test]
+fn test_empty_name_rejected_by_required_suffix() {
+    let v = RepositoryNamingValidator::new();
+    let rules = vec![RepositoryNamingRulesConfig {
+        required_suffix: Some("-svc".to_string()),
+        ..Default::default()
+    }];
+
+    assert!(
+        v.validate("", &rules).is_err(),
+        "Empty name does not have the required suffix and must be rejected"
+    );
+}
+
+// ============================================================================
+// Unicode / multi-byte character handling
+// ============================================================================
+
+/// A name whose byte length exceeds max_length is rejected even when its
+/// character (grapheme) count would be within limits.
+///
+/// The validator counts bytes via `str::len()`. A multi-byte UTF-8 character
+/// such as `é` (2 bytes) can push the byte length over the limit even when
+/// the visible character count appears to be within range.
+///
+/// This test documents and pins the byte-count behaviour so that any future
+/// change to character-count semantics is caught explicitly.
+#[test]
+fn test_unicode_multibyte_name_byte_length_counts_bytes_not_chars() {
+    let v = RepositoryNamingValidator::new();
+
+    // "café" has 4 visible chars but 5 bytes (é = 2 bytes).
+    let name = "café";
+    assert_eq!(name.len(), 5, "byte length of 'café' should be 5");
+    assert_eq!(name.chars().count(), 4, "char count of 'café' should be 4");
+
+    // max_length = 4: char count fits, but byte count does not.
+    let rules_max_4 = vec![RepositoryNamingRulesConfig {
+        max_length: Some(4),
+        ..Default::default()
+    }];
+    assert!(
+        v.validate(name, &rules_max_4).is_err(),
+        "Validator counts bytes; 'café' (5 bytes) should exceed max_length=4"
+    );
+
+    // max_length = 5: byte count fits.
+    let rules_max_5 = vec![RepositoryNamingRulesConfig {
+        max_length: Some(5),
+        ..Default::default()
+    }];
+    assert!(
+        v.validate(name, &rules_max_5).is_ok(),
+        "'café' (5 bytes) should be within max_length=5"
+    );
+}
