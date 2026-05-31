@@ -16,7 +16,7 @@
 
 [core]
 # Prefix prepended to version numbers in tags and PR titles.
-version_prefix = ""
+version_prefix = "v"
 
 [core.branches]
 # The default (main) branch of the repository.
