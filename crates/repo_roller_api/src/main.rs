@@ -151,6 +151,15 @@ impl AppState {
 }
 
 #[cfg(test)]
+/// Fixed 32-byte JWT secret used exclusively in test builds.
+///
+/// Shared by `AppState::default()` and every test that signs tokens manually
+/// (e.g. in `middleware_tests`). Having a single constant means a rename or
+/// rotation is a one-place change that produces a compile error if any
+/// consumer is left behind.
+pub(crate) const TEST_JWT_SECRET: &str = "test-jwt-secret-key-minimum-32b!";
+
+#[cfg(test)]
 impl Default for AppState {
     fn default() -> Self {
         Self {
@@ -163,8 +172,7 @@ impl Default for AppState {
             },
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
-            // Fixed 32-byte secret used only in tests.
-            jwt_secret: secrecy::SecretString::from("test-jwt-secret-key-minimum-32b!".to_string()),
+            jwt_secret: secrecy::SecretString::from(TEST_JWT_SECRET.to_string()),
             mock_installation_token: None,
         }
     }

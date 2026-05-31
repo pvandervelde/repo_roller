@@ -1,0 +1,42 @@
+[package]
+name = "repo_roller_fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+toml = "0.9"
+
+# Crates under test
+repo_roller_core = { path = "../crates/repo_roller_core" }
+config_manager = { path = "../crates/config_manager" }
+template_engine = { path = "../crates/template_engine" }
+
+[[bin]]
+name = "fuzz_validate_naming_rules"
+path = "fuzz_targets/fuzz_validate_naming_rules.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_handlebars_render"
+path = "fuzz_targets/fuzz_handlebars_render.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_toml_label_config"
+path = "fuzz_targets/fuzz_toml_label_config.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_repository_naming_rules_toml"
+path = "fuzz_targets/fuzz_repository_naming_rules_toml.rs"
+test = false
+doc = false

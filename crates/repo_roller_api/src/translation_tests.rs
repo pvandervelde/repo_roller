@@ -389,14 +389,10 @@ fn test_http_to_domain_template_strategy_requires_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
-    assert!(result.is_err());
-
-    // Verify it's a validation error (checking the error type indirectly)
-    let err = result.unwrap_err();
-    // ApiError wraps anyhow::Error, so we can't directly call to_string
-    // But we know it failed validation which is what matters
-    let _ = err; // Accept any error - validation logic ensures it's correct type
+    assert!(
+        http_create_repository_request_to_domain(http_req, "test-actor".to_string()).is_err(),
+        "Template content strategy without a template name must be rejected"
+    );
 }
 
 /// Test default content strategy is Template
@@ -497,6 +493,67 @@ fn test_http_to_domain_visibility_none() {
 
     let domain_req = result.unwrap();
     assert_eq!(domain_req.visibility, None);
+}
+
+/// Test translation with explicit internal visibility is accepted and mapped correctly.
+///
+/// Internal visibility is a valid GitHub Enterprise option.  The translation layer
+/// must not silently drop or reject it — restriction enforcement happens later in the
+/// visibility resolution hierarchy.
+#[test]
+fn test_http_to_domain_visibility_internal() {
+    use repo_roller_core::{ContentStrategy, RepositoryVisibility};
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("internal".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
+    };
+
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
+    assert!(
+        result.is_ok(),
+        "internal visibility is a valid value: {:?}",
+        result.err()
+    );
+
+    let domain_req = result.unwrap();
+    assert_eq!(domain_req.visibility, Some(RepositoryVisibility::Internal));
+}
+
+/// Test translation fails with a capitalised visibility string.
+///
+/// The serde deserialisation uses `rename_all = "lowercase"`, so "Private"
+/// must not be accepted — only "private" is valid.
+#[test]
+fn test_http_to_domain_visibility_wrong_case_rejected() {
+    use repo_roller_core::ContentStrategy;
+
+    let http_req = CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: None,
+        visibility: Some("Private".to_string()),
+        team: None,
+        repository_type: None,
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Empty,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
+    };
+
+    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
+    assert!(
+        result.is_err(),
+        "Capitalised visibility 'Private' must be rejected; only lowercase is accepted"
+    );
 }
 
 /// Test translation fails with invalid visibility value

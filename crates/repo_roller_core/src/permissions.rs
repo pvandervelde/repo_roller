@@ -34,6 +34,10 @@ use crate::{OrganizationName, RepositoryName};
 #[path = "permissions_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "permissions_proptests.rs"]
+mod proptests;
+
 // ── Access levels ─────────────────────────────────────────────────────────────
 
 /// The privilege level granted by a permission.

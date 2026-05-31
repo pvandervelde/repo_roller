@@ -652,4 +652,162 @@ cargo add {{kebab_case project.name}}
             assert_eq!(result.unwrap(), expected);
         }
     }
+
+    // ================================
+    // Edge Cases: Empty Strings
+    // ================================
+
+    /// `snake_case` of an empty string produces an empty string without panicking.
+    #[test]
+    fn test_snake_case_empty_string() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        let context = TemplateContext::new(json!({ "v": "" }));
+        let result = engine.render_template("{{snake_case v}}", &context);
+        assert!(result.is_ok(), "snake_case of empty string must not fail");
+        assert_eq!(result.unwrap(), "");
+    }
+
+    /// `kebab_case` of an empty string produces an empty string without panicking.
+    #[test]
+    fn test_kebab_case_empty_string() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        let context = TemplateContext::new(json!({ "v": "" }));
+        let result = engine.render_template("{{kebab_case v}}", &context);
+        assert!(result.is_ok(), "kebab_case of empty string must not fail");
+        assert_eq!(result.unwrap(), "");
+    }
+
+    /// `upper_case` of an empty string produces an empty string without panicking.
+    #[test]
+    fn test_upper_case_empty_string() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        let context = TemplateContext::new(json!({ "v": "" }));
+        let result = engine.render_template("{{upper_case v}}", &context);
+        assert!(result.is_ok(), "upper_case of empty string must not fail");
+        assert_eq!(result.unwrap(), "");
+    }
+
+    /// `lower_case` of an empty string produces an empty string without panicking.
+    #[test]
+    fn test_lower_case_empty_string() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        let context = TemplateContext::new(json!({ "v": "" }));
+        let result = engine.render_template("{{lower_case v}}", &context);
+        assert!(result.is_ok(), "lower_case of empty string must not fail");
+        assert_eq!(result.unwrap(), "");
+    }
+
+    /// `capitalize` of an empty string produces an empty string without panicking.
+    #[test]
+    fn test_capitalize_empty_string() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        let context = TemplateContext::new(json!({ "v": "" }));
+        let result = engine.render_template("{{capitalize v}}", &context);
+        assert!(result.is_ok(), "capitalize of empty string must not fail");
+        assert_eq!(result.unwrap(), "");
+    }
+
+    // ================================
+    // Edge Cases: Multi-byte UTF-8 Characters
+    // ================================
+
+    /// `capitalize` correctly handles a string whose first character is a multi-byte
+    /// UTF-8 sequence (e.g. 'é' — 2 bytes in UTF-8).
+    ///
+    /// The implementation slices by `first_char.len_utf8()` which is correct. This
+    /// test ensures we never regress to an incorrect byte-offset slice that would
+    /// panic or produce mojibake.
+    #[test]
+    fn test_capitalize_multibyte_first_char() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        // 'é' is U+00E9, encoded as 2 bytes (0xC3 0xA9) in UTF-8.
+        let context = TemplateContext::new(json!({ "v": "élan" }));
+        let result = engine.render_template("{{capitalize v}}", &context);
+        assert!(
+            result.is_ok(),
+            "capitalize of UTF-8 string must not panic: {:?}",
+            result.err()
+        );
+        // 'É' is the uppercase of 'é'.
+        assert_eq!(result.unwrap(), "Élan");
+    }
+
+    /// `snake_case` of a string containing non-ASCII characters does not panic.
+    ///
+    /// The helper maps characters via `char::to_ascii_lowercase()` which silently
+    /// passes through non-ASCII chars unchanged. This test documents and pins that
+    /// behaviour.
+    #[test]
+    fn test_snake_case_with_unicode_passthrough() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        // 'ñ' is a non-ASCII char; it should not cause a panic.
+        let context = TemplateContext::new(json!({ "v": "Año nuevo" }));
+        let result = engine.render_template("{{snake_case v}}", &context);
+        assert!(
+            result.is_ok(),
+            "snake_case of a Unicode string must not panic: {:?}",
+            result.err()
+        );
+        // Spaces become underscores; ASCII chars are lowercased; non-ASCII pass through.
+        let output = result.unwrap();
+        assert!(output.contains('_'), "spaces should become underscores");
+        assert!(!output.contains(' '), "no spaces should remain");
+    }
+
+    // ================================
+    // Edge Cases: default helper
+    // ================================
+
+    /// `default` helper emits the fallback when the variable value is JSON null.
+    ///
+    /// The helper distinguishes `null` from an absent key. Both produce the fallback,
+    /// but this test covers the explicit null case.
+    #[test]
+    fn test_default_helper_with_null_json_value() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        // The variable is explicitly null in the JSON context.
+        let context = TemplateContext::new(json!({ "license": null }));
+        let result = engine.render_template(r#"{{default license "MIT"}}"#, &context);
+        assert!(
+            result.is_ok(),
+            "default helper must not fail with null value"
+        );
+        assert_eq!(
+            result.unwrap(),
+            "MIT",
+            "null value should trigger the default"
+        );
+    }
+
+    /// `default` helper emits the actual value when it is non-null.
+    #[test]
+    fn test_default_helper_with_present_non_null_value() {
+        let mut engine = HandlebarsTemplateEngine::new().unwrap();
+        engine.register_custom_helpers().unwrap();
+
+        let context = TemplateContext::new(json!({ "license": "Apache-2.0" }));
+        let result = engine.render_template(r#"{{default license "MIT"}}"#, &context);
+        assert!(result.is_ok(), "default helper must not fail");
+        assert_eq!(
+            result.unwrap(),
+            "Apache-2.0",
+            "present value should not be replaced by default"
+        );
+    }
 }

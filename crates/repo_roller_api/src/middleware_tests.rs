@@ -78,10 +78,10 @@ async fn test_auth_middleware_raw_github_token_rejected() {
 /// Test that a valid backend JWT is accepted and the handler receives 200.
 #[tokio::test]
 async fn test_auth_middleware_valid_backend_jwt_accepted() {
-    let secret = "test-jwt-secret-key-minimum-32b!";
-    let token = generate_backend_jwt("alice", secret).expect("JWT generation must succeed");
+    let token =
+        generate_backend_jwt("alice", crate::TEST_JWT_SECRET).expect("JWT generation must succeed");
 
-    let state = AppState::default(); // uses the same test secret
+    let state = AppState::default(); // uses crate::TEST_JWT_SECRET
     let app = Router::new()
         .route("/test", get(test_handler))
         .route_layer(middleware::from_fn_with_state(state, auth_middleware));
@@ -145,11 +145,86 @@ fn test_auth_context_creation() {
 /// Test that generate_backend_jwt produces a verifiable token.
 #[test]
 fn test_generate_backend_jwt_roundtrip() {
-    let secret = "test-jwt-secret-key-minimum-32b!";
-    let token = generate_backend_jwt("bob", secret).expect("should succeed");
+    let token = generate_backend_jwt("bob", crate::TEST_JWT_SECRET).expect("should succeed");
     assert!(!token.is_empty());
     // The token must be a valid three-part JWT.
     assert_eq!(token.split('.').count(), 3);
+}
+
+/// Test that a JWT with an expiry well in the past (beyond the 30-second leeway) is rejected.
+///
+/// The middleware uses a 30-second leeway. Tokens expired more than 30 seconds ago
+/// must be rejected, while tokens expired within the leeway window may still be accepted.
+#[tokio::test]
+async fn test_expired_jwt_rejected() {
+    use jsonwebtoken::{EncodingKey, Header};
+
+    let secret = crate::TEST_JWT_SECRET;
+    // Set exp to a fixed timestamp in the distant past — well beyond any leeway.
+    // 1_000_000 seconds after the Unix epoch = 1970-01-12 13:46:40 UTC.
+    let past = 1_000_000usize;
+    let claims = Claims {
+        sub: "alice".to_string(),
+        iat: past,
+        exp: past + 3600,
+    };
+    let expired_token = jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .expect("encoding must succeed");
+
+    let state = AppState::default();
+    let app = Router::new()
+        .route("/test", get(test_handler))
+        .route_layer(middleware::from_fn_with_state(state, auth_middleware));
+
+    let request = Request::builder()
+        .uri("/test")
+        .header(header::AUTHORIZATION, format!("Bearer {}", expired_token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "An expired JWT must be rejected"
+    );
+}
+
+/// Test that a JWT signed with an empty sub claim is accepted at the JWT level
+/// (the claim is structurally valid) and the empty login propagates into AuthContext.
+///
+/// The middleware does not reject empty sub — that is a business-level concern
+/// handled by downstream handlers. This test pins the current behaviour so any
+/// future change to add sub-validation is made explicitly.
+#[tokio::test]
+async fn test_jwt_with_empty_sub_is_accepted_by_middleware() {
+    // generate_backend_jwt accepts any &str including "".
+    let token =
+        generate_backend_jwt("", crate::TEST_JWT_SECRET).expect("JWT generation must succeed");
+
+    let state = AppState::default(); // uses crate::TEST_JWT_SECRET
+    let app = Router::new()
+        .route("/test", get(test_handler))
+        .route_layer(middleware::from_fn_with_state(state, auth_middleware));
+
+    let request = Request::builder()
+        .uri("/test")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    // The middleware validates the JWT signature and expiry only; an empty sub is
+    // structurally valid and must not be rejected at this layer.
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "A structurally valid JWT with an empty sub should pass middleware validation"
+    );
 }
 
 /// Test tracing middleware adds request logging
@@ -163,4 +238,78 @@ async fn test_tracing_middleware_logs_requests() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+// ── Mutant kill tests ─────────────────────────────────────────────────────────
+//
+// The following tests target specific arithmetic mutants in JWT timing that
+// survived the initial mutation run because existing tests didn't verify values.
+
+/// `JWT_EXPIRY_SECS` must be exactly 28 800 (8 hours).
+///
+/// ### Survivor killed
+/// `replace * with /` and `replace * with +` on `8 * 3600`
+#[test]
+fn test_jwt_expiry_secs_is_28800() {
+    assert_eq!(
+        JWT_EXPIRY_SECS, 28_800,
+        "JWT_EXPIRY_SECS must be 8 * 3600 = 28800; arithmetic mutation survived"
+    );
+}
+
+/// The `exp` claim in a freshly generated JWT must be approximately
+/// `now + JWT_EXPIRY_SECS` (within a ±5-second tolerance for test execution).
+///
+/// ### Survivor killed
+/// `replace + with *` in `generate_backend_jwt` for the `exp` calculation
+#[test]
+fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
+    use jsonwebtoken::{DecodingKey, Validation};
+
+    let secret = crate::TEST_JWT_SECRET;
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as usize;
+
+    let token = generate_backend_jwt("alice", secret).expect("JWT generation must succeed");
+
+    let after = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as usize;
+
+    // Decode without expiry validation so we can read the raw claims.
+    let mut validation = Validation::default();
+    validation.validate_exp = false;
+    let data = jsonwebtoken::decode::<Claims>(
+        &token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    )
+    .expect("token must decode");
+
+    let claims = data.claims;
+    let expected_exp_min = before + JWT_EXPIRY_SECS as usize;
+    let expected_exp_max = after + JWT_EXPIRY_SECS as usize;
+
+    assert!(
+        // The +5 on the upper bound absorbs any extra jitter beyond the
+        // before/after window (e.g. scheduler latency between the two
+        // SystemTime::now() calls). The lower bound needs no slack because
+        // `before` is measured before token generation.
+        claims.exp >= expected_exp_min && claims.exp <= expected_exp_max + 5,
+        "exp claim ({}) must be approximately iat + JWT_EXPIRY_SECS ({}..={})",
+        claims.exp,
+        expected_exp_min,
+        expected_exp_max
+    );
+
+    // Explicitly guard against the `now * JWT_EXPIRY_SECS` mutation —
+    // that would produce a value many orders of magnitude larger.
+    assert!(
+        claims.exp < after + 2 * JWT_EXPIRY_SECS as usize,
+        "exp claim is suspiciously large (multiplication mutation?): {}",
+        claims.exp
+    );
 }
