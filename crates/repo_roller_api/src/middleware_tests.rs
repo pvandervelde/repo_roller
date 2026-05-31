@@ -78,10 +78,10 @@ async fn test_auth_middleware_raw_github_token_rejected() {
 /// Test that a valid backend JWT is accepted and the handler receives 200.
 #[tokio::test]
 async fn test_auth_middleware_valid_backend_jwt_accepted() {
-    let secret = "test-jwt-secret-key-minimum-32b!";
-    let token = generate_backend_jwt("alice", secret).expect("JWT generation must succeed");
+    let token =
+        generate_backend_jwt("alice", crate::TEST_JWT_SECRET).expect("JWT generation must succeed");
 
-    let state = AppState::default(); // uses the same test secret
+    let state = AppState::default(); // uses crate::TEST_JWT_SECRET
     let app = Router::new()
         .route("/test", get(test_handler))
         .route_layer(middleware::from_fn_with_state(state, auth_middleware));
@@ -145,8 +145,7 @@ fn test_auth_context_creation() {
 /// Test that generate_backend_jwt produces a verifiable token.
 #[test]
 fn test_generate_backend_jwt_roundtrip() {
-    let secret = "test-jwt-secret-key-minimum-32b!";
-    let token = generate_backend_jwt("bob", secret).expect("should succeed");
+    let token = generate_backend_jwt("bob", crate::TEST_JWT_SECRET).expect("should succeed");
     assert!(!token.is_empty());
     // The token must be a valid three-part JWT.
     assert_eq!(token.split('.').count(), 3);
@@ -160,8 +159,9 @@ fn test_generate_backend_jwt_roundtrip() {
 async fn test_expired_jwt_rejected() {
     use jsonwebtoken::{EncodingKey, Header};
 
-    let secret = "test-jwt-secret-key-minimum-32b!";
+    let secret = crate::TEST_JWT_SECRET;
     // Set exp to a fixed timestamp in the distant past — well beyond any leeway.
+    // 1_000_000 seconds after the Unix epoch = 1970-01-12 13:46:40 UTC.
     let past = 1_000_000usize;
     let claims = Claims {
         sub: "alice".to_string(),
@@ -202,11 +202,11 @@ async fn test_expired_jwt_rejected() {
 /// future change to add sub-validation is made explicitly.
 #[tokio::test]
 async fn test_jwt_with_empty_sub_is_accepted_by_middleware() {
-    let secret = "test-jwt-secret-key-minimum-32b!";
     // generate_backend_jwt accepts any &str including "".
-    let token = generate_backend_jwt("", secret).expect("JWT generation must succeed");
+    let token =
+        generate_backend_jwt("", crate::TEST_JWT_SECRET).expect("JWT generation must succeed");
 
-    let state = AppState::default();
+    let state = AppState::default(); // uses crate::TEST_JWT_SECRET
     let app = Router::new()
         .route("/test", get(test_handler))
         .route_layer(middleware::from_fn_with_state(state, auth_middleware));
@@ -266,7 +266,7 @@ fn test_jwt_expiry_secs_is_28800() {
 fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
     use jsonwebtoken::{DecodingKey, Validation};
 
-    let secret = "test-jwt-secret-key-minimum-32b!";
+    let secret = crate::TEST_JWT_SECRET;
     let before = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -294,6 +294,10 @@ fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
     let expected_exp_max = after + JWT_EXPIRY_SECS as usize;
 
     assert!(
+        // The +5 on the upper bound absorbs any extra jitter beyond the
+        // before/after window (e.g. scheduler latency between the two
+        // SystemTime::now() calls). The lower bound needs no slack because
+        // `before` is measured before token generation.
         claims.exp >= expected_exp_min && claims.exp <= expected_exp_max + 5,
         "exp claim ({}) must be approximately iat + JWT_EXPIRY_SECS ({}..={})",
         claims.exp,

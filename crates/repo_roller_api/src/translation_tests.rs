@@ -389,14 +389,10 @@ fn test_http_to_domain_template_strategy_requires_template() {
         collaborators: HashMap::new(),
     };
 
-    let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
-    assert!(result.is_err());
-
-    // Verify it's a validation error (checking the error type indirectly)
-    let err = result.unwrap_err();
-    // ApiError wraps anyhow::Error, so we can't directly call to_string
-    // But we know it failed validation which is what matters
-    let _ = err; // Accept any error - validation logic ensures it's correct type
+    assert!(
+        http_create_repository_request_to_domain(http_req, "test-actor".to_string()).is_err(),
+        "Template content strategy without a template name must be rejected"
+    );
 }
 
 /// Test default content strategy is Template

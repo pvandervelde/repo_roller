@@ -12,11 +12,14 @@ proptest! {
     /// rejected, regardless of its content.
     #[test]
     fn prop_name_shorter_than_min_length_always_rejected(
-        // Generate a min_length in [2, 64] and a name strictly shorter than it.
-        min in 2usize..=64usize,
-        name in "[a-z]{1}",  // length 1 — always < min (min ≥ 2)
+        // Generate a min_length in [2, 64] and a name length in [1, min-1],
+        // exploring the full below-minimum range rather than pinning to length 1.
+        (min, len) in (2usize..=64usize).prop_flat_map(|min| {
+            (proptest::strategy::Just(min), 1usize..min)
+        }),
     ) {
         let v = RepositoryNamingValidator::new();
+        let name = "a".repeat(len);
         let rules = vec![RepositoryNamingRulesConfig {
             min_length: Some(min),
             ..Default::default()
