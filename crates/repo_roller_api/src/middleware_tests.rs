@@ -239,3 +239,73 @@ async fn test_tracing_middleware_logs_requests() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+// ── Mutant kill tests ─────────────────────────────────────────────────────────
+//
+// The following tests target specific arithmetic mutants in JWT timing that
+// survived the initial mutation run because existing tests didn't verify values.
+
+/// `JWT_EXPIRY_SECS` must be exactly 28 800 (8 hours).
+///
+/// ### Survivor killed
+/// `replace * with /` and `replace * with +` on `8 * 3600`
+#[test]
+fn test_jwt_expiry_secs_is_28800() {
+    assert_eq!(
+        JWT_EXPIRY_SECS, 28_800,
+        "JWT_EXPIRY_SECS must be 8 * 3600 = 28800; arithmetic mutation survived"
+    );
+}
+
+/// The `exp` claim in a freshly generated JWT must be approximately
+/// `now + JWT_EXPIRY_SECS` (within a ±5-second tolerance for test execution).
+///
+/// ### Survivor killed
+/// `replace + with *` in `generate_backend_jwt` for the `exp` calculation
+#[test]
+fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
+    use jsonwebtoken::{DecodingKey, Validation};
+
+    let secret = "test-jwt-secret-key-minimum-32b!";
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as usize;
+
+    let token = generate_backend_jwt("alice", secret).expect("JWT generation must succeed");
+
+    let after = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as usize;
+
+    // Decode without expiry validation so we can read the raw claims.
+    let mut validation = Validation::default();
+    validation.validate_exp = false;
+    let data = jsonwebtoken::decode::<Claims>(
+        &token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    )
+    .expect("token must decode");
+
+    let claims = data.claims;
+    let expected_exp_min = before + JWT_EXPIRY_SECS as usize;
+    let expected_exp_max = after + JWT_EXPIRY_SECS as usize;
+
+    assert!(
+        claims.exp >= expected_exp_min && claims.exp <= expected_exp_max + 5,
+        "exp claim ({}) must be approximately iat + JWT_EXPIRY_SECS ({}..={})",
+        claims.exp,
+        expected_exp_min,
+        expected_exp_max
+    );
+
+    // Explicitly guard against the `now * JWT_EXPIRY_SECS` mutation —
+    // that would produce a value many orders of magnitude larger.
+    assert!(
+        claims.exp < after + 2 * JWT_EXPIRY_SECS as usize,
+        "exp claim is suspiciously large (multiplication mutation?): {}",
+        claims.exp
+    );
+}

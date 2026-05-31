@@ -496,6 +496,92 @@ mod tryfrom_tests {
         let cfg = TemplatePermissionsConfig { required: None };
         let _perms = TemplatePermissions::try_from(&cfg).expect("conversion succeeds");
     }
+
+    // ── Mutant kill tests ───────────────────────────────────────────────────
+    //
+    // The tests above only assert `is_ok()`. The mutant
+    // `Ok(Default::default())` therefore survives them. The following tests
+    // assert the *content* of the conversion result to kill those mutants.
+
+    /// `OrganizationPermissionPolicies::try_from` must copy baseline grants
+    /// from the config into `baseline_requirements`.
+    ///
+    /// ### Survivor killed
+    /// `replace try_from -> Ok(Default::default())`
+    #[test]
+    fn org_policies_baseline_grants_are_present_in_result() {
+        let cfg = OrganizationPermissionPoliciesConfig {
+            baseline: Some(vec![make_grant("push", "write", "team")]),
+            restrictions: None,
+            max_team_access_level: None,
+            max_collaborator_access_level: None,
+        };
+        let policies = OrganizationPermissionPolicies::try_from(&cfg).expect("conversion succeeds");
+        assert_eq!(
+            policies.baseline_requirements.len(),
+            1,
+            "baseline grant must be present in result; Default::default() would be empty"
+        );
+    }
+
+    /// `OrganizationPermissionPolicies::try_from` must copy restriction grants
+    /// from the config into `restrictions`.
+    ///
+    /// ### Survivor killed
+    /// `replace try_from -> Ok(Default::default())`
+    #[test]
+    fn org_policies_restriction_grants_are_present_in_result() {
+        let cfg = OrganizationPermissionPoliciesConfig {
+            baseline: None,
+            restrictions: Some(vec![make_grant("admin", "admin", "repository")]),
+            max_team_access_level: None,
+            max_collaborator_access_level: None,
+        };
+        let policies = OrganizationPermissionPolicies::try_from(&cfg).expect("conversion succeeds");
+        assert_eq!(
+            policies.restrictions.len(),
+            1,
+            "restriction grant must be present in result; Default::default() would be empty"
+        );
+    }
+
+    /// `RepositoryTypePermissions::try_from` must copy required grants from
+    /// the config into `required_permissions`.
+    ///
+    /// ### Survivor killed
+    /// `replace try_from -> Ok(Default::default())`
+    #[test]
+    fn repo_type_perms_required_grants_are_present_in_result() {
+        let cfg = RepositoryTypePermissionsConfig {
+            required: Some(vec![make_grant("push", "write", "team")]),
+            restricted_types: None,
+        };
+        let perms = RepositoryTypePermissions::try_from(&cfg).expect("conversion succeeds");
+        assert_eq!(
+            perms.required_permissions.len(),
+            1,
+            "required permission must be present in result; Default::default() would be empty"
+        );
+    }
+
+    /// `RepositoryTypePermissions::try_from` must copy restricted types from
+    /// the config into `restricted_types`.
+    ///
+    /// ### Survivor killed
+    /// `replace try_from -> Ok(Default::default())`
+    #[test]
+    fn repo_type_perms_restricted_types_are_present_in_result() {
+        let cfg = RepositoryTypePermissionsConfig {
+            required: None,
+            restricted_types: Some(vec!["admin".to_string()]),
+        };
+        let perms = RepositoryTypePermissions::try_from(&cfg).expect("conversion succeeds");
+        assert_eq!(
+            perms.restricted_types.len(),
+            1,
+            "restricted type must be present in result; Default::default() would be empty"
+        );
+    }
 }
 
 // ── AccessLevel::TryFrom<&str> tests ──────────────────────────────────────────
