@@ -8,7 +8,7 @@ const { mockReadFile } = vi.hoisted(() => ({
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
     readFile: mockReadFile,
