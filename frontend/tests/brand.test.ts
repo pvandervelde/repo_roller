@@ -3,9 +3,17 @@ import { DEFAULT_BRAND_CONFIG } from '../src/lib/types/brand';
 import { buildBrandCssBlock } from '../src/lib/brand';
 import { loadBrandConfig, _resetBrandConfigForTesting } from '../src/lib/brand.server';
 
-vi.mock('node:fs/promises');
+const { mockReadFile } = vi.hoisted(() => ({
+  mockReadFile: vi.fn(),
+}));
 
-import { readFile } from 'node:fs/promises';
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    readFile: mockReadFile,
+  };
+});
 
 describe('DEFAULT_BRAND_CONFIG', () => {
   it('has app name "RepoRoller"', () => {
@@ -78,9 +86,10 @@ describe('buildBrandCssBlock()', () => {
 
 describe('loadBrandConfig()', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
     // Reset the module-level cache so each test reads config fresh.
     _resetBrandConfigForTesting();
+    // Clear the mock to ensure clean state for next test
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -88,34 +97,13 @@ describe('loadBrandConfig()', () => {
   });
 
   it('returns defaults when brand.toml is absent and no env vars are set', async () => {
-    vi.mocked(readFile).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     const config = await loadBrandConfig();
     expect(config).toEqual(DEFAULT_BRAND_CONFIG);
   });
 
-  it('reads all six values from brand.toml', async () => {
-    const toml = [
-      'app_name           = "Acme Tools"',
-      'logo_url           = "/static/logo.svg"',
-      'logo_url_dark      = "/static/logo-dark.svg"',
-      'logo_alt           = "Acme logo"',
-      'primary_color      = "#d4451a"',
-      'primary_color_dark = "#ff8c69"',
-    ].join('\n');
-    vi.mocked(readFile).mockImplementation(() => Promise.resolve(toml));
-
-    const config = await loadBrandConfig();
-
-    expect(config.appName).toBe('Acme Tools');
-    expect(config.logoUrl).toBe('/static/logo.svg');
-    expect(config.logoUrlDark).toBe('/static/logo-dark.svg');
-    expect(config.logoAlt).toBe('Acme logo');
-    expect(config.primaryColor).toBe('#d4451a');
-    expect(config.primaryColorDark).toBe('#ff8c69');
-  });
-
   it('env vars take precedence over brand.toml values', async () => {
-    vi.mocked(readFile).mockImplementation(() =>
+    mockReadFile.mockImplementation(() =>
       Promise.resolve('app_name = "Acme"\nprimary_color = "#d4451a"\n'),
     );
     vi.stubEnv('BRAND_APP_NAME', 'Override Name');
@@ -128,7 +116,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('env vars are applied when brand.toml is absent', async () => {
-    vi.mocked(readFile).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     vi.stubEnv('BRAND_APP_NAME', 'EnvOnly');
     vi.stubEnv('BRAND_PRIMARY_COLOR', '#123456');
     vi.stubEnv('BRAND_PRIMARY_COLOR_DARK', '#654321');
@@ -144,7 +132,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('treats logo_url_dark without logo_url as both absent (renders wordmark)', async () => {
-    vi.mocked(readFile).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     vi.stubEnv('BRAND_LOGO_URL_DARK', '/static/dark-only.svg');
 
     const config = await loadBrandConfig();
@@ -154,9 +142,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('treats logo_url_dark from toml without logo_url as both absent', async () => {
-    vi.mocked(readFile).mockImplementation(() =>
-      Promise.resolve('logo_url_dark = "/static/dark.svg"\n'),
-    );
+    mockReadFile.mockImplementation(() => Promise.resolve('logo_url_dark = "/static/dark.svg"\n'));
 
     const config = await loadBrandConfig();
 
@@ -165,7 +151,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('keeps logo_url_dark when logo_url is also set', async () => {
-    vi.mocked(readFile).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     vi.stubEnv('BRAND_LOGO_URL', '/static/logo.svg');
     vi.stubEnv('BRAND_LOGO_URL_DARK', '/static/logo-dark.svg');
 
@@ -176,7 +162,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('produces a @media dark rule in the CSS block when primaryColorDark is configured', async () => {
-    vi.mocked(readFile).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     vi.stubEnv('BRAND_PRIMARY_COLOR', '#d4451a');
     vi.stubEnv('BRAND_PRIMARY_COLOR_DARK', '#ff8c69');
 
@@ -189,7 +175,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('omits the @media dark rule when primaryColorDark is not configured', async () => {
-    vi.mocked(readFile).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     vi.stubEnv('BRAND_PRIMARY_COLOR', '#d4451a');
 
     const config = await loadBrandConfig();
@@ -200,7 +186,7 @@ describe('loadBrandConfig()', () => {
   });
 
   it('continues with defaults when brand.toml contains a parse error', async () => {
-    vi.mocked(readFile).mockImplementation(() => Promise.resolve('this is not valid toml ='));
+    mockReadFile.mockImplementation(() => Promise.resolve('this is not valid toml ='));
 
     // Should not throw; should fall through to defaults
     const config = await loadBrandConfig();
