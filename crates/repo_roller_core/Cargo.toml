@@ -36,5 +36,5 @@ walkdir.workspace = true
 [dev-dependencies]
 octocrab.workspace = true
 proptest.workspace = true
-tracing-test = "0.2"
+tracing-test = "=0.2.6"
 wiremock.workspace = true

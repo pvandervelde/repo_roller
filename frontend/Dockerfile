@@ -2,7 +2,7 @@
 # Stage 1 – builder
 # Install dependencies and build the SvelteKit Node.js server bundle.
 # =============================================================================
-FROM node:24-slim AS builder
+FROM node:24-slim@sha256:2c87ef9bd3c6a3bd4b472b4bec2ce9d16354b0c574f736c476489d09f560a203 AS builder
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
@@ -31,7 +31,7 @@ RUN pnpm prune --prod --ignore-scripts
 # Stage 2 – runtime
 # Minimal image that only contains the compiled server and production deps.
 # =============================================================================
-FROM node:24-slim AS runtime
+FROM node:24-slim@sha256:2c87ef9bd3c6a3bd4b472b4bec2ce9d16354b0c574f736c476489d09f560a203 AS runtime
 
 # Run as a non-root user for security hardening.
 RUN addgroup --system --gid 1001 nodejs \
