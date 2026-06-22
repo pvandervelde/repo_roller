@@ -1,7 +1,6 @@
 //! Unit tests for the github_client crate.
 
 use super::*; // Import items from lib.rs
-use rand::thread_rng;
 use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey};
 use serde_json::json;
 use wiremock::matchers::{method, path};
@@ -13,7 +12,7 @@ const TEST_APP_ID: u64 = 12345;
 // Generate with: openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
 
 fn create_test_pem() -> String {
-    let mut rng = thread_rng();
+    let mut rng = rand::thread_rng();
     let bits = 2048;
     let private_key = RsaPrivateKey::new(&mut rng, bits).expect("Failed to generate key");
     private_key

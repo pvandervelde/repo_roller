@@ -23,7 +23,7 @@
 //! See: .llm/rest-api-review-response.md
 
 use axum::{
-    http::{header, HeaderValue, Method},
+    http::{header, HeaderValue, Method, StatusCode},
     middleware,
     routing::{get, post},
     Router,
@@ -97,7 +97,8 @@ pub fn create_router(state: AppState) -> Router {
         .on_response(DefaultOnResponse::new().include_headers(true));
 
     // Configure request timeout (30 seconds)
-    let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
+    let timeout_layer =
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30));
 
     // Protected API routes (require authentication)
     let protected_routes = Router::new()
@@ -215,7 +216,8 @@ pub fn create_router_without_auth(state: AppState) -> Router {
         .on_response(DefaultOnResponse::new().include_headers(true));
 
     // Configure request timeout (30 seconds)
-    let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
+    let timeout_layer =
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30));
 
     // API v1 routes without auth middleware
     let api_v1 = Router::new()

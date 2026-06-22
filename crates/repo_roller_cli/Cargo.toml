@@ -13,14 +13,10 @@ async-trait.workspace = true
 auth_handler = { path = "../auth_handler" }
 chrono.workspace = true
 clap.workspace = true
-colored = "2.1"
+colored = "3.1"
 config_manager = { path = "../config_manager" }
 github_client = { path = "../github_client" }
-keyring = { version = "3.6.2", features = [
-    "apple-native",
-    "linux-native",
-    "windows-native",
-] }
+keyring = "4"
 octocrab.workspace = true
 prometheus.workspace = true
 regex.workspace = true

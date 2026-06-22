@@ -31,8 +31,8 @@ chrono.workspace = true
 reqwest.workspace = true
 
 # Docker container testing
-testcontainers = "0.23"
-bollard = "0.17"
+testcontainers = "0.27"
+bollard = "0.20"
 
 # Utilities
 uuid.workspace = true

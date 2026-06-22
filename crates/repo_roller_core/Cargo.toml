@@ -13,7 +13,7 @@ async-trait.workspace = true
 auth_handler = { path = "../auth_handler" }
 chrono.workspace = true
 config_manager = { path = "../config_manager" }
-git2 = "0.20"
+git2 = "0.21"
 github_client = { path = "../github_client" }
 hex.workspace = true
 hmac.workspace = true
@@ -24,7 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 std_prelude = "0.2.12"
-temp-dir = "0.1.16"
+temp-dir = "0.2.0"
 template_engine = { path = "../template_engine" }
 thiserror = { workspace = true }
 tokio.workspace = true
