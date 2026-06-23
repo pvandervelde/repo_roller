@@ -1,24 +1,46 @@
 //! Unit tests for the github_client crate.
 
 use super::*; // Import items from lib.rs
-use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey};
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate}; // For constructing mock bodies
 
 // --- Test Constants ---
 const TEST_APP_ID: u64 = 12345;
-// A dummy RSA private key (replace with a real one for integration tests if needed, but fine for mocking)
-// Generate with: openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
 
-fn create_test_pem() -> String {
-    let mut rng = rand::thread_rng();
-    let bits = 2048;
-    let private_key = RsaPrivateKey::new(&mut rng, bits).expect("Failed to generate key");
-    private_key
-        .to_pkcs8_pem(Default::default())
-        .unwrap()
-        .to_string()
+// Pre-generated RSA-2048 test key (PKCS8 PEM). For tests only — never use in production.
+// Generated with: openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | openssl pkcs8 -topk8 -nocrypt
+const TEST_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDLRZFg/A26veyg
+1H1vIG8FFeTgiShtI+qBQsocdr4Gno6MO2vpdMS7ZXykOemvxfZFo2EBMHxuJYu2
+GYK71KRifRILdeYhFJC3f0Szcx9AmjcrHJOzvWzijf2X74cN7Scg63FTup4X4YMF
+CJ3r59eMU28Yx2NhsGxmXcPc6xMOKUq1eklT3Xzl4C1EDzEjxYlQXdgElkm8Hcn/
+u/GYvzxCJtWYHT3FkDMd0/sxMEccGWU07GeUV5dpYYfheiswfxnUjb2OsrUejCsj
+KLuiU/Xj/eIwpaSE48/8l1g+zhqMZqjN/E52rqw47IqK0WQ80fRcPPcrZ/uV/s6n
+0FDr5u9RAgMBAAECggEAfUcv9U0DDS+WkfzEHeQoaEL5H6WIw9MZ6XaHaAmKzjuU
+cTsCJAzyXuiKbBDBRLLGOF8cHwaJ+bysIZwRZcAFXCnnICcWoRayplUKu2pdPYyO
+KcTgByvc2rhWLfjTDLM3pWNWIhtm6iLzg/uukMD/qJ2XX/cq+f8on+J0H0jGIrgY
+md4D3HS7k2dxHjcHmV7oLHFv5uc6oUqDCNr5gVdYe5iqA3KBWiba3VT4CtGgPruK
+l53S6HPXNjAb4x+y1d4fYoHSkX750MrVsjIT6iAHI0gQMSVqACVBS4K3ck+Og36z
+CT3+ERmr2wL5JFCjxOXOxL870uSO5lYN4U4JKVn4kQKBgQDwxLSkSWrQ3N68P0cO
+VcgVHW//yFBJe4LDpf2hFUYSssupTaCWm7qx/fuPXiQtUSJl04GgTt+c0a+Y4y96
+ccKXhTpidsEnkCvZZ1IHUZcIam3KMenMHtH1XbmEhJSJBKXUs2APjPRFnAOdQ4ia
+Nc7skEIqRA0iShEFEodw3F7vbQKBgQDYIZiwzr1iezX0iQlugpOn4iwTZIGrmR8v
+BPwTk91KujNNhud7ZSGmSh1oj8igIbvpieOkQH0SCWxD6lK9b8O7mHCjGrj3BDCn
+cWS4YhRKIpdHL9MN5qRHcKFhotgDrztIVNZ4rwbdANfJrqJGh08qSPDJ/MgJH8jf
+j6txCn989QKBgEgkWJAlY3kjxSWYvDzCXUpeYLG+nrf15y+ibAW5Lx7pLfcTyHt4
+PA+bL6Y8qhBeEDV8k4mqOHxvo/Lml9JTheAKzny0YpntLAZfXAfPXbbq1OzR2eEM
+lxKzO6RGaY9IsjuyZ6UhMgwtfDPCCYtTdiYR75FkhJ7ynHjtnWGm1lddAoGAW57y
+YZFii0r79mvZSbWk7nhcguQKbDn/FCmiypHWL4V7lhPoMVEP0LR+fwLk460pQbko
+fUqxOmIwOSIubQviB7Z5mUsMufpWvcS+E8PQIhVD1/OYHr51SaufXgpwVC+GjAUa
+3hIkcK+YynBzbj6R+rTtDlNQYT3OI6d93++5V7kCgYEAoE/4vPrDtNyaNi39h3TF
+seOmBxWp9ZSiyaDAaJckPop1Y0kqwZNaAe9LXKpYp15PRyD4ehRLNbJLxx6UFHYf
+5IN2MmSKZDV9jdJsjelyucVio1J3lyN4JeCRXly11n/2615GiWaZJ6Q4dflDz0iS
+JC29NBAKJUVTF8zCccVfB2E=
+-----END PRIVATE KEY-----";
+
+fn create_test_pem() -> &'static str {
+    TEST_RSA_PRIVATE_KEY_PEM
 }
 
 #[tokio::test]
