@@ -5,6 +5,11 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate}; // For constructing mock bodies
 
+#[ctor::ctor]
+fn init_default_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 // --- Test Constants ---
 const TEST_APP_ID: u64 = 12345;
 
