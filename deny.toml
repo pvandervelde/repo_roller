@@ -112,6 +112,7 @@ allow = [
     "MIT-0",
     "MPL-2.0",
     "Unicode-3.0",
+    "Zlib",
 ]
 
 # The confidence threshold for detecting a license from license text.
