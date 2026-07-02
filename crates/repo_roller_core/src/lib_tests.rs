@@ -1,6 +1,11 @@
 // Unit tests for repo_roller_core
 // Covers create_repository success and error paths with isolated mock dependencies
 
+#[ctor::ctor]
+fn init_default_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 use super::*;
 use async_trait::async_trait;
 use config_manager::{

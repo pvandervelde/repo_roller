@@ -13,9 +13,9 @@ async-trait = { workspace = true }
 base64.workspace = true
 chrono.workspace = true
 github_client = { path = "../github_client" }
-jsonschema = "0.33"
+jsonschema = "0.46"
 octocrab.workspace = true
-schemars = { version = "1.0", features = ["derive"] }
+schemars = { version = "1.2", features = ["derive"] }
 serde.workspace = true
 serde_json.workspace = true
 template_engine = { path = "../template_engine" }
@@ -28,4 +28,4 @@ url.workspace = true
 futures = "=0.3.31"
 serde_json.workspace = true
 tempfile = "=3.23.0"
-tokio = { version = "=1.48.0", features = ["macros", "rt"] }
+tokio = { workspace = true }

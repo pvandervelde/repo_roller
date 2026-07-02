@@ -4,11 +4,11 @@
 //! container for end-to-end integration testing.
 
 use anyhow::{Context, Result};
-use bollard::container::{
-    Config, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
+use bollard::models::{BuildInfo, ContainerCreateBody};
+use bollard::query_parameters::{
+    BuildImageOptions, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
     StopContainerOptions,
 };
-use bollard::image::BuildImageOptions;
 use bollard::Docker;
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
@@ -131,8 +131,8 @@ impl ApiContainer {
 
         // Build from workspace root with proper context
         let build_options = BuildImageOptions {
-            dockerfile: "crates/repo_roller_api/Dockerfile",
-            t: "repo_roller_api:test",
+            dockerfile: "crates/repo_roller_api/Dockerfile".to_string(),
+            t: Some("repo_roller_api:test".to_string()),
             rm: true,
             ..Default::default()
         };
@@ -141,11 +141,14 @@ impl ApiContainer {
         let mut stream = self.docker.build_image(build_options, None, None);
 
         while let Some(msg) = stream.next().await {
-            let info = msg.context("Build stream error")?;
+            let info: BuildInfo = msg.context("Build stream error")?;
             if let Some(stream_msg) = info.stream {
                 print!("{}", stream_msg);
             }
-            if let Some(error_msg) = info.error {
+            if let Some(error_detail) = info.error_detail {
+                let error_msg = error_detail
+                    .message
+                    .unwrap_or_else(|| "Unknown build error".to_string());
                 anyhow::bail!("Docker build failed: {}", error_msg);
             }
         }
@@ -185,24 +188,21 @@ impl ApiContainer {
         let mut port_bindings = HashMap::new();
         port_bindings.insert(
             "8080/tcp".to_string(),
-            Some(vec![bollard::service::PortBinding {
+            Some(vec![bollard::models::PortBinding {
                 host_ip: Some("0.0.0.0".to_string()),
                 host_port: Some(self.config.port.to_string()),
             }]),
         );
 
-        let mut exposed_ports = HashMap::new();
-        exposed_ports.insert("8080/tcp".to_string(), HashMap::new());
-
-        let host_config = bollard::service::HostConfig {
+        let host_config = bollard::models::HostConfig {
             port_bindings: Some(port_bindings),
             ..Default::default()
         };
 
-        let container_config = Config {
+        let container_config = ContainerCreateBody {
             image: Some(image.to_string()),
             env: Some(env_vars),
-            exposed_ports: Some(exposed_ports),
+            exposed_ports: Some(vec!["8080/tcp".to_string()]),
             host_config: Some(host_config),
             ..Default::default()
         };
@@ -212,7 +212,7 @@ impl ApiContainer {
             .docker
             .create_container(
                 Some(CreateContainerOptions {
-                    name: container_name.as_str(),
+                    name: Some(container_name.clone()),
                     ..Default::default()
                 }),
                 container_config,
@@ -225,7 +225,7 @@ impl ApiContainer {
 
         // Start container
         self.docker
-            .start_container(&container_id, None::<StartContainerOptions<String>>)
+            .start_container(&container_id, None::<StartContainerOptions>)
             .await
             .context("Failed to start container")?;
 
@@ -288,10 +288,10 @@ impl ApiContainer {
 
     /// Get container logs for debugging
     async fn get_container_logs(&self, container_id: &str) -> Result<String> {
-        use bollard::container::LogsOptions;
+        use bollard::query_parameters::LogsOptions;
         use futures_util::TryStreamExt;
 
-        let options = LogsOptions::<String> {
+        let options = LogsOptions {
             stdout: true,
             stderr: true,
             tail: "100".to_string(),
@@ -310,12 +310,12 @@ impl ApiContainer {
 
     /// Cleanup old test containers (best effort)
     async fn cleanup_old_containers(&self) -> Result<()> {
-        use bollard::container::ListContainersOptions;
+        use bollard::query_parameters::ListContainersOptions;
 
         // List all containers (including stopped ones)
         let containers = self
             .docker
-            .list_containers(Some(ListContainersOptions::<String> {
+            .list_containers(Some(ListContainersOptions {
                 all: true,
                 ..Default::default()
             }))
@@ -331,7 +331,13 @@ impl ApiContainer {
                             // Try to stop if running
                             let _ = self
                                 .docker
-                                .stop_container(id, Some(StopContainerOptions { t: 5 }))
+                                .stop_container(
+                                    id,
+                                    Some(StopContainerOptions {
+                                        t: Some(5),
+                                        ..Default::default()
+                                    }),
+                                )
                                 .await;
                             // Try to remove
                             let _ = self
@@ -359,7 +365,13 @@ impl ApiContainer {
             tracing::info!("Stopping container: {}", container_id);
 
             self.docker
-                .stop_container(container_id, Some(StopContainerOptions { t: 5 }))
+                .stop_container(
+                    container_id,
+                    Some(StopContainerOptions {
+                        t: Some(5),
+                        ..Default::default()
+                    }),
+                )
                 .await
                 .context("Failed to stop container")?;
 
@@ -383,7 +395,7 @@ impl ApiContainer {
 
     /// Get container logs for debugging
     pub async fn get_logs(&self) -> Result<String> {
-        use bollard::container::LogsOptions;
+        use bollard::query_parameters::LogsOptions;
         use futures_util::stream::StreamExt;
 
         let container_id = self
@@ -392,7 +404,7 @@ impl ApiContainer {
             .context("Container not running")?;
 
         let mut output = String::new();
-        let options = LogsOptions::<String> {
+        let options = LogsOptions {
             stdout: true,
             stderr: true,
             tail: "all".to_string(),

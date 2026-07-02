@@ -233,7 +233,9 @@ jobs:
         run: cargo binstall --no-confirm conventional_commits_next_version@7.1.0
 
       - name: Install git-cliff
-        run: cargo binstall --no-confirm git-cliff@2.13.1
+        uses: taiki-e/install-action@92f69c195229fe62d58b4d697ab4bc75def98e76 # v2
+        with:
+          tool: git-cliff@2.13.1
 
       - name: Calculate next version
         id: calc_version
@@ -504,8 +506,17 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
         working-directory: frontend
       - name: Run E2E tests
-        run: pnpm run test:e2e
+        run: pnpm exec playwright test --reporter=list
         working-directory: frontend
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # ── E2E Container Tests ───────────────────────────────────────────────────
 
@@ -551,6 +562,50 @@ jobs:
           echo "Verifying Docker image..."
           docker images | grep repo_roller_api
           echo "✓ Image verified"
+
+      - name: Validate container starts
+        env:
+          GITHUB_APP_ID: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.INTEGRATION_TEST_GITHUB_APP_PRIVATE_KEY }}
+          INTEGRATION_TEST_JWT_SECRET: ${{ secrets.INTEGRATION_TEST_JWT_SECRET }}
+        run: |
+          echo "🔍 Validating that the container can start and serve the health endpoint..."
+          docker run -d \
+            --name repo_roller_startup_test \
+            -p 18080:8080 \
+            -e GITHUB_APP_ID="${GITHUB_APP_ID}" \
+            -e GITHUB_APP_PRIVATE_KEY="${GITHUB_APP_PRIVATE_KEY}" \
+            -e JWT_SECRET="${INTEGRATION_TEST_JWT_SECRET}" \
+            -e RUST_LOG=debug \
+            repo_roller_api:test
+
+          HEALTHY=false
+          for i in $(seq 1 30); do
+            sleep 2
+            if curl -sf http://localhost:18080/api/v1/health > /dev/null 2>&1; then
+              echo "✅ Container is healthy after ${i} attempts ($(( i * 2 ))s)"
+              HEALTHY=true
+              break
+            fi
+            STATUS=$(docker inspect --format='{{.State.Status}}' repo_roller_startup_test 2>/dev/null || echo "unknown")
+            echo "Attempt ${i}/30: not ready yet (container status: ${STATUS})"
+            if [ "$STATUS" = "exited" ]; then
+              echo "❌ Container exited early"
+              break
+            fi
+          done
+
+          echo "=== Container logs ==="
+          docker logs repo_roller_startup_test 2>&1 || true
+          echo "=== End container logs ==="
+
+          docker stop repo_roller_startup_test 2>/dev/null || true
+          docker rm repo_roller_startup_test 2>/dev/null || true
+
+          if [ "$HEALTHY" != "true" ]; then
+            echo "❌ Container failed to become healthy — see logs above"
+            exit 1
+          fi
 
       - name: Validate environment setup
         env:

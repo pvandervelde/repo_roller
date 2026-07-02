@@ -23,7 +23,7 @@
 //! See: .llm/rest-api-review-response.md
 
 use axum::{
-    http::{header, HeaderValue, Method},
+    http::{header, HeaderValue, Method, StatusCode},
     middleware,
     routing::{get, post},
     Router,
@@ -97,7 +97,8 @@ pub fn create_router(state: AppState) -> Router {
         .on_response(DefaultOnResponse::new().include_headers(true));
 
     // Configure request timeout (30 seconds)
-    let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
+    let timeout_layer =
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30));
 
     // Protected API routes (require authentication)
     let protected_routes = Router::new()
@@ -112,7 +113,7 @@ pub fn create_router(state: AppState) -> Router {
             post(handlers::validate_repository_request),
         )
         // Organization-specific routes
-        .nest("/orgs/:org", organization_routes())
+        .nest("/orgs/{org}", organization_routes())
         // Auth middleware reads jwt_secret from AppState; from_fn_with_state
         // supplies the state to the middleware function.
         .route_layer(middleware::from_fn_with_state(
@@ -142,15 +143,15 @@ fn organization_routes() -> Router<AppState> {
     Router::new()
         // Template routes
         .route("/templates", get(handlers::list_templates))
-        .route("/templates/:template", get(handlers::get_template_details))
+        .route("/templates/{template}", get(handlers::get_template_details))
         .route(
-            "/templates/:template/validate",
+            "/templates/{template}/validate",
             post(handlers::validate_template),
         )
         // Repository type routes
         .route("/repository-types", get(handlers::list_repository_types))
         .route(
-            "/repository-types/:type",
+            "/repository-types/{type}",
             get(handlers::get_repository_type_config),
         )
         // Configuration routes
@@ -215,7 +216,8 @@ pub fn create_router_without_auth(state: AppState) -> Router {
         .on_response(DefaultOnResponse::new().include_headers(true));
 
     // Configure request timeout (30 seconds)
-    let timeout_layer = TimeoutLayer::new(Duration::from_secs(30));
+    let timeout_layer =
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30));
 
     // API v1 routes without auth middleware
     let api_v1 = Router::new()
@@ -230,7 +232,7 @@ pub fn create_router_without_auth(state: AppState) -> Router {
             post(handlers::validate_repository_request),
         )
         // Organization-specific routes (without org-specific auth)
-        .nest("/orgs/:org", organization_routes_without_auth())
+        .nest("/orgs/{org}", organization_routes_without_auth())
         // Health check
         .route("/health", get(handlers::health_check))
         // Add middleware layers (without auth_middleware)
@@ -250,15 +252,15 @@ fn organization_routes_without_auth() -> Router<AppState> {
     Router::new()
         // Template routes
         .route("/templates", get(handlers::list_templates))
-        .route("/templates/:template", get(handlers::get_template_details))
+        .route("/templates/{template}", get(handlers::get_template_details))
         .route(
-            "/templates/:template/validate",
+            "/templates/{template}/validate",
             post(handlers::validate_template),
         )
         // Repository type routes
         .route("/repository-types", get(handlers::list_repository_types))
         .route(
-            "/repository-types/:type",
+            "/repository-types/{type}",
             get(handlers::get_repository_type_config),
         )
         // Configuration routes

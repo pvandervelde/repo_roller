@@ -16,6 +16,11 @@ use e2e_tests::{ApiContainer, ApiContainerConfig};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 
+#[ctor::ctor]
+fn init_default_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 /// Generate E2E test repository name using test_utils.
 fn generate_e2e_test_repo_name(test_name: &str) -> String {
     test_utils::generate_test_repo_name("e2e", test_name)

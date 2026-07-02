@@ -29,7 +29,7 @@ pub(crate) fn debug_repository_state(repo: &Repository) -> Result<(), SystemErro
                 match repo.find_commit(oid) {
                     Ok(commit) => debug!(
                         "  HEAD commit exists: {}",
-                        commit.summary().unwrap_or("no message")
+                        commit.summary().ok().flatten().unwrap_or("no message")
                     ),
                     Err(e) => debug!("  HEAD commit does not exist: {}", e),
                 }
@@ -351,7 +351,7 @@ pub(crate) fn set_head_reference_and_verify(
         "main".to_string()
     } else if let Ok(head_ref) = repo.head() {
         // HEAD exists and points to a reference (e.g., "refs/heads/main")
-        if let Some(name) = head_ref.name() {
+        if let Ok(name) = head_ref.name() {
             // Extract the branch name from the full reference (e.g., "refs/heads/main" -> "main")
             if let Some(branch) = name.strip_prefix("refs/heads/") {
                 debug!("Found existing HEAD pointing to branch: {}", branch);
@@ -362,8 +362,8 @@ pub(crate) fn set_head_reference_and_verify(
                 "main".to_string()
             }
         } else {
-            // HEAD exists but doesn't have a name (shouldn't happen)
-            warn!("HEAD reference exists but has no name");
+            // HEAD exists but name() returned an error (non-UTF8 reference name)
+            warn!("HEAD reference exists but has no valid name");
             "main".to_string()
         }
     } else {
@@ -371,7 +371,7 @@ pub(crate) fn set_head_reference_and_verify(
         // when it does get created (the "unborn" HEAD state)
         match repo.find_reference("HEAD") {
             Ok(head_ref) => {
-                if let Some(target) = head_ref.symbolic_target() {
+                if let Ok(Some(target)) = head_ref.symbolic_target() {
                     // HEAD is configured to point to a branch when created
                     if let Some(branch) = target.strip_prefix("refs/heads/") {
                         debug!("Found unborn HEAD configured for branch: {}", branch);

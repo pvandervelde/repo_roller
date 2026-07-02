@@ -505,7 +505,7 @@ pub async fn publish_repository_created(
 ///
 /// See docs/spec/interfaces/event-publisher.md#compute_hmac_sha256
 pub fn compute_hmac_sha256(payload: &[u8], secret: &str) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
 
     type HmacSha256 = Hmac<Sha256>;

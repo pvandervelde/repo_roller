@@ -180,6 +180,13 @@ impl Default for AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Both ring (via reqwest) and aws-lc-rs (via octocrab) are compiled into
+    // the dep tree. Rustls 0.23 requires an explicit default when both providers
+    // are present; without this call the first TLS connection panics.
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .ok();
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
@@ -233,4 +240,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Start server with graceful shutdown
     server.serve().await
+}
+
+#[cfg(test)]
+mod test_crypto_provider {
+    #[ctor::ctor]
+    fn init_default_crypto_provider() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
 }
