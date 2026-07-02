@@ -24,41 +24,30 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@eslint/js": "^9.24.0",
-    "@playwright/test": "^1.51.0",
-    "@sveltejs/adapter-node": "^5.5.4",
-    "@sveltejs/kit": "^2.61.1",
-    "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/svelte": "^5.2.7",
-    "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^4.1.0",
-    "eslint": "^9.24.0",
-    "eslint-config-prettier": "^10.1.2",
-    "eslint-plugin-svelte": "^2.46.1",
-    "globals": "^16.0.0",
-    "jsdom": "^26.0.0",
-    "prettier": "^3.5.3",
-    "prettier-plugin-svelte": "^3.3.3",
-    "svelte": "^5.25.0",
-    "svelte-check": "^4.1.5",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.29.1",
-    "vite": "^6.4.3",
-    "vitest": "^4.0.0"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
+    "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/kit": "^2.68.0",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.4.2",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.20.0",
+    "globals": "^17.7.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.9.4",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.56.4",
+    "svelte-check": "^4.7.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
+    "vite": "^8.1.2",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
-    "smol-toml": "^1.3.0"
-  },
-  "pnpm": {
-    "approvedBuilds": [
-      "esbuild"
-    ],
-    "overrides": {
-      "brace-expansion@^5.0.0": "^5.0.6",
-      "cookie": ">=0.7.0",
-      "js-yaml": ">=4.2.0",
-      "ws@^8.0.0": "^8.20.1"
-    }
+    "smol-toml": "^1.7.0"
   }
 }
