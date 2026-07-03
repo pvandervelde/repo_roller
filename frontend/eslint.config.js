@@ -29,6 +29,9 @@ export default [
   },
   {
     rules: {
+      // Project does not use SvelteKit view transitions; this rule fires on all
+      // normal <a href> and goto() calls which is too broad for this codebase.
+      'svelte/no-navigation-without-resolve': 'off',
       // Allow variables prefixed with _ to be intentionally unused
       '@typescript-eslint/no-unused-vars': [
         'error',

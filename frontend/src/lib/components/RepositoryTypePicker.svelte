@@ -57,7 +57,7 @@
       {#if policy === 'optional'}
         <option value="" selected={selectedTypeName === null}>No specific type</option>
       {/if}
-      {#each availableTypes as type}
+      {#each availableTypes as type (type.name)}
         <option value={type.name} selected={type.name === selectedTypeName}>{type.name}</option>
       {/each}
     </select>

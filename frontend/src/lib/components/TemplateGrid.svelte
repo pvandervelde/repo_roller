@@ -69,7 +69,7 @@
   {:else if loading}
     <p role="status" aria-live="polite" class="template-grid__loading-status">Loading templates…</p>
     <div class="template-grid__cards template-grid__cards--loading">
-      {#each [0, 1, 2, 3, 4, 5, 6, 7] as _}
+      {#each [0, 1, 2, 3, 4, 5, 6, 7] as _, i (i)}
         <TemplateCard name="" description="" selected={false} loading={true} />
       {/each}
     </div>
@@ -84,7 +84,7 @@
           No templates match '{searchQuery}'
         </p>
       {:else}
-        {#each filteredTemplates as template}
+        {#each filteredTemplates as template (template.name)}
           <TemplateCard
             name={template.name}
             description={template.description}

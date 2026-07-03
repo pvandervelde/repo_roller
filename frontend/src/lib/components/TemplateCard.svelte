@@ -69,7 +69,7 @@
     <p class="template-card__description">{description}</p>
     {#if visibleTags.length > 0}
       <ul class="template-card__tags" aria-label="Tags">
-        {#each visibleTags as tag}
+        {#each visibleTags as tag (tag)}
           <li class="template-card__tag">{tag}</li>
         {/each}
       </ul>
