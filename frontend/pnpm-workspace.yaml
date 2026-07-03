@@ -1,6 +1,6 @@
 overrides:
   brace-expansion: '>=5.0.6'
-  cookie: '>=0.7.0'
+  cookie: '>=0.7.0 <2'
   js-yaml: '>=4.2.0'
   ws: '>=8.20.1'
 
