@@ -314,7 +314,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auth_handler"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "github_client",
@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "config_manager"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1163,7 +1163,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "e2e_tests"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "auth_handler",
@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "github_client"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2094,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "integration_tests"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "auth_handler",
@@ -3298,7 +3298,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "repo_roller_api"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3332,7 +3332,7 @@ dependencies = [
 
 [[package]]
 name = "repo_roller_cli"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "auth_handler",
@@ -3359,7 +3359,7 @@ dependencies = [
 
 [[package]]
 name = "repo_roller_core"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "auth_handler",
@@ -4175,7 +4175,7 @@ dependencies = [
 
 [[package]]
 name = "template_engine"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -4193,7 +4193,7 @@ dependencies = [
 
 [[package]]
 name = "test_cleanup"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4206,7 +4206,7 @@ dependencies = [
 
 [[package]]
 name = "test_utils"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "chrono",
