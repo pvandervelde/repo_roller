@@ -1,0 +1,3 @@
+{
+    "window.title": "repo-roller - ${activeRepositoryBranchName}${separator}${activeEditorShort}${dirty}"
+}
