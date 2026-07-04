@@ -38,4 +38,4 @@ base64.workspace = true
 reqwest.workspace = true
 
 [dev-dependencies]
-tokio-test = "=0.4.4"
+tokio-test = "=0.4.5"

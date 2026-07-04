@@ -425,7 +425,7 @@
               }}
             >
               <option value="">No specific team</option>
-              {#each teams as team}
+              {#each teams as team (team.slug)}
                 <option value={team.slug}>{team.name}</option>
               {/each}
             </select>

@@ -23,7 +23,7 @@
   aria-label="Step {currentStep} of {steps.length}: {steps[currentStep - 1]}"
 >
   <ol class="step-progress__list">
-    {#each steps as step, i}
+    {#each steps as step, i (step)}
       {@const stepNum = i + 1}
       {@const isCompleted = stepNum < currentStep}
       {@const isCurrent = stepNum === currentStep}

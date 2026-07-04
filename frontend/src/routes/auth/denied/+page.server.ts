@@ -1,11 +1,7 @@
 import type { PageServerLoad } from './$types';
 
 export type DenialReason =
-  | 'access_denied'
-  | 'oauth_error'
-  | 'network_error'
-  | 'identity_failure'
-  | 'not_org_member';
+  'access_denied' | 'oauth_error' | 'network_error' | 'identity_failure' | 'not_org_member';
 
 /**
  * Access denied page.

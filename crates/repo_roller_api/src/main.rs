@@ -244,7 +244,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod test_crypto_provider {
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn init_default_crypto_provider() {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     }
