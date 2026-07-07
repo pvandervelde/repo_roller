@@ -34,9 +34,9 @@ uuid.workspace = true
 walkdir.workspace = true
 
 [dev-dependencies]
-ctor = "1"
+ctor = "=1.0.7"
 octocrab.workspace = true
 proptest.workspace = true
-rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
-tracing-test = "0.2"
+rustls = { version = "=0.23.41", default-features = false, features = ["aws-lc-rs"] }
+tracing-test = "=0.2.6"
 wiremock.workspace = true

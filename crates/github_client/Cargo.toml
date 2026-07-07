@@ -29,5 +29,5 @@ tokio = { workspace = true, features = [
     "rt-multi-thread",
 ] } # Ensure test runtime features
 serde_json.workspace = true # For constructing mock responses
-ctor = "1"
-rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+ctor = "=1.0.7"
+rustls = { version = "=0.23.41", default-features = false, features = ["aws-lc-rs"] }
