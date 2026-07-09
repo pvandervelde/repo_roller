@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1] - 2026-07-09
+
+### Bug Fixes
+
+- **ci**: fix release workflow attestation and docker metadata action [22abbd9dbe1fad015b92b4e4556e05f2e50530ec]
+- **ci**: fix release workflow for 0.9.0 tag failures (#270) [e69ec37cc998a2c01ebbfe68ea84a4b1a3f83e46]
+
 ## [0.9.0] - 2026-07-08
 
 ### Features
@@ -97,3 +104,4 @@
 - Fixing build issues [e3b460114f645346be06efea045a9f5556abf5d5]
 - Increase Renovate PR number and wait on minimumReleaseAge [0b20fe433b1116ea4b5c9fb7af0d41d88492c8be]
 - Increase Renovate PR number and wait on minimumReleaseAge (#250) [8c3ce971f84c294d03aefde864909b2449e744ca]
+
