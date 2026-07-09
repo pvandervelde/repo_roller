@@ -136,7 +136,7 @@ jobs:
               with:
                   subject-path: ${{ env.ASSET_PATH }}
                   predicate-type: https://spdx.dev/Document
-                  predicate: ${{ env.SBOM_PATH }}
+                  predicate-path: ${{ env.SBOM_PATH }}
 
     # ─────────────────────────────────────────────────────────────────────────
     # API Docker image
@@ -161,7 +161,7 @@ jobs:
 
             - name: Extract Docker metadata
               id: meta
-              uses: docker/metadata-action@902fa8ec7d6ecbea8a986b5e040ecfe2aa9c17e1 # v5
+              uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
               with:
                   images: ghcr.io/${{ github.repository }}/api
                   tags: |
@@ -215,7 +215,7 @@ jobs:
 
             - name: Extract Docker metadata
               id: meta
-              uses: docker/metadata-action@902fa8ec7d6ecbea8a986b5e040ecfe2aa9c17e1 # v5
+              uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
               with:
                   images: ghcr.io/${{ github.repository }}/frontend
                   tags: |
