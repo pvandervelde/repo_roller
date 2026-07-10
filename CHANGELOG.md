@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2] - 2026-07-10
+
+### Bug Fixes
+
+- resolve Docker image build failures for API and frontend (#272) [037006be9a4eaa6f57c519c84a2932d676e51454]
+- resolve docker image build failures for api and frontend [2a15a4394e0cb772d1b9e1e16e4676582f5c31cf]
+
 ## [0.9.1] - 2026-07-09
 
 ### Bug Fixes
@@ -104,4 +111,5 @@
 - Fixing build issues [e3b460114f645346be06efea045a9f5556abf5d5]
 - Increase Renovate PR number and wait on minimumReleaseAge [0b20fe433b1116ea4b5c9fb7af0d41d88492c8be]
 - Increase Renovate PR number and wait on minimumReleaseAge (#250) [8c3ce971f84c294d03aefde864909b2449e744ca]
+
 
