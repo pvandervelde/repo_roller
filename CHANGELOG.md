@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3] - 2026-07-10
+
+### Bug Fixes
+
+- include pnpm-workspace.yaml in Docker builder COPY [4faf35bbd8abc58e62786ebc8c4b4e5a6cc3f559]
+- include pnpm-workspace.yaml in Docker builder COPY (#274) [c921b1dce64837bbf5dc26df72a2095851eca573]
+
 ## [0.9.2] - 2026-07-10
 
 ### Bug Fixes
@@ -111,5 +118,6 @@
 - Fixing build issues [e3b460114f645346be06efea045a9f5556abf5d5]
 - Increase Renovate PR number and wait on minimumReleaseAge [0b20fe433b1116ea4b5c9fb7af0d41d88492c8be]
 - Increase Renovate PR number and wait on minimumReleaseAge (#250) [8c3ce971f84c294d03aefde864909b2449e744ca]
+
 
 
