@@ -12,7 +12,7 @@ WORKDIR /app
 # Copy only the files needed to install dependencies so that this layer is
 # cached independently of source changes. .npmrc must be included here because
 # pnpm reads it during install (e.g. public-hoist-pattern settings).
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 # approvedBuilds in package.json restricts postinstall scripts to esbuild only.
 # Do NOT add --ignore-scripts here — it overrides approvedBuilds and prevents
