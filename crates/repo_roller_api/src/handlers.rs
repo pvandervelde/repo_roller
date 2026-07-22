@@ -205,7 +205,18 @@ pub async fn create_repository(
     let event_context =
         repo_roller_core::EventNotificationContext::new(&actor_login, secret_resolver, metrics);
 
-    // Call domain service to create repository
+    // Call domain service to create repository, recording observability
+    // metrics (Observability Phase 1) around the call: a request counter,
+    // an in-flight gauge, and a success/failure counter (labeled with a
+    // bounded error category, never the free-text error message) plus the
+    // end-to-end duration histogram.
+    let template_label = request.template.as_deref().unwrap_or("");
+    state
+        .repository_creation_metrics
+        .record_request(&request.organization, template_label);
+    state.repository_creation_metrics.increment_active_tasks();
+    let creation_started_at = std::time::Instant::now();
+
     let result = repo_roller_core::create_repository(
         domain_request,
         metadata_provider.as_ref(),
@@ -215,7 +226,31 @@ pub async fn create_repository(
         environment_detector,
         event_context,
     )
-    .await?; // ApiError::from(RepoRollerError) converts automatically
+    .await;
+
+    state.repository_creation_metrics.decrement_active_tasks();
+    let duration_seconds = creation_started_at.elapsed().as_secs_f64();
+
+    let result = match result {
+        Ok(result) => {
+            state.repository_creation_metrics.record_success(
+                &request.organization,
+                template_label,
+                duration_seconds,
+            );
+            result
+        }
+        Err(err) => {
+            let category = repo_roller_core::repository_metrics::error_category(&err);
+            state.repository_creation_metrics.record_failure(
+                &request.organization,
+                template_label,
+                category,
+                duration_seconds,
+            );
+            return Err(ApiError::from(err));
+        }
+    };
 
     // Translate domain result to HTTP response
     let http_response = domain_repository_creation_result_to_http(result, &request);
@@ -461,6 +496,11 @@ pub async fn validate_repository_name(
 
     // ── Real-time name availability check (soft-fail) ─────────────────────────
     let available = if valid {
+        // Record the GitHub API call (Observability Phase 1). `operation` is
+        // the bounded, source-controlled identifier for the underlying
+        // `GitHubClient::get_repository` call made inside
+        // `check_repository_availability` — never the org/repo name.
+        state.github_api_metrics.record_call("get_repository");
         let (is_available, availability_message) =
             check_repository_availability(&github_client, &request.organization, &request.name)
                 .await;
@@ -1088,11 +1128,17 @@ pub async fn list_organization_teams(
     )
     .map_err(|e| ApiError::internal(format!("Failed to create GitHub client: {}", e)))?;
 
+    // Record the GitHub API call (Observability Phase 1). `operation` is a
+    // bounded, source-controlled identifier — never the org name.
+    state.github_api_metrics.record_call("list_organization_teams");
     let teams = github_client
         .list_organization_teams(&org)
         .await
         .map_err(|e| {
             tracing::error!(org = %org, error = %e, "Failed to list organization teams");
+            state
+                .github_api_metrics
+                .record_error("list_organization_teams", github_client::status_category(&e));
             ApiError::from(anyhow::anyhow!("Failed to list organization teams: {}", e))
         })?;
 
@@ -1197,6 +1243,39 @@ pub async fn health_check() -> Json<HealthCheckResponse> {
         timestamp: chrono::Utc::now().to_rfc3339(),
         error: None,
     })
+}
+
+/// GET /metrics
+///
+/// Prometheus scrape endpoint. Gathers and encodes every metric family
+/// registered against `AppState::metrics_registry` — event-delivery metrics,
+/// repository-creation metrics, GitHub API call metrics, and per-endpoint
+/// HTTP request metrics all share this one registry (see `AppState::new`),
+/// so a single scrape returns everything.
+///
+/// Deliberately unauthenticated, like `/health`: Prometheus scrapers do not
+/// send an `Authorization` header by default, and the exposed body contains
+/// only bounded metric names, label values, and numeric samples — never
+/// tokens, secrets, or free-text error messages (enforced by the bounded
+/// `error_category`/`status_category` label mappings used when recording
+/// these metrics).
+pub async fn metrics_handler(State(state): State<AppState>) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    use prometheus::{Encoder, TextEncoder};
+
+    let metric_families = state.metrics_registry.gather();
+    let encoder = TextEncoder::new();
+    let mut buffer = Vec::new();
+    encoder
+        .encode(&metric_families, &mut buffer)
+        .map_err(|e| ApiError::internal(format!("Failed to encode Prometheus metrics: {}", e)))?;
+
+    Ok((
+        axum::http::StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, encoder.format_type().to_string())],
+        buffer,
+    )
+        .into_response())
 }
 
 /// Health check response

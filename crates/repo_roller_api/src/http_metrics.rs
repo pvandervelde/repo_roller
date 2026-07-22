@@ -27,11 +27,26 @@
 // its string form (e.g. `"404"`), which is bounded (three digits).
 
 use axum::{
-    extract::{Request, State},
+    extract::{MatchedPath, Request, State},
     middleware::Next,
     response::Response,
 };
 use std::sync::Arc;
+
+/// Sentinel label value pre-registered for every vector metric at
+/// construction time, so its metric family is always present in a Prometheus
+/// scrape — even before the first real HTTP request is recorded.
+///
+/// `prometheus::Registry::gather()` prunes any `CounterVec`/`HistogramVec`
+/// metric family that has zero recorded label combinations. Without this
+/// pre-seed, `http_requests_total` (etc.) would be absent from a scrape
+/// taken immediately after startup. See the identical rationale documented
+/// on `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL`.
+const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
+
+/// Route label used when no route template matched the request (e.g. a 404
+/// on an unknown path). Bounded and fixed, never the raw concrete path.
+const UNMATCHED_ROUTE: &str = "unmatched";
 
 /// Histogram buckets for HTTP request duration, in seconds. Standard
 /// sub-second web-latency buckets (distinct from the wider repository-creation
@@ -70,23 +85,68 @@ impl PrometheusHttpMetrics {
     ///
     /// # Panics
     /// Panics if metrics cannot be registered (duplicate names).
-    pub fn new(_registry: &prometheus::Registry) -> Self {
-        todo!("Coder: register http_request_* metric families against the shared registry")
+    pub fn new(registry: &prometheus::Registry) -> Self {
+        use prometheus::{CounterVec, HistogramOpts, HistogramVec, Opts};
+
+        let requests = CounterVec::new(
+            Opts::new("http_requests_total", "Total HTTP requests handled"),
+            &["method", "route", "status_code"],
+        )
+        .expect("Failed to create requests counter vec");
+
+        let duration = HistogramVec::new(
+            HistogramOpts::new(
+                "http_request_duration_seconds",
+                "HTTP request handler duration in seconds",
+            )
+            .buckets(HTTP_REQUEST_DURATION_BUCKETS.to_vec()),
+            &["method", "route"],
+        )
+        .expect("Failed to create duration histogram vec");
+
+        registry
+            .register(Box::new(requests.clone()))
+            .expect("Failed to register requests counter vec");
+        registry
+            .register(Box::new(duration.clone()))
+            .expect("Failed to register duration histogram vec");
+
+        // Pre-seed vector metrics (see `UNSEEDED_SENTINEL` docs) so each
+        // family is visible in a scrape immediately, before any real activity.
+        requests.with_label_values(&[UNSEEDED_SENTINEL, UNSEEDED_SENTINEL, UNSEEDED_SENTINEL]);
+        duration.with_label_values(&[UNSEEDED_SENTINEL, UNSEEDED_SENTINEL]);
+
+        Self { requests, duration }
     }
 }
 
 impl HttpMetrics for PrometheusHttpMetrics {
-    fn record_request(&self, _method: &str, _route: &str, _status_code: u16, _duration_seconds: f64) {
-        todo!("Coder: increment http_requests_total{{method,route,status_code}} and observe duration histogram")
+    fn record_request(&self, method: &str, route: &str, status_code: u16, duration_seconds: f64) {
+        self.requests
+            .with_label_values(&[method, route, &status_code.to_string()])
+            .inc();
+        self.duration
+            .with_label_values(&[method, route])
+            .observe(duration_seconds);
     }
 }
 
 /// No-op implementation of [`HttpMetrics`] for testing or when metrics are
 /// disabled. Zero overhead; this is the complete, final implementation, not
 /// a stub.
+///
+/// Only constructed in tests today — production always uses
+/// `PrometheusHttpMetrics` (see `AppState::new`). Unlike its sibling no-op
+/// types in `repo_roller_core::event_metrics`/`repository_metrics` and
+/// `github_client::api_metrics` (library crates, where unused `pub` items are
+/// exempt from the dead-code lint as part of the crate's public API),
+/// `repo_roller_api` is a binary crate with no external consumers, so the
+/// lint fires here without an explicit allow.
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct NoOpHttpMetrics;
 
+#[allow(dead_code)]
 impl NoOpHttpMetrics {
     pub fn new() -> Self {
         Self
@@ -109,15 +169,26 @@ impl HttpMetrics for NoOpHttpMetrics {
 /// When no route matched (e.g. 404 on an unknown path), `route` should fall
 /// back to a fixed, bounded sentinel such as `"unmatched"` rather than the
 /// raw path.
-///
-/// # Panics (stub)
-/// Stub: panics via `todo!()`. The Coder must implement this middleware.
 pub async fn http_metrics_middleware(
-    State(_metrics): State<Arc<dyn HttpMetrics>>,
-    _req: Request,
-    _next: Next,
+    State(metrics): State<Arc<dyn HttpMetrics>>,
+    req: Request,
+    next: Next,
 ) -> Response {
-    todo!("Coder: time the request, extract MatchedPath (or \"unmatched\"), and call metrics.record_request")
+    let method = req.method().as_str().to_string();
+    let route = req
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|matched_path| matched_path.as_str().to_string())
+        .unwrap_or_else(|| UNMATCHED_ROUTE.to_string());
+
+    let start = std::time::Instant::now();
+    let response = next.run(req).await;
+    let duration_seconds = start.elapsed().as_secs_f64();
+    let status_code = response.status().as_u16();
+
+    metrics.record_request(&method, &route, status_code, duration_seconds);
+
+    response
 }
 
 #[cfg(test)]

@@ -41,6 +41,11 @@ pub const DEFAULT_PORT: u16 = 8080;
 /// `/metrics` endpoint. Creating a new `PrometheusEventMetrics` per request
 /// would panic on the second call because the counters are already registered
 /// in the shared registry.
+///
+/// All Prometheus-backed metrics collectors (`event_metrics`,
+/// `repository_creation_metrics`, `http_metrics`, `github_api_metrics`) are
+/// registered against the single shared `metrics_registry`, so one `/metrics`
+/// scrape (see `routes::create_router`) returns every metric family.
 #[derive(Clone)]
 pub struct AppState {
     /// Metadata repository name for organization settings
@@ -50,6 +55,24 @@ pub struct AppState {
     /// Cloned (Arc clone, not a new allocation) for each handler invocation so
     /// that metric values accumulate across requests.
     pub event_metrics: std::sync::Arc<repo_roller_core::event_metrics::PrometheusEventMetrics>,
+    /// Shared repository-creation metrics, initialised once at startup and
+    /// registered against `metrics_registry`.
+    pub(crate) repository_creation_metrics:
+        std::sync::Arc<dyn repo_roller_core::repository_metrics::RepositoryCreationMetrics>,
+    /// Shared per-endpoint HTTP request metrics, initialised once at startup
+    /// and registered against `metrics_registry`. Consumed by
+    /// `http_metrics::http_metrics_middleware` via `from_fn_with_state`.
+    pub(crate) http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics>,
+    /// Shared GitHub API call metrics, initialised once at startup and
+    /// registered against `metrics_registry`. Threaded through per-request
+    /// `GitHubClient` construction in `handlers.rs`, mirroring how
+    /// `event_metrics` is threaded through `EventNotificationContext`.
+    pub(crate) github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics>,
+    /// Shared Prometheus registry that every metrics collector above
+    /// registers against. Retained (rather than dropped after constructing
+    /// the collectors) so the `/metrics` handler can call `.gather()` on it
+    /// for every scrape.
+    pub(crate) metrics_registry: std::sync::Arc<prometheus::Registry>,
     /// Optional GitHub API base URL override.
     ///
     /// When `None` the default `https://api.github.com` is used. Set this to
@@ -88,11 +111,27 @@ impl AppState {
         jwt_secret: impl Into<String>,
     ) -> Self {
         let registry = prometheus::Registry::new();
+        let event_metrics = std::sync::Arc::new(
+            repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
+        );
+        let repository_creation_metrics = std::sync::Arc::new(
+            repo_roller_core::repository_metrics::PrometheusRepositoryCreationMetrics::new(
+                &registry,
+            ),
+        );
+        let http_metrics = std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(
+            &registry,
+        ));
+        let github_api_metrics = std::sync::Arc::new(
+            github_client::PrometheusGitHubApiMetrics::new(&registry),
+        );
         Self {
             metadata_repository_name: metadata_repository_name.into(),
-            event_metrics: std::sync::Arc::new(
-                repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
-            ),
+            event_metrics,
+            repository_creation_metrics,
+            http_metrics,
+            github_api_metrics,
+            metrics_registry: std::sync::Arc::new(registry),
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(
                 github_app_id,
@@ -163,14 +202,28 @@ pub(crate) const TEST_JWT_SECRET: &str = "test-jwt-secret-key-minimum-32b!";
 #[cfg(test)]
 impl Default for AppState {
     fn default() -> Self {
+        let registry = prometheus::Registry::new();
+        let event_metrics = std::sync::Arc::new(
+            repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
+        );
+        let repository_creation_metrics = std::sync::Arc::new(
+            repo_roller_core::repository_metrics::PrometheusRepositoryCreationMetrics::new(
+                &registry,
+            ),
+        );
+        let http_metrics = std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(
+            &registry,
+        ));
+        let github_api_metrics = std::sync::Arc::new(
+            github_client::PrometheusGitHubApiMetrics::new(&registry),
+        );
         Self {
             metadata_repository_name: ".reporoller".to_string(),
-            event_metrics: {
-                let registry = prometheus::Registry::new();
-                std::sync::Arc::new(
-                    repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
-                )
-            },
+            event_metrics,
+            repository_creation_metrics,
+            http_metrics,
+            github_api_metrics,
+            metrics_registry: std::sync::Arc::new(registry),
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
             jwt_secret: secrecy::SecretString::from(TEST_JWT_SECRET.to_string()),
