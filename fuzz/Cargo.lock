@@ -74,7 +74,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auth_handler"
-version = "0.8.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "github_client",
@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "config_manager"
-version = "0.8.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -303,7 +303,7 @@ dependencies = [
  "serde_json",
  "template_engine",
  "thiserror 2.0.18",
- "toml 1.1.2+spec-1.1.0",
+ "toml",
  "tracing",
  "url",
 ]
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "github_client"
-version = "0.8.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -2226,7 +2226,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "repo_roller_core"
-version = "0.8.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "auth_handler",
@@ -2262,7 +2262,7 @@ dependencies = [
  "repo_roller_core",
  "serde_json",
  "template_engine",
- "toml 0.9.12+spec-1.1.0",
+ "toml",
 ]
 
 [[package]]
@@ -2891,7 +2891,7 @@ dependencies = [
 
 [[package]]
 name = "template_engine"
-version = "0.8.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -3054,21 +3054,6 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.12+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
-dependencies = [
- "indexmap",
- "serde_core",
- "serde_spanned",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow 0.7.15",
-]
-
-[[package]]
-name = "toml"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81f3d15e84cbcd896376e6730314d59fb5a87f31e4b038454184435cd57defee"
@@ -3076,19 +3061,10 @@ dependencies = [
  "indexmap",
  "serde_core",
  "serde_spanned",
- "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_datetime",
  "toml_parser",
  "toml_writer",
- "winnow 1.0.3",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
-dependencies = [
- "serde_core",
+ "winnow",
 ]
 
 [[package]]
@@ -3106,7 +3082,7 @@ version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2abe9b86193656635d2411dc43050282ca48aa31c2451210f4202550afb7526"
 dependencies = [
- "winnow 1.0.3",
+ "winnow",
 ]
 
 [[package]]
@@ -3643,12 +3619,6 @@ name = "windows_x86_64_msvc"
 version = "0.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
-
-[[package]]
-name = "winnow"
-version = "0.7.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 
 [[package]]
 name = "winnow"
