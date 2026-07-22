@@ -33,7 +33,6 @@ required_visibility = "private"
 
 Any request specifying `visibility: "public"` results in an error. The repository is not created. The error message explains that visibility policy is locked.
 
-Similarly, a repository type configuration can set a `[repository_visibility]` section to restrict visibility for repositories of that type.
 
 ## The `internal` visibility option
 
