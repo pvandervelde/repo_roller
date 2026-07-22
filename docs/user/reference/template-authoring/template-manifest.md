@@ -27,19 +27,20 @@ description = "What this template provides"  # Shown in web UI and CLI.
 # Overrides global and type defaults. Use sparse tables — only set what differs.
 
 # [repository]
-# has_issues    = true
-# has_projects  = false
-# has_wiki      = false
-# has_discussions = false
+# issues          = true
+# projects        = false
+# wiki            = false
+# discussions     = false
+# pages           = false
 # security_advisories     = true
 # vulnerability_reporting = true
-# default_branch          = "main"
-# allow_forking           = false
+# auto_close_issues       = false
 
-# Force all repositories from this template to be the "service" type:
-# [repository.repository_type]
-# type_name = "service"
-# policy    = "fixed"      # "fixed" | "default" | "allowed"
+# Force all repositories from this template to be the "service" type
+# (top-level section, NOT nested under [repository]):
+# [repository_type]
+# type   = "service"
+# policy = "fixed"      # "fixed" | "preferable"
 
 # ── Pull request settings ──────────────────────────────────────────────────────
 
@@ -49,9 +50,9 @@ description = "What this template provides"  # Shown in web UI and CLI.
 # allow_rebase_merge    = false
 # required_approving_review_count = 2
 # require_code_owner_reviews      = true
-# dismiss_stale_reviews_on_push   = true
 # require_conversation_resolution = true
 # allow_auto_merge                = false
+# delete_branch_on_merge          = false
 
 # ── Template variables ─────────────────────────────────────────────────────────
 # Variables that users fill in when creating a repository from this template.
@@ -98,13 +99,11 @@ description = "What this template provides"  # Shown in web UI and CLI.
 # GitHub fires these for events inside the repository.
 
 # [[webhooks]]
-# name         = "deployment-webhook"
 # url          = "https://deploy.example.com/webhook/{{service_name}}"
 # content_type = "json"
 # secret       = "DEPLOY_WEBHOOK_SECRET"   # Environment variable name
 # events       = ["push", "release"]
 # active       = true
-# insecure_ssl = false
 
 # ── Branch and tag protection rulesets ────────────────────────────────────────
 
@@ -134,5 +133,5 @@ exclude_patterns = [
   "README.md",
   ".github/workflows/test-template.yml",
 ]
-# process_extensions = [".toml", ".rs", ".md", ".yml", ".json", ".txt"]
+# include_patterns = ["**/*.toml", "**/*.rs", "**/*.md", "**/*.yml"]
 ```

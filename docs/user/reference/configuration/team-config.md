@@ -19,11 +19,19 @@ Applies to repositories created by or for a specific team. Overrides global defa
 |---|---|---|
 | `[repository]` | Yes | Overrides global and type |
 | `[pull_requests]` | Yes | Overrides global and type |
+| `[branch_protection]` | Yes | Overrides global and type |
+| `[actions]` | Yes | Overrides global and type |
+| `[push]` | Yes | Overrides global and type |
 | `[[labels]]` | Yes | **Additive** |
 | `[[default_teams]]` | No | Use `[[rulesets]]` for access governance instead |
 | `[[rulesets]]` | Yes | **Additive** |
 | `[[webhooks]]` | Yes | **Additive** |
+| `[[environments]]` | Yes | **Additive** |
+| `[[github_apps]]` | Yes | **Additive** |
+| `[[custom_properties]]` | Yes | **Additive** |
+| `[[naming_rules]]` | Yes | **Additive** |
 | `[permissions]` | No | Only at global level |
+| `[notifications]` | Yes | Inline outbound webhook configuration |
 
 ---
 
@@ -33,7 +41,7 @@ Applies to repositories created by or for a specific team. Overrides global defa
 # teams/frontend-team/config.toml
 
 [repository]
-has_discussions = true    # Frontend team uses Discussions for design decisions
+discussions = true    # Frontend team uses Discussions for design decisions
 
 [pull_requests]
 required_approving_review_count = 1   # Small team; 1 approval is sufficient
@@ -59,7 +67,7 @@ include = ["refs/heads/main", "refs/heads/develop"]
 
 [[rulesets.rules]]
 type = "required_status_checks"
-required_checks = [
+required_status_checks = [
   { context = "ci/build" },
   { context = "ci/test" },
   { context = "ci/lint" },

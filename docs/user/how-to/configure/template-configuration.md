@@ -19,19 +19,18 @@ author      = "Platform Team"
 tags        = ["rust", "microservice", "backend", "grpc"]
 
 [repository]
-has_wiki        = false
-has_discussions = false
+wiki             = false
+discussions      = false
 security_advisories      = true
 vulnerability_reporting  = true
 
-[repository.repository_type]
-type_name = "service"
-policy    = "fixed"      # Creators cannot override this type
+[repository_type]
+type   = "service"
+policy = "fixed"      # Creators cannot override this type
 
 [pull_requests]
 required_approving_review_count = 2
 require_code_owner_reviews      = true
-dismiss_stale_reviews_on_push   = true
 
 [variables.service_name]
 description = "Canonical name of the microservice"
@@ -59,12 +58,10 @@ username     = "deploy-bot"
 access_level = "write"
 
 [[webhooks]]
-name         = "deployment-webhook"
 url          = "https://deploy.myorg.example/webhook/{{service_name}}"
 content_type = "json"
 events       = ["push", "release"]
 active       = true
-insecure_ssl = false
 
 [[rulesets]]
 name        = "microservice-ci-checks"
@@ -77,7 +74,7 @@ include = ["refs/heads/main"]
 [[rulesets.rules]]
 type = "required_status_checks"
 strict_required_status_checks_policy = true
-required_checks = [
+required_status_checks = [
   { context = "ci/build" },
   { context = "ci/test" },
   { context = "docker/build" },
@@ -90,9 +87,6 @@ exclude_patterns = [
   ".gitignore",
   ".github/workflows/test-template.yml"
 ]
-process_extensions = [
-  "rs", "toml", "md", "yml", "yaml", "json", "txt"
-]
 ```
 
 ## Key sections
@@ -100,7 +94,8 @@ process_extensions = [
 | Section | Effect |
 |---|---|
 | `[template]` | Metadata — name, description, author, tags |
-| `[repository]` | Repository feature settings; `repository_type` controls the type policy |
+| `[repository]` | Repository feature settings |
+| `[repository_type]` | Repository type policy (top-level, not nested under `[repository]`) |
 | `[pull_requests]` | PR merge and review settings |
 | `[variables.*]` | User-supplied variables at creation time |
 | `[[labels]]` | Labels applied to the created repository |

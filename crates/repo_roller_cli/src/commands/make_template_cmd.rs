@@ -445,21 +445,25 @@ exclude_patterns = [
 
 # ─── Optional: Repository feature settings ───────────────────────────────────
 # [repository]
-# has_wiki              = false
-# has_issues            = true
-# has_projects          = false
-# has_discussions       = false
-# delete_branch_on_merge = true
+# wiki              = false
+# issues            = true
+# projects          = false
+# discussions       = false
+# pages             = false
 # security_advisories   = false
+# vulnerability_reporting = false
+# auto_close_issues = false
 
 # ─── Optional: Pull request settings ────────────────────────────────────────
 # [pull_requests]
 # allow_squash_merge              = true
 # allow_merge_commit              = false
 # allow_rebase_merge              = false
+# delete_branch_on_merge          = false
 # required_approving_review_count = 1
-# dismiss_stale_reviews           = true
 # require_code_owner_reviews      = false
+# require_conversation_resolution = false
+# allow_auto_merge                = false
 
 # ─── Optional: Labels for created repos (additive with org labels) ───────────
 # [[labels]]

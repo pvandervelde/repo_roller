@@ -39,7 +39,7 @@
 //! policy = "fixed"  # or "preferable" to allow user override
 //!
 //! [repository]
-//! has_wiki = false
+//! wiki = false
 //! security_advisories = true
 //!
 //! [pull_requests]

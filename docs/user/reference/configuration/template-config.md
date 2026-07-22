@@ -40,6 +40,20 @@ Supports the same fields as [global-config.md](global-config.md#repository--repo
 
 ---
 
+## `default_visibility` — default repository visibility
+
+A top-level field (not nested under any section) that sets the default visibility for repositories created from this template.
+
+| Field | TOML type | Required | Description |
+|---|---|---|---|
+| `default_visibility` | string | No | `"private"`, `"public"`, or `"internal"` |
+
+```toml
+default_visibility = "private"
+```
+
+---
+
 ## `[repository_type]` — repository type policy
 
 A **top-level** section (not nested under `[repository]`) that forces or suggests a repository type.
@@ -60,7 +74,7 @@ Omit the entire `[repository_type]` section to place no restriction on repositor
 
 ```toml
 [repository]
-has_wiki = false
+wiki = false
 
 [repository_type]
 type   = "service"
@@ -151,6 +165,31 @@ Webhooks applied to repositories. Additive with global and type webhooks. Same s
 ## `[[rulesets]]` — branch/tag protection
 
 Rulesets applied to repositories. Additive. Same schema as global configuration.
+
+---
+
+## `[permissions]` — template permission requirements
+
+Declares permissions required for the template to function correctly.
+
+| Field | TOML type | Description |
+|---|---|---|
+| `required` | array of `PermissionGrantConfig` | Permissions that repositories created from this template must have |
+
+Each `PermissionGrantConfig` entry has `permission_type`, `level`, and `scope`. See [global-config.md](global-config.md#permissions--access-level-ceilings) for valid values.
+
+```toml
+[[permissions.required]]
+permission_type = "push"
+level           = "write"
+scope           = "team"
+```
+
+---
+
+## `[[naming_rules]]` — repository naming rules
+
+Naming rules to enforce on repositories created from this template. Additive with global, type, and team naming rules. Same schema as [global-config.md](global-config.md#naming_rules--repository-naming-rules).
 
 ---
 
