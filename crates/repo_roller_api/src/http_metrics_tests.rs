@@ -29,17 +29,24 @@ impl MockHttpMetrics {
         self.call_count.load(Ordering::Relaxed)
     }
     pub fn routes_recorded(&self) -> Vec<String> {
-        self.recorded.lock().unwrap().iter().map(|(_, r, _, _)| r.clone()).collect()
+        self.recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, r, _, _)| r.clone())
+            .collect()
     }
 }
 
 impl HttpMetrics for MockHttpMetrics {
     fn record_request(&self, method: &str, route: &str, status_code: u16, duration_seconds: f64) {
         self.call_count.fetch_add(1, Ordering::Relaxed);
-        self.recorded
-            .lock()
-            .unwrap()
-            .push((method.to_string(), route.to_string(), status_code, duration_seconds));
+        self.recorded.lock().unwrap().push((
+            method.to_string(),
+            route.to_string(),
+            status_code,
+            duration_seconds,
+        ));
     }
 }
 
@@ -109,7 +116,11 @@ mod prometheus_spec_tests {
         let value = counter_vec_value(
             &families,
             "http_requests_total",
-            &[("method", "GET"), ("route", "/api/v1/health"), ("status_code", "200")],
+            &[
+                ("method", "GET"),
+                ("route", "/api/v1/health"),
+                ("status_code", "200"),
+            ],
         );
         assert_eq!(value, 2.0);
     }
@@ -155,12 +166,20 @@ mod prometheus_adversarial_tests {
         let ok = counter_vec_value(
             &families,
             "http_requests_total",
-            &[("method", "GET"), ("route", "/api/v1/orgs/{org}/templates"), ("status_code", "200")],
+            &[
+                ("method", "GET"),
+                ("route", "/api/v1/orgs/{org}/templates"),
+                ("status_code", "200"),
+            ],
         );
         let err = counter_vec_value(
             &families,
             "http_requests_total",
-            &[("method", "GET"), ("route", "/api/v1/orgs/{org}/templates"), ("status_code", "500")],
+            &[
+                ("method", "GET"),
+                ("route", "/api/v1/orgs/{org}/templates"),
+                ("status_code", "500"),
+            ],
         );
         assert_eq!(ok, 2.0);
         assert_eq!(err, 1.0);
@@ -178,11 +197,27 @@ mod prometheus_adversarial_tests {
 
         let families = registry.gather();
         assert_eq!(
-            counter_vec_value(&families, "http_requests_total", &[("method", "GET"), ("route", "/api/v1/health"), ("status_code", "100")]),
+            counter_vec_value(
+                &families,
+                "http_requests_total",
+                &[
+                    ("method", "GET"),
+                    ("route", "/api/v1/health"),
+                    ("status_code", "100")
+                ]
+            ),
             1.0
         );
         assert_eq!(
-            counter_vec_value(&families, "http_requests_total", &[("method", "GET"), ("route", "/api/v1/health"), ("status_code", "599")]),
+            counter_vec_value(
+                &families,
+                "http_requests_total",
+                &[
+                    ("method", "GET"),
+                    ("route", "/api/v1/health"),
+                    ("status_code", "599")
+                ]
+            ),
             1.0
         );
     }
@@ -195,8 +230,12 @@ mod prometheus_adversarial_tests {
         metrics.record_request("GET", "/api/v1/health", 200, 0.0);
 
         let families = registry.gather();
-        let hist = histogram_vec(&families, "http_request_duration_seconds", &[("method", "GET"), ("route", "/api/v1/health")])
-            .expect("histogram sample should exist");
+        let hist = histogram_vec(
+            &families,
+            "http_request_duration_seconds",
+            &[("method", "GET"), ("route", "/api/v1/health")],
+        )
+        .expect("histogram sample should exist");
         assert_eq!(hist.get_sample_count(), 1);
         assert_eq!(hist.get_sample_sum(), 0.0);
     }
@@ -215,12 +254,20 @@ mod prometheus_adversarial_tests {
         let get_count = counter_vec_value(
             &families,
             "http_requests_total",
-            &[("method", "GET"), ("route", "/api/v1/repositories"), ("status_code", "200")],
+            &[
+                ("method", "GET"),
+                ("route", "/api/v1/repositories"),
+                ("status_code", "200"),
+            ],
         );
         let post_count = counter_vec_value(
             &families,
             "http_requests_total",
-            &[("method", "POST"), ("route", "/api/v1/repositories"), ("status_code", "201")],
+            &[
+                ("method", "POST"),
+                ("route", "/api/v1/repositories"),
+                ("status_code", "201"),
+            ],
         );
         assert_eq!(get_count, 1.0);
         assert_eq!(post_count, 1.0);
@@ -238,7 +285,10 @@ mod middleware_tests {
         Router::new()
             .route("/orgs/{org}/templates/{template}", get(|| async { "ok" }))
             .route("/health", get(|| async { "ok" }))
-            .layer(axum::middleware::from_fn_with_state(metrics.clone(), http_metrics_middleware))
+            .layer(axum::middleware::from_fn_with_state(
+                metrics.clone(),
+                http_metrics_middleware,
+            ))
             .with_state(metrics)
     }
 
@@ -292,7 +342,10 @@ mod middleware_tests {
 
         let routes = concrete.routes_recorded();
         assert_eq!(routes.len(), 2);
-        assert_eq!(routes[0], routes[1], "both requests must collapse to the same route label");
+        assert_eq!(
+            routes[0], routes[1],
+            "both requests must collapse to the same route label"
+        );
         assert_eq!(routes[0], "/orgs/{org}/templates/{template}");
     }
 
@@ -303,7 +356,10 @@ mod middleware_tests {
         let dyn_metrics: Arc<dyn HttpMetrics> = concrete.clone();
         let app = test_router(dyn_metrics);
 
-        let request = HttpRequest::builder().uri("/health").body(Body::empty()).unwrap();
+        let request = HttpRequest::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
         let response = app.oneshot(request).await.unwrap();
         let expected_status = response.status().as_u16();
 
@@ -319,12 +375,18 @@ mod middleware_tests {
         let dyn_metrics: Arc<dyn HttpMetrics> = concrete.clone();
         let app = test_router(dyn_metrics);
 
-        let request = HttpRequest::builder().uri("/health").body(Body::empty()).unwrap();
+        let request = HttpRequest::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
         let _ = app.oneshot(request).await.unwrap();
 
         let recorded = concrete.recorded.lock().unwrap();
         let duration = recorded[0].3;
-        assert!(duration.is_finite() && duration >= 0.0, "duration must be a finite, non-negative number of seconds");
+        assert!(
+            duration.is_finite() && duration >= 0.0,
+            "duration must be a finite, non-negative number of seconds"
+        );
     }
 }
 
@@ -351,9 +413,9 @@ fn test_all_four_metric_families_share_one_registry_without_panic() {
     let http_metrics = PrometheusHttpMetrics::new(&registry);
 
     // Exercise each so gather() has at least one sample per family.
+    use github_client::api_metrics::GitHubApiMetrics as _;
     use repo_roller_core::event_metrics::EventMetrics as _;
     use repo_roller_core::repository_metrics::RepositoryCreationMetrics as _;
-    use github_client::api_metrics::GitHubApiMetrics as _;
     event_metrics.record_delivery_success("https://example.com/webhook", 10);
     repo_metrics.record_request("acme-corp", "rust-service");
     api_metrics.record_call("get_repository");
@@ -362,10 +424,22 @@ fn test_all_four_metric_families_share_one_registry_without_panic() {
     let families = registry.gather();
     let names: Vec<String> = families.iter().map(|mf| mf.name().to_string()).collect();
 
-    assert!(names.iter().any(|n| n.starts_with("notification_")), "found: {names:?}");
-    assert!(names.iter().any(|n| n.starts_with("repository_creation_")), "found: {names:?}");
-    assert!(names.iter().any(|n| n.starts_with("github_api_")), "found: {names:?}");
-    assert!(names.iter().any(|n| n.starts_with("http_request")), "found: {names:?}");
+    assert!(
+        names.iter().any(|n| n.starts_with("notification_")),
+        "found: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.starts_with("repository_creation_")),
+        "found: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.starts_with("github_api_")),
+        "found: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.starts_with("http_request")),
+        "found: {names:?}"
+    );
 }
 
 // ============================================================================
@@ -433,8 +507,10 @@ fn find_metric_with_labels<'a>(
         .metric
         .iter()
         .find(|m| {
-            labels
-                .iter()
-                .all(|(label_name, label_value)| m.label.iter().any(|lp| lp.name() == *label_name && lp.value() == *label_value))
+            labels.iter().all(|(label_name, label_value)| {
+                m.label
+                    .iter()
+                    .any(|lp| lp.name() == *label_name && lp.value() == *label_value)
+            })
         })
 }

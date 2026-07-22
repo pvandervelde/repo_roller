@@ -130,10 +130,17 @@ async fn test_metrics_endpoint_body_includes_all_required_metric_family_prefixes
     let response = router.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body_text = String::from_utf8(body.to_vec()).expect("Prometheus body must be valid UTF-8");
 
-    for expected_prefix in ["notification_", "repository_creation_", "http_request", "github_api_"] {
+    for expected_prefix in [
+        "notification_",
+        "repository_creation_",
+        "http_request",
+        "github_api_",
+    ] {
         assert!(
             body_text.contains(expected_prefix),
             "expected /metrics body to include a metric family starting with '{expected_prefix}', got:\n{body_text}"
@@ -151,16 +158,32 @@ async fn test_metrics_endpoint_survives_repeated_scrapes_with_stable_family_name
     let state = AppState::default();
     let router = create_router(state);
 
-    let first_request = Request::builder().method(Method::GET).uri("/metrics").body(Body::empty()).unwrap();
+    let first_request = Request::builder()
+        .method(Method::GET)
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap();
     let first_response = router.clone().oneshot(first_request).await.unwrap();
     assert_eq!(first_response.status(), StatusCode::OK);
-    let first_body = axum::body::to_bytes(first_response.into_body(), usize::MAX).await.unwrap();
+    let first_body = axum::body::to_bytes(first_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let first_text = String::from_utf8(first_body.to_vec()).unwrap();
 
-    let second_request = Request::builder().method(Method::GET).uri("/metrics").body(Body::empty()).unwrap();
+    let second_request = Request::builder()
+        .method(Method::GET)
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap();
     let second_response = router.oneshot(second_request).await.unwrap();
-    assert_eq!(second_response.status(), StatusCode::OK, "second scrape must not panic or fail");
-    let second_body = axum::body::to_bytes(second_response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        second_response.status(),
+        StatusCode::OK,
+        "second scrape must not panic or fail"
+    );
+    let second_body = axum::body::to_bytes(second_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let second_text = String::from_utf8(second_body.to_vec()).unwrap();
 
     let family_names_from = |text: &str| -> std::collections::BTreeSet<String> {
@@ -184,7 +207,11 @@ async fn test_metrics_endpoint_reachable_on_test_router() {
     let state = AppState::default();
     let router = create_router_without_auth(state);
 
-    let request = Request::builder().method(Method::GET).uri("/metrics").body(Body::empty()).unwrap();
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap();
     let response = router.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }

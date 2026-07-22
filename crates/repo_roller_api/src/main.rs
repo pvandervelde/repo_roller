@@ -119,12 +119,10 @@ impl AppState {
                 &registry,
             ),
         );
-        let http_metrics = std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(
-            &registry,
-        ));
-        let github_api_metrics = std::sync::Arc::new(
-            github_client::PrometheusGitHubApiMetrics::new(&registry),
-        );
+        let http_metrics =
+            std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(&registry));
+        let github_api_metrics =
+            std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
         Self {
             metadata_repository_name: metadata_repository_name.into(),
             event_metrics,
@@ -211,12 +209,10 @@ impl Default for AppState {
                 &registry,
             ),
         );
-        let http_metrics = std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(
-            &registry,
-        ));
-        let github_api_metrics = std::sync::Arc::new(
-            github_client::PrometheusGitHubApiMetrics::new(&registry),
-        );
+        let http_metrics =
+            std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(&registry));
+        let github_api_metrics =
+            std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
         Self {
             metadata_repository_name: ".reporoller".to_string(),
             event_metrics,

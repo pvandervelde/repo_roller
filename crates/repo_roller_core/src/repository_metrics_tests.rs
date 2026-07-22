@@ -122,7 +122,11 @@ fn test_contract_mock_survives_standard_call_sequence() {
     assert_eq!(metrics.request_count(), 2);
     assert_eq!(metrics.success_count(), 1);
     assert_eq!(metrics.failure_count(), 1);
-    assert_eq!(metrics.active_task_count(), 0, "increments/decrements balanced");
+    assert_eq!(
+        metrics.active_task_count(),
+        0,
+        "increments/decrements balanced"
+    );
 }
 
 #[test]
@@ -156,7 +160,10 @@ mod prometheus_spec_tests {
         let _metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
         let metric_families = registry.gather();
-        let names: Vec<String> = metric_families.iter().map(|mf| mf.name().to_string()).collect();
+        let names: Vec<String> = metric_families
+            .iter()
+            .map(|mf| mf.name().to_string())
+            .collect();
 
         for expected in [
             "repository_creation_requests_total",
@@ -185,7 +192,10 @@ mod prometheus_spec_tests {
             "repository_creation_requests_total",
             &[("organization", "acme-corp"), ("template", "rust-service")],
         );
-        assert_eq!(value, 2.0, "should record 2 requests for the same org/template pair");
+        assert_eq!(
+            value, 2.0,
+            "should record 2 requests for the same org/template pair"
+        );
     }
 
     #[test]
@@ -266,7 +276,10 @@ mod prometheus_spec_tests {
         metrics.increment_active_tasks();
         metrics.increment_active_tasks();
 
-        assert_eq!(gauge_value(&registry.gather(), "repository_creation_active_tasks"), 3.0);
+        assert_eq!(
+            gauge_value(&registry.gather(), "repository_creation_active_tasks"),
+            3.0
+        );
     }
 
     #[test]
@@ -278,7 +291,10 @@ mod prometheus_spec_tests {
         metrics.increment_active_tasks();
         metrics.decrement_active_tasks();
 
-        assert_eq!(gauge_value(&registry.gather(), "repository_creation_active_tasks"), 1.0);
+        assert_eq!(
+            gauge_value(&registry.gather(), "repository_creation_active_tasks"),
+            1.0
+        );
     }
 
     #[test]
@@ -366,7 +382,11 @@ mod prometheus_adversarial_tests {
             &[("organization", "acme-corp"), ("template", "rust-service")],
         )
         .expect("histogram sample should exist");
-        assert_eq!(hist.get_sample_count(), 1, "over-SLA duration must still be counted");
+        assert_eq!(
+            hist.get_sample_count(),
+            1,
+            "over-SLA duration must still be counted"
+        );
         assert!((hist.get_sample_sum() - 999.0).abs() < 0.01);
     }
 
@@ -394,7 +414,10 @@ mod prometheus_adversarial_tests {
             &[("organization", "org-b"), ("template", "template-x")],
         );
         assert_eq!(org_a, 2.0);
-        assert_eq!(org_b, 1.0, "org-b's single request must not be merged into org-a's count");
+        assert_eq!(
+            org_b, 1.0,
+            "org-b's single request must not be merged into org-a's count"
+        );
     }
 
     /// Stub-killing: successes and failures must be counted in genuinely
@@ -478,7 +501,10 @@ mod prometheus_adversarial_tests {
             metrics.decrement_active_tasks();
         }
 
-        assert_eq!(gauge_value(&registry.gather(), "repository_creation_active_tasks"), 0.0);
+        assert_eq!(
+            gauge_value(&registry.gather(), "repository_creation_active_tasks"),
+            0.0
+        );
     }
 
     /// Thread safety: concurrent recording from many threads must not panic
@@ -536,9 +562,7 @@ mod error_category_tests {
             RepoRollerError::Repository(RepositoryError::CreationFailed {
                 reason: "boom".into(),
             }),
-            RepoRollerError::Configuration(ConfigurationError::FileNotFound {
-                path: "x".into(),
-            }),
+            RepoRollerError::Configuration(ConfigurationError::FileNotFound { path: "x".into() }),
             RepoRollerError::Template(TemplateError::TemplateNotFound { name: "t".into() }),
             RepoRollerError::Authentication(AuthenticationError::InvalidToken),
             RepoRollerError::GitHub(crate::errors::GitHubError::RateLimitExceeded {
@@ -710,9 +734,9 @@ fn find_metric_with_labels<'a>(
         .iter()
         .find(|m| {
             labels.iter().all(|(label_name, label_value)| {
-                m.label.iter().any(|lp| {
-                    lp.name() == *label_name && lp.value() == *label_value
-                })
+                m.label
+                    .iter()
+                    .any(|lp| lp.name() == *label_name && lp.value() == *label_value)
             })
         })
 }

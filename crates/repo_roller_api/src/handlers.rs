@@ -1130,15 +1130,18 @@ pub async fn list_organization_teams(
 
     // Record the GitHub API call (Observability Phase 1). `operation` is a
     // bounded, source-controlled identifier — never the org name.
-    state.github_api_metrics.record_call("list_organization_teams");
+    state
+        .github_api_metrics
+        .record_call("list_organization_teams");
     let teams = github_client
         .list_organization_teams(&org)
         .await
         .map_err(|e| {
             tracing::error!(org = %org, error = %e, "Failed to list organization teams");
-            state
-                .github_api_metrics
-                .record_error("list_organization_teams", github_client::status_category(&e));
+            state.github_api_metrics.record_error(
+                "list_organization_teams",
+                github_client::status_category(&e),
+            );
             ApiError::from(anyhow::anyhow!("Failed to list organization teams: {}", e))
         })?;
 
@@ -1259,7 +1262,9 @@ pub async fn health_check() -> Json<HealthCheckResponse> {
 /// tokens, secrets, or free-text error messages (enforced by the bounded
 /// `error_category`/`status_category` label mappings used when recording
 /// these metrics).
-pub async fn metrics_handler(State(state): State<AppState>) -> Result<axum::response::Response, ApiError> {
+pub async fn metrics_handler(
+    State(state): State<AppState>,
+) -> Result<axum::response::Response, ApiError> {
     use axum::response::IntoResponse;
     use prometheus::{Encoder, TextEncoder};
 
@@ -1272,7 +1277,10 @@ pub async fn metrics_handler(State(state): State<AppState>) -> Result<axum::resp
 
     Ok((
         axum::http::StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, encoder.format_type().to_string())],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            encoder.format_type().to_string(),
+        )],
         buffer,
     )
         .into_response())

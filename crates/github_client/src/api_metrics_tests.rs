@@ -39,16 +39,23 @@ impl MockGitHubApiMetrics {
 impl GitHubApiMetrics for MockGitHubApiMetrics {
     fn record_call(&self, operation: &str) {
         self.calls.fetch_add(1, Ordering::Relaxed);
-        self.call_operations.lock().unwrap().push(operation.to_string());
+        self.call_operations
+            .lock()
+            .unwrap()
+            .push(operation.to_string());
     }
 
     fn record_error(&self, _operation: &str, status_category: &str) {
         self.errors.fetch_add(1, Ordering::Relaxed);
-        self.error_categories.lock().unwrap().push(status_category.to_string());
+        self.error_categories
+            .lock()
+            .unwrap()
+            .push(status_category.to_string());
     }
 
     fn set_rate_limit_remaining(&self, remaining: i64) {
-        self.rate_limit_remaining.store(remaining, Ordering::Relaxed);
+        self.rate_limit_remaining
+            .store(remaining, Ordering::Relaxed);
     }
 }
 
@@ -128,7 +135,11 @@ mod prometheus_spec_tests {
         metrics.record_call("get_repository");
 
         let families = registry.gather();
-        let value = counter_vec_value(&families, "github_api_calls_total", &[("operation", "get_repository")]);
+        let value = counter_vec_value(
+            &families,
+            "github_api_calls_total",
+            &[("operation", "get_repository")],
+        );
         assert_eq!(value, 2.0);
     }
 
@@ -158,7 +169,10 @@ mod prometheus_spec_tests {
 
         metrics.set_rate_limit_remaining(4321);
 
-        assert_eq!(gauge_value(&registry.gather(), "github_api_rate_limit_remaining"), 4321.0);
+        assert_eq!(
+            gauge_value(&registry.gather(), "github_api_rate_limit_remaining"),
+            4321.0
+        );
     }
 }
 
@@ -182,7 +196,10 @@ mod prometheus_adversarial_tests {
         metrics.set_rate_limit_remaining(4500);
 
         let value = gauge_value(&registry.gather(), "github_api_rate_limit_remaining");
-        assert_eq!(value, 4500.0, "gauge must equal the last-set value, not 5000+10+4500");
+        assert_eq!(
+            value, 4500.0,
+            "gauge must equal the last-set value, not 5000+10+4500"
+        );
     }
 
     /// Boundary: rate limit remaining of exactly 0 (fully exhausted) must be
@@ -195,7 +212,10 @@ mod prometheus_adversarial_tests {
         metrics.set_rate_limit_remaining(100);
         metrics.set_rate_limit_remaining(0);
 
-        assert_eq!(gauge_value(&registry.gather(), "github_api_rate_limit_remaining"), 0.0);
+        assert_eq!(
+            gauge_value(&registry.gather(), "github_api_rate_limit_remaining"),
+            0.0
+        );
     }
 
     /// Distinct operations must be tracked independently — a stub that
@@ -210,9 +230,16 @@ mod prometheus_adversarial_tests {
         metrics.record_call("list_installations");
 
         let families = registry.gather();
-        let get_repo = counter_vec_value(&families, "github_api_calls_total", &[("operation", "get_repository")]);
-        let list_inst =
-            counter_vec_value(&families, "github_api_calls_total", &[("operation", "list_installations")]);
+        let get_repo = counter_vec_value(
+            &families,
+            "github_api_calls_total",
+            &[("operation", "get_repository")],
+        );
+        let list_inst = counter_vec_value(
+            &families,
+            "github_api_calls_total",
+            &[("operation", "list_installations")],
+        );
         assert_eq!(get_repo, 2.0);
         assert_eq!(list_inst, 1.0);
     }
@@ -231,13 +258,23 @@ mod prometheus_adversarial_tests {
         metrics.record_error("get_repository", "not_found");
 
         let families = registry.gather();
-        let calls = counter_vec_value(&families, "github_api_calls_total", &[("operation", "get_repository")]);
+        let calls = counter_vec_value(
+            &families,
+            "github_api_calls_total",
+            &[("operation", "get_repository")],
+        );
         let errors = counter_vec_value(
             &families,
             "github_api_errors_total",
-            &[("operation", "get_repository"), ("status_category", "not_found")],
+            &[
+                ("operation", "get_repository"),
+                ("status_category", "not_found"),
+            ],
         );
-        assert_eq!(calls, 3.0, "record_error must not also increment the calls counter");
+        assert_eq!(
+            calls, 3.0,
+            "record_error must not also increment the calls counter"
+        );
         assert_eq!(errors, 1.0);
     }
 
@@ -263,7 +300,11 @@ mod prometheus_adversarial_tests {
         }
 
         let families = registry.gather();
-        let calls = counter_vec_value(&families, "github_api_calls_total", &[("operation", "get_repository")]);
+        let calls = counter_vec_value(
+            &families,
+            "github_api_calls_total",
+            &[("operation", "get_repository")],
+        );
         assert_eq!(calls, 1000.0);
     }
 }
@@ -307,13 +348,22 @@ mod status_category_tests {
         let err = Error::AuthError(sensitive.to_string());
 
         let category = status_category(&err);
-        assert!(!category.contains(sensitive), "category leaked the embedded auth error text");
-        assert!(!category.contains("token"), "category must not echo the free-text detail");
+        assert!(
+            !category.contains(sensitive),
+            "category leaked the embedded auth error text"
+        );
+        assert!(
+            !category.contains("token"),
+            "category must not echo the free-text detail"
+        );
     }
 
     #[test]
     fn test_not_found_and_rate_limit_exceeded_map_to_different_categories() {
-        assert_ne!(status_category(&Error::NotFound), status_category(&Error::RateLimitExceeded));
+        assert_ne!(
+            status_category(&Error::NotFound),
+            status_category(&Error::RateLimitExceeded)
+        );
     }
 }
 
@@ -386,8 +436,10 @@ fn find_metric_with_labels<'a>(
         .metric
         .iter()
         .find(|m| {
-            labels
-                .iter()
-                .all(|(label_name, label_value)| m.label.iter().any(|lp| lp.name() == *label_name && lp.value() == *label_value))
+            labels.iter().all(|(label_name, label_value)| {
+                m.label
+                    .iter()
+                    .any(|lp| lp.name() == *label_name && lp.value() == *label_value)
+            })
         })
 }

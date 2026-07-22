@@ -16,7 +16,12 @@ fn counter_total(metric_families: &[prometheus::proto::MetricFamily], name: &str
     metric_families
         .iter()
         .find(|mf| mf.name() == name)
-        .map(|mf| mf.metric.iter().filter_map(|m| m.counter.as_ref().map(|c| c.value())).sum())
+        .map(|mf| {
+            mf.metric
+                .iter()
+                .filter_map(|m| m.counter.as_ref().map(|c| c.value()))
+                .sum()
+        })
         .unwrap_or(0.0)
 }
 

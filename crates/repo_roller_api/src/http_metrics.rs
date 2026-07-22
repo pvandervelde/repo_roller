@@ -54,8 +54,9 @@ const UNMATCHED_ROUTE: &str = "unmatched";
 /// to be sub-second even though the repository-creation *business operation*
 /// it sometimes wraps can take up to 120s — the create_repository handler
 /// itself returns quickly because event notification delivery is fire-and-forget).
-pub const HTTP_REQUEST_DURATION_BUCKETS: [f64; 11] =
-    [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];
+pub const HTTP_REQUEST_DURATION_BUCKETS: [f64; 11] = [
+    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+];
 
 /// Abstraction for recording per-endpoint HTTP request metrics.
 ///
@@ -154,7 +155,14 @@ impl NoOpHttpMetrics {
 }
 
 impl HttpMetrics for NoOpHttpMetrics {
-    fn record_request(&self, _method: &str, _route: &str, _status_code: u16, _duration_seconds: f64) {}
+    fn record_request(
+        &self,
+        _method: &str,
+        _route: &str,
+        _status_code: u16,
+        _duration_seconds: f64,
+    ) {
+    }
 }
 
 /// Axum middleware that records one [`HttpMetrics::record_request`] call per
