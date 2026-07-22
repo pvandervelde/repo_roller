@@ -63,6 +63,28 @@ pub const KNOWN_ERROR_CATEGORIES: [&str; 8] = [
     "permission",
 ];
 
+/// Sentinel label value pre-registered for every vector metric at
+/// construction time, so its metric family is always present in a Prometheus
+/// scrape/gather — even before the first real request/success/failure is
+/// recorded.
+///
+/// `prometheus::Registry::gather()` prunes any `CounterVec`/`HistogramVec`
+/// metric family that has zero recorded label combinations (a freshly
+/// constructed vector metric starts with an empty children map). Without
+/// this pre-seed, `repository_creation_requests_total` (etc.) would be
+/// silently absent from a scrape taken immediately after startup, and the
+/// `test_prometheus_registration_registers_all_five_metric_families` /
+/// cross-crate `/metrics` acceptance tests (which gather with zero prior
+/// activity) would fail.
+///
+/// The value is the maximum valid Unicode scalar value, chosen so it sorts
+/// *after* any realistic organization/template/error-category value in
+/// `Registry::gather()`'s per-family lexicographic ordering. This means code
+/// that inspects the first metric in a family (e.g. in tests) always sees
+/// the real, most-recently-relevant series once at least one real call has
+/// been recorded, never this sentinel.
+const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
+
 /// Maps a [`RepoRollerError`] to a bounded, enumerable category label.
 ///
 /// # Security
@@ -71,11 +93,20 @@ pub const KNOWN_ERROR_CATEGORIES: [&str; 8] = [
 /// organization names, repository names, or upstream API response fragments.
 /// The returned string must always be a member of [`KNOWN_ERROR_CATEGORIES`].
 ///
-/// # Panics
-///
-/// Stub: panics via `todo!()`. The Coder must implement an exhaustive match.
-pub fn error_category(_err: &RepoRollerError) -> &'static str {
-    todo!("Coder: implement exhaustive RepoRollerError -> bounded category mapping")
+/// Every top-level `RepoRollerError` variant maps to exactly one bounded
+/// category; the match is exhaustive so a new variant added later fails to
+/// compile here rather than silently falling through to a catch-all.
+pub fn error_category(err: &RepoRollerError) -> &'static str {
+    match err {
+        RepoRollerError::Validation(_) => "validation",
+        RepoRollerError::Repository(_) => "repository",
+        RepoRollerError::Configuration(_) => "configuration",
+        RepoRollerError::Template(_) => "template",
+        RepoRollerError::Authentication(_) => "authentication",
+        RepoRollerError::GitHub(_) => "github",
+        RepoRollerError::System(_) => "system",
+        RepoRollerError::Permission(_) => "permission",
+    }
 }
 
 /// Abstraction for recording repository-creation metrics.
@@ -134,36 +165,122 @@ impl PrometheusRepositoryCreationMetrics {
     ///
     /// # Panics
     /// Panics if metrics cannot be registered (duplicate names).
-    pub fn new(_registry: &prometheus::Registry) -> Self {
-        todo!("Coder: register repository_creation_* metric families against the shared registry")
+    pub fn new(registry: &prometheus::Registry) -> Self {
+        use prometheus::{CounterVec, Gauge, HistogramOpts, HistogramVec, Opts};
+
+        let requests = CounterVec::new(
+            Opts::new(
+                "repository_creation_requests_total",
+                "Total repository-creation requests received",
+            ),
+            &["organization", "template"],
+        )
+        .expect("Failed to create requests counter vec");
+
+        let successes = CounterVec::new(
+            Opts::new(
+                "repository_creation_successes_total",
+                "Successful repository-creation operations",
+            ),
+            &["organization", "template"],
+        )
+        .expect("Failed to create successes counter vec");
+
+        let failures = CounterVec::new(
+            Opts::new(
+                "repository_creation_failures_total",
+                "Failed repository-creation operations",
+            ),
+            &["organization", "template", "error_category"],
+        )
+        .expect("Failed to create failures counter vec");
+
+        let duration = HistogramVec::new(
+            HistogramOpts::new(
+                "repository_creation_duration_seconds",
+                "Repository-creation end-to-end duration in seconds",
+            )
+            .buckets(REPOSITORY_CREATION_DURATION_BUCKETS.to_vec()),
+            &["organization", "template"],
+        )
+        .expect("Failed to create duration histogram vec");
+
+        let active_tasks = Gauge::with_opts(Opts::new(
+            "repository_creation_active_tasks",
+            "In-flight repository-creation operations",
+        ))
+        .expect("Failed to create active tasks gauge");
+
+        registry
+            .register(Box::new(requests.clone()))
+            .expect("Failed to register requests counter vec");
+        registry
+            .register(Box::new(successes.clone()))
+            .expect("Failed to register successes counter vec");
+        registry
+            .register(Box::new(failures.clone()))
+            .expect("Failed to register failures counter vec");
+        registry
+            .register(Box::new(duration.clone()))
+            .expect("Failed to register duration histogram vec");
+        registry
+            .register(Box::new(active_tasks.clone()))
+            .expect("Failed to register active tasks gauge");
+
+        // Pre-seed every vector metric (see `UNSEEDED_SENTINEL` docs) so each
+        // family is visible in a scrape immediately, before any real activity.
+        requests.with_label_values(&[UNSEEDED_SENTINEL, UNSEEDED_SENTINEL]);
+        successes.with_label_values(&[UNSEEDED_SENTINEL, UNSEEDED_SENTINEL]);
+        failures.with_label_values(&[UNSEEDED_SENTINEL, UNSEEDED_SENTINEL, UNSEEDED_SENTINEL]);
+        duration.with_label_values(&[UNSEEDED_SENTINEL, UNSEEDED_SENTINEL]);
+
+        Self {
+            requests,
+            successes,
+            failures,
+            duration,
+            active_tasks,
+        }
     }
 }
 
 impl RepositoryCreationMetrics for PrometheusRepositoryCreationMetrics {
-    fn record_request(&self, _organization: &str, _template: &str) {
-        todo!("Coder: increment repository_creation_requests_total{{organization,template}}")
+    fn record_request(&self, organization: &str, template: &str) {
+        self.requests
+            .with_label_values(&[organization, template])
+            .inc();
     }
 
-    fn record_success(&self, _organization: &str, _template: &str, _duration_seconds: f64) {
-        todo!("Coder: increment successes counter and observe duration histogram")
+    fn record_success(&self, organization: &str, template: &str, duration_seconds: f64) {
+        self.successes
+            .with_label_values(&[organization, template])
+            .inc();
+        self.duration
+            .with_label_values(&[organization, template])
+            .observe(duration_seconds);
     }
 
     fn record_failure(
         &self,
-        _organization: &str,
-        _template: &str,
-        _error_category: &str,
-        _duration_seconds: f64,
+        organization: &str,
+        template: &str,
+        error_category: &str,
+        duration_seconds: f64,
     ) {
-        todo!("Coder: increment failures counter (with error_category label) and observe duration histogram")
+        self.failures
+            .with_label_values(&[organization, template, error_category])
+            .inc();
+        self.duration
+            .with_label_values(&[organization, template])
+            .observe(duration_seconds);
     }
 
     fn increment_active_tasks(&self) {
-        todo!("Coder: increment repository_creation_active_tasks gauge")
+        self.active_tasks.inc();
     }
 
     fn decrement_active_tasks(&self) {
-        todo!("Coder: decrement repository_creation_active_tasks gauge")
+        self.active_tasks.dec();
     }
 }
 
