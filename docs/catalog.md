@@ -160,6 +160,12 @@ Add to this whenever a reusable component becomes "the standard way".
   combination at construction so their metric family survives `Registry::gather()`'s
   pruning of zero-activity families before the first real request. See
   `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL` for the rationale.
+  Internal helpers (private, `repo_roller_api` crate only — use these rather than
+  re-inlining registry/route construction if you add a new metrics collector or router
+  variant): `main::MetricsBundle::new()` builds the registry plus all four collectors in
+  one call (used by both `AppState::new` and the `#[cfg(test)] Default` impl);
+  `routes::mount_metrics(api_v1, &state)` wires the `/metrics` route + `http_metrics_middleware`
+  onto an inner `api_v1` router (used by both `create_router` and `create_router_without_auth`).
 
 ## Cross-Cutting Helpers
 

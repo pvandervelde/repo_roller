@@ -45,12 +45,11 @@ pub const KNOWN_STATUS_CATEGORIES: [&str; 8] = [
 /// `prometheus::Registry::gather()` prunes any `CounterVec` metric family
 /// that has zero recorded label combinations. Without this pre-seed,
 /// `github_api_calls_total` (etc.) would be absent from a scrape taken
-/// immediately after startup. See the identical rationale documented on
-/// `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL`.
-///
-/// The maximum valid Unicode scalar value sorts after any realistic
-/// operation/status-category value, so code inspecting the first metric in
-/// a family after at least one real call always sees the real series.
+/// immediately after startup. See the canonical rationale (including why the
+/// sentinel value is the maximum valid Unicode scalar) documented on
+/// `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL` — this constant
+/// is intentionally duplicated per-crate rather than shared, since sharing it
+/// would require a new cross-crate dependency for three bytes of literal.
 const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
 
 /// Maps a [`crate::errors::Error`] to a bounded, enumerable status category.

@@ -24,6 +24,61 @@ mod translation;
 
 use server::{ApiConfig, ApiServer};
 
+/// Bundle of every Prometheus-backed metrics collector used by `AppState`,
+/// all registered against the same freshly created [`prometheus::Registry`].
+///
+/// Constructed exclusively by [`MetricsBundle::new`] and destructured into
+/// the corresponding `AppState` fields, so `AppState::new` and the
+/// `#[cfg(test)] Default` impl never duplicate the "construct registry,
+/// register every collector, wrap the registry in an `Arc`" sequence. A bare
+/// `prometheus::Registry` panics if the same metric name is registered
+/// twice, so any future metrics collector must be added to
+/// `MetricsBundle::new` rather than duplicated at each `AppState`
+/// construction site.
+struct MetricsBundle {
+    registry: std::sync::Arc<prometheus::Registry>,
+    event_metrics: std::sync::Arc<repo_roller_core::event_metrics::PrometheusEventMetrics>,
+    repository_creation_metrics:
+        std::sync::Arc<dyn repo_roller_core::repository_metrics::RepositoryCreationMetrics>,
+    http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics>,
+    github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics>,
+}
+
+impl MetricsBundle {
+    /// Creates a fresh registry and registers every Prometheus-backed
+    /// metrics collector against it.
+    ///
+    /// # Panics
+    /// Panics if any collector fails to register (duplicate metric names) —
+    /// unreachable in practice since this is the only place collectors are
+    /// constructed against a freshly created registry.
+    fn new() -> Self {
+        let registry = prometheus::Registry::new();
+        let event_metrics = std::sync::Arc::new(
+            repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
+        );
+        let repository_creation_metrics: std::sync::Arc<
+            dyn repo_roller_core::repository_metrics::RepositoryCreationMetrics,
+        > = std::sync::Arc::new(
+            repo_roller_core::repository_metrics::PrometheusRepositoryCreationMetrics::new(
+                &registry,
+            ),
+        );
+        let http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics> =
+            std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(&registry));
+        let github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics> =
+            std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
+
+        Self {
+            registry: std::sync::Arc::new(registry),
+            event_metrics,
+            repository_creation_metrics,
+            http_metrics,
+            github_api_metrics,
+        }
+    }
+}
+
 /// API version
 pub const API_VERSION: &str = "v1";
 
@@ -110,26 +165,20 @@ impl AppState {
         github_app_private_key: impl Into<String>,
         jwt_secret: impl Into<String>,
     ) -> Self {
-        let registry = prometheus::Registry::new();
-        let event_metrics = std::sync::Arc::new(
-            repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
-        );
-        let repository_creation_metrics = std::sync::Arc::new(
-            repo_roller_core::repository_metrics::PrometheusRepositoryCreationMetrics::new(
-                &registry,
-            ),
-        );
-        let http_metrics =
-            std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(&registry));
-        let github_api_metrics =
-            std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
+        let MetricsBundle {
+            registry: metrics_registry,
+            event_metrics,
+            repository_creation_metrics,
+            http_metrics,
+            github_api_metrics,
+        } = MetricsBundle::new();
         Self {
             metadata_repository_name: metadata_repository_name.into(),
             event_metrics,
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
-            metrics_registry: std::sync::Arc::new(registry),
+            metrics_registry,
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(
                 github_app_id,
@@ -200,26 +249,20 @@ pub(crate) const TEST_JWT_SECRET: &str = "test-jwt-secret-key-minimum-32b!";
 #[cfg(test)]
 impl Default for AppState {
     fn default() -> Self {
-        let registry = prometheus::Registry::new();
-        let event_metrics = std::sync::Arc::new(
-            repo_roller_core::event_metrics::PrometheusEventMetrics::new(&registry),
-        );
-        let repository_creation_metrics = std::sync::Arc::new(
-            repo_roller_core::repository_metrics::PrometheusRepositoryCreationMetrics::new(
-                &registry,
-            ),
-        );
-        let http_metrics =
-            std::sync::Arc::new(crate::http_metrics::PrometheusHttpMetrics::new(&registry));
-        let github_api_metrics =
-            std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
+        let MetricsBundle {
+            registry: metrics_registry,
+            event_metrics,
+            repository_creation_metrics,
+            http_metrics,
+            github_api_metrics,
+        } = MetricsBundle::new();
         Self {
             metadata_repository_name: ".reporoller".to_string(),
             event_metrics,
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
-            metrics_registry: std::sync::Arc::new(registry),
+            metrics_registry,
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
             jwt_secret: secrecy::SecretString::from(TEST_JWT_SECRET.to_string()),

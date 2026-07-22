@@ -40,8 +40,11 @@ use std::sync::Arc;
 /// `prometheus::Registry::gather()` prunes any `CounterVec`/`HistogramVec`
 /// metric family that has zero recorded label combinations. Without this
 /// pre-seed, `http_requests_total` (etc.) would be absent from a scrape
-/// taken immediately after startup. See the identical rationale documented
-/// on `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL`.
+/// taken immediately after startup. See the canonical rationale (including
+/// why the sentinel value is the maximum valid Unicode scalar) documented on
+/// `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL` — this constant
+/// is intentionally duplicated per-crate rather than shared, since sharing it
+/// would require a new cross-crate dependency for three bytes of literal.
 const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
 
 /// Route label used when no route template matched the request (e.g. a 404

@@ -83,6 +83,13 @@ pub const KNOWN_ERROR_CATEGORIES: [&str; 8] = [
 /// that inspects the first metric in a family (e.g. in tests) always sees
 /// the real, most-recently-relevant series once at least one real call has
 /// been recorded, never this sentinel.
+///
+/// This is the canonical definition; `github_client::api_metrics` and
+/// `repo_roller_api::http_metrics` each independently define a byte-identical
+/// copy with a short doc pointing back here, rather than sharing this
+/// constant, because the three crates have no existing shared low-level
+/// dependency — introducing one solely to deduplicate a three-byte literal
+/// would be a worse tradeoff than the duplication itself.
 const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
 
 /// Maps a [`RepoRollerError`] to a bounded, enumerable category label.
