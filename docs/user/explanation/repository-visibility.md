@@ -23,16 +23,17 @@ In most organisations, the global default is `private` with `override_allowed = 
 
 ## When a user cannot change visibility
 
-If the global configuration has:
+Visibility policy is controlled via the `[repository_visibility]` section in `global/defaults.toml`. To require all repositories to be private:
 
 ```toml
-[repository]
-visibility = { value = "private", override_allowed = false }
+[repository_visibility]
+enforcement_level   = "required"
+required_visibility = "private"
 ```
 
 Any request specifying `visibility: "public"` results in an error. The repository is not created. The error message explains that visibility policy is locked.
 
-Similarly, a repository type may lock visibility to `internal` so that all repositories of that type are internal regardless of the creation request.
+Similarly, a repository type configuration can set a `[repository_visibility]` section to restrict visibility for repositories of that type.
 
 ## The `internal` visibility option
 

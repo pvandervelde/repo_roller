@@ -23,14 +23,24 @@ Repository type configuration supports the same sections as global configuration
 |---|---|---|
 | `[repository]` | Yes | Overrides global defaults |
 | `[pull_requests]` | Yes | Overrides global defaults |
+| `[branch_protection]` | Yes | Overrides global defaults |
+| `[actions]` | Yes | Overrides global defaults |
+| `[push]` | Yes | Overrides global defaults |
 | `[[labels]]` | Yes | **Additive** — combined with global labels |
-| `[[default_teams]]` | Yes | **Additive** — combined with global default teams |
+| `[[default_teams]]` | No | Not available at type level |
 | `[[rulesets]]` | Yes | **Additive** — combined with global rulesets |
 | `[[webhooks]]` | Yes | **Additive** — combined with global webhooks |
+| `[[environments]]` | Yes | **Additive** — combined with global environments |
+| `[[github_apps]]` | Yes | **Additive** — combined with global GitHub Apps |
+| `[[custom_properties]]` | Yes | **Additive** — combined with global custom properties |
+| `[[naming_rules]]` | Yes | **Additive** — combined with global naming rules |
 | `[[default_collaborators]]` | No | Not available at type level |
-| `[permissions]` | No | Only at global level |
+| `[permissions]` | Yes | Type-level permission policy (`required` and `restricted_types` fields) |
+| `[notifications]` | Yes | Inline outbound webhook configuration |
 
 For field-level documentation see [global-config.md](global-config.md). All field names, types, and `override_allowed` semantics are identical.
+
+The type-level `[permissions]` section supports `required` (array of `PermissionGrantConfig`) and `restricted_types` (array of permission type strings). See [global-config.md](global-config.md#permissions--access-level-ceilings) for `PermissionGrantConfig` field details.
 
 ---
 
@@ -40,7 +50,7 @@ For field-level documentation see [global-config.md](global-config.md). All fiel
 # types/library/config.toml
 
 [repository]
-has_wiki = false              # Libraries use README instead of wiki
+wiki = false              # Libraries use README instead of wiki
 security_advisories = true
 vulnerability_reporting = true
 

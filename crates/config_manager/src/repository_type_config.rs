@@ -26,8 +26,8 @@
 //! # repository-types/library/config.toml
 //!
 //! [repository]
-//! has_wiki = false  # Libraries typically don't need wikis
-//! has_projects = false
+//! wiki         = false  # Libraries typically don't need wikis
+//! projects     = false
 //! allow_squash_merge = true
 //!
 //! [pull_requests]
@@ -78,7 +78,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// let toml = r#"
 ///     [repository]
-///     has_wiki = false
+///     wiki = false
 ///     allow_squash_merge = true
 ///
 ///     [pull_requests]

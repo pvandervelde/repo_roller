@@ -176,7 +176,7 @@ fn test_deserialize_github_apps() {
 fn test_deserialize_complete_repository_type_config() {
     let toml = r#"
         [repository]
-        has_wiki = false
+        wiki = false
         allow_squash_merge = true
 
         [pull_requests]

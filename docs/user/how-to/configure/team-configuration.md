@@ -26,13 +26,12 @@ The directory name must match the team slug exactly.
 # teams/backend-team/config.toml
 
 [repository]
-has_discussions = false
-has_projects    = true
+discussions = false
+projects    = true
 
 [pull_requests]
 required_approving_review_count = 2
 allow_auto_merge                = true
-dismiss_stale_reviews_on_push   = true
 
 [[labels]]
 name        = "performance"
@@ -50,7 +49,7 @@ include = ["refs/heads/main"]
 [[rulesets.rules]]
 type = "required_status_checks"
 strict_required_status_checks_policy = true
-required_checks = [
+required_status_checks = [
   { context = "ci/build" },
   { context = "ci/test" },
   { context = "ci/lint" },
@@ -64,11 +63,19 @@ Team configuration supports the same sections as global configuration:
 
 - `[repository]` — feature toggles, security settings
 - `[pull_requests]` — merge settings, review requirements
+- `[branch_protection]` — default branch, protection rules
+- `[actions]` — GitHub Actions permissions
+- `[push]` — push restriction settings
 - `[[labels]]` — additive (merged with global and type labels)
-- `[[default_teams]]` — additive (merged with global teams)
-- `[[default_collaborators]]` — additive (merged with global collaborators)
 - `[[rulesets]]` — additive (all rulesets from all levels are applied)
 - `[[webhooks]]` — additive (all webhooks from all levels are applied)
+- `[[environments]]` — additive (all environments from all levels are applied)
+- `[[github_apps]]` — additive (all GitHub Apps from all levels are applied)
+- `[[custom_properties]]` — additive (all custom properties from all levels are applied)
+- `[[naming_rules]]` — additive (all naming rules from all levels are applied)
+- `[notifications]` — inline outbound webhook configuration
+
+> **Note:** `[[default_teams]]` and `[[default_collaborators]]` are **not** available at team level. Use `[[rulesets]]` for access governance instead.
 
 ## Naming rules
 

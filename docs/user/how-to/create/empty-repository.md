@@ -61,7 +61,7 @@ curl -X POST https://reporoller.myorg.example/api/v1/repositories \
 
 Even though the repository is empty, RepoRoller applies:
 
-- Repository feature settings (`has_issues`, `has_wiki`, etc.) from the configuration hierarchy
+- Repository feature settings (`issues`, `wiki`, etc.) from the configuration hierarchy
 - Branch-protection rulesets from global, type, and team configuration
 - Default team assignments and collaborators
 - Labels from global and type configuration

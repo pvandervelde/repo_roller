@@ -62,7 +62,7 @@ Configuration: 3 sections defined
   "author": "Platform Team",
   "tags": ["rust", "library", "ci-cd"],
   "repository_type": {
-    "type_name": "library",
+    "type": "library",
     "policy": "fixed"
   },
   "variables": [

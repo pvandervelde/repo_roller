@@ -34,11 +34,10 @@ mkdir -p global types teams
 ```bash
 cat > global/defaults.toml << 'EOF'
 [repository]
-has_issues      = true
-has_projects    = false
-has_wiki        = false
-has_discussions = false
-default_branch  = "main"
+issues      = true
+projects    = false
+wiki        = false
+discussions = false
 
 [pull_requests]
 allow_merge_commit  = false

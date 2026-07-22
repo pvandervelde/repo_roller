@@ -18,7 +18,7 @@ Repository type
 Global    ← lowest
 ```
 
-Higher levels win for scalar settings. If `global/defaults.toml` sets `has_wiki = true` and `types/library/config.toml` sets `has_wiki = false`, repositories of type `library` have wiki disabled.
+Higher levels win for scalar settings. If `global/defaults.toml` sets `wiki = true` and `types/library/config.toml` sets `wiki = false`, repositories of type `library` have wiki disabled.
 
 ## Scalar settings: last-wins override
 

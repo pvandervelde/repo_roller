@@ -37,7 +37,7 @@ Higher levels override lower levels for scalar settings.
 
 ## Merge semantics
 
-**Scalar settings** (e.g. `has_wiki`, `required_approving_review_count`) are **replaced** by the higher level. The highest level that sets the value wins.
+**Scalar settings** (e.g. `wiki`, `required_approving_review_count`) are **replaced** by the higher level. The highest level that sets the value wins.
 
 **Array sections** (e.g. `[[labels]]`, `[[rulesets]]`, `[[webhooks]]`) are **additive** — entries from all levels are combined. When the same `url`+`event_type` pair appears in multiple notification levels, it is deduplicated (one delivery per unique pair).
 

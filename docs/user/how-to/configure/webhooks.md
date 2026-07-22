@@ -13,39 +13,33 @@ Repository webhooks are GitHub webhooks installed on the **created repository** 
 
 ```toml
 [[webhooks]]
-name         = "ci-webhook"
 url          = "https://ci.myorg.example/webhook"
 content_type = "json"
 secret       = "your-webhook-secret"
 events       = ["push", "pull_request"]
 active       = true
-insecure_ssl = false
 ```
 
 You may use template variables in the `url` field (template-level only):
 
 ```toml
 [[webhooks]]
-name         = "deployment-webhook"
 url          = "https://deploy.myorg.example/webhook/{{service_name}}"
 content_type = "json"
 secret       = "your-webhook-secret"
 events       = ["push", "release"]
 active       = true
-insecure_ssl = false
 ```
 
 ## Field reference
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | Yes | Webhook name — used in logs and for identification |
 | `url` | string | Yes | Endpoint URL that GitHub will POST to |
 | `content_type` | string | Yes | `"json"` or `"form"` |
 | `secret` | string | No | HMAC secret that GitHub uses to sign requests |
 | `events` | array of string | Yes | GitHub event types (e.g. `["push", "pull_request", "release"]`) |
 | `active` | bool | No | Default: `true`. Set `false` to install but not deliver events. |
-| `insecure_ssl` | bool | No | Default: `false`. Set `true` only for internal endpoints with self-signed certificates. |
 
 ## Where webhooks can be defined
 

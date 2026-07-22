@@ -76,7 +76,7 @@ include = ["refs/heads/main"]
 [[rulesets.rules]]
 type = "required_status_checks"
 strict_required_status_checks_policy = true
-required_checks = [
+required_status_checks = [
   { context = "ci/build" },
   { context = "ci/test" },
   { context = "security/scan" }

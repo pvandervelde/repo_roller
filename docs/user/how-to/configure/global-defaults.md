@@ -13,12 +13,10 @@ Edit `global/defaults.toml` in the `.reporoller` metadata repository. These sett
 
 ```toml
 [repository]
-has_issues      = true
-has_projects    = false
-has_wiki        = false
-has_discussions = false
-default_branch  = "main"
-allow_forking   = false
+issues      = true
+projects    = false
+wiki        = false
+discussions = false
 
 security_advisories      = true
 vulnerability_reporting  = true
@@ -35,9 +33,10 @@ allow_auto_merge    = false
 
 required_approving_review_count   = 1
 require_code_owner_reviews        = false
-dismiss_stale_reviews_on_push     = true
 require_conversation_resolution   = true
 ```
+
+> **Note:** `dismiss_stale_reviews_on_push` belongs in a `[[rulesets]]` rule block (type `pull_request`), not in `[pull_requests]`.
 
 ## Default labels
 

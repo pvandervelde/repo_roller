@@ -24,8 +24,8 @@ touch types/library/config.toml
 # types/library/config.toml
 
 [repository]
-has_wiki     = false  # Libraries use README, not wiki
-has_projects = false
+wiki         = false  # Libraries use README, not wiki
+projects     = false
 security_advisories     = true
 vulnerability_reporting = true
 

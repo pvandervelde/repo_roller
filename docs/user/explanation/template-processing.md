@@ -34,7 +34,7 @@ If a required variable has no value from the user and no default, the creation r
 
 Binary files are not processed — they are copied byte-for-byte.
 
-Files whose extension is not in `process_extensions` (when that setting is configured) are also copied without processing.
+Files excluded by `exclude_patterns` are never copied. Use `include_patterns` to limit which files undergo variable substitution (files not matching `include_patterns` are copied without processing).
 
 ## File and directory name substitution
 
