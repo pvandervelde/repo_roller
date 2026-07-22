@@ -114,6 +114,53 @@ Add to this whenever a reusable component becomes "the standard way".
   TTLs: Org policies (5 min), GitHub environment (1 hour), templates (5 min)
   Notes: Thread-safe, automatic expiration, explicit invalidation
 
+### Metrics (Observability Phase 1)
+
+- **`repo_roller_core::event_metrics::EventMetrics`** — event-delivery metrics trait
+  Use when: Recording notification delivery success/failure/latency
+  Impls: `PrometheusEventMetrics` (production), `NoOpEventMetrics` (tests/disabled)
+  Pattern this crate's other metrics traits mirror: `trait` + `Prometheus*`/`NoOp*` impls,
+  `Prometheus*::new(&registry)` panics on duplicate registration.
+
+- **`repo_roller_core::repository_metrics::RepositoryCreationMetrics`** — repository-creation
+  request/success/failure/duration/active-tasks metrics trait
+  Use when: Instrumenting the repository-creation flow (`create_repository` handler)
+  Impls: `PrometheusRepositoryCreationMetrics`, `NoOpRepositoryCreationMetrics`
+  Also exports: `error_category(&RepoRollerError) -> &'static str` — maps errors to one of
+  8 bounded label categories; never use the error's `Display`/`to_string()` as a label.
+  Metric names: `repository_creation_{requests,successes,failures}_total`,
+  `repository_creation_duration_seconds`, `repository_creation_active_tasks`
+
+- **`github_client::api_metrics::GitHubApiMetrics`** — GitHub API call-count/error/rate-limit
+  metrics trait
+  Use when: Instrumenting a GitHub API call site (see `handlers.rs`'s
+  `validate_repository_name`/`list_organization_teams` for the call/record_error pattern)
+  Impls: `PrometheusGitHubApiMetrics`, `NoOpGitHubApiMetrics`
+  Also exports: `status_category(&github_client::Error) -> &'static str` — same bounded-label
+  rule as `error_category` above
+  Metric names: `github_api_calls_total`, `github_api_errors_total`,
+  `github_api_rate_limit_remaining`
+
+- **`repo_roller_api::http_metrics::HttpMetrics`** — per-endpoint HTTP request metrics trait
+  Use when: Already wired globally via `http_metrics_middleware`; new handlers get this for
+  free, no per-handler code needed
+  Impls: `PrometheusHttpMetrics`, `NoOpHttpMetrics`
+  Middleware: `http_metrics_middleware` (axum `from_fn_with_state`), labels by axum's
+  `MatchedPath` route *template* (never the concrete request path) — falls back to the
+  `"unmatched"` sentinel on 404s so label cardinality stays bounded
+  Metric names: `http_requests_total`, `http_request_duration_seconds`
+
+- **`/metrics` endpoint & shared registry** — `AppState::metrics_registry`
+  (`Arc<prometheus::Registry>`) is the single registry every metrics collector above
+  registers against; `handlers::metrics_handler` gathers it and encodes with
+  `prometheus::TextEncoder`. Unauthenticated (same tier as `/health`), mounted at the router
+  root (`/metrics`, not `/api/v1/metrics`) in both `create_router` and
+  `create_router_without_auth`.
+  Notes: All vector metrics (`CounterVec`/`HistogramVec`) pre-seed a sentinel label
+  combination at construction so their metric family survives `Registry::gather()`'s
+  pruning of zero-activity families before the first real request. See
+  `repo_roller_core::repository_metrics::UNSEEDED_SENTINEL` for the rationale.
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout
