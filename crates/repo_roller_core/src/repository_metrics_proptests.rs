@@ -40,21 +40,22 @@ fn gauge_total(metric_families: &[prometheus::proto::MetricFamily], name: &str) 
 }
 
 proptest! {
-    /// For any sequence of N `record_request` calls (regardless of the
-    /// organization/template strings used), the summed counter value across
-    /// all label series must equal exactly N. This holds for arbitrary
-    /// alphanumeric organization/template names, guarding against off-by-one
-    /// or dropped-increment bugs.
+    /// For any sequence of N `record_request` calls, the counter value must
+    /// equal exactly N, guarding against off-by-one or dropped-increment bugs.
+    /// `n` is generated as an arbitrary count rather than a vector of
+    /// organization names (the trait no longer accepts organization/template
+    /// parameters — see the module-level SECURITY REMEDIATION note in
+    /// `repository_metrics.rs`).
     #[test]
     fn prop_request_count_equals_number_of_calls(
-        orgs in proptest::collection::vec("[a-z][a-z0-9-]{0,20}", 1..30),
+        n in 1usize..30,
     ) {
         let (registry, metrics) = fresh();
-        for org in &orgs {
-            metrics.record_request(org, "some-template");
+        for _ in 0..n {
+            metrics.record_request();
         }
         let total = counter_total(&registry.gather(), "repository_creation_requests_total");
-        prop_assert_eq!(total, orgs.len() as f64);
+        prop_assert_eq!(total, n as f64);
     }
 
     /// For any interleaved sequence of increment/decrement active-task calls
@@ -97,7 +98,7 @@ proptest! {
         duration in 0.0f64..10_000.0,
     ) {
         let (registry, metrics) = fresh();
-        metrics.record_success("acme-corp", "rust-service", duration);
+        metrics.record_success(duration);
 
         let families = registry.gather();
         let hist = families
@@ -123,10 +124,10 @@ proptest! {
     ) {
         let (registry, metrics) = fresh();
         for _ in 0..successes {
-            metrics.record_success("acme-corp", "rust-service", 1.0);
+            metrics.record_success(1.0);
         }
         for _ in 0..failures {
-            metrics.record_failure("acme-corp", "rust-service", "system", 1.0);
+            metrics.record_failure("system", 1.0);
         }
 
         let families = registry.gather();

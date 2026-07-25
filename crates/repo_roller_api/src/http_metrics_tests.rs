@@ -417,7 +417,7 @@ fn test_all_four_metric_families_share_one_registry_without_panic() {
     use repo_roller_core::event_metrics::EventMetrics as _;
     use repo_roller_core::repository_metrics::RepositoryCreationMetrics as _;
     event_metrics.record_delivery_success("https://example.com/webhook", 10);
-    repo_metrics.record_request("acme-corp", "rust-service");
+    repo_metrics.record_request();
     api_metrics.record_call("get_repository");
     http_metrics.record_request("GET", "/api/v1/health", 200, 0.01);
 

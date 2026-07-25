@@ -25,8 +25,6 @@ pub struct MockRepositoryCreationMetrics {
     pub successes: AtomicU64,
     pub failures: AtomicU64,
     pub active_tasks: AtomicI64,
-    /// Every (organization, template) pair passed to `record_request`, in order.
-    pub request_labels: Mutex<Vec<(String, String)>>,
     /// Every error_category passed to `record_failure`, in order.
     pub failure_categories: Mutex<Vec<String>>,
     /// Every duration passed to `record_success` or `record_failure`, in order.
@@ -53,26 +51,16 @@ impl MockRepositoryCreationMetrics {
 }
 
 impl RepositoryCreationMetrics for MockRepositoryCreationMetrics {
-    fn record_request(&self, organization: &str, template: &str) {
+    fn record_request(&self) {
         self.requests.fetch_add(1, Ordering::Relaxed);
-        self.request_labels
-            .lock()
-            .unwrap()
-            .push((organization.to_string(), template.to_string()));
     }
 
-    fn record_success(&self, _organization: &str, _template: &str, duration_seconds: f64) {
+    fn record_success(&self, duration_seconds: f64) {
         self.successes.fetch_add(1, Ordering::Relaxed);
         self.durations.lock().unwrap().push(duration_seconds);
     }
 
-    fn record_failure(
-        &self,
-        _organization: &str,
-        _template: &str,
-        error_category: &str,
-        duration_seconds: f64,
-    ) {
+    fn record_failure(&self, error_category: &str, duration_seconds: f64) {
         self.failures.fetch_add(1, Ordering::Relaxed);
         self.failure_categories
             .lock()
@@ -99,13 +87,13 @@ impl RepositoryCreationMetrics for MockRepositoryCreationMetrics {
 /// implementation and asserts it never panics. Used against NoOp, Mock, and
 /// Prometheus (fresh registry) so the same contract is enforced for all three.
 fn assert_survives_standard_call_sequence(metrics: &dyn RepositoryCreationMetrics) {
-    metrics.record_request("acme-corp", "rust-service");
+    metrics.record_request();
     metrics.increment_active_tasks();
-    metrics.record_success("acme-corp", "rust-service", 12.5);
+    metrics.record_success(12.5);
     metrics.decrement_active_tasks();
-    metrics.record_request("acme-corp", "");
+    metrics.record_request();
     metrics.increment_active_tasks();
-    metrics.record_failure("acme-corp", "", "github", 3.2);
+    metrics.record_failure("github", 3.2);
     metrics.decrement_active_tasks();
 }
 
@@ -184,18 +172,11 @@ mod prometheus_spec_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_request("acme-corp", "rust-service");
-        metrics.record_request("acme-corp", "rust-service");
+        metrics.record_request();
+        metrics.record_request();
 
-        let value = counter_vec_value(
-            &registry.gather(),
-            "repository_creation_requests_total",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        );
-        assert_eq!(
-            value, 2.0,
-            "should record 2 requests for the same org/template pair"
-        );
+        let value = counter_value(&registry.gather(), "repository_creation_requests_total");
+        assert_eq!(value, 2.0, "should record 2 requests");
     }
 
     #[test]
@@ -203,13 +184,9 @@ mod prometheus_spec_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_success("acme-corp", "rust-service", 5.0);
+        metrics.record_success(5.0);
 
-        let value = counter_vec_value(
-            &registry.gather(),
-            "repository_creation_successes_total",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        );
+        let value = counter_value(&registry.gather(), "repository_creation_successes_total");
         assert_eq!(value, 1.0);
     }
 
@@ -218,15 +195,11 @@ mod prometheus_spec_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_success("acme-corp", "rust-service", 45.0);
+        metrics.record_success(45.0);
 
         let families = registry.gather();
-        let hist = histogram_vec(
-            &families,
-            "repository_creation_duration_seconds",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        )
-        .expect("histogram sample should exist for this label set");
+        let hist = histogram_value(&families, "repository_creation_duration_seconds")
+            .expect("histogram sample should exist");
         assert_eq!(hist.get_sample_count(), 1);
         assert!((hist.get_sample_sum() - 45.0).abs() < 0.01);
     }
@@ -236,16 +209,12 @@ mod prometheus_spec_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_failure("acme-corp", "rust-service", "github", 2.0);
+        metrics.record_failure("github", 2.0);
 
         let value = counter_vec_value(
             &registry.gather(),
             "repository_creation_failures_total",
-            &[
-                ("organization", "acme-corp"),
-                ("template", "rust-service"),
-                ("error_category", "github"),
-            ],
+            &[("error_category", "github")],
         );
         assert_eq!(value, 1.0);
     }
@@ -255,15 +224,11 @@ mod prometheus_spec_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_failure("acme-corp", "rust-service", "validation", 1.5);
+        metrics.record_failure("validation", 1.5);
 
         let families = registry.gather();
-        let hist = histogram_vec(
-            &families,
-            "repository_creation_duration_seconds",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        )
-        .expect("histogram sample should exist even on failure path");
+        let hist = histogram_value(&families, "repository_creation_duration_seconds")
+            .expect("histogram sample should exist even on failure path");
         assert_eq!(hist.get_sample_count(), 1);
     }
 
@@ -301,15 +266,11 @@ mod prometheus_spec_tests {
     fn test_histogram_buckets_include_the_documented_wide_buckets() {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
-        metrics.record_success("acme-corp", "rust-service", 1.0);
+        metrics.record_success(1.0);
 
         let families = registry.gather();
-        let hist = histogram_vec(
-            &families,
-            "repository_creation_duration_seconds",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        )
-        .expect("histogram sample should exist");
+        let hist = histogram_value(&families, "repository_creation_duration_seconds")
+            .expect("histogram sample should exist");
 
         let upper_bounds: Vec<f64> = hist.get_bucket().iter().map(|b| b.upper_bound()).collect();
         for expected in REPOSITORY_CREATION_DURATION_BUCKETS {
@@ -334,15 +295,11 @@ mod prometheus_adversarial_tests {
     fn test_duration_of_zero_seconds_is_recorded_without_panic() {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
-        metrics.record_success("acme-corp", "rust-service", 0.0);
+        metrics.record_success(0.0);
 
         let families = registry.gather();
-        let hist = histogram_vec(
-            &families,
-            "repository_creation_duration_seconds",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        )
-        .expect("histogram sample should exist");
+        let hist = histogram_value(&families, "repository_creation_duration_seconds")
+            .expect("histogram sample should exist");
         assert_eq!(hist.get_sample_count(), 1);
         assert_eq!(hist.get_sample_sum(), 0.0);
     }
@@ -354,15 +311,11 @@ mod prometheus_adversarial_tests {
     fn test_duration_at_120_seconds_boundary_is_recorded() {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
-        metrics.record_success("acme-corp", "rust-service", 120.0);
+        metrics.record_success(120.0);
 
         let families = registry.gather();
-        let hist = histogram_vec(
-            &families,
-            "repository_creation_duration_seconds",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        )
-        .expect("histogram sample should exist");
+        let hist = histogram_value(&families, "repository_creation_duration_seconds")
+            .expect("histogram sample should exist");
         assert_eq!(hist.get_sample_count(), 1);
     }
 
@@ -373,51 +326,17 @@ mod prometheus_adversarial_tests {
     fn test_duration_exceeding_widest_bucket_is_still_recorded() {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
-        metrics.record_success("acme-corp", "rust-service", 999.0);
+        metrics.record_success(999.0);
 
         let families = registry.gather();
-        let hist = histogram_vec(
-            &families,
-            "repository_creation_duration_seconds",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        )
-        .expect("histogram sample should exist");
+        let hist = histogram_value(&families, "repository_creation_duration_seconds")
+            .expect("histogram sample should exist");
         assert_eq!(
             hist.get_sample_count(),
             1,
             "over-SLA duration must still be counted"
         );
         assert!((hist.get_sample_sum() - 999.0).abs() < 0.01);
-    }
-
-    /// Side-effect isolation: metrics for one organization/template pair must
-    /// not leak into another pair's counters. Kills a stub that hardcodes a
-    /// single global counter regardless of label arguments.
-    #[test]
-    fn test_distinct_organizations_are_tracked_independently() {
-        let registry = prometheus::Registry::new();
-        let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
-
-        metrics.record_request("org-a", "template-x");
-        metrics.record_request("org-a", "template-x");
-        metrics.record_request("org-b", "template-x");
-
-        let families = registry.gather();
-        let org_a = counter_vec_value(
-            &families,
-            "repository_creation_requests_total",
-            &[("organization", "org-a"), ("template", "template-x")],
-        );
-        let org_b = counter_vec_value(
-            &families,
-            "repository_creation_requests_total",
-            &[("organization", "org-b"), ("template", "template-x")],
-        );
-        assert_eq!(org_a, 2.0);
-        assert_eq!(
-            org_b, 1.0,
-            "org-b's single request must not be merged into org-a's count"
-        );
     }
 
     /// Stub-killing: successes and failures must be counted in genuinely
@@ -429,24 +348,16 @@ mod prometheus_adversarial_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_success("acme-corp", "rust-service", 1.0);
-        metrics.record_success("acme-corp", "rust-service", 1.0);
-        metrics.record_failure("acme-corp", "rust-service", "system", 1.0);
+        metrics.record_success(1.0);
+        metrics.record_success(1.0);
+        metrics.record_failure("system", 1.0);
 
         let families = registry.gather();
-        let successes = counter_vec_value(
-            &families,
-            "repository_creation_successes_total",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        );
+        let successes = counter_value(&families, "repository_creation_successes_total");
         let failures = counter_vec_value(
             &families,
             "repository_creation_failures_total",
-            &[
-                ("organization", "acme-corp"),
-                ("template", "rust-service"),
-                ("error_category", "system"),
-            ],
+            &[("error_category", "system")],
         );
         assert_eq!(successes, 2.0);
         assert_eq!(failures, 1.0);
@@ -460,28 +371,20 @@ mod prometheus_adversarial_tests {
         let registry = prometheus::Registry::new();
         let metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
-        metrics.record_failure("acme-corp", "rust-service", "github", 1.0);
-        metrics.record_failure("acme-corp", "rust-service", "validation", 1.0);
-        metrics.record_failure("acme-corp", "rust-service", "validation", 1.0);
+        metrics.record_failure("github", 1.0);
+        metrics.record_failure("validation", 1.0);
+        metrics.record_failure("validation", 1.0);
 
         let families = registry.gather();
         let github_failures = counter_vec_value(
             &families,
             "repository_creation_failures_total",
-            &[
-                ("organization", "acme-corp"),
-                ("template", "rust-service"),
-                ("error_category", "github"),
-            ],
+            &[("error_category", "github")],
         );
         let validation_failures = counter_vec_value(
             &families,
             "repository_creation_failures_total",
-            &[
-                ("organization", "acme-corp"),
-                ("template", "rust-service"),
-                ("error_category", "validation"),
-            ],
+            &[("error_category", "validation")],
         );
         assert_eq!(github_failures, 1.0);
         assert_eq!(validation_failures, 2.0);
@@ -521,11 +424,11 @@ mod prometheus_adversarial_tests {
             handles.push(std::thread::spawn(move || {
                 for _ in 0..100 {
                     if i % 2 == 0 {
-                        m.record_request("acme-corp", "rust-service");
+                        m.record_request();
                         m.increment_active_tasks();
                         m.decrement_active_tasks();
                     } else {
-                        m.record_failure("acme-corp", "rust-service", "system", 0.5);
+                        m.record_failure("system", 0.5);
                     }
                 }
             }));
@@ -534,11 +437,7 @@ mod prometheus_adversarial_tests {
             h.join().expect("worker thread must not panic");
         }
 
-        let value = counter_vec_value(
-            &registry.gather(),
-            "repository_creation_requests_total",
-            &[("organization", "acme-corp"), ("template", "rust-service")],
-        );
+        let value = counter_value(&registry.gather(), "repository_creation_requests_total");
         assert_eq!(value, 500.0, "5 threads x 100 requests each");
     }
 }
@@ -616,6 +515,78 @@ mod error_category_tests {
 
         assert_ne!(error_category(&validation_err), error_category(&github_err));
     }
+
+    /// Mutation-kill: asserts the *exact* category string for every
+    /// `RepoRollerError` variant, not merely "is in the known set" or
+    /// "differs from one other variant".
+    ///
+    /// `test_error_category_is_within_known_bounded_set_for_every_variant`
+    /// and `test_validation_and_github_errors_map_to_different_categories`
+    /// both still pass if two arms of the `error_category` match are
+    /// transposed (e.g. `Validation` and `Repository` swapped) because they
+    /// only check set membership and pairwise inequality, never the specific
+    /// mapping. Confirmed by manual mutation during the Observability Phase 1
+    /// QA audit: swapping the `Validation`/`Repository` arms left the whole
+    /// `repository_metrics` test suite green. This test pins every
+    /// variant -> category mapping exactly so any arm transposition fails.
+    #[test]
+    fn test_error_category_maps_every_variant_to_its_exact_expected_category() {
+        let cases: Vec<(RepoRollerError, &str)> = vec![
+            (
+                RepoRollerError::Validation(ValidationError::empty_field("name")),
+                "validation",
+            ),
+            (
+                RepoRollerError::Repository(RepositoryError::CreationFailed {
+                    reason: "boom".into(),
+                }),
+                "repository",
+            ),
+            (
+                RepoRollerError::Configuration(ConfigurationError::FileNotFound {
+                    path: "x".into(),
+                }),
+                "configuration",
+            ),
+            (
+                RepoRollerError::Template(TemplateError::TemplateNotFound { name: "t".into() }),
+                "template",
+            ),
+            (
+                RepoRollerError::Authentication(AuthenticationError::InvalidToken),
+                "authentication",
+            ),
+            (
+                RepoRollerError::GitHub(crate::errors::GitHubError::RateLimitExceeded {
+                    reset_at: "now".into(),
+                }),
+                "github",
+            ),
+            (
+                RepoRollerError::System(SystemError::Internal {
+                    reason: "oops".into(),
+                }),
+                "system",
+            ),
+            (
+                RepoRollerError::Permission(crate::permissions::PermissionError::BelowBaseline {
+                    permission_type: crate::permissions::PermissionType::Push,
+                    level: crate::permissions::AccessLevel::None,
+                    minimum_required: crate::permissions::AccessLevel::Read,
+                }),
+                "permission",
+            ),
+        ];
+
+        for (err, expected) in &cases {
+            assert_eq!(
+                error_category(err),
+                *expected,
+                "expected {err:?} to map to category '{expected}', got '{}'",
+                error_category(err)
+            );
+        }
+    }
 }
 
 // ============================================================================
@@ -628,9 +599,9 @@ mod noop_tests {
     #[test]
     fn test_noop_metrics_are_true_noops_and_never_panic() {
         let metrics = NoOpRepositoryCreationMetrics::new();
-        metrics.record_request("org", "template");
-        metrics.record_success("org", "template", 1.0);
-        metrics.record_failure("org", "template", "system", 1.0);
+        metrics.record_request();
+        metrics.record_success(1.0);
+        metrics.record_failure("system", 1.0);
         metrics.increment_active_tasks();
         metrics.decrement_active_tasks();
         // No panics = success.
@@ -640,8 +611,8 @@ mod noop_tests {
     fn test_noop_metrics_default_constructs_identically_to_new() {
         let a = NoOpRepositoryCreationMetrics::new();
         let b = NoOpRepositoryCreationMetrics::default();
-        a.record_request("org", "template");
-        b.record_request("org", "template");
+        a.record_request();
+        b.record_request();
     }
 
     #[test]
@@ -652,7 +623,7 @@ mod noop_tests {
             let m = metrics.clone();
             handles.push(std::thread::spawn(move || {
                 for _ in 0..100 {
-                    m.record_request("org", "template");
+                    m.record_request();
                     m.increment_active_tasks();
                     m.decrement_active_tasks();
                 }
@@ -681,7 +652,7 @@ fn test_event_metrics_and_repository_creation_metrics_share_one_registry_without
     let repo_metrics = PrometheusRepositoryCreationMetrics::new(&registry);
 
     event_metrics.record_delivery_success("https://example.com/webhook", 100);
-    repo_metrics.record_request("acme-corp", "rust-service");
+    repo_metrics.record_request();
 
     let families = registry.gather();
     let names: Vec<String> = families.iter().map(|mf| mf.name().to_string()).collect();
@@ -704,6 +675,20 @@ fn counter_vec_value(
         .unwrap_or(0.0)
 }
 
+/// Reads the value of a plain (unlabeled) `Counter` metric family — i.e. a
+/// family with exactly one, label-less `Metric` entry. Used for
+/// `repository_creation_requests_total`/`_successes_total`, which are no
+/// longer `CounterVec`s (see the module-level SECURITY REMEDIATION note).
+fn counter_value(metric_families: &[prometheus::proto::MetricFamily], name: &str) -> f64 {
+    metric_families
+        .iter()
+        .find(|mf| mf.name() == name)
+        .and_then(|mf| mf.metric.first())
+        .and_then(|m| m.counter.as_ref())
+        .map(|c| c.value())
+        .unwrap_or(0.0)
+}
+
 fn gauge_value(metric_families: &[prometheus::proto::MetricFamily], name: &str) -> f64 {
     metric_families
         .iter()
@@ -714,12 +699,20 @@ fn gauge_value(metric_families: &[prometheus::proto::MetricFamily], name: &str) 
         .unwrap_or(0.0)
 }
 
-fn histogram_vec<'a>(
+/// Reads the sample of a plain (unlabeled) `Histogram` metric family. Used
+/// for `repository_creation_duration_seconds`, which is no longer a
+/// `HistogramVec` (see the module-level SECURITY REMEDIATION note).
+fn histogram_value<'a>(
     metric_families: &'a [prometheus::proto::MetricFamily],
     name: &str,
-    labels: &[(&str, &str)],
 ) -> Option<&'a prometheus::proto::Histogram> {
-    find_metric_with_labels(metric_families, name, labels).and_then(|m| m.histogram.as_ref())
+    metric_families
+        .iter()
+        .find(|mf| mf.name() == name)?
+        .metric
+        .first()?
+        .histogram
+        .as_ref()
 }
 
 fn find_metric_with_labels<'a>(

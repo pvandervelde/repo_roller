@@ -130,6 +130,15 @@ Add to this whenever a reusable component becomes "the standard way".
   8 bounded label categories; never use the error's `Display`/`to_string()` as a label.
   Metric names: `repository_creation_{requests,successes,failures}_total`,
   `repository_creation_duration_seconds`, `repository_creation_active_tasks`
+  **Security (post-Security-Review remediation)**: `record_request()`/`record_success(duration)`
+  take no parameters and `record_failure(error_category, duration)` takes only the bounded
+  `error_category` label. `organization`/`template` were removed as label values — they came
+  directly from the untrusted HTTP request body and, combined with the unauthenticated
+  `/metrics` endpoint, allowed unbounded Prometheus label cardinality (resource exhaustion) and
+  cleartext exposure of organization names. `repository_creation_requests_total`,
+  `_successes_total`, and `duration_seconds` are now plain `Counter`/`Histogram`; only
+  `repository_creation_failures_total` remains a `CounterVec`, labeled solely by
+  `error_category`.
 
 - **`github_client::api_metrics::GitHubApiMetrics`** — GitHub API call-count/error/rate-limit
   metrics trait

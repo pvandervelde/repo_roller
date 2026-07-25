@@ -209,11 +209,14 @@ pub async fn create_repository(
     // metrics (Observability Phase 1) around the call: a request counter,
     // an in-flight gauge, and a success/failure counter (labeled with a
     // bounded error category, never the free-text error message) plus the
-    // end-to-end duration histogram.
-    let template_label = request.template.as_deref().unwrap_or("");
-    state
-        .repository_creation_metrics
-        .record_request(&request.organization, template_label);
+    // end-to-end duration histogram. These metrics are deliberately unlabeled
+    // by organization/template — those values come straight from the
+    // untrusted request body and were the subject of a HIGH-severity
+    // Security Review finding (unbounded Prometheus label cardinality plus
+    // cleartext exposure of org names via the unauthenticated `/metrics`
+    // endpoint) when previously used as label values. See
+    // `repo_roller_core::repository_metrics` module docs.
+    state.repository_creation_metrics.record_request();
     state.repository_creation_metrics.increment_active_tasks();
     let creation_started_at = std::time::Instant::now();
 
@@ -233,21 +236,16 @@ pub async fn create_repository(
 
     let result = match result {
         Ok(result) => {
-            state.repository_creation_metrics.record_success(
-                &request.organization,
-                template_label,
-                duration_seconds,
-            );
+            state
+                .repository_creation_metrics
+                .record_success(duration_seconds);
             result
         }
         Err(err) => {
             let category = repo_roller_core::repository_metrics::error_category(&err);
-            state.repository_creation_metrics.record_failure(
-                &request.organization,
-                template_label,
-                category,
-                duration_seconds,
-            );
+            state
+                .repository_creation_metrics
+                .record_failure(category, duration_seconds);
             return Err(ApiError::from(err));
         }
     };
