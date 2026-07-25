@@ -245,7 +245,7 @@ If the login succeeds and you are redirected to the **Create Repository** page, 
 
 - Add templates to your organisation so creators have choices (see [Build your first template repository](create-first-template.md))
 - Configure organisation-wide defaults in `global/defaults.toml` (see [Set organisation-wide defaults](../how-to/configure/global-defaults.md))
-- Set up monitoring using the Prometheus metrics the backend exposes
+- Set up monitoring using the Prometheus metrics the backend exposes at `GET /metrics` (see [Metrics (Prometheus)](../how-to/deploy/deploy-with-docker.md#metrics-prometheus))
 
 ---
 

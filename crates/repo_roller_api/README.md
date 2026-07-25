@@ -42,6 +42,8 @@ The RepoRoller REST API provides a comprehensive HTTP interface for automated Gi
 - **Validation Endpoints**: Comprehensive validation before repository creation
 - **GitHub App Authentication**: Secure token-based authentication with GitHub API
 - **Request Tracing**: UUID-based request correlation for observability
+- **Prometheus Metrics**: Unauthenticated `GET /metrics` endpoint exposing repository-creation,
+  GitHub API call, per-endpoint HTTP, and notification-delivery metrics (Observability Phase 1)
 - **Production Ready**: Docker containerization, health checks, graceful shutdown
 - **Comprehensive Error Handling**: Domain error mapping to HTTP status codes
 - **Type Safety**: Rust type system with translation layer for HTTP ↔ Domain types
@@ -291,13 +293,23 @@ repo_roller_api/
 
 ```rust
 pub struct AppState {
-    pub metadata_repository_name: String,  // Configurable metadata repo
+    pub metadata_repository_name: String,          // Configurable metadata repo
+    pub event_metrics: Arc<PrometheusEventMetrics>,           // Notification delivery metrics
+    pub(crate) repository_creation_metrics: Arc<dyn RepositoryCreationMetrics>,
+    pub(crate) http_metrics: Arc<dyn HttpMetrics>,             // Per-endpoint HTTP metrics
+    pub(crate) github_api_metrics: Arc<dyn github_client::GitHubApiMetrics>,
+    pub(crate) metrics_registry: Arc<prometheus::Registry>,   // Shared by all metrics above
+    // ...auth/config fields omitted
 }
 ```
 
 - Shared across all requests via `axum::extract::State`
 - Immutable configuration loaded at startup
 - Services created per-request for authentication isolation
+- **Observability Phase 1**: every metrics collector above is registered against the single
+  `metrics_registry` at startup (see `main::MetricsBundle::new`), so one `GET /metrics` scrape
+  returns every metric family — notification delivery, repository creation, GitHub API calls,
+  and per-endpoint HTTP request metrics. See [Metrics](#metrics) below.
 
 ## API Endpoints
 
@@ -716,6 +728,72 @@ Simple endpoint for container orchestration health checks.
   "status": "healthy"
 }
 ```
+
+### Metrics
+
+#### `GET /metrics`
+
+**Prometheus Scrape Endpoint** (Observability Phase 1)
+
+Returns Prometheus text-format output of every metric family registered against the shared
+`AppState::metrics_registry`. Mounted at the router **root** (`/metrics`), a sibling of
+`/api/v1` rather than nested under it.
+
+**Authentication**: None — unauthenticated, the same tier as `/health`. Prometheus scrapers do
+not send an `Authorization` header by default, and the response body contains only bounded
+metric names, label values, and numeric samples — never tokens, secrets, or free-text error
+content.
+
+**Response** (200 OK, `Content-Type: text/plain; version=0.0.4`):
+
+```text
+# HELP repository_creation_requests_total Total repository-creation requests received
+# TYPE repository_creation_requests_total counter
+repository_creation_requests_total 42
+# HELP http_requests_total Total HTTP requests handled
+# TYPE http_requests_total counter
+http_requests_total{method="POST",route="/api/v1/repositories",status_code="201"} 40
+```
+
+**Metric families exposed**:
+
+| Family | Type | Labels | Source |
+| --- | --- | --- | --- |
+| `notification_delivery_attempts_total` / `_successes_total` / `_failures_total` | Counter | - | `repo_roller_core::event_metrics` |
+| `notification_delivery_duration_seconds` | Histogram | - | `repo_roller_core::event_metrics` |
+| `notification_active_tasks` | Gauge | - | `repo_roller_core::event_metrics` |
+| `repository_creation_requests_total` / `_successes_total` | Counter | - | `repo_roller_core::repository_metrics` |
+| `repository_creation_failures_total` | Counter | `error_category` | `repo_roller_core::repository_metrics` |
+| `repository_creation_duration_seconds` | Histogram | - | `repo_roller_core::repository_metrics` |
+| `repository_creation_active_tasks` | Gauge | - | `repo_roller_core::repository_metrics` |
+| `github_api_calls_total` | Counter | `operation` | `github_client::api_metrics` |
+| `github_api_errors_total` | Counter | `operation`, `status_category` | `github_client::api_metrics` |
+| `github_api_rate_limit_remaining` | Gauge | - | `github_client::api_metrics` |
+| `http_requests_total` | Counter | `method`, `route`, `status_code` | `http_metrics` middleware |
+| `http_request_duration_seconds` | Histogram | `method`, `route` | `http_metrics` middleware |
+
+**Label cardinality (security note)**: `route` is always the axum route *template* (e.g.
+`/api/v1/orgs/{org}/templates/{template}`), never the concrete request path — this was a
+deliberate design decision to keep label cardinality bounded. Likewise,
+`repository_creation_*` metrics deliberately do **not** carry `organization`/`template` labels:
+a security review found that labeling by request-body-controlled values would let any
+authenticated caller grow Prometheus label cardinality unboundedly and leak organization names
+through this unauthenticated endpoint. Only the bounded `error_category`/`status_category`
+labels (small, fixed, source-controlled enums) are used anywhere in this crate's metrics.
+
+**Example Prometheus scrape config**:
+
+```yaml
+scrape_configs:
+  - job_name: repo_roller_api
+    static_configs:
+      - targets: ["repo-roller-api:8080"]
+    metrics_path: /metrics
+```
+
+**Operational note**: because `/metrics` is unauthenticated and mounted on the same port as the
+rest of the API, it must not be exposed to the public internet — restrict it exactly like the
+rest of the backend port. See [Deploy with Docker Compose](../../docs/user/how-to/deploy/deploy-with-docker.md#metrics-prometheus).
 
 ## Authentication & Authorization
 
@@ -1177,16 +1255,28 @@ CorsLayer::new()
 [INFO] Response sent: status=201 duration=2.3s
 ```
 
-### Metrics (Future)
+### Metrics Roadmap
 
-**Planned Metrics**:
+**Delivered (Observability Phase 1)** — see [`GET /metrics`](#metrics) above for the full list
+of exposed metric families:
 
-- Request rate (per endpoint)
-- Response time (p50, p95, p99)
-- Error rate (by type)
-- Authentication success/failure
-- GitHub API call count
+- Request rate and response time per endpoint (`http_requests_total`,
+  `http_request_duration_seconds`, labeled by route template)
+- Repository-creation request/success/failure counts, duration, and in-flight task count
+  (`repository_creation_*`)
+- GitHub API call count, error count, and last-observed rate-limit-remaining
+  (`github_api_*`)
+- Notification delivery success/failure/latency (`notification_delivery_*`, pre-existing)
+
+**Not yet implemented (future phases)** — see `.llm/observability-checklist.md`:
+
+- Distributed tracing (Phase 2)
+- Frontend observability (Phase 3)
+- Log output tuning (Phase 4)
+- Authentication success/failure counters
 - Configuration cache hit rate
+- Per-organization/per-template breakdowns (deliberately excluded from Phase 1 labels — see the
+  [Label cardinality (security note)](#metrics) above)
 
 ### Health Monitoring
 

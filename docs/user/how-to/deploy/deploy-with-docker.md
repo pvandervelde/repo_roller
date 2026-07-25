@@ -132,6 +132,39 @@ The backend should **not** be exposed directly to the internet. Only the fronten
 
 If deploying behind a reverse proxy (nginx, Caddy, Traefik), proxy `https://reporoller.myorg.example` → `localhost:3000`. Do not expose port 8080 externally.
 
+## Metrics (Prometheus)
+
+The backend exposes a Prometheus-format scrape endpoint at `GET /metrics` on the same port as
+the API (`8080` by default) — **not** under the `/api/v1` prefix. It reports request rates and
+latencies per endpoint, repository-creation outcomes, and GitHub API call/error counts.
+
+Like `/health`, `/metrics` is **unauthenticated** by design (Prometheus does not send an
+`Authorization` header by default), so it must never be reachable outside the private Docker
+network — the same "do not expose port 8080 externally" rule from [Networking](#networking)
+above applies.
+
+**Point Prometheus at the backend container** (adjust the target for your network/service
+discovery mechanism):
+
+```yaml
+scrape_configs:
+  - job_name: repo_roller_api
+    static_configs:
+      - targets: ["backend:8080"] # reachable on the internal Docker network only
+    metrics_path: /metrics
+```
+
+**Verify locally** (from inside the `internal` network, e.g. via `docker compose exec`):
+
+```bash
+curl http://backend:8080/metrics
+```
+
+You should see Prometheus text-format output, including families such as
+`repository_creation_requests_total`, `github_api_calls_total`, and `http_requests_total`. See
+the [`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#metrics) for
+the full list of exposed metrics and their labels.
+
 ## Building images from source
 
 ```bash
