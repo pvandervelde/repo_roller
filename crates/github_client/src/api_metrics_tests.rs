@@ -365,6 +365,46 @@ mod status_category_tests {
             status_category(&Error::RateLimitExceeded)
         );
     }
+
+    /// Mutation-kill: asserts the *exact* category string for every `Error`
+    /// variant, including `Deserialization` (omitted from
+    /// `test_status_category_is_within_known_bounded_set_for_every_variant`'s
+    /// sample list). The set-membership and pairwise-inequality tests above
+    /// still pass if two match arms are transposed (e.g. `NotFound` and
+    /// `InvalidResponse` swapped) — confirmed by manual mutation during the
+    /// Observability Phase 1 QA audit, which left this file's entire test
+    /// suite green. This test pins every variant -> category mapping exactly.
+    #[test]
+    fn test_status_category_maps_every_variant_to_its_exact_expected_category() {
+        let deserialization_err: Error =
+            serde_json::from_str::<serde_json::Value>("not json").unwrap_err().into();
+
+        let cases: Vec<(Error, &str)> = vec![
+            (Error::ApiError(), "api_error"),
+            (Error::AuthError("bad token".into()), "auth_error"),
+            (deserialization_err, "deserialization"),
+            (
+                Error::FailedToCreateAccessToken("owner".into(), "repo".into(), 42),
+                "access_token_failure",
+            ),
+            (
+                Error::FailedToFindAppInstallation("owner".into(), "repo".into(), 42),
+                "installation_not_found",
+            ),
+            (Error::InvalidResponse, "invalid_response"),
+            (Error::NotFound, "not_found"),
+            (Error::RateLimitExceeded, "rate_limit_exceeded"),
+        ];
+
+        for (err, expected) in &cases {
+            assert_eq!(
+                status_category(err),
+                *expected,
+                "expected {err:?} to map to category '{expected}', got '{}'",
+                status_category(err)
+            );
+        }
+    }
 }
 
 // ============================================================================

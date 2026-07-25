@@ -760,6 +760,122 @@ async fn test_validate_repository_name_returns_available_false_when_repo_exists(
     );
 }
 
+/// Extracts a `CounterVec` sample's value for the given label set from a
+/// gathered set of Prometheus metric families, or `None` if no sample with
+/// that exact label set exists yet.
+fn counter_vec_value(
+    metric_families: &[prometheus::proto::MetricFamily],
+    name: &str,
+    labels: &[(&str, &str)],
+) -> Option<f64> {
+    metric_families
+        .iter()
+        .find(|mf| mf.name() == name)?
+        .metric
+        .iter()
+        .find(|m| {
+            labels.iter().all(|(label_name, label_value)| {
+                m.label
+                    .iter()
+                    .any(|lp| lp.name() == *label_name && lp.value() == *label_value)
+            })
+        })
+        .and_then(|m| m.counter.as_ref())
+        .map(|c| c.value())
+}
+
+/// Mutation-kill (Observability Phase 1 QA audit): `validate_repository_name`
+/// must record a `github_api_calls_total{operation="get_repository"}` sample
+/// via `state.github_api_metrics.record_call("get_repository")` every time it
+/// performs the availability check.
+///
+/// No existing test in this file asserted on `state.metrics_registry` after
+/// exercising this handler, so a mutant that deletes, no-ops, or mislabels
+/// the `record_call` line at `handlers.rs:503` would compile and pass the
+/// entire pre-existing suite (which only checks the JSON response body).
+/// This test closes that gap by inspecting the shared registry directly.
+#[tokio::test]
+async fn test_validate_repository_name_records_github_api_call_metric() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/existing-repo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 42,
+            "name": "existing-repo",
+            "full_name": "testorg/existing-repo",
+            "private": false,
+            "html_url": "https://github.com/testorg/existing-repo",
+            "url": "https://api.github.com/repos/testorg/existing-repo",
+            "owner": {
+                "login": "testorg",
+                "id": 1,
+                "node_id": "MDQ6VXNlcjE=",
+                "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+                "gravatar_id": "",
+                "url": "https://api.github.com/users/testorg",
+                "html_url": "https://github.com/testorg",
+                "followers_url": "https://api.github.com/users/testorg/followers",
+                "following_url": "https://api.github.com/users/testorg/following{/other_user}",
+                "gists_url": "https://api.github.com/users/testorg/gists{/gist_id}",
+                "starred_url": "https://api.github.com/users/testorg/starred{/owner}{/repo}",
+                "subscriptions_url": "https://api.github.com/users/testorg/subscriptions",
+                "organizations_url": "https://api.github.com/users/testorg/orgs",
+                "repos_url": "https://api.github.com/users/testorg/repos",
+                "events_url": "https://api.github.com/users/testorg/events{/privacy}",
+                "received_events_url": "https://api.github.com/users/testorg/received_events",
+                "type": "Organization",
+                "site_admin": false,
+                "patch_url": null,
+                "email": null
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let state = AppState::default()
+        .with_github_api_base_url(mock_server.uri())
+        .with_mock_installation_token("x");
+    // Keep a handle to the shared registry before `state` is moved into the router.
+    let metrics_registry = state.metrics_registry.clone();
+
+    let app = create_router_without_auth(state).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new());
+            next.run(req).await
+        },
+    ));
+
+    let request_body = json!({
+        "organization": "testorg",
+        "name": "existing-repo"
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate-name")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let families = metrics_registry.gather();
+    let calls = counter_vec_value(
+        &families,
+        "github_api_calls_total",
+        &[("operation", "get_repository")],
+    );
+    assert_eq!(
+        calls,
+        Some(1.0),
+        "expected exactly one github_api_calls_total sample for operation=get_repository, \
+         found families: {:?}",
+        families.iter().map(|f| f.name()).collect::<Vec<_>>()
+    );
+}
+
 /// Handler-level test: empty organization field returns valid=false.
 #[tokio::test]
 async fn test_validate_repository_name_empty_org_returns_invalid() {
