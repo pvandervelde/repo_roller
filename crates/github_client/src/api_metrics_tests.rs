@@ -376,8 +376,9 @@ mod status_category_tests {
     /// suite green. This test pins every variant -> category mapping exactly.
     #[test]
     fn test_status_category_maps_every_variant_to_its_exact_expected_category() {
-        let deserialization_err: Error =
-            serde_json::from_str::<serde_json::Value>("not json").unwrap_err().into();
+        let deserialization_err: Error = serde_json::from_str::<serde_json::Value>("not json")
+            .unwrap_err()
+            .into();
 
         let cases: Vec<(Error, &str)> = vec![
             (Error::ApiError(), "api_error"),
