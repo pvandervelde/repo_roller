@@ -135,7 +135,18 @@ pub fn error_category(err: &RepoRollerError) -> &'static str {
 /// # Thread Safety
 /// All implementations MUST be thread-safe (Send + Sync).
 pub trait RepositoryCreationMetrics: Send + Sync {
-    /// Records that a repository-creation request was received.
+    /// Records that a repository-creation request passed initial
+    /// translation/validation and GitHub App installation-token minting.
+    ///
+    /// Callers record this *after* those two steps succeed, not at the raw
+    /// HTTP-receipt boundary (see `repo_roller_api::handlers::create_repository`).
+    /// Format/authorization failures that short-circuit before this point are
+    /// therefore not reflected in `repository_creation_requests_total` — the
+    /// counter will not generally reconcile with
+    /// `repository_creation_successes_total + repository_creation_failures_total`
+    /// against the API's total inbound request volume; use the per-endpoint
+    /// `http_requests_total{route="/api/v1/repositories"}` metric (see
+    /// `repo_roller_api::http_metrics`) for that.
     ///
     /// # Security
     ///
