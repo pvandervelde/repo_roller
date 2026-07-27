@@ -87,6 +87,41 @@ fn test_contract_all_implementations_are_send_and_sync() {
 }
 
 // ============================================================================
+// normalize_method unit tests
+// ============================================================================
+
+mod normalize_method_tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_method_maps_every_known_method_to_itself() {
+        for known in [
+            "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "CONNECT", "TRACE",
+        ] {
+            assert_eq!(normalize_method(known), known);
+        }
+    }
+
+    #[test]
+    fn test_normalize_method_maps_unknown_method_to_bounded_fallback() {
+        for unknown in [
+            "PURGE",
+            "",
+            "get",
+            "GET ",
+            "🙂",
+            "a".repeat(10_000).as_str(),
+        ] {
+            assert_eq!(
+                normalize_method(unknown),
+                UNKNOWN_METHOD,
+                "unexpected non-fallback mapping for {unknown:?}"
+            );
+        }
+    }
+}
+
+// ============================================================================
 // Tier 1: Specification tests (Prometheus-backed)
 // ============================================================================
 
@@ -365,6 +400,55 @@ mod middleware_tests {
 
         let recorded = concrete.recorded.lock().unwrap();
         assert_eq!(recorded[0].2, expected_status);
+    }
+
+    /// PR #281 review follow-up: `http_metrics_middleware` is the outermost
+    /// layer wrapping every request, including ones that hit no route
+    /// (`route = "unmatched"`), so an unauthenticated caller can send an
+    /// arbitrary HTTP method token against a nonexistent path. `method` must
+    /// therefore be bounded independently of routing, exactly like `route`
+    /// is bounded by `UNMATCHED_ROUTE`. A naive implementation using
+    /// `req.method().as_str()` verbatim would pass every other test in this
+    /// file but fails this one.
+    #[tokio::test]
+    async fn test_middleware_normalizes_unknown_method_to_bounded_fallback() {
+        let concrete = Arc::new(MockHttpMetrics::new());
+        let dyn_metrics: Arc<dyn HttpMetrics> = concrete.clone();
+        let app = test_router(dyn_metrics);
+
+        let request = HttpRequest::builder()
+            .method("PURGE") // not in the known/bounded method set
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        let _ = app.oneshot(request).await.unwrap();
+
+        let recorded = concrete.recorded.lock().unwrap();
+        assert_eq!(
+            recorded[0].0, "other",
+            "an unrecognised HTTP method must collapse to the bounded fallback label, \
+             never pass the raw method token through"
+        );
+    }
+
+    /// Every method in the known/bounded set must be recorded verbatim
+    /// (proves the normalization isn't over-eager and doesn't collapse
+    /// legitimate, commonly-used methods into the fallback).
+    #[tokio::test]
+    async fn test_middleware_preserves_known_methods_verbatim() {
+        let concrete = Arc::new(MockHttpMetrics::new());
+        let dyn_metrics: Arc<dyn HttpMetrics> = concrete.clone();
+        let app = test_router(dyn_metrics);
+
+        let request = HttpRequest::builder()
+            .method("GET")
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        let _ = app.oneshot(request).await.unwrap();
+
+        let recorded = concrete.recorded.lock().unwrap();
+        assert_eq!(recorded[0].0, "GET");
     }
 
     /// Duration recorded must be non-negative and finite (kills a stub that

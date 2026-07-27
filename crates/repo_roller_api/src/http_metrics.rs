@@ -51,6 +51,36 @@ const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
 /// on an unknown path). Bounded and fixed, never the raw concrete path.
 const UNMATCHED_ROUTE: &str = "unmatched";
 
+/// Method label used for any HTTP method outside the fixed, known set this
+/// API actually handles. Bounded and fixed, mirroring [`UNMATCHED_ROUTE`]'s
+/// treatment of unknown routes.
+///
+/// # Security
+/// `http_metrics_middleware` is the outermost layer wrapping *every*
+/// request, including ones that hit no route (`route = "unmatched"`). An
+/// unauthenticated caller can send an arbitrary HTTP method token against a
+/// nonexistent path, so `method` must be bounded independently of routing —
+/// otherwise it reintroduces the same unbounded-label-cardinality class of
+/// issue that `route` is already guarded against.
+const UNKNOWN_METHOD: &str = "other";
+
+/// Maps `method` to one of a fixed, bounded set of known HTTP method labels,
+/// falling back to [`UNKNOWN_METHOD`] for anything else.
+fn normalize_method(method: &str) -> &'static str {
+    match method {
+        "GET" => "GET",
+        "POST" => "POST",
+        "PUT" => "PUT",
+        "DELETE" => "DELETE",
+        "PATCH" => "PATCH",
+        "HEAD" => "HEAD",
+        "OPTIONS" => "OPTIONS",
+        "CONNECT" => "CONNECT",
+        "TRACE" => "TRACE",
+        _ => UNKNOWN_METHOD,
+    }
+}
+
 /// Histogram buckets for HTTP request duration, in seconds. Standard
 /// sub-second web-latency buckets (distinct from the wider repository-creation
 /// buckets, since HTTP handler-level latency for most endpoints is expected
@@ -185,7 +215,7 @@ pub async fn http_metrics_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    let method = req.method().as_str().to_string();
+    let method = normalize_method(req.method().as_str());
     let route = req
         .extensions()
         .get::<MatchedPath>()
@@ -197,7 +227,7 @@ pub async fn http_metrics_middleware(
     let duration_seconds = start.elapsed().as_secs_f64();
     let status_code = response.status().as_u16();
 
-    metrics.record_request(&method, &route, status_code, duration_seconds);
+    metrics.record_request(method, &route, status_code, duration_seconds);
 
     response
 }
