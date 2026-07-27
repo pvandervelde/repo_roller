@@ -545,7 +545,9 @@ async fn test_check_repository_availability_not_found_returns_available() {
         .unwrap();
     let client = github_client::GitHubClient::new(octocrab);
 
-    let (available, message) = check_repository_availability(&client, "testorg", "new-repo").await;
+    let metrics = github_client::NoOpGitHubApiMetrics::new();
+    let (available, message) =
+        check_repository_availability(&client, "testorg", "new-repo", &metrics).await;
 
     assert!(
         available,
@@ -605,8 +607,9 @@ async fn test_check_repository_availability_exists_returns_not_available() {
         .unwrap();
     let client = github_client::GitHubClient::new(octocrab);
 
+    let metrics = github_client::NoOpGitHubApiMetrics::new();
     let (available, message) =
-        check_repository_availability(&client, "testorg", "existing-repo").await;
+        check_repository_availability(&client, "testorg", "existing-repo", &metrics).await;
 
     assert!(
         !available,
@@ -644,7 +647,9 @@ async fn test_check_repository_availability_api_error_returns_available_with_war
         .unwrap();
     let client = github_client::GitHubClient::new(octocrab);
 
-    let (available, message) = check_repository_availability(&client, "testorg", "some-repo").await;
+    let metrics = github_client::NoOpGitHubApiMetrics::new();
+    let (available, message) =
+        check_repository_availability(&client, "testorg", "some-repo", &metrics).await;
 
     assert!(
         available,
@@ -658,6 +663,144 @@ async fn test_check_repository_availability_api_error_returns_available_with_war
     assert!(
         msg.to_lowercase().contains("could not verify"),
         "Warning should mention that availability could not be verified; got: {msg}"
+    );
+}
+
+/// Extracts a `CounterVec` sample's value for the given label set from a
+/// gathered set of Prometheus metric families, or `None` if no sample with
+/// that exact label set exists yet. Mirrors the identical helper already
+/// used for `test_validate_repository_name_records_github_api_call_metric`.
+fn counter_vec_value_by_labels(
+    metric_families: &[prometheus::proto::MetricFamily],
+    name: &str,
+    labels: &[(&str, &str)],
+) -> Option<f64> {
+    metric_families
+        .iter()
+        .find(|mf| mf.name() == name)?
+        .metric
+        .iter()
+        .find(|m| {
+            labels.iter().all(|(label_name, label_value)| {
+                m.label
+                    .iter()
+                    .any(|lp| lp.name() == *label_name && lp.value() == *label_value)
+            })
+        })
+        .and_then(|m| m.counter.as_ref())
+        .map(|c| c.value())
+}
+
+/// PR #281 review follow-up: `check_repository_availability`'s catch-all
+/// `Err(e)` arm previously only logged a warning and never called
+/// `GitHubApiMetrics::record_error`, unlike the structurally identical
+/// `list_organization_teams` call site. `github_api_errors_total` would
+/// therefore always read zero for `operation="get_repository"` regardless of
+/// real GitHub API failures. This test proves the error is now recorded.
+#[tokio::test]
+async fn test_check_repository_availability_api_error_records_github_api_error_metric() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/some-repo"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .personal_token("x".to_string())
+        .build()
+        .unwrap();
+    let client = github_client::GitHubClient::new(octocrab);
+
+    let registry = prometheus::Registry::new();
+    let metrics = github_client::PrometheusGitHubApiMetrics::new(&registry);
+
+    let (_available, _message) =
+        check_repository_availability(&client, "testorg", "some-repo", &metrics).await;
+
+    let families = registry.gather();
+    // `get_repository`'s successful-call counter is recorded by the caller
+    // (`validate_repository_name`), not by `check_repository_availability`
+    // itself, so this test only asserts the error side. The exact
+    // `status_category` value depends on how `github_client` maps the
+    // underlying transport/HTTP error; assert only that *some* bounded
+    // category was recorded for this operation, not which one.
+    let recorded_any_error_category =
+        github_client::KNOWN_STATUS_CATEGORIES
+            .iter()
+            .any(|category| {
+                counter_vec_value_by_labels(
+                    &families,
+                    "github_api_errors_total",
+                    &[
+                        ("operation", "get_repository"),
+                        ("status_category", category),
+                    ],
+                )
+                .unwrap_or(0.0)
+                    > 0.0
+            });
+    assert!(
+        recorded_any_error_category,
+        "Expected github_api_errors_total{{operation=\"get_repository\"}} to be recorded \
+         when check_repository_availability hits a non-NotFound GitHub API error"
+    );
+}
+
+/// The `NotFound` arm is a normal, expected outcome of an availability
+/// check (the name is free), not an API failure — it must NOT be recorded
+/// as a GitHub API error, unlike the catch-all `Err(e)` arm above.
+#[tokio::test]
+async fn test_check_repository_availability_not_found_does_not_record_error_metric() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/testorg/new-repo"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .personal_token("x".to_string())
+        .build()
+        .unwrap();
+    let client = github_client::GitHubClient::new(octocrab);
+
+    let registry = prometheus::Registry::new();
+    let metrics = github_client::PrometheusGitHubApiMetrics::new(&registry);
+
+    let (_available, _message) =
+        check_repository_availability(&client, "testorg", "new-repo", &metrics).await;
+
+    let families = registry.gather();
+    let recorded_any_error = github_client::KNOWN_STATUS_CATEGORIES
+        .iter()
+        .any(|category| {
+            counter_vec_value_by_labels(
+                &families,
+                "github_api_errors_total",
+                &[
+                    ("operation", "get_repository"),
+                    ("status_category", category),
+                ],
+            )
+            .unwrap_or(0.0)
+                > 0.0
+        });
+    assert!(
+        !recorded_any_error,
+        "NotFound is an expected outcome (name is free), not an API error — \
+         it must not increment github_api_errors_total"
     );
 }
 

@@ -32,6 +32,7 @@ pub mod webhook;
 // Re-export types for convenient access
 pub use api_metrics::{
     status_category, GitHubApiMetrics, NoOpGitHubApiMetrics, PrometheusGitHubApiMetrics,
+    KNOWN_STATUS_CATEGORIES,
 };
 pub use branch_protection::BranchProtection;
 pub use collaborator::Collaborator;

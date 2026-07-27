@@ -338,6 +338,7 @@ pub(crate) async fn check_repository_availability(
     client: &GitHubClient,
     org: &str,
     name: &str,
+    github_api_metrics: &dyn github_client::GitHubApiMetrics,
 ) -> (bool, Option<String>) {
     match client.get_repository(org, name).await {
         Ok(_) => (
@@ -348,6 +349,11 @@ pub(crate) async fn check_repository_availability(
         ),
         Err(github_client::Error::NotFound) => (true, None),
         Err(e) => {
+            // Record the GitHub API error (Observability Phase 1 / PR #281
+            // review follow-up). `NotFound` above is a normal, expected
+            // outcome of this availability check, not an API failure, so it
+            // is deliberately not recorded here.
+            github_api_metrics.record_error("get_repository", github_client::status_category(&e));
             tracing::warn!(
                 org = org,
                 name = name,
@@ -499,9 +505,13 @@ pub async fn validate_repository_name(
         // `GitHubClient::get_repository` call made inside
         // `check_repository_availability` — never the org/repo name.
         state.github_api_metrics.record_call("get_repository");
-        let (is_available, availability_message) =
-            check_repository_availability(&github_client, &request.organization, &request.name)
-                .await;
+        let (is_available, availability_message) = check_repository_availability(
+            &github_client,
+            &request.organization,
+            &request.name,
+            state.github_api_metrics.as_ref(),
+        )
+        .await;
         if let Some(msg) = availability_message {
             messages.push(msg);
         }
