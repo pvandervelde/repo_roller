@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.10.0] - 2026-07-30
+
+### Features
+
+- **github_client**: implement GitHub API call metrics (Observability Phase 1) [00779bae414879e5006782b65a1940a5eec3b76a]
+- **observability**: Phase 1 backend metrics foundation (#281) [cf7f9afb55a4d3fd6a24aab40e54852930a137b3]
+- **repo_roller_api**: implement HTTP metrics, shared registry, and /metrics route (Observability Phase 1) [4f661b2aaf4c10f499d1c93a9eb73e1bc7ab35fd]
+- **repo_roller_core**: implement repository-creation metrics (Observability Phase 1) [326f6c95b620ed1bc2c7ec5ad853c266f73783df]
+
+
+### Bug Fixes
+
+- **frontend**: bump brace-expansion and postcss to resolve OSV advisories [f8459f8c0afc81baf7781875a20a5347fb56b4bf]
+- **observability**: drop org/template as repository-creation metric labels [3bb3e8367ae158c9c2d2607ddda9dd2accd3d959]
+- **repo_roller_api**: bound HTTP method label to prevent unbounded cardinality [ccbd3769a44844de5be2fcab236d17414b57c8b9]
+- **repo_roller_api**: record GitHub API errors for get_repository availability check [cf96d220843463281383aa679c270d6b8f9b03d6]
+
+
+### Documentation
+
+- **catalog**: add Observability Phase 1 metrics abstractions [6cdfc9236e1d545a4d5bcdfb79ce4f04805877fd]
+- **observability**: clarify metric semantics and codify bounded-label rule [6cd1bc18a052ffb5771a6473f462a182830941c9]
+- **observability**: update user docs for Phase 1 metrics foundation [77763114c52e7c1fed739e730f83760d81632a1a]
+- fix 22 configuration discrepancies between code and user docs (#280) [025c3aed955de78afe48670817879fd48d1f40a2]
+- fix 22 configuration documentation discrepancies (#279) [607c49119af8f02715de5bbaf8a3686ab48d5b76]
+
+
+### Styles
+
+- apply cargo fmt to Observability Phase 1 metrics files [9a896ca8713154ef5fd47d1130822622aaca68d7]
+- fix fmt violation in api_metrics_tests.rs [f571bca7dee871624aca4a7a9610f278e3c54261]
+
+
+### Code Refactoring
+
+- **observability**: dedupe metrics registry construction and route wiring [f5571c8004ef383c193c3af0f93d159900ae0df3]
+
+
+### Tests
+
+- **audit**: add mutation-kill tests for category mappings and metrics instrumentation [f762c6aa9e8cd4c1b19c373e953cc4027fae943a]
+- Add RED-phase test suite for Observability Phase 1 metrics [693d40e42e57cb2307cc590aaeccf0471f8e35bb]
+
+
+### Chores
+
+- **deps**: update debian:bookworm-slim docker digest to 60eac75 [6038c986c7cbed9e04906360e27fb7ab9dbaafe9]
+- **deps**: update debian:bookworm-slim docker digest to 60eac75 (#235) [7091160025f58f6ec2d73d7805c4924789065c38]
+- **deps**: update rust:1.96-bookworm docker digest to d99f7b3 [d3cf386ad512c06be87c69a9b83e8aecf5b09614]
+- **deps**: update rust:1.96-bookworm docker digest to d99f7b3 (#264) [c55af51801c627998172dd9a730191dc462bb813]
+- Fix two doc discrepancies from PR review [7b54f88f9e137c0caa2e167d06df8e261c472d2a]
+- Initial plan [e13ec7afdcd161ba5c279e9f510522649db3f0fa]
+- Removing beads [7e3458be2f279821766af2cf467fe770c9a8b64b]
+
 ## [0.9.3] - 2026-07-10
 
 ### Bug Fixes
@@ -118,6 +172,7 @@
 - Fixing build issues [e3b460114f645346be06efea045a9f5556abf5d5]
 - Increase Renovate PR number and wait on minimumReleaseAge [0b20fe433b1116ea4b5c9fb7af0d41d88492c8be]
 - Increase Renovate PR number and wait on minimumReleaseAge (#250) [8c3ce971f84c294d03aefde864909b2449e744ca]
+
 
 
 
