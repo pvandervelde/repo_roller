@@ -15,6 +15,7 @@ pub mod errors;
 pub use errors::Error;
 
 // Domain-specific modules
+pub mod api_metrics;
 pub mod branch_protection;
 pub mod collaborator;
 pub mod contents;
@@ -29,6 +30,10 @@ pub mod user;
 pub mod webhook;
 
 // Re-export types for convenient access
+pub use api_metrics::{
+    status_category, GitHubApiMetrics, NoOpGitHubApiMetrics, PrometheusGitHubApiMetrics,
+    KNOWN_STATUS_CATEGORIES,
+};
 pub use branch_protection::BranchProtection;
 pub use collaborator::Collaborator;
 pub use contents::{EntryType, TreeEntry};

@@ -345,25 +345,3 @@ performance:
   github_api:
     rate_limit: "5000 requests/hour (authenticated)"
     rate_limit_handling: "exponential backoff with retry"
-
-# Task tracking configuration
-task_tracking:
-  tool: beads
-  required_in_commit: recommended # Recommend bd-xxx in commit messages
-  auto_close_on_merge: false # Manual close for explicit decision tracking
-
-  # When to create tasks
-  task_required_for:
-    - "New features"
-    - "Bug fixes"
-    - "Architectural changes"
-    - "Infrastructure changes"
-
-  # Task types (align with your workflow)
-  types:
-    - feature # New functionality
-    - bug # Bug fixes
-    - refactor # Code improvements
-    - docs # Documentation
-    - infrastructure # Build, deploy, tooling
-    - security # Security fixes/improvements

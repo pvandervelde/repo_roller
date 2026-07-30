@@ -197,6 +197,7 @@ RepoRoller operates as a GitHub App that creates and configures repositories bas
 - Configuration data exposure in audit trails
 - Template variable exposure
 - Cache data persistence with sensitive information
+- Unbounded request-derived values (organization names, template names, free-text error content) surfacing as Prometheus metric label values on an unauthenticated `/metrics` scrape endpoint
 
 **Impact**: Credential disclosure, privacy violations, competitive intelligence loss, compliance violations
 
@@ -207,6 +208,7 @@ RepoRoller operates as a GitHub App that creates and configures repositories bas
 - Encrypted storage for all sensitive data
 - Access controls for audit logs and monitoring data
 - Data retention and deletion policies
+- **Metric labels MUST be bounded/enumerable values only** — never raw user input, error messages, or tokens. A new metric may only take a label whose value comes from a fixed, small, source-controlled set (an exhaustive enum match, a fixed operation name, a route *template* via `axum::extract::MatchedPath`) — never a value copied verbatim from a request body, header, or upstream API response. See `crates/repo_roller_core/src/repository_metrics.rs`, `crates/github_client/src/api_metrics.rs`, and `crates/repo_roller_api/src/http_metrics.rs` for the reference pattern, and the pattern's origin: a HIGH-severity finding in PR #281 where `organization`/`template` request fields were used as unbounded metric labels.
 
 #### T4.2: Cross-Tenant Data Leakage
 
@@ -243,6 +245,7 @@ RepoRoller operates as a GitHub App that creates and configures repositories bas
 - Memory exhaustion through complex templates
 - Disk space exhaustion through large file creation
 - CPU exhaustion through computationally expensive operations
+- Unbounded Prometheus metric label cardinality — an authenticated (but otherwise unrelated) caller sending unique request-derived values that become permanent, never-evicted in-process time series
 
 **Impact**: System unavailability, service degradation, increased operational costs, user impact
 
@@ -253,6 +256,7 @@ RepoRoller operates as a GitHub App that creates and configures repositories bas
 - Timeout enforcement for long-running operations
 - Resource monitoring and alerting
 - Auto-scaling and capacity management
+- Bounded/enumerable metric label values only (see the corresponding T4.1 mitigation) — this closes the cardinality-growth vector at the source rather than relying on downstream resource limits alone
 
 #### T5.2: Distributed Denial of Service
 

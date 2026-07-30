@@ -14,6 +14,7 @@ base64.workspace = true
 http = "1.4"
 jsonwebtoken.workspace = true
 octocrab.workspace = true
+prometheus.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -30,4 +31,5 @@ tokio = { workspace = true, features = [
 ] } # Ensure test runtime features
 serde_json.workspace = true # For constructing mock responses
 ctor = "=1.0.7"
+proptest.workspace = true
 rustls = { version = "=0.23.41", default-features = false, features = ["aws-lc-rs"] }

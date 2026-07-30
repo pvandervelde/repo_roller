@@ -70,6 +70,14 @@ Common error codes:
 
 Every request is automatically assigned a unique request ID (UUID v4) that appears in server logs. When reporting an issue, include the timestamp of the request to help correlate the log entry.
 
+## Metrics
+
+`GET /metrics` returns Prometheus-format metrics (request rates, latencies, repository-creation
+outcomes, GitHub API call counts). It is mounted at the server root — **not** under `/api/v1` —
+and is unauthenticated, intended for scraping by a Prometheus server on a private network. See
+[Deploy with Docker Compose: Metrics (Prometheus)](../../how-to/deploy/deploy-with-docker.md#metrics-prometheus)
+for scrape configuration and the operator security note.
+
 ## Endpoints
 
 | Resource | Reference |

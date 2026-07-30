@@ -132,10 +132,39 @@ pub fn create_router(state: AppState) -> Router {
         .layer(timeout_layer)
         .layer(trace_layer)
         .layer(cors)
-        .with_state(state);
+        .with_state(state.clone());
 
-    // Root router with API version prefix
-    Router::new().nest("/api/v1", api_v1)
+    // Root router with API version prefix, plus the unauthenticated
+    // `/metrics` scrape endpoint. See `mount_metrics` for the rationale.
+    mount_metrics(api_v1, &state)
+}
+
+/// Mounts the unauthenticated `/metrics` Prometheus scrape endpoint at the
+/// router root (sibling to `/api/v1`, not nested under it) and wraps the
+/// whole router with `http_metrics_middleware` as the outermost layer.
+///
+/// `/metrics` is deliberately unauthenticated — like `/health` — so
+/// Prometheus can scrape it without presenting a bearer token. See
+/// `handlers::metrics_handler` for the security rationale (bounded label
+/// values only, no secrets).
+///
+/// `http_metrics_middleware` is layered as the outermost wrapper so it
+/// records every request across both `/metrics` and the nested `/api/v1/*`
+/// routes, using the route *template* (via `MatchedPath`, which axum
+/// propagates through `.nest()`), never the concrete path.
+///
+/// Shared by `create_router` and `create_router_without_auth`, whose inner
+/// `api_v1` routers differ (one carries auth middleware, one doesn't) but
+/// whose `/metrics` wiring is otherwise identical.
+fn mount_metrics(api_v1: Router, state: &AppState) -> Router {
+    Router::new()
+        .route("/metrics", get(handlers::metrics_handler))
+        .with_state(state.clone())
+        .nest("/api/v1", api_v1)
+        .layer(middleware::from_fn_with_state(
+            state.http_metrics.clone(),
+            crate::http_metrics::http_metrics_middleware,
+        ))
 }
 
 /// Organization-specific routes (nested under /orgs/:org)
@@ -240,10 +269,11 @@ pub fn create_router_without_auth(state: AppState) -> Router {
         .layer(timeout_layer)
         .layer(trace_layer)
         .layer(cors)
-        .with_state(state);
+        .with_state(state.clone());
 
-    // Root router with API version prefix
-    Router::new().nest("/api/v1", api_v1)
+    // Root router with API version prefix, plus the unauthenticated
+    // `/metrics` scrape endpoint. See `mount_metrics` for the rationale.
+    mount_metrics(api_v1, &state)
 }
 
 /// Organization-specific routes for testing (without authentication)

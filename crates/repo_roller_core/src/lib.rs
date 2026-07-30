@@ -162,6 +162,9 @@ pub mod event_secrets;
 // Event metrics collection
 pub mod event_metrics;
 
+// Repository-creation metrics collection (Observability Phase 1)
+pub mod repository_metrics;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, AuthenticationResult, ConfigurationError, GitHubError, GitHubResult,
@@ -265,6 +268,11 @@ pub use event_secrets::{
 };
 // Re-exported from event_metrics module
 pub use event_metrics::{EventMetrics, NoOpEventMetrics, PrometheusEventMetrics};
+// Re-exported from repository_metrics module
+pub use repository_metrics::{
+    error_category, NoOpRepositoryCreationMetrics, PrometheusRepositoryCreationMetrics,
+    RepositoryCreationMetrics,
+};
 
 // Cross-cutting types used across all domains
 use chrono::{DateTime, Utc};

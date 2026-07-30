@@ -46,29 +46,6 @@ Following these conventions ensures:
 
 When in doubt, look at existing code in the repository as examples of these patterns in practice.
 
-
-## Task Management
-
-This project uses Beads (bd) for AI-friendly task tracking.
-
-### Before starting work
-
-1. Check what's ready: `bd ready --json`
-2. Pick a task: `bd show bd-abc --json`
-3. Start work: `bd update bd-abc working`
-
-### When creating new tasks
-
-1. Create issue: `bd create "Task description" -p 1 -t feature`
-2. Add dependencies: `bd update bd-xyz --blocks bd-abc`
-3. The task will auto-appear in `bd ready` when blockers are done
-
-### When finishing work
-
-1. Commit with issue ID: `git commit -m "Fix auth bug (bd-abc)"`
-2. Close issue: `bd close bd-abc --reason "Completed"`
-3. Sync: `bd sync` (usually automatic)
-
 ### Integration with ADRs
 
 - Link ADRs in task descriptions: "See ADR-0005 for context"
