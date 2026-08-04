@@ -10,7 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 serde_json = "1.0"
-toml = "0.9"
+toml = "1.0"
 
 # Crates under test
 repo_roller_core = { path = "../crates/repo_roller_core" }
