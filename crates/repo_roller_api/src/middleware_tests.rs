@@ -313,3 +313,301 @@ fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
         claims.exp
     );
 }
+
+// ── Correlation ID / request span tests (Task #1) ──────────────────────────
+//
+// Contract under test (task acceptance criteria, not yet implemented in
+// `tracing_middleware` as of this writing -- these tests are expected to
+// FAIL until the Coder wraps request handling in a
+// `tracing::info_span!("http_request", request_id = %request_id, ...)` and
+// adds the same value as an `X-Request-Id` response header):
+//
+//   1. Every response carries an `X-Request-Id` header whose value is a
+//      valid UUID.
+//   2. Two different requests receive two different `request_id` values
+//      (no hardcoded / reused ID).
+//   3. Every log line emitted while handling ONE request -- including ones
+//      emitted deep in a handler's call stack, not just the two explicit
+//      `tracing::info!` calls inside `tracing_middleware` itself -- carries
+//      the SAME `request_id`, and that value matches the `X-Request-Id`
+//      response header exactly.
+//   4. An event logged with no `http_request` span active must never
+//      acquire a `request_id` field (rules out a global/static ID).
+//   5. Concurrent requests must never cross-contaminate each other's
+//      `request_id` in their respective log trails.
+//
+// These tests build their own minimal JSON-capturing subscriber rather than
+// reusing `crate::logging`'s (separate, also-not-yet-implemented) sanitizing
+// subscriber, so that a failure here unambiguously points at
+// `tracing_middleware`, not at unrelated `logging` module gaps.
+
+use std::sync::{Arc, Mutex};
+
+/// In-memory writer used only by these tests to capture JSON tracing output.
+#[derive(Clone, Default)]
+struct CaptureBuffer(Arc<Mutex<Vec<u8>>>);
+
+impl CaptureBuffer {
+    fn contents(&self) -> String {
+        String::from_utf8_lossy(
+            &self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+        .to_string()
+    }
+}
+
+impl std::io::Write for CaptureBuffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureBuffer {
+    type Writer = CaptureBuffer;
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// Builds a plain JSON tracing subscriber writing to `buffer`. Deliberately
+/// independent of `crate::logging::build_sanitizing_json_subscriber`.
+fn build_json_subscriber(buffer: CaptureBuffer) -> impl tracing::Subscriber + Send + Sync {
+    tracing_subscriber::fmt()
+        .json()
+        .with_writer(buffer)
+        .with_ansi(false)
+        .finish()
+}
+
+/// Parses newline-delimited JSON output into a `Vec<serde_json::Value>`,
+/// skipping blank lines. Panics (failing the calling test with a clear
+/// message) if any non-blank line is not valid JSON.
+fn parse_json_lines(contents: &str) -> Vec<serde_json::Value> {
+    contents
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            serde_json::from_str(l)
+                .unwrap_or_else(|e| panic!("captured log line was not valid JSON: {l:?}: {e}"))
+        })
+        .collect()
+}
+
+/// Recursively searches a parsed JSON value tree for the first occurrence of
+/// object key `key`, at any depth. Used so these tests don't couple
+/// themselves to exactly where `tracing_subscriber`'s JSON formatter places
+/// span-inherited fields (`"span"`, `"spans"`, or otherwise).
+fn find_field_recursive<'v>(
+    value: &'v serde_json::Value,
+    key: &str,
+) -> Option<&'v serde_json::Value> {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(v) = map.get(key) {
+                return Some(v);
+            }
+            map.values().find_map(|v| find_field_recursive(v, key))
+        }
+        serde_json::Value::Array(arr) => arr.iter().find_map(|v| find_field_recursive(v, key)),
+        _ => None,
+    }
+}
+
+/// Extracts the `X-Request-Id` response header as a `String`, panicking
+/// with a descriptive message if it is absent.
+fn request_id_header(response: &axum::response::Response) -> String {
+    response
+        .headers()
+        .get("x-request-id")
+        .unwrap_or_else(|| panic!("response must carry an X-Request-Id header"))
+        .to_str()
+        .expect("X-Request-Id header value must be valid ASCII/UTF-8")
+        .to_string()
+}
+
+/// Handler used to simulate logging that happens deep in a real request's
+/// call stack (mirroring how `repo_roller_core` / `github_client` log from
+/// well below the middleware layer), not just inside `tracing_middleware`
+/// itself.
+async fn nested_logging_handler() -> &'static str {
+    tracing::info!("handler processing started");
+    deeply_nested_log_call().await;
+    "OK"
+}
+
+async fn deeply_nested_log_call() {
+    tracing::warn!("simulated deep-stack log (e.g. repo_roller_core / github_client)");
+}
+
+/// Test 1 (spec): the response must carry a well-formed `X-Request-Id`.
+#[tokio::test]
+async fn test_tracing_middleware_response_carries_valid_uuid_x_request_id_header() {
+    let app = Router::new()
+        .route("/test", get(test_handler))
+        .layer(middleware::from_fn(tracing_middleware));
+
+    let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
+    let response = app.oneshot(request).await.unwrap();
+
+    let header_value = request_id_header(&response);
+    assert!(
+        uuid::Uuid::parse_str(&header_value).is_ok(),
+        "X-Request-Id header value '{}' must be a valid UUID",
+        header_value
+    );
+}
+
+/// Test 2 (spec / stub-killing): a hardcoded or reused request ID would
+/// pass test 1 but fail here.
+#[tokio::test]
+async fn test_tracing_middleware_generates_distinct_request_id_per_request() {
+    let app = Router::new()
+        .route("/test", get(test_handler))
+        .layer(middleware::from_fn(tracing_middleware));
+
+    let first = app
+        .clone()
+        .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let second = app
+        .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let first_id = request_id_header(&first);
+    let second_id = request_id_header(&second);
+    assert_ne!(
+        first_id, second_id,
+        "two separate requests must never share the same request_id"
+    );
+}
+
+/// Test 3 (spec, core span-inheritance contract): every log line emitted
+/// while handling one request -- including from a handler and a function it
+/// calls -- must carry the SAME `request_id`, matching the response header.
+#[tokio::test]
+async fn test_request_id_is_consistent_across_every_log_line_for_one_request() {
+    let buffer = CaptureBuffer::default();
+    let subscriber = build_json_subscriber(buffer.clone());
+
+    let app = Router::new()
+        .route("/test", get(nested_logging_handler))
+        .layer(middleware::from_fn(tracing_middleware));
+
+    let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
+
+    let response = {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        app.oneshot(request).await.unwrap()
+    };
+
+    let header_request_id = request_id_header(&response);
+
+    let lines = parse_json_lines(&buffer.contents());
+    assert!(
+        lines.len() >= 3,
+        "expected at least 3 log lines (request started, handler log(s), request completed); got {}: {:?}",
+        lines.len(),
+        lines
+    );
+
+    for line in &lines {
+        let found = find_field_recursive(line, "request_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("log line is missing a request_id field entirely: {line}"));
+        assert_eq!(
+            found, header_request_id,
+            "every log line emitted while handling this request must carry the SAME \
+             request_id as the X-Request-Id response header; offending line: {line}"
+        );
+    }
+}
+
+/// Test 4 (side-effect absence / stub-killing): an event logged with no
+/// active `http_request` span must never acquire a `request_id` field --
+/// rules out a global/static request ID being force-injected everywhere.
+#[tokio::test]
+async fn test_events_outside_any_http_request_span_carry_no_request_id_field() {
+    let buffer = CaptureBuffer::default();
+    let subscriber = build_json_subscriber(buffer.clone());
+
+    {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        tracing::info!("event emitted with no active http_request span");
+    }
+
+    let lines = parse_json_lines(&buffer.contents());
+    assert_eq!(lines.len(), 1, "expected exactly one captured log line");
+    assert!(
+        find_field_recursive(&lines[0], "request_id").is_none(),
+        "an event logged outside any HTTP request must not carry a request_id field; found: {}",
+        lines[0]
+    );
+}
+
+/// Test 5 (adversarial / concurrency isolation): concurrent requests must
+/// never cross-contaminate each other's `request_id` in their log trails --
+/// guards against a shared mutable/global ID instead of a genuine per-request
+/// span field.
+#[tokio::test]
+async fn test_concurrent_requests_never_share_request_id_across_their_log_trails() {
+    let buffer = CaptureBuffer::default();
+    let subscriber = build_json_subscriber(buffer.clone());
+
+    let app = Router::new()
+        .route("/test", get(nested_logging_handler))
+        .layer(middleware::from_fn(tracing_middleware));
+
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    const CONCURRENT_REQUESTS: usize = 5;
+    let mut handles = Vec::with_capacity(CONCURRENT_REQUESTS);
+    for _ in 0..CONCURRENT_REQUESTS {
+        let app = app.clone();
+        handles.push(tokio::spawn(async move {
+            let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
+            let response = app.oneshot(request).await.unwrap();
+            request_id_header(&response)
+        }));
+    }
+
+    let mut ids = Vec::with_capacity(CONCURRENT_REQUESTS);
+    for handle in handles {
+        ids.push(handle.await.expect("spawned request task must not panic"));
+    }
+
+    let mut unique_ids = ids.clone();
+    unique_ids.sort();
+    unique_ids.dedup();
+    assert_eq!(
+        unique_ids.len(),
+        ids.len(),
+        "each concurrent request must receive its own distinct request_id; got {:?}",
+        ids
+    );
+
+    let lines = parse_json_lines(&buffer.contents());
+    for line in &lines {
+        if let Some(found) = find_field_recursive(line, "request_id").and_then(|v| v.as_str()) {
+            assert!(
+                ids.contains(&found.to_string()),
+                "log line request_id '{}' does not match any of the {} issued request IDs {:?} \
+                 -- possible cross-request leak",
+                found,
+                CONCURRENT_REQUESTS,
+                ids
+            );
+        }
+    }
+}

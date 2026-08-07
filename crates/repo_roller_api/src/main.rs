@@ -16,6 +16,7 @@ use std::env;
 mod errors;
 mod handlers;
 mod http_metrics;
+mod logging;
 mod middleware;
 mod models;
 mod routes;
