@@ -55,6 +55,23 @@ fn arb_json_value() -> impl Strategy<Value = serde_json::Value> {
     ]
 }
 
+/// Collapses `(key, value)` pairs that share a key down to a single entry
+/// per key, keeping the *last* value for each -- mirroring the last-write-
+/// wins semantics of inserting into a `serde_json::Map` in `build_line`.
+/// Used to make per-pair "did this survive unchanged?" assertions
+/// well-defined even when the generator produces the same key twice with
+/// different values.
+fn dedup_pairs_keep_last(
+    pairs: &[(String, serde_json::Value)],
+) -> Vec<(String, serde_json::Value)> {
+    let mut deduped: std::collections::BTreeMap<String, serde_json::Value> =
+        std::collections::BTreeMap::new();
+    for (k, v) in pairs {
+        deduped.insert(k.clone(), v.clone());
+    }
+    deduped.into_iter().collect()
+}
+
 fn build_line(
     safe_pairs: &[(String, serde_json::Value)],
     sensitive_pairs: &[(String, serde_json::Value)],
@@ -96,6 +113,10 @@ proptest! {
             .and_then(|f| f.as_object())
             .expect("fields object must survive redaction");
 
+        // Safe even when `sensitive_pairs` contains duplicate keys with
+        // different values: every occurrence names a key that must map to
+        // the same constant `REDACTED_MARKER`, so the assertion never
+        // depends on which duplicate's original value "won".
         for (k, _) in &sensitive_pairs {
             prop_assert_eq!(
                 out_fields.get(k).cloned(),
@@ -112,6 +133,13 @@ proptest! {
         sensitive_pairs in prop::collection::vec((sensitive_key_strategy(), arb_json_value()), 0..4),
         safe_pairs in prop::collection::vec((safe_key_strategy(), arb_json_value()), 1..6),
     ) {
+        // `safe_key_strategy` draws with replacement, so `safe_pairs` may
+        // contain the same key twice with different generated values.
+        // `build_line` inserts pairs into a `serde_json::Map` (last write
+        // wins), so only the deduplicated view is well-defined to assert
+        // against below.
+        let safe_pairs = dedup_pairs_keep_last(&safe_pairs);
+
         let line = build_line(&safe_pairs, &sensitive_pairs);
         let redacted = redact_sensitive_fields(&line);
         let parsed: serde_json::Value = serde_json::from_str(&redacted)
@@ -139,6 +167,11 @@ proptest! {
         let once = redact_sensitive_fields(&line);
         let twice = redact_sensitive_fields(&once);
 
+        // Safe even with duplicate keys in `safe_pairs`/`sensitive_pairs`:
+        // this only compares the two fully-parsed outputs structurally, and
+        // never re-derives an expectation from the original pairs, so
+        // last-write-wins collapse (which happens identically both times)
+        // cannot make the assertion unsatisfiable.
         let v1: serde_json::Value = serde_json::from_str(&once).unwrap();
         let v2: serde_json::Value = serde_json::from_str(&twice).unwrap();
         prop_assert_eq!(v1, v2);
