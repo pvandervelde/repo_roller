@@ -18,6 +18,7 @@ type: "reference"
 | `API_HOST` | No | `0.0.0.0` | Network interface to bind to |
 | `API_PORT` | No | `8080` | Port to listen on |
 | `RUST_LOG` | No | `info` | Log level filter: `error`, `warn`, `info`, `debug`, `trace`. Supports per-module filters (e.g. `repo_roller_core=debug,info`). |
+| `LOG_FORMAT` | No | `json` | Log output format. `json` (default) emits machine-readable structured JSON lines with sensitive fields (tokens, passwords, secrets, etc.) automatically redacted; set to `pretty` for human-readable output during local development. |
 
 ### Secret resolver variables
 

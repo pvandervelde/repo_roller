@@ -7,6 +7,8 @@
 //! - `API_PORT`: Port to listen on (default: 8080)
 //! - `API_HOST`: Host to bind to (default: 0.0.0.0)
 //! - `RUST_LOG`: Log level (default: info)
+//! - `LOG_FORMAT`: Log output format -- `json` (default, machine-readable) or
+//!   `pretty` (human-readable, for local development)
 //! - `METADATA_REPOSITORY_NAME`: Name of metadata repository (default: .reporoller)
 //! - `GITHUB_APP_ID`: GitHub App ID (required)
 //! - `GITHUB_APP_PRIVATE_KEY`: GitHub App private key in PEM format (required)
@@ -281,10 +283,10 @@ async fn main() -> anyhow::Result<()> {
         .install_default()
         .ok();
 
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
-        .init();
+    // Initialize tracing. JSON output is the default (production-safe,
+    // machine-readable); set LOG_FORMAT=pretty for human-readable output
+    // during local development. See `logging::init_tracing` for details.
+    logging::init_tracing();
 
     // Load configuration from environment
     let config = ApiConfig {

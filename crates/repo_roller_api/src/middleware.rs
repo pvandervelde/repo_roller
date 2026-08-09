@@ -27,6 +27,7 @@ use axum::{
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::Instrument;
 
 use crate::errors::{ErrorDetails, ErrorResponse};
 use crate::AppState;
@@ -261,26 +262,43 @@ pub async fn organization_auth_middleware(
 
 /// Request tracing middleware.
 ///
-/// Adds request ID and logging context for observability.
+/// Generates a per-request correlation ID (`request_id`) and attaches it as
+/// a `tracing` span field on the `http_request` span that wraps the entire
+/// request lifecycle. Because it is a span field rather than a one-off event
+/// field, every log line emitted anywhere in the call stack while this
+/// request is being handled -- including deep inside handlers or downstream
+/// crates -- automatically inherits `request_id`. The same value is also
+/// returned to the caller as an `X-Request-Id` response header so client-
+/// and server-side logs can be correlated.
 pub async fn tracing_middleware(request: Request, next: Next) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
 
-    tracing::info!(
+    let span = tracing::info_span!(
+        "http_request",
         request_id = %request_id,
         method = %request.method(),
         uri = %request.uri(),
-        "Request started"
     );
 
-    let response = next.run(request).await;
+    async move {
+        tracing::info!("Request started");
 
-    tracing::info!(
-        request_id = %request_id,
-        status = %response.status(),
-        "Request completed"
-    );
+        let mut response = next.run(request).await;
 
-    response
+        tracing::info!(status = %response.status(), "Request completed");
+
+        if let Ok(header_value) = axum::http::HeaderValue::from_str(&request_id) {
+            response
+                .headers_mut()
+                .insert("x-request-id", header_value);
+        } else {
+            tracing::warn!("Failed to build X-Request-Id header from generated request_id");
+        }
+
+        response
+    }
+    .instrument(span)
+    .await
 }
 
 /// Authentication errors

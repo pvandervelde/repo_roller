@@ -2,18 +2,11 @@
 //! selection and a sanitization layer that redacts sensitive field values
 //! before they reach any log sink.
 //!
-//! # TDD RED PHASE
-//!
-//! Every function below is stubbed with `todo!()` and MUST be implemented by
-//! the Coder. This file (together with its test siblings `logging_tests.rs`
-//! and `logging_proptests.rs`) defines the informal interface contract for
+//! This file (together with its test siblings `logging_tests.rs` and
+//! `logging_proptests.rs`) defines the informal interface contract for
 //! Task #1 ("Logging: JSON output, correlation ID, sanitization layer"),
 //! since no dedicated interface spec file exists for it (see task context:
 //! "No dedicated interface spec file for logging/middleware exists").
-//!
-//! Mirrors the precedent already established in this crate by
-//! `http_metrics.rs` (also introduced this way: stub + doc contract, tests
-//! written first, Coder implements in place).
 //!
 //! ## Contract
 //!
@@ -124,8 +117,10 @@ pub const LOG_FORMAT_ENV_VAR: &str = "LOG_FORMAT";
 ///
 /// See the module-level contract for the exact matching rules.
 pub fn resolve_log_format(raw_env_value: Option<&str>) -> LogFormat {
-    let _ = raw_env_value;
-    todo!("Coder: implement per the contract documented in this module's doc comment")
+    match raw_env_value {
+        Some(value) if value.eq_ignore_ascii_case("pretty") => LogFormat::Pretty,
+        _ => LogFormat::Json,
+    }
 }
 
 /// Case-insensitive, substring-matched deny-list of field-name fragments
@@ -146,16 +141,102 @@ pub const REDACTED_MARKER: &str = "[REDACTED]";
 /// Returns `true` if `field_name` matches [`SENSITIVE_FIELD_NAMES`] per the
 /// contract documented on this module (case-insensitive substring match).
 pub fn is_sensitive_field_name(field_name: &str) -> bool {
-    let _ = field_name;
-    todo!("Coder: implement per the contract documented in this module's doc comment")
+    let lowercased = field_name.to_lowercase();
+    SENSITIVE_FIELD_NAMES
+        .iter()
+        .any(|fragment| lowercased.contains(fragment))
+}
+
+/// Recursively walks a mutable JSON value, replacing the value of every
+/// object key that matches [`is_sensitive_field_name`] with
+/// [`REDACTED_MARKER`], and recursing into nested objects/arrays otherwise.
+fn redact_value_in_place(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, nested) in map.iter_mut() {
+                if is_sensitive_field_name(key) {
+                    *nested = serde_json::Value::String(REDACTED_MARKER.to_string());
+                } else {
+                    redact_value_in_place(nested);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items.iter_mut() {
+                redact_value_in_place(item);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Redacts every sensitive-named field's value in a single formatted JSON
 /// log line. See the module-level contract for the exact behaviour
 /// required, including recursion, non-JSON passthrough, and idempotency.
 pub fn redact_sensitive_fields(json_line: &str) -> String {
-    let _ = json_line;
-    todo!("Coder: implement per the contract documented in this module's doc comment")
+    let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(json_line) else {
+        return json_line.to_string();
+    };
+
+    redact_value_in_place(&mut parsed);
+
+    serde_json::to_string(&parsed).unwrap_or_else(|_| json_line.to_string())
+}
+
+/// A `std::io::Write` wrapper that redacts sensitive field values (via
+/// [`redact_sensitive_fields`]) before forwarding bytes to the wrapped
+/// writer.
+///
+/// Relies on `tracing_subscriber::fmt`'s implementation detail (confirmed
+/// against `tracing-subscriber` 0.3.23's `fmt_layer.rs`) that a single
+/// formatted event -- JSON body plus trailing newline -- is always delivered
+/// to the writer via exactly one `write_all` call. This lets us treat every
+/// `write` call as "one complete log line" rather than needing to buffer
+/// across calls.
+struct SanitizingWriter<W> {
+    inner: W,
+}
+
+impl<W: std::io::Write> std::io::Write for SanitizingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let text = String::from_utf8_lossy(buf);
+        let (body, had_trailing_newline) = match text.strip_suffix('\n') {
+            Some(stripped) => (stripped, true),
+            None => (text.as_ref(), false),
+        };
+
+        let mut sanitized = redact_sensitive_fields(body).into_bytes();
+        if had_trailing_newline {
+            sanitized.push(b'\n');
+        }
+
+        self.inner.write_all(&sanitized)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// A `tracing_subscriber::fmt::MakeWriter` that wraps every writer it
+/// produces in a [`SanitizingWriter`].
+#[derive(Clone)]
+struct SanitizingMakeWriter<W> {
+    inner: W,
+}
+
+impl<'a, W> tracing_subscriber::fmt::MakeWriter<'a> for SanitizingMakeWriter<W>
+where
+    W: tracing_subscriber::fmt::MakeWriter<'a>,
+{
+    type Writer = SanitizingWriter<W::Writer>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        SanitizingWriter {
+            inner: self.inner.make_writer(),
+        }
+    }
 }
 
 /// Builds a JSON-formatted `tracing::Subscriber` that writes to `writer` and
@@ -164,21 +245,17 @@ pub fn redact_sensitive_fields(json_line: &str) -> String {
 ///
 /// Exposed chiefly for testing -- production start-up should call
 /// [`init_tracing`] instead.
-///
-/// # Implementation note for the Coder
-/// One valid approach: compose
-/// `tracing_subscriber::fmt::layer().json().with_writer(writer)` with a
-/// `tracing_subscriber::fmt::MakeWriter` wrapper that post-processes each
-/// completed write through [`redact_sensitive_fields`] before forwarding to
-/// the real writer. A custom `FormatEvent` / `FormatFields` implementation
-/// is another valid approach. Either satisfies this contract as long as
-/// `logging_tests` passes.
 pub fn build_sanitizing_json_subscriber<W>(writer: W) -> Box<dyn tracing::Subscriber + Send + Sync>
 where
     W: for<'writer> tracing_subscriber::fmt::MakeWriter<'writer> + Send + Sync + 'static,
 {
-    let _ = writer;
-    todo!("Coder: implement per the contract documented in this module's doc comment")
+    let sanitizing_writer = SanitizingMakeWriter { inner: writer };
+    Box::new(
+        tracing_subscriber::fmt()
+            .json()
+            .with_writer(sanitizing_writer)
+            .finish(),
+    )
 }
 
 /// Initializes the process-global tracing subscriber for the API binary.
@@ -194,7 +271,22 @@ where
 /// this process -- mirrors `tracing_subscriber::...::init()`'s existing
 /// panic-on-double-init behaviour. Callable at most once per process.
 pub fn init_tracing() {
-    todo!("Coder: implement per the contract documented in this module's doc comment")
+    let format = resolve_log_format(std::env::var(LOG_FORMAT_ENV_VAR).ok().as_deref());
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let env_filter = tracing_subscriber::EnvFilter::new(filter);
+
+    match format {
+        LogFormat::Pretty => {
+            tracing_subscriber::fmt().with_env_filter(env_filter).init();
+        }
+        LogFormat::Json => {
+            use tracing_subscriber::layer::SubscriberExt;
+
+            let subscriber = build_sanitizing_json_subscriber(std::io::stdout).with(env_filter);
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("global tracing subscriber must not already be installed");
+        }
+    }
 }
 
 #[cfg(test)]

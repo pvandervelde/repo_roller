@@ -73,6 +73,7 @@ cargo build --release --package repo_roller_api
 export GITHUB_TOKEN="ghs_your_installation_token_here"
 export PORT=3000  # Optional, defaults to 3000
 export RUST_LOG=info  # Optional, defaults to info
+export LOG_FORMAT=pretty  # Optional, defaults to json; use "pretty" for human-readable local dev logs
 export METADATA_REPOSITORY_NAME=".reporoller"  # Optional
 
 # Run the server
@@ -1057,6 +1058,7 @@ FROM alpine:3.20
 
 - `PORT` - HTTP server port (default: 3000)
 - `RUST_LOG` - Logging level (info, debug, trace)
+- `LOG_FORMAT` - Log output format: `json` (default, structured/machine-readable with automatic redaction of sensitive fields) or `pretty` (human-readable, for local development)
 - `METADATA_REPOSITORY_NAME` - Metadata repo name (default: ".reporoller")
 
 **Health Check**:
