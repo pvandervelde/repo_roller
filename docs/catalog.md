@@ -176,12 +176,48 @@ Add to this whenever a reusable component becomes "the standard way".
   `routes::mount_metrics(api_v1, &state)` wires the `/metrics` route + `http_metrics_middleware`
   onto an inner `api_v1` router (used by both `create_router` and `create_router_without_auth`).
 
+### Logging & Correlation (Observability Task 1)
+
+- **`repo_roller_api::logging`** — JSON/pretty log format selection plus a
+  sensitive-field sanitization layer for the API binary's `tracing` subscriber
+  Use when: Wiring up (or extending) the API binary's global tracing subscriber —
+  new call sites should go through `logging::init_tracing()` (already wired in
+  `main.rs`) rather than calling `tracing_subscriber::fmt()...init()` directly
+  Key exports: `resolve_log_format` (pure `LOG_FORMAT` env-var parsing, JSON is the
+  fail-safe default), `SENSITIVE_FIELD_NAMES` / `is_sensitive_field_name`
+  (case-insensitive substring deny-list, biased toward over-redaction),
+  `redact_sensitive_fields` (recursive JSON redaction of object *keys*, idempotent,
+  passes non-JSON input through unchanged), `init_tracing` (production entry point)
+  Pattern: `SanitizingWriter<W: io::Write>` / `SanitizingMakeWriter<W>` wrap any
+  `tracing_subscriber::fmt::MakeWriter` so every formatted JSON line is redacted
+  before any byte reaches the underlying writer; `build_sanitizing_json_subscriber(writer)`
+  assembles the full `Subscriber` from this wrapper (exposed chiefly for tests that
+  supply an in-memory writer). Reuse this `MakeWriter`-wrapping shape for any future
+  writer-level cross-cutting concern rather than inventing a new one.
+  Notes: Redaction matches on object *key* name only (never a field's rendered
+  value/prose) — see the module doc on `crates/repo_roller_api/src/logging.rs` for
+  the full contract, including known spec gaps.
+
+- **Correlation ID / request span** — `repo_roller_api::middleware::tracing_middleware`
+  Use when: Any future outermost middleware layer needs every log line for the
+  lifetime of one request to share an identifier — extend this span's fields
+  rather than inventing a second per-request ID scheme
+  Pattern: generate one UUID v4 per request, open a
+  `tracing::info_span!("http_request", request_id = %request_id, method = %.., uri = %..)`
+  and run the rest of the middleware chain `.instrument`ed inside it (a span field,
+  not a one-off event field) so every nested `tracing::info!`/`warn!`/etc. call
+  anywhere in the handler call stack automatically inherits `request_id`; the same
+  value is echoed back as the `X-Request-Id` response header for client/server log
+  correlation.
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout
   Usage: `use tracing::{info, warn, error, debug};`
   Pattern: Structured logging with spans for request tracking
-  Notes: Never log tokens or secrets (use `?` for Debug, not secrets)
+  Notes: Never log tokens or secrets (use `?` for Debug, not secrets). See
+  "Logging & Correlation (Observability Task 1)" above for the API binary's JSON
+  format selection, sanitization layer, and correlation-ID span pattern.
 
 - **Error handling**: `thiserror` for error derivation
   Pattern: `#[derive(Error, Debug)] enum MyError { ... }`
