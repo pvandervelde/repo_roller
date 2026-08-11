@@ -822,7 +822,9 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "tracing-subscriber",
  "url",
+ "wiremock",
 ]
 
 [[package]]

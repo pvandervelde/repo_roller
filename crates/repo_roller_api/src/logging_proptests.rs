@@ -215,3 +215,180 @@ proptest! {
         prop_assert!(!is_sensitive_field_name(&key));
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// looks_like_secret_value / redact_secret_shaped_substrings — Tier 3
+// property tests.
+//
+// Security remediation (HIGH-severity Security Reviewer finding): value-
+// shaped redaction must catch secrets embedded in free text regardless of
+// exact token content, while never false-positiving on UUIDs, ISO
+// timestamps, or ordinary prose.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// A random GitHub-token-shaped suffix, always long enough (20-60 chars) to
+/// satisfy the documented threshold regardless of the random length drawn.
+fn gh_token_suffix_strategy() -> impl Strategy<Value = String> {
+    "[A-Za-z0-9]{20,60}"
+}
+
+/// A GitHub token prefix drawn from every recognised prefix in the
+/// contract.
+fn gh_token_prefix_strategy() -> impl Strategy<Value = &'static str> {
+    prop_oneof![
+        Just("ghp_"),
+        Just("gho_"),
+        Just("ghu_"),
+        Just("ghs_"),
+        Just("ghr_"),
+        Just("github_pat_"),
+    ]
+}
+
+/// Plain-word "prose" tokens drawn from a small vocabulary of ordinary
+/// words -- used to build surrounding text that must never itself be
+/// misclassified as secret-shaped.
+fn prose_word_strategy() -> impl Strategy<Value = &'static str> {
+    prop_oneof![
+        Just("the"),
+        Just("quick"),
+        Just("brown"),
+        Just("fox"),
+        Just("completed"),
+        Just("request"),
+        Just("successfully"),
+        Just("loaded"),
+        Just("configuration"),
+        Just("for"),
+        Just("organization"),
+    ]
+}
+
+fn prose_strategy() -> impl Strategy<Value = String> {
+    prop::collection::vec(prose_word_strategy(), 0..8).prop_map(|words| words.join(" "))
+}
+
+/// A syntactically valid (lowercase) UUID-v4-shaped string. Must never be
+/// classified as secret-shaped, regardless of which random hex digits are
+/// drawn.
+fn uuid_like_strategy() -> impl Strategy<Value = String> {
+    (
+        "[0-9a-f]{8}",
+        "[0-9a-f]{4}",
+        "[0-9a-f]{4}",
+        "[0-9a-f]{4}",
+        "[0-9a-f]{12}",
+    )
+        .prop_map(|(a, b, c, d, e)| format!("{a}-{b}-{c}-{d}-{e}"))
+}
+
+/// An ISO-8601-shaped timestamp string with random (valid-range) components.
+/// Must never be classified as secret-shaped.
+fn iso_timestamp_like_strategy() -> impl Strategy<Value = String> {
+    (2000u32..2100, 1u32..13, 1u32..29, 0u32..24, 0u32..60, 0u32..60).prop_map(
+        |(year, month, day, hour, minute, second)| {
+            format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+        },
+    )
+}
+
+proptest! {
+    /// Every GitHub-token-prefixed string with a suffix at or above the
+    /// documented 20-char threshold must be classified secret-shaped,
+    /// regardless of which prefix or which specific random suffix is drawn.
+    #[test]
+    fn prop_looks_like_secret_value_gh_token_prefixed_strings_are_always_secret(
+        prefix in gh_token_prefix_strategy(),
+        suffix in gh_token_suffix_strategy(),
+    ) {
+        let value = format!("{prefix}{suffix}");
+        prop_assert!(looks_like_secret_value(&value));
+    }
+
+    /// `looks_like_secret_value` must never panic, no matter how garbled or
+    /// long the input is.
+    #[test]
+    fn prop_looks_like_secret_value_never_panics(input in ".{0,500}") {
+        let _ = looks_like_secret_value(&input);
+    }
+
+    /// `redact_secret_shaped_substrings` must never panic on arbitrary
+    /// input.
+    #[test]
+    fn prop_redact_secret_shaped_substrings_never_panics(input in ".{0,500}") {
+        let _ = redact_secret_shaped_substrings(&input);
+    }
+
+    /// Redacting already-redacted text must be structurally a no-op
+    /// (idempotency), for arbitrary garbled input.
+    #[test]
+    fn prop_redact_secret_shaped_substrings_is_idempotent_on_arbitrary_input(input in ".{0,300}") {
+        let once = redact_secret_shaped_substrings(&input);
+        let twice = redact_secret_shaped_substrings(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    /// A GitHub-token-shaped secret embedded anywhere inside arbitrary
+    /// surrounding prose must be removed from the output, regardless of
+    /// where in the prose it is embedded or what the prose says.
+    #[test]
+    fn prop_redact_secret_shaped_substrings_removes_gh_token_embedded_in_prose(
+        prefix in gh_token_prefix_strategy(),
+        suffix in gh_token_suffix_strategy(),
+        before in prose_strategy(),
+        after in prose_strategy(),
+    ) {
+        let token = format!("{prefix}{suffix}");
+        let text = format!("{before} {token} {after}");
+
+        let redacted = redact_secret_shaped_substrings(&text);
+        prop_assert!(
+            !redacted.contains(&token),
+            "embedded token '{token}' survived redaction in output: {redacted}"
+        );
+    }
+
+    /// UUID-shaped strings must never be classified as secret-shaped,
+    /// regardless of which random hex digits make up the UUID -- this is
+    /// the property-level guarantee behind the "UUIDs must not be
+    /// redacted" false-positive requirement.
+    #[test]
+    fn prop_looks_like_secret_value_uuid_shaped_strings_are_never_secret(uuid in uuid_like_strategy()) {
+        prop_assert!(!looks_like_secret_value(&uuid));
+    }
+
+    /// A UUID embedded in arbitrary prose must survive
+    /// `redact_secret_shaped_substrings` unchanged, regardless of which
+    /// random hex digits make up the UUID.
+    #[test]
+    fn prop_redact_secret_shaped_substrings_never_redacts_embedded_uuid(
+        uuid in uuid_like_strategy(),
+        before in prose_strategy(),
+        after in prose_strategy(),
+    ) {
+        let text = format!("{before} {uuid} {after}");
+        let redacted = redact_secret_shaped_substrings(&text);
+        prop_assert!(
+            redacted.contains(&uuid),
+            "UUID '{uuid}' must survive redaction unchanged in output: {redacted}"
+        );
+    }
+
+    /// ISO-8601-shaped timestamps must never be classified as
+    /// secret-shaped, regardless of the specific (valid-range) date/time
+    /// components drawn.
+    #[test]
+    fn prop_looks_like_secret_value_iso_timestamp_shaped_strings_are_never_secret(
+        timestamp in iso_timestamp_like_strategy(),
+    ) {
+        prop_assert!(!looks_like_secret_value(&timestamp));
+    }
+
+    /// Arbitrary prose built purely from the benign word vocabulary (no
+    /// embedded secret-shaped substring by construction) must never be
+    /// mutated by `redact_secret_shaped_substrings`.
+    #[test]
+    fn prop_redact_secret_shaped_substrings_never_mutates_pure_prose(prose in prose_strategy()) {
+        prop_assert_eq!(redact_secret_shaped_substrings(&prose), prose);
+    }
+}

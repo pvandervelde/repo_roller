@@ -51,12 +51,22 @@
 //!   value's JSON type (string, number, boolean, null, array, object).
 //!   Redaction recurses into nested objects and arrays at any depth (a
 //!   sensitive field nested inside `"span"` must be redacted exactly like
-//!   one nested inside `"fields"`). Field **names** are matched, never field
-//!   **values** -- a `message` field whose prose happens to contain the word
-//!   "token" must NOT be redacted, because `message` is not itself a
-//!   sensitive field name. Non-JSON input (e.g. a pretty-formatted line, or
-//!   garbage) is returned byte-for-byte unchanged -- this function must
-//!   never panic on malformed input. The function must be idempotent:
+//!   one nested inside `"fields"`). Field **names** are matched against
+//!   [`SENSITIVE_FIELD_NAMES`] by keyword, never field **values** by
+//!   keyword -- a `message` field whose prose happens to contain the *word*
+//!   "token" must NOT be redacted on that basis alone, because `message` is
+//!   not itself a sensitive field name and prose is not scanned for
+//!   deny-listed words. Independently of key-name matching, every string
+//!   value in the JSON tree (regardless of which key it is nested under,
+//!   including `message`) is additionally passed through
+//!   [`redact_secret_shaped_substrings`] so that a *secret-shaped* substring
+//!   embedded in free text -- e.g. a raw GitHub token dumped via
+//!   `format!("...: {:?}", config)` -- is redacted even though its
+//!   surrounding field is not itself sensitively named; see "Value-shaped
+//!   secret redaction" below for the exact shapes recognised. Non-JSON input
+//!   (e.g. a pretty-formatted line, or garbage) is returned byte-for-byte
+//!   unchanged -- this function must never panic on malformed input. The
+//!   function must be idempotent:
 //!   `redact_sensitive_fields(&redact_sensitive_fields(x)) == redact_sensitive_fields(x)`
 //!   (structurally, i.e. once parsed back to JSON).
 //! - [`build_sanitizing_json_subscriber`] wires [`redact_sensitive_fields`]
@@ -65,6 +75,57 @@
 //!   writer. Exposed chiefly for testing (a test can supply an in-memory
 //!   writer and inspect captured output); production start-up should go
 //!   through [`init_tracing`] instead.
+//!
+//! ### Value-shaped secret redaction (defense-in-depth)
+//!
+//! Key-name matching (above) only catches a secret when it is the value of
+//! a sensitively-named JSON field. It does nothing for a secret embedded
+//! inside a free-text string via `{:?}`/`{}` interpolation -- e.g.
+//! `tracing::debug!("Loaded config: {:?}", config)`, where `message` is not
+//! a sensitive field name but its *text* may contain a raw credential. The
+//! following two functions add pattern-based, value-level redaction as a
+//! second, independent line of defense, applied regardless of field name:
+//!
+//! - [`looks_like_secret_value`] reports whether an *entire* string matches
+//!   one of the secret-shaped patterns below. A match is a whole-string
+//!   match, not a substring search -- use [`redact_secret_shaped_substrings`]
+//!   to find and redact matches embedded within a larger string.
+//! - [`redact_secret_shaped_substrings`] scans free text for embedded
+//!   substrings matching the same shapes and replaces each one with
+//!   [`REDACTED_MARKER`], leaving the rest of the text untouched. Must never
+//!   panic on any input, and must be idempotent, mirroring
+//!   [`redact_sensitive_fields`]'s guarantees.
+//!
+//! Both functions recognise the following secret shapes (a value/substring
+//! matching any one of them is considered secret-shaped):
+//!
+//! 1. **GitHub token prefix**: one of the literal prefixes `ghp_`, `gho_`,
+//!    `ghu_`, `ghs_`, `ghr_`, `github_pat_`, immediately followed by at
+//!    least 20 characters from `[A-Za-z0-9_]`. (Real GitHub tokens use
+//!    longer suffixes; 20 is a conservative lower bound chosen to avoid
+//!    false negatives on any GitHub token format while still requiring a
+//!    substantial suffix.)
+//! 2. **Bearer-header shape**: the literal word `Bearer` or `bearer`
+//!    followed by exactly one space and at least 8 non-whitespace
+//!    characters (the `Authorization: Bearer <token>` idiom).
+//! 3. **JWT shape**: exactly three `.`-separated segments, each segment
+//!    matching `[A-Za-z0-9_-]{10,}` (at least 10 base64url characters) --
+//!    i.e. `^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$`.
+//! 4. **Generic high-entropy token**: a contiguous run of at least 32
+//!    characters drawn *only* from `[A-Za-z0-9+/]` (deliberately excluding
+//!    `-`, `:`, and other punctuation) that contains at least one uppercase
+//!    letter, one lowercase letter, and one digit. Restricting the alphabet
+//!    to exclude `-`/`:` is what keeps this heuristic from firing on UUIDs
+//!    (which contain `-`) and ISO-8601 timestamps (which contain `-`, `:`,
+//!    `T`, `Z`); requiring mixed case + digit keeps it from firing on
+//!    all-lowercase content such as git commit SHAs or ordinary prose.
+//!
+//! These exact thresholds (20-char suffix, 8-char Bearer token, 10-char JWT
+//! segments, 32-char high-entropy run) are a Tester judgement call -- see
+//! "Known spec gaps" below.
+//!
+//! ### Production entry point
+//!
 //! - [`init_tracing`] installs the process-global default subscriber for the
 //!   API binary: format selected via `resolve_log_format` reading the
 //!   `LOG_FORMAT` env var, level filter via `RUST_LOG` (default `"info"`),
@@ -96,6 +157,22 @@
 //!   security rule's intent (defense-in-depth, never leak secrets) at the
 //!   cost of occasionally redacting a field that merely mentions a
 //!   deny-listed word in a compound name.
+//! - The exact secret-shape patterns and thresholds recognised by
+//!   [`looks_like_secret_value`] / [`redact_secret_shaped_substrings`] (see
+//!   "Value-shaped secret redaction" above) are a Tester judgement call made
+//!   in response to a HIGH-severity Security Reviewer finding (free-text
+//!   `{:?}`/`{}` interpolation bypasses key-name-only redaction), not
+//!   dictated by `docs/spec/assertions.md`. The four patterns (GitHub token
+//!   prefix, Bearer-header shape, JWT shape, generic high-entropy run) and
+//!   their length thresholds were chosen to catch the concrete reviewer
+//!   example (a raw `ghp_...` token dumped via `{:?}`) and closely related
+//!   shapes, while keeping the false-positive rate on ordinary prose, short
+//!   strings, URLs, UUIDs, and ISO-8601 timestamps at zero for every
+//!   adversarial and property-based example this suite exercises. A future
+//!   change to these thresholds only requires updating the doc comment
+//!   above and the corresponding tests; no test in this suite hard-codes a
+//!   specific implementation strategy (regex vs. hand-rolled scan), only
+//!   input/output behaviour.
 
 /// Log output format for the API binary's tracing subscriber.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,6 +222,57 @@ pub fn is_sensitive_field_name(field_name: &str) -> bool {
     SENSITIVE_FIELD_NAMES
         .iter()
         .any(|fragment| lowercased.contains(fragment))
+}
+
+/// Reports whether `value`, taken as a whole string, matches one of the
+/// secret-shaped patterns documented in the module-level "Value-shaped
+/// secret redaction" contract (GitHub token prefix, Bearer-header shape,
+/// JWT shape, or generic high-entropy run).
+///
+/// This is a **whole-string** match: `looks_like_secret_value("prefix ghp_
+/// abc...")` (secret embedded with surrounding text) must return `false`
+/// even though the string *contains* a secret-shaped substring -- use
+/// [`redact_secret_shaped_substrings`] to find and redact matches embedded
+/// within a larger string.
+///
+/// Must never panic on any input, including the empty string, non-ASCII
+/// unicode, or pathologically long input.
+///
+/// # Contract (see module docs for full detail)
+/// - GitHub token prefix (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`/`github_pat_`)
+///   followed by >= 20 chars of `[A-Za-z0-9_]` covering the whole string.
+/// - `Bearer `/`bearer ` followed by >= 8 non-whitespace chars covering the
+///   whole string.
+/// - Three `.`-separated segments, each >= 10 chars of `[A-Za-z0-9_-]`,
+///   covering the whole string (JWT shape).
+/// - A single contiguous run of >= 32 chars from `[A-Za-z0-9+/]` containing
+///   at least one uppercase letter, one lowercase letter, and one digit,
+///   covering the whole string (generic high-entropy token).
+pub fn looks_like_secret_value(value: &str) -> bool {
+    let _ = value;
+    todo!("implement value-shaped secret detection per the module-level contract")
+}
+
+/// Scans `text` for embedded substrings matching the same secret shapes as
+/// [`looks_like_secret_value`] and replaces each match with
+/// [`REDACTED_MARKER`], leaving every other byte of `text` untouched.
+///
+/// Unlike [`looks_like_secret_value`] (whole-string match), this performs a
+/// substring search so that a secret embedded inside a larger free-text
+/// message -- e.g. `format!("Loaded config: {:?}", config)` where `config`'s
+/// `Debug` output contains a raw token -- is found and redacted regardless
+/// of what surrounds it.
+///
+/// If no secret-shaped substring is found, returns a value equal to `text`
+/// (callers should not assume pointer/allocation identity, only content
+/// equality). Must be idempotent:
+/// `redact_secret_shaped_substrings(&redact_secret_shaped_substrings(x)) ==
+/// redact_secret_shaped_substrings(x)`. Must never panic on any input,
+/// including the empty string, non-ASCII unicode, or pathologically long
+/// input.
+pub fn redact_secret_shaped_substrings(text: &str) -> String {
+    let _ = text;
+    todo!("implement value-shaped secret substring redaction per the module-level contract")
 }
 
 /// Recursively walks a mutable JSON value, replacing the value of every
