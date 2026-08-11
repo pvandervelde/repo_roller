@@ -32,7 +32,7 @@ reqwest.workspace = true
 
 # Docker container testing
 testcontainers = "0.27"
-bollard = "0.20"
+bollard = "0.21"
 
 # Utilities
 uuid.workspace = true
