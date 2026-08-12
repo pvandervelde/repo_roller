@@ -248,9 +248,23 @@ pub fn is_sensitive_field_name(field_name: &str) -> bool {
 /// - A single contiguous run of >= 32 chars from `[A-Za-z0-9+/]` containing
 ///   at least one uppercase letter, one lowercase letter, and one digit,
 ///   covering the whole string (generic high-entropy token).
+///
+/// Exercised directly by this module's test suite (unit, adversarial, and
+/// property tests) as the whole-string counterpart to
+/// [`redact_secret_shaped_substrings`]'s substring scan; production code
+/// only calls the substring-scanning sibling (via [`redact_value_in_place`]),
+/// so -- like `NoOpHttpMetrics` in `http_metrics.rs` -- this function needs
+/// an explicit `allow` in this binary crate (no external consumers exist to
+/// exempt it from the dead-code lint the way a library crate's `pub` API
+/// would be).
+#[allow(dead_code)]
 pub fn looks_like_secret_value(value: &str) -> bool {
-    let _ = value;
-    todo!("implement value-shaped secret detection per the module-level contract")
+    if value.is_empty() {
+        return false;
+    }
+    let scanner = SecretShapeScanner::new(value);
+    let total = scanner.len();
+    scanner.longest_match_at(0).is_some_and(|len| len == total)
 }
 
 /// Scans `text` for embedded substrings matching the same secret shapes as
@@ -271,8 +285,225 @@ pub fn looks_like_secret_value(value: &str) -> bool {
 /// including the empty string, non-ASCII unicode, or pathologically long
 /// input.
 pub fn redact_secret_shaped_substrings(text: &str) -> String {
-    let _ = text;
-    todo!("implement value-shaped secret substring redaction per the module-level contract")
+    if text.is_empty() {
+        return String::new();
+    }
+    let scanner = SecretShapeScanner::new(text);
+    let mut result = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < scanner.len() {
+        if let Some(match_len) = scanner.longest_match_at(i) {
+            result.push_str(REDACTED_MARKER);
+            i += match_len;
+        } else {
+            result.push(scanner.char_at(i));
+            i += 1;
+        }
+    }
+    result
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Value-shaped secret detection internals.
+//
+// `SecretShapeScanner` precomputes, in a single O(n) backward pass per
+// character class, the length of the maximal run of "shape-compatible"
+// characters starting at every position in the input (and, for the
+// generic high-entropy shape, whether that run contains an uppercase
+// letter / lowercase letter / digit). This lets both `looks_like_secret_value`
+// and `redact_secret_shaped_substrings` answer "what/how long is the match
+// (if any) starting at position i?" in O(1) per position, so the forward
+// scan in `redact_secret_shaped_substrings` is overall O(n) rather than
+// O(n^2) -- which matters for adversarial inputs like a single very long
+// homogeneous run of alphanumeric characters (see
+// `test_redact_secret_shaped_substrings_long_unicode_input_does_not_panic`
+// / the property tests exercising up to 500-char arbitrary input).
+// ─────────────────────────────────────────────────────────────────────────
+
+/// One of the GitHub personal-access-token-family prefixes recognised by
+/// the "GitHub token prefix" secret shape.
+const GH_TOKEN_PREFIXES: &[&str] = &["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"];
+const GH_TOKEN_SUFFIX_MIN_LEN: usize = 20;
+const BEARER_TOKEN_MIN_LEN: usize = 8;
+const JWT_SEGMENT_MIN_LEN: usize = 10;
+const HIGH_ENTROPY_MIN_LEN: usize = 32;
+
+fn is_gh_token_suffix_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+fn is_jwt_segment_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-'
+}
+
+fn is_high_entropy_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '+' || c == '/'
+}
+
+/// Per-position maximal run length of characters satisfying a fixed
+/// predicate, computed once for the whole input via a backward dynamic-
+/// programming pass so that later lookups are O(1).
+struct CharRunIndex {
+    run_len: Vec<usize>,
+}
+
+impl CharRunIndex {
+    fn build(chars: &[char], predicate: impl Fn(char) -> bool) -> Self {
+        let mut run_len = vec![0usize; chars.len() + 1];
+        for i in (0..chars.len()).rev() {
+            run_len[i] = if predicate(chars[i]) { run_len[i + 1] + 1 } else { 0 };
+        }
+        Self { run_len }
+    }
+
+    /// Length of the maximal run starting at `i` (0 if out of bounds or `i`
+    /// itself does not satisfy the predicate).
+    fn at(&self, i: usize) -> usize {
+        self.run_len.get(i).copied().unwrap_or(0)
+    }
+}
+
+/// Per-position maximal run of [`is_high_entropy_char`] characters, plus
+/// whether that specific run contains an uppercase letter / lowercase
+/// letter / digit anywhere within it. Computed together in one backward
+/// pass since a run starting later in the same block is always a suffix of
+/// the run starting earlier, so these properties can be propagated
+/// incrementally.
+struct HighEntropyIndex {
+    run_len: Vec<usize>,
+    has_upper: Vec<bool>,
+    has_lower: Vec<bool>,
+    has_digit: Vec<bool>,
+}
+
+impl HighEntropyIndex {
+    fn build(chars: &[char]) -> Self {
+        let n = chars.len();
+        let mut run_len = vec![0usize; n + 1];
+        let mut has_upper = vec![false; n + 1];
+        let mut has_lower = vec![false; n + 1];
+        let mut has_digit = vec![false; n + 1];
+        for i in (0..n).rev() {
+            if is_high_entropy_char(chars[i]) {
+                run_len[i] = run_len[i + 1] + 1;
+                has_upper[i] = chars[i].is_ascii_uppercase() || has_upper[i + 1];
+                has_lower[i] = chars[i].is_ascii_lowercase() || has_lower[i + 1];
+                has_digit[i] = chars[i].is_ascii_digit() || has_digit[i + 1];
+            }
+        }
+        Self {
+            run_len,
+            has_upper,
+            has_lower,
+            has_digit,
+        }
+    }
+
+    /// Match length at `i` if the maximal high-entropy run starting there
+    /// meets both the length threshold and the mixed-case-plus-digit
+    /// requirement, `None` otherwise.
+    fn match_len_at(&self, i: usize) -> Option<usize> {
+        let len = *self.run_len.get(i)?;
+        let qualifies = len >= HIGH_ENTROPY_MIN_LEN
+            && self.has_upper.get(i).copied().unwrap_or(false)
+            && self.has_lower.get(i).copied().unwrap_or(false)
+            && self.has_digit.get(i).copied().unwrap_or(false);
+        qualifies.then_some(len)
+    }
+}
+
+/// Precomputed indices over one input string's characters, used to find the
+/// longest secret-shaped match (if any) starting at any position in O(1).
+struct SecretShapeScanner {
+    chars: Vec<char>,
+    gh_suffix: CharRunIndex,
+    jwt_segment: CharRunIndex,
+    bearer_token: CharRunIndex,
+    high_entropy: HighEntropyIndex,
+}
+
+impl SecretShapeScanner {
+    fn new(text: &str) -> Self {
+        let chars: Vec<char> = text.chars().collect();
+        let gh_suffix = CharRunIndex::build(&chars, is_gh_token_suffix_char);
+        let jwt_segment = CharRunIndex::build(&chars, is_jwt_segment_char);
+        let bearer_token = CharRunIndex::build(&chars, |c: char| !c.is_whitespace());
+        let high_entropy = HighEntropyIndex::build(&chars);
+        Self {
+            chars,
+            gh_suffix,
+            jwt_segment,
+            bearer_token,
+            high_entropy,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.chars.len()
+    }
+
+    fn char_at(&self, i: usize) -> char {
+        self.chars[i]
+    }
+
+    /// Whether `self.chars[i..]` starts with the literal (ASCII) string
+    /// `literal`.
+    fn matches_literal(&self, i: usize, literal: &str) -> bool {
+        let literal_chars: Vec<char> = literal.chars().collect();
+        let end = i + literal_chars.len();
+        end <= self.chars.len() && self.chars[i..end] == literal_chars[..]
+    }
+
+    fn gh_token_match_len(&self, i: usize) -> Option<usize> {
+        GH_TOKEN_PREFIXES.iter().find_map(|prefix| {
+            if !self.matches_literal(i, prefix) {
+                return None;
+            }
+            let prefix_len = prefix.chars().count();
+            let suffix_len = self.gh_suffix.at(i + prefix_len);
+            (suffix_len >= GH_TOKEN_SUFFIX_MIN_LEN).then_some(prefix_len + suffix_len)
+        })
+    }
+
+    fn bearer_match_len(&self, i: usize) -> Option<usize> {
+        ["Bearer ", "bearer "].into_iter().find_map(|word| {
+            if !self.matches_literal(i, word) {
+                return None;
+            }
+            let word_len = word.chars().count();
+            let token_len = self.bearer_token.at(i + word_len);
+            (token_len >= BEARER_TOKEN_MIN_LEN).then_some(word_len + token_len)
+        })
+    }
+
+    fn jwt_match_len(&self, i: usize) -> Option<usize> {
+        let seg1 = self.jwt_segment.at(i);
+        if seg1 < JWT_SEGMENT_MIN_LEN || self.chars.get(i + seg1) != Some(&'.') {
+            return None;
+        }
+        let seg2_start = i + seg1 + 1;
+        let seg2 = self.jwt_segment.at(seg2_start);
+        if seg2 < JWT_SEGMENT_MIN_LEN || self.chars.get(seg2_start + seg2) != Some(&'.') {
+            return None;
+        }
+        let seg3_start = seg2_start + seg2 + 1;
+        let seg3 = self.jwt_segment.at(seg3_start);
+        (seg3 >= JWT_SEGMENT_MIN_LEN).then_some(seg1 + 1 + seg2 + 1 + seg3)
+    }
+
+    /// Longest secret-shaped match starting exactly at position `i`, across
+    /// all four recognised shapes, or `None` if none matches there.
+    fn longest_match_at(&self, i: usize) -> Option<usize> {
+        [
+            self.gh_token_match_len(i),
+            self.bearer_match_len(i),
+            self.jwt_match_len(i),
+            self.high_entropy.match_len_at(i),
+        ]
+        .into_iter()
+        .flatten()
+        .max()
+    }
 }
 
 /// Recursively walks a mutable JSON value, replacing the value of every
@@ -293,6 +524,9 @@ fn redact_value_in_place(value: &mut serde_json::Value) {
             for item in items.iter_mut() {
                 redact_value_in_place(item);
             }
+        }
+        serde_json::Value::String(text) => {
+            *text = redact_secret_shaped_substrings(text);
         }
         _ => {}
     }

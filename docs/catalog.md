@@ -187,16 +187,34 @@ Add to this whenever a reusable component becomes "the standard way".
   fail-safe default), `SENSITIVE_FIELD_NAMES` / `is_sensitive_field_name`
   (case-insensitive substring deny-list, biased toward over-redaction),
   `redact_sensitive_fields` (recursive JSON redaction of object *keys*, idempotent,
-  passes non-JSON input through unchanged), `init_tracing` (production entry point)
+  passes non-JSON input through unchanged), `looks_like_secret_value` /
+  `redact_secret_shaped_substrings` (value-level, pattern-based secret detection —
+  see below), `init_tracing` (production entry point)
   Pattern: `SanitizingWriter<W: io::Write>` / `SanitizingMakeWriter<W>` wrap any
   `tracing_subscriber::fmt::MakeWriter` so every formatted JSON line is redacted
   before any byte reaches the underlying writer; `build_sanitizing_json_subscriber(writer)`
   assembles the full `Subscriber` from this wrapper (exposed chiefly for tests that
   supply an in-memory writer). Reuse this `MakeWriter`-wrapping shape for any future
   writer-level cross-cutting concern rather than inventing a new one.
-  Notes: Redaction matches on object *key* name only (never a field's rendered
-  value/prose) — see the module doc on `crates/repo_roller_api/src/logging.rs` for
-  the full contract, including known spec gaps.
+  Notes: Redaction matches on object *key* name (never a field's rendered value/prose
+  by keyword), **and independently** scans every string value in the JSON tree
+  (including `message`) for secret-*shaped* substrings via
+  `redact_secret_shaped_substrings` — this is defense-in-depth against a secret
+  reaching a log line via `{:?}`/`{}` interpolation into free text rather than as a
+  sensitively-named field (the HIGH-severity gap fixed alongside
+  `crates/config_manager/src/github_metadata_provider.rs`'s `load_template_configuration`,
+  see below). Recognised shapes: GitHub token prefix (`ghp_`/`gho_`/`ghu_`/`ghs_`/
+  `ghr_`/`github_pat_` + >=20 char suffix), the literal word `Bearer`/`bearer`
+  followed by one space and >=8 non-whitespace chars, three-segment JWT shape,
+  and a >=32-char high-entropy run of
+  `[A-Za-z0-9+/]` containing mixed case + a digit — see the module doc on
+  `crates/repo_roller_api/src/logging.rs` for the full contract, exact thresholds,
+  and known spec gaps. Internal pattern: `SecretShapeScanner` (private,
+  `logging.rs`) precomputes per-position maximal-run lengths for each shape's
+  character class via one backward O(n) dynamic-programming pass per class, so the
+  forward substring scan is O(n) overall rather than O(n^2) on long homogeneous
+  runs — reuse this precomputed-run-length approach rather than a naive
+  per-position rescan if a future shape needs adding.
 
 - **Correlation ID / request span** — `repo_roller_api::middleware::tracing_middleware`
   Use when: Any future outermost middleware layer needs every log line for the
