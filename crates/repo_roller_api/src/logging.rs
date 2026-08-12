@@ -454,26 +454,35 @@ impl SecretShapeScanner {
         end <= self.chars.len() && self.chars[i..end] == literal_chars[..]
     }
 
-    fn gh_token_match_len(&self, i: usize) -> Option<usize> {
-        GH_TOKEN_PREFIXES.iter().find_map(|prefix| {
-            if !self.matches_literal(i, prefix) {
+    /// Length of a match consisting of one of `literals` found at position
+    /// `i`, immediately followed by a run of at least `min_run_len`
+    /// characters per `run_index`. Shared by the GitHub-token-prefix and
+    /// Bearer-header shapes, which are both "fixed literal prefix, then a
+    /// minimum-length run of a fixed character class" -- only the literal
+    /// set, run index, and threshold differ between them.
+    fn literal_prefixed_run_match_len(
+        &self,
+        i: usize,
+        literals: &[&str],
+        run_index: &CharRunIndex,
+        min_run_len: usize,
+    ) -> Option<usize> {
+        literals.iter().find_map(|literal| {
+            if !self.matches_literal(i, literal) {
                 return None;
             }
-            let prefix_len = prefix.chars().count();
-            let suffix_len = self.gh_suffix.at(i + prefix_len);
-            (suffix_len >= GH_TOKEN_SUFFIX_MIN_LEN).then_some(prefix_len + suffix_len)
+            let literal_len = literal.chars().count();
+            let run_len = run_index.at(i + literal_len);
+            (run_len >= min_run_len).then_some(literal_len + run_len)
         })
     }
 
+    fn gh_token_match_len(&self, i: usize) -> Option<usize> {
+        self.literal_prefixed_run_match_len(i, GH_TOKEN_PREFIXES, &self.gh_suffix, GH_TOKEN_SUFFIX_MIN_LEN)
+    }
+
     fn bearer_match_len(&self, i: usize) -> Option<usize> {
-        ["Bearer ", "bearer "].into_iter().find_map(|word| {
-            if !self.matches_literal(i, word) {
-                return None;
-            }
-            let word_len = word.chars().count();
-            let token_len = self.bearer_token.at(i + word_len);
-            (token_len >= BEARER_TOKEN_MIN_LEN).then_some(word_len + token_len)
-        })
+        self.literal_prefixed_run_match_len(i, &["Bearer ", "bearer "], &self.bearer_token, BEARER_TOKEN_MIN_LEN)
     }
 
     fn jwt_match_len(&self, i: usize) -> Option<usize> {

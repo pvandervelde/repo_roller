@@ -214,7 +214,12 @@ Add to this whenever a reusable component becomes "the standard way".
   character class via one backward O(n) dynamic-programming pass per class, so the
   forward substring scan is O(n) overall rather than O(n^2) on long homogeneous
   runs — reuse this precomputed-run-length approach rather than a naive
-  per-position rescan if a future shape needs adding.
+  per-position rescan if a future shape needs adding. The GitHub-token-prefix and
+  Bearer-header shapes both reduce to "one of a fixed set of literal prefixes,
+  followed by a minimum-length run of a fixed character class" and share that
+  logic via `SecretShapeScanner::literal_prefixed_run_match_len` (private) — reuse
+  this helper (rather than re-deriving the find-map-over-literals shape) for any
+  future shape with the same "literal prefix + threshold run" structure.
 
 - **Correlation ID / request span** — `repo_roller_api::middleware::tracing_middleware`
   Use when: Any future outermost middleware layer needs every log line for the
