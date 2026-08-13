@@ -611,3 +611,53 @@ async fn test_concurrent_requests_never_share_request_id_across_their_log_trails
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// QA audit: kill test for a `cargo mutants` survivor in
+// `organization_auth_middleware`.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// ### Survivor killed
+/// `middleware.rs`: `organization_auth_middleware`'s body replaced with
+/// `Ok(Default::default())`, discarding the call to `next.run(request)`
+/// entirely. No existing test exercised this middleware, so a mutant that
+/// short-circuits the request pipeline and returns an empty default
+/// response (status 200, empty body) instead of forwarding to the next
+/// handler survived undetected -- despite this middleware being documented
+/// as a currently-passthrough authorization layer that the request MUST
+/// still reach the downstream handler through. This test asserts the
+/// downstream handler's distinctive response (a non-default status code and
+/// a non-empty body) is what actually comes back, which a `Default::default()`
+/// stub cannot produce.
+#[tokio::test]
+async fn test_organization_auth_middleware_forwards_request_to_next_handler() {
+    async fn distinctive_handler() -> (StatusCode, &'static str) {
+        (
+            StatusCode::IM_A_TEAPOT,
+            "distinctive-body-from-downstream-handler",
+        )
+    }
+
+    let app = Router::new()
+        .route("/test", get(distinctive_handler))
+        .layer(middleware::from_fn(organization_auth_middleware));
+
+    let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::IM_A_TEAPOT,
+        "organization_auth_middleware must forward the request to the next handler \
+         and return its actual response, not a default-constructed one"
+    );
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("reading response body must succeed");
+    assert_eq!(
+        body_bytes.as_ref(),
+        b"distinctive-body-from-downstream-handler",
+        "the downstream handler's body must survive unchanged through the middleware"
+    );
+}

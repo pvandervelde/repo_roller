@@ -581,7 +581,9 @@ fn test_redact_sensitive_fields_large_array_processes_fully() {
     let redacted = redact_sensitive_fields(&line);
     let parsed: serde_json::Value =
         serde_json::from_str(&redacted).expect("output must remain valid JSON");
-    let fields = parsed["fields"].as_array().expect("fields must be an array");
+    let fields = parsed["fields"]
+        .as_array()
+        .expect("fields must be an array");
     assert_eq!(fields.len(), 50_000, "no elements must be dropped");
     assert!(
         fields
@@ -665,7 +667,9 @@ fn test_redact_sensitive_fields_top_level_json_string_is_not_scanned_for_secrets
 fn test_sanitizing_writer_split_write_across_utf8_boundary_leaks_secret_known_gap() {
     let inner: Vec<u8> = Vec::new();
     let mut writer = SanitizingWriter { inner };
-    let full = "{\"fields\":{\"token\":\"s\u{e9}cret\"}}\n".as_bytes().to_vec();
+    let full = "{\"fields\":{\"token\":\"s\u{e9}cret\"}}\n"
+        .as_bytes()
+        .to_vec();
 
     // Split mid-way through the 2-byte UTF-8 encoding of 'é' (0xC3 0xA9),
     // simulating a writer that does not deliver the whole line in one call.
@@ -722,7 +726,10 @@ impl Write for FlushTrackingWriter {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        *self.flushed.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+        *self
+            .flushed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
         Ok(())
     }
 }
@@ -744,7 +751,10 @@ fn test_sanitizing_writer_flush_forwards_to_inner_writer() {
     Write::flush(&mut writer).expect("flush must succeed");
 
     assert!(
-        *tracker.flushed.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
+        *tracker
+            .flushed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
         "SanitizingWriter::flush must forward to the inner writer's flush()"
     );
 }
@@ -912,7 +922,9 @@ fn test_looks_like_secret_value_url_is_not_secret() {
 
 #[test]
 fn test_looks_like_secret_value_uuid_is_not_secret() {
-    assert!(!looks_like_secret_value("550e8400-e29b-41d4-a716-446655440000"));
+    assert!(!looks_like_secret_value(
+        "550e8400-e29b-41d4-a716-446655440000"
+    ));
 }
 
 #[test]
@@ -1295,5 +1307,344 @@ fn test_configured_subscriber_redacts_secret_shaped_value_inside_formatted_debug
         !output.contains(&token),
         "a secret-shaped value dumped via {{:?}} interpolation into the \
          message must never reach the configured subscriber's writer; got: {output}"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// QA audit (post-remediation adversarial pass): boundary coverage for the
+// Bearer-header and JWT-segment thresholds that the original test suite did
+// not exercise at the exact N-1/N boundary, plus a genuine timing check for
+// the documented O(n) scanning claim (as opposed to the existing
+// `..._does_not_panic` tests, which only prove termination, not complexity).
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Boundary: the Bearer-header token threshold is 8 non-whitespace chars.
+/// 7 chars must NOT match (N-1), 8 chars MUST match (N).
+#[test]
+fn test_looks_like_secret_value_bearer_token_boundary_n_minus_1_is_not_secret() {
+    let value = "Bearer 1234567"; // 7-char token
+    assert_eq!("1234567".len(), 7);
+    assert!(
+        !looks_like_secret_value(value),
+        "a 7-char Bearer token is one short of the 8-char threshold and must not match"
+    );
+}
+
+#[test]
+fn test_looks_like_secret_value_bearer_token_boundary_n_is_secret() {
+    let value = "Bearer 12345678"; // 8-char token
+    assert_eq!("12345678".len(), 8);
+    assert!(
+        looks_like_secret_value(value),
+        "an 8-char Bearer token meets the threshold exactly and must match"
+    );
+}
+
+/// Boundary: JWT segments require >= 10 chars each. A string whose segments
+/// are exactly 9 chars must NOT match (N-1); exactly 10 chars each MUST
+/// match (N).
+#[test]
+fn test_looks_like_secret_value_jwt_segment_boundary_n_minus_1_is_not_secret() {
+    let seg = "a".repeat(9);
+    let value = format!("{seg}.{seg}.{seg}");
+    assert!(
+        !looks_like_secret_value(&value),
+        "9-char JWT segments are one short of the 10-char threshold and must not match"
+    );
+}
+
+#[test]
+fn test_looks_like_secret_value_jwt_segment_boundary_n_is_secret() {
+    let seg = "a".repeat(10);
+    let value = format!("{seg}.{seg}.{seg}");
+    assert!(
+        looks_like_secret_value(&value),
+        "10-char JWT segments meet the threshold exactly and must match"
+    );
+}
+
+/// Adversarial: a JWT-shaped string where only the *last* segment is one
+/// char short must not match -- guards against an implementation that only
+/// checks the first two segments' lengths.
+#[test]
+fn test_looks_like_secret_value_jwt_last_segment_too_short_is_not_secret() {
+    let long_seg = "a".repeat(15);
+    let short_seg = "a".repeat(9);
+    let value = format!("{long_seg}.{long_seg}.{short_seg}");
+    assert!(!looks_like_secret_value(&value));
+}
+
+/// Performance: `redact_secret_shaped_substrings` is documented as O(n) via
+/// `SecretShapeScanner`'s precomputed run indices. Confirm this empirically
+/// (not just "does not panic") by timing a ~200k-char adversarial input
+/// designed to defeat a naive backtracking scanner -- a single homogeneous
+/// run of alphanumeric characters long enough to almost, but not quite,
+/// qualify as a high-entropy match at every position, forcing a naive O(n^2)
+/// implementation (re-scanning from each position on failure) to do
+/// quadratic work. If scanning were secretly quadratic, 200k chars would
+/// take on the order of seconds to tens of seconds on any real hardware;
+/// this asserts a generous upper bound that a true O(n) implementation
+/// clears trivially but a quadratic one cannot.
+#[test]
+fn test_redact_secret_shaped_substrings_200k_adversarial_input_is_not_quadratic() {
+    // Repeating unit chosen so no 32-char window has the required
+    // upper+lower+digit mix contiguously in a way that would short-circuit
+    // early -- worst case for a naive rescan is a long run of characters
+    // that are *almost* always high-entropy-class but where the qualifying
+    // predicate must be evaluated over and over from many start points.
+    let unit = "aB3xZ9kLm2QpR7sT1vW8yU4nC6dF0gH5"; // 32 chars, qualifies alone
+    let mut input = String::with_capacity(200_000);
+    while input.len() < 200_000 {
+        input.push_str(unit);
+    }
+    assert!(input.len() >= 200_000);
+
+    let start = std::time::Instant::now();
+    let result = std::panic::catch_unwind(|| redact_secret_shaped_substrings(&input));
+    let elapsed = start.elapsed();
+
+    assert!(
+        result.is_ok(),
+        "must not panic on 200k-char adversarial input"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "redact_secret_shaped_substrings on 200k chars took {elapsed:?}; \
+         this is far beyond what an O(n) scan should take and suggests \
+         quadratic behaviour has been (re)introduced"
+    );
+}
+
+/// Adversarial unicode: a string built entirely of combining diacritical
+/// marks and zero-width characters (multi-byte, non-alphanumeric under
+/// `char::is_ascii_alphanumeric`) must not panic and must not be
+/// misclassified as secret-shaped, since none of the shape predicates
+/// (`is_gh_token_suffix_char`, `is_jwt_segment_char`, `is_high_entropy_char`)
+/// accept non-ASCII characters.
+#[test]
+fn test_redact_secret_shaped_substrings_combining_marks_and_zwj_does_not_panic_or_redact() {
+    // U+0301 COMBINING ACUTE ACCENT, U+200D ZERO WIDTH JOINER, U+200B ZERO
+    // WIDTH SPACE, repeated to build a long non-ASCII run.
+    let input: String = "e\u{0301}\u{200D}\u{200B}".repeat(20_000);
+    let result = std::panic::catch_unwind(|| redact_secret_shaped_substrings(&input));
+    assert!(result.is_ok(), "must not panic on combining-mark/ZWJ input");
+    assert_eq!(
+        result.unwrap(),
+        input,
+        "non-ASCII combining marks/ZWJ must never be classified as secret-shaped"
+    );
+}
+
+/// Adversarial unicode: emoji (multi-byte, outside any recognised
+/// character class) mixed with a genuine embedded secret must still find
+/// and redact the secret without panicking or corrupting the surrounding
+/// unicode text (char-boundary safety in the scanner's char-indexed
+/// output).
+#[test]
+fn test_redact_secret_shaped_substrings_emoji_surrounding_embedded_secret() {
+    let token = format!("ghp_{GH_TOKEN_SUFFIX_36}");
+    let text = format!("🎉🔥 loaded config 🎉🔥 {token} 🎉🔥 done 🎉🔥");
+    let result = std::panic::catch_unwind(|| redact_secret_shaped_substrings(&text));
+    assert!(result.is_ok(), "must not panic on emoji-surrounded secret");
+    let redacted = result.unwrap();
+    assert!(
+        !redacted.contains(&token),
+        "embedded token must still be redacted amid emoji"
+    );
+    assert!(
+        redacted.contains("🎉🔥"),
+        "surrounding emoji must survive unchanged"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// QA audit round 2 (post-remediation): kill tests for `cargo mutants`
+// survivors found in `SecretShapeScanner` and its helper predicates. Several
+// of these mutants (any inner matcher stubbed to always return `Some(0)`)
+// cause a genuine infinite loop in `redact_secret_shaped_substrings`'s
+// forward scan (`i += match_len` never advances when `match_len == 0`), so
+// `cargo mutants` reports them as TIMEOUT rather than MISSED. The test below
+// exercises `SecretShapeScanner` directly (bypassing the scanning loop) so
+// the same defect is caught fast, via a normal assertion failure, instead of
+// only being detectable by a 60s process hang.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// ### Survivors killed
+/// `logging.rs`: `SecretShapeScanner::literal_prefixed_run_match_len`,
+/// `gh_token_match_len`, `bearer_match_len`, `jwt_match_len`, and
+/// `HighEntropyIndex::match_len_at` each replaced with a stub returning
+/// `Some(0)` unconditionally (5 distinct mutants, all reported as TIMEOUT by
+/// `cargo mutants` because `redact_secret_shaped_substrings`'s forward scan
+/// never advances past a zero-length match). No existing test asserted the
+/// loop-termination invariant directly, so `cargo mutants`' 60s process
+/// timeout was the only thing standing between these mutants and an
+/// undetected pass. This test asserts the invariant directly against the
+/// scanner (not the looping caller), converting a would-be hang into an
+/// immediate, specific assertion failure.
+#[test]
+fn test_secret_shape_scanner_never_reports_a_zero_length_match() {
+    let samples = [
+        "",
+        "plain prose with no secrets at all",
+        "Request completed successfully in 42 milliseconds for user alice",
+        "ghp_abcdefghij1234567890ABCDEFGHIJ123456",
+        "Bearer abcdefgh12345678",
+        "bearer abcdefgh12345678",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+        "aB3xZ9kLm2QpR7sT1vW8yU4nC6dF0gH5",
+        "550e8400-e29b-41d4-a716-446655440000",
+        "2024-01-01T00:00:00.000000Z",
+    ];
+
+    for sample in samples {
+        let scanner = SecretShapeScanner::new(sample);
+        for i in 0..scanner.len() {
+            if let Some(len) = scanner.longest_match_at(i) {
+                assert!(
+                    len > 0,
+                    "SecretShapeScanner::longest_match_at({i}) returned Some(0) \
+                     for input {sample:?}; a zero-length match would make \
+                     redact_secret_shaped_substrings's forward scan \
+                     (`i += match_len`) loop forever at this position"
+                );
+            }
+        }
+    }
+}
+
+/// ### Survivor killed (partial)
+/// `logging.rs`: `redact_secret_shaped_substrings`'s `i += match_len`
+/// increment mutated to `i *= match_len` / `i -= match_len`. Both mutations
+/// only diverge from correct behaviour once a match is actually found, so a
+/// text whose *very first* character begins a match is the minimal case
+/// that exercises the mutated arithmetic on the first loop iteration (where
+/// `i == 0`, making `i *= match_len` collapse to `0` regardless of
+/// `match_len`). No existing test had a secret at offset 0 -- every prior
+/// fixture placed the secret after some prefix text.
+#[test]
+fn test_redact_secret_shaped_substrings_secret_at_offset_zero_is_redacted() {
+    let token = format!("ghp_{GH_TOKEN_SUFFIX_36}");
+    let text = format!("{token} trailing prose after the token");
+
+    let redacted = redact_secret_shaped_substrings(&text);
+    assert!(
+        !redacted.contains(&token),
+        "a token starting at offset 0 must still be redacted; got: {redacted}"
+    );
+    assert!(
+        redacted.starts_with(REDACTED_MARKER),
+        "the redaction marker must appear at the very start of the output; got: {redacted}"
+    );
+    assert!(
+        redacted.ends_with("trailing prose after the token"),
+        "text following the offset-0 token must survive unredacted; got: {redacted}"
+    );
+}
+
+/// ### Survivor killed
+/// `logging.rs`: `is_gh_token_suffix_char` body replaced with `true`
+/// unconditionally. No existing test called this private predicate
+/// directly; all prior coverage went through `looks_like_secret_value`,
+/// where a stubbed-`true` suffix predicate happens to still pass every
+/// existing positive/negative fixture (since none of them place a
+/// non-`[A-Za-z0-9_]` character where a GitHub-token suffix is being
+/// measured in a way that changes the *outcome*). Testing the predicate
+/// directly closes that gap.
+#[test]
+fn test_is_gh_token_suffix_char_rejects_characters_outside_alnum_and_underscore() {
+    assert!(!is_gh_token_suffix_char('-'));
+    assert!(!is_gh_token_suffix_char(' '));
+    assert!(!is_gh_token_suffix_char('!'));
+    assert!(!is_gh_token_suffix_char('.'));
+    assert!(!is_gh_token_suffix_char('/'));
+    assert!(is_gh_token_suffix_char('_'));
+    assert!(is_gh_token_suffix_char('a'));
+    assert!(is_gh_token_suffix_char('Z'));
+    assert!(is_gh_token_suffix_char('9'));
+}
+
+/// ### Survivor killed
+/// `logging.rs`: `is_high_entropy_char`'s second `||` replaced with `&&`,
+/// collapsing `c == '+' || c == '/'` into `c == '+' && c == '/'` (always
+/// `false`, since no single `char` can equal both). This silently drops
+/// `+` and `/` from the high-entropy character class, splitting any
+/// base64-style secret containing either character into two shorter runs
+/// that may fall below the 32-char threshold. A 32+ char high-entropy run
+/// containing an embedded `+` or `/` -- which the class is documented to
+/// accept -- is the minimal case that distinguishes this from a
+/// alphanumeric-only run.
+#[test]
+fn test_looks_like_secret_value_plus_and_slash_chars_count_as_high_entropy() {
+    let base = "aB3xZ9kLm2QpR7sT1vW8yU4nC6dF0gH5"; // 32-char qualifying run
+    let (left, right) = base.split_at(20);
+
+    let with_plus = format!("{left}+{right}");
+    assert!(
+        looks_like_secret_value(&with_plus),
+        "'+' must count as a high-entropy character, not split the run: {with_plus:?}"
+    );
+
+    let with_slash = format!("{left}/{right}");
+    assert!(
+        looks_like_secret_value(&with_slash),
+        "'/' must count as a high-entropy character, not split the run: {with_slash:?}"
+    );
+}
+
+/// ### Survivor killed
+/// `logging.rs`: `HighEntropyIndex::build`'s backward propagation of
+/// `has_lower[i] = ... || has_lower[i + 1]` mutated (`+` to `*` on the
+/// `i + 1` index expression) so that `has_lower[i]` only reflects the
+/// current position's own case, never propagating from later positions in
+/// the same run. A high-entropy run whose *only* lowercase letter is at the
+/// very end (not the start) exercises this: the whole-string match starts
+/// scanning from position 0, so it must observe the propagated
+/// `has_lower[0] == true` sourced from the lowercase letter at the last
+/// position, not a per-position check.
+#[test]
+fn test_looks_like_secret_value_high_entropy_lowercase_only_at_end_still_qualifies() {
+    let mut value = "AB3XZ9KLM2QPR7ST1VW8YU4NC6DF0GH".to_string(); // 31 chars, upper+digit only
+    assert_eq!(value.chars().count(), 31);
+    value.push('a'); // 32nd char: the only lowercase letter, at the very end
+    assert_eq!(value.chars().count(), 32);
+
+    assert!(
+        looks_like_secret_value(&value),
+        "a lowercase letter located only at the end of the run must still satisfy \
+         the mixed-case requirement when scanning from the start: {value:?}"
+    );
+}
+
+/// ### Survivor killed
+/// `logging.rs`: `SecretShapeScanner::jwt_match_len`'s first `||` (guarding
+/// the first `.` separator check) replaced with `&&`, so the function only
+/// rejects a candidate when *both* "segment too short" and "wrong/missing
+/// separator" hold simultaneously. This means a first "segment" of
+/// sufficient length followed by anything other than a literal `.` (e.g. a
+/// space) is wrongly accepted as if the separator check passed. A string
+/// shaped like `"<10+ chars> <10+ chars>.<10+ chars>"` (space instead of
+/// the first dot) is the minimal case: each whitespace-delimited chunk
+/// individually satisfies the length threshold, so only the separator
+/// check distinguishes it from a real JWT.
+#[test]
+fn test_looks_like_secret_value_jwt_shape_requires_literal_first_dot_separator() {
+    let value = "aaaaaaaaaa bbbbbbbbbb.cccccccccc"; // space, not '.', after segment 1
+    assert!(
+        !looks_like_secret_value(value),
+        "a space where the first '.' separator belongs must not be treated as JWT-shaped: {value:?}"
+    );
+}
+
+/// ### Survivor killed
+/// `logging.rs`: `SecretShapeScanner::jwt_match_len`'s second `||`
+/// (guarding the second `.` separator check) replaced with `&&`, the
+/// mirror-image defect of the first-separator mutant above but for the
+/// boundary between segments two and three.
+#[test]
+fn test_looks_like_secret_value_jwt_shape_requires_literal_second_dot_separator() {
+    let value = "aaaaaaaaaa.bbbbbbbbbb cccccccccc"; // space, not '.', after segment 2
+    assert!(
+        !looks_like_secret_value(value),
+        "a space where the second '.' separator belongs must not be treated as JWT-shaped: {value:?}"
     );
 }
