@@ -6,7 +6,7 @@ Owners: RepoRoller team
 
 ## Context
 
-RepoRoller requires authentication with GitHub to create repositories and access organization settings. Authentication affects security, user experience, auditability, and operational complexity. The system must support both interactive use (web UI, CLI) and automated use (CI/CD, Azure Functions).
+RepoRoller requires authentication with GitHub to create repositories and access organization settings. Authentication affects security, user experience, auditability, and operational complexity. The system must support both interactive use (web UI, CLI) and automated use (CI/CD, containerized services).
 
 Requirements:
 
@@ -39,22 +39,22 @@ Use **GitHub App with Installation Tokens** as primary authentication method:
 
 **Token Types:**
 
-- **App Private Key**: Long-lived credential (stored in Azure Key Vault for cloud, system keyring for CLI)
+- **App Private Key**: Long-lived credential (stored in managed secret stores for cloud, system keyring for CLI)
 - **JWT Token**: Short-lived (10 minutes), used only to request installation token
 - **Installation Token**: Short-lived (1 hour), used for actual GitHub API calls
 
 **Token Storage:**
 
-- Cloud deployment: Azure Key Vault (target state; see migration note below)
+- Cloud deployment: Managed secret stores (for example Azure Key Vault or AWS Secrets Manager)
 - CLI: System keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
 - Never in configuration files
 
 > **Interim deployment note**: The initial cloud deployment loads
 > `GITHUB_APP_PRIVATE_KEY` from an environment variable injected by the
 > container orchestrator (not a config file). The key is immediately wrapped in
-> `secrecy::SecretString` and zeroed on drop. Migration to Azure Key Vault
-> is tracked as a follow-up hardening task. The same interim approach applies
-> to `JWT_SECRET` (see ADR-009).
+> `secrecy::SecretString` and zeroed on drop. Migration to managed secret-store
+> retrieval is tracked as a follow-up hardening task. The same interim approach
+> applies to `JWT_SECRET` (see ADR-009).
 
 **Secondary method (CLI only):**
 Personal Access Token (PAT) supported for users who cannot install GitHub App.
@@ -144,9 +144,9 @@ Installation:
 **Authentication Flow (Cloud):**
 
 ```rust
-// 1. Load app credentials from Azure Key Vault
-let app_id = key_vault.get_secret("github-app-id").await?;
-let private_key = key_vault.get_secret("github-app-private-key").await?;
+// 1. Load app credentials from managed secret store
+let app_id = secret_store.get_secret("github-app-id").await?;
+let private_key = secret_store.get_secret("github-app-private-key").await?;
 
 // 2. Create app client (generates JWT)
 let app_client = create_app_client(app_id, &private_key).await?;

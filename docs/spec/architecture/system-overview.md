@@ -11,7 +11,6 @@ graph TD
         Web[Web UI<br/>SvelteKit]
         API[REST API<br/>repo_roller_api]
         MCP[MCP Server<br/>repo_roller_mcp]
-        AzureFn[Azure Function<br/>repo_roller_azure_fn]
     end
 
     subgraph "Backend Core (Rust Crates)"
@@ -24,7 +23,7 @@ graph TD
 
     subgraph "External Services"
         GitHubAPI[GitHub API<br/>Repository Management]
-        AzureServices[Azure Services<br/>Functions, Key Vault, Monitor]
+        CloudServices[Cloud Services<br/>Secrets, Monitoring]
         TemplateRepos[Template Repositories<br/>Source Templates]
     end
 
@@ -32,7 +31,6 @@ graph TD
     Web --> API
     API --> Core
     MCP --> Core
-    AzureFn --> API
 
     Core --> GitHub
     Core --> Template
@@ -42,10 +40,9 @@ graph TD
     GitHub --> GitHubAPI
     Template --> TemplateRepos
     Auth --> GitHubAPI
-    AzureFn --> AzureServices
+    API --> CloudServices
 
     style Core fill:#f9f,stroke:#333,stroke-width:2px
-    style AzureFn fill:#ccf,stroke:#333,stroke-width:2px
 ```
 
 ## System Organization
@@ -70,19 +67,13 @@ Multiple interfaces support different user needs and integration scenarios:
 
 - HTTP-based programmatic interface
 - Enables integration with external tools and services
-- Supports both direct deployment and Azure Function hosting
+- Supports both direct binary execution and containerized deployment
 
 **MCP Server (`repo_roller_mcp`)**
 
 - Model Context Protocol interface for AI/LLM workflows
 - Exposes repository creation as structured tools
 - Enables AI agents to create repositories autonomously
-
-**Azure Function Host (`repo_roller_azure_fn`)**
-
-- Serverless deployment wrapper for the REST API
-- Handles Azure-specific context and response formatting
-- Enables cloud-native deployment with auto-scaling
 
 ### Business Logic Components
 
@@ -137,11 +128,11 @@ The system integrates with several external services:
 - Handles repository creation, configuration, and content
 - Provides authentication and permission services
 
-**Azure Services**
+**Cloud Platform Services (Optional)**
 
-- **Azure Functions**: Serverless compute hosting
-- **Azure Key Vault**: Secure credential storage
-- **Azure Monitor**: Logging, metrics, and alerting
+- **Secret Managers**: Secure credential storage (Azure Key Vault, AWS Secrets Manager, etc.)
+- **Monitoring Backends**: Logging, metrics, and alerting integrations
+- **Container Runtimes**: Managed hosting for API containers
 
 **Template Repositories**
 
@@ -222,10 +213,10 @@ graph TD
     Users[End Users] --> LB[Load Balancer]
     LB --> WebApp[Static Web App]
     LB --> APIM[API Management]
-    APIM --> Functions[Azure Functions]
-    Functions --> GitHub[GitHub API]
-    Functions --> KeyVault[Key Vault]
-    Functions --> Monitor[Azure Monitor]
+    APIM --> APIContainers[RepoRoller API Containers]
+    APIContainers --> GitHub[GitHub API]
+    APIContainers --> SecretStore[Secret Manager]
+    APIContainers --> Monitor[Monitoring Backend]
 ```
 
 ## Scalability Considerations
@@ -233,14 +224,14 @@ graph TD
 ### Horizontal Scaling
 
 - **Stateless Design**: All components designed for stateless operation
-- **Function Scaling**: Azure Functions automatically scale based on demand
+- **Container Scaling**: Container platforms scale API replicas based on demand
 - **API Gateway**: API Management provides load balancing and rate limiting
 
 ### Performance Optimization
 
 - **Caching**: Template and configuration caching to reduce processing time
 - **Async Processing**: Non-blocking operations for improved throughput
-- **Resource Pooling**: Efficient resource utilization in serverless environment
+- **Resource Pooling**: Efficient resource utilization in containerized environments
 
 ### Rate Limit Management
 
@@ -258,7 +249,7 @@ sequenceDiagram
     participant WebUI
     participant API
     participant GitHub
-    participant KeyVault
+    participant SecretStore
 
     User->>WebUI: Initiate login
     WebUI->>GitHub: OAuth authorization
@@ -266,7 +257,7 @@ sequenceDiagram
     WebUI->>API: Exchange code for token
     API->>GitHub: Validate token
     GitHub->>API: User info + permissions
-    API->>KeyVault: Store encrypted token
+    API->>SecretStore: Store encrypted token
     API->>WebUI: Session token
 ```
 

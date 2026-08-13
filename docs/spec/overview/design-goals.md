@@ -64,7 +64,7 @@
 
 - Fast repository creation (target: under 2 minutes for typical repository)
 - Efficient template processing and variable substitution
-- Minimal resource usage for serverless deployment
+- Minimal resource usage for containerized and on-demand deployments
 - Responsive user interfaces across all interaction methods
 
 #### Maintainability
@@ -101,10 +101,10 @@
 
 #### Deployment Environment
 
-- **Azure Functions**: Must operate within Azure Functions execution constraints
-- **Cold Start Performance**: Minimize impact of serverless cold starts
-- **Resource Limits**: Operate within memory and execution time limits
-- **Network Security**: Support for VNet integration and private endpoints
+- **Container Runtime**: Must run in standard OCI-compatible container environments
+- **Startup Performance**: Minimize API startup overhead for autoscaled workloads
+- **Resource Limits**: Operate within memory and CPU limits
+- **Network Security**: Support private networking and secure ingress patterns
 
 ### Organizational Constraints
 
@@ -166,22 +166,22 @@
 - **Vue.js**: Good developer experience but smaller ecosystem
 - **Angular**: Comprehensive framework but heavyweight for this use case
 
-#### Deployment Platform: Azure Functions
+#### Deployment Platform: Container-Based Runtime
 
-**Decision**: Deploy backend as Azure Functions with additional CLI support
+**Decision**: Deploy backend as containerized API services with additional CLI support
 
 **Rationale**:
 
-- **Serverless Benefits**: Automatic scaling and pay-per-use pricing model
-- **Azure Integration**: Native integration with Azure Key Vault, Monitor, and other services
-- **Development Flexibility**: Support for both serverless and traditional deployment models
-- **Cost Efficiency**: Optimal for variable workload patterns
+- **Platform Independence**: Deploy the same container image across multiple cloud providers
+- **Operational Consistency**: Unified deployment model for development, staging, and production
+- **Cloud Integration Flexibility**: Integrate with provider services (Azure, AWS, GCP) as needed
+- **Scalability**: Use container autoscaling capabilities based on workload patterns
 
 **Alternatives Considered**:
 
-- **Azure Container Instances**: More control but higher operational overhead
+- **Azure Functions**: Tighter provider coupling and function-host constraints
 - **Virtual Machines**: Full control but significant management overhead
-- **Kubernetes**: Overkill for this application's complexity and scale requirements
+- **Kubernetes-only mandate**: Too restrictive for organizations using other runtimes
 
 #### Template Engine: Handlebars
 
@@ -248,15 +248,15 @@
 - **Organization Control**: Organizations control app installation and permissions
 - **Audit Trail**: Clear audit trail of all API operations
 
-#### Azure Key Vault Integration
+#### Managed Secret Store Integration
 
-**Decision**: Store all secrets in Azure Key Vault with runtime retrieval
+**Decision**: Store secrets in managed secret stores with runtime retrieval
 
 **Benefits**:
 
 - **Security**: Centralized, secure secret management
 - **Rotation**: Support for automatic secret rotation
 - **Audit**: Complete audit trail of secret access
-- **Compliance**: Meets enterprise security and compliance requirements
+- **Portability**: Supports provider-native services such as Azure Key Vault and AWS Secrets Manager
 
 These design decisions create a foundation for a robust, maintainable, and secure repository automation system that balances functionality, performance, and operational requirements.

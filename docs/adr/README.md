@@ -28,7 +28,7 @@ Write an ADR for decisions that:
 - [ADR-002: Hierarchical Configuration System](ADR-002-hierarchical-configuration.md) - 5-level configuration hierarchy with clear precedence rules
 - [ADR-003: Stateless Architecture with External Storage](ADR-003-stateless-architecture.md) - No database, all state in GitHub repositories
 - [ADR-004: Repository Visibility Policy System](ADR-004-repository-visibility-policy.md) - Hierarchical visibility resolution with organization policy enforcement
-- [ADR-005: Multiple User Interface Strategy](ADR-005-multiple-user-interfaces.md) - CLI, API, MCP, and Azure Functions sharing single business logic core
+- [ADR-005: Multiple User Interface Strategy](ADR-005-multiple-user-interfaces.md) - CLI, API, and MCP sharing single business logic core
 - [ADR-006: GitHub App Authentication](ADR-006-github-app-authentication.md) - Installation tokens for organization-scoped, auto-rotating authentication
 - [ADR-007: Repository Rulesets for Branch Protection](ADR-007-repository-rulesets.md) - Additive ruleset composition for flexible repository protection
 - [ADR-008: Web UI Deployment-Time Branding](ADR-008-web-ui-branding.md) - Four-token branding config (logo, name, colour) via env vars or brand.toml

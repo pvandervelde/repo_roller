@@ -6,7 +6,7 @@ Owners: RepoRoller team
 
 ## Context
 
-RepoRoller needs to orchestrate repository creation across multiple external systems (GitHub API, configuration repositories, template repositories) while maintaining clean separation between business logic and infrastructure concerns. The system must support multiple deployment models (CLI, REST API, Azure Functions, MCP server) without duplicating business logic.
+RepoRoller needs to orchestrate repository creation across multiple external systems (GitHub API, configuration repositories, template repositories) while maintaining clean separation between business logic and infrastructure concerns. The system must support multiple deployment models (CLI, REST API, containerized API hosting, MCP server) without duplicating business logic.
 
 Previous approaches considered:
 
@@ -29,7 +29,7 @@ This enables multiple user interfaces (CLI, API, MCP) to share the same business
 
 **Enables:**
 
-- Single business logic implementation shared across all interfaces (CLI, API, Azure Functions, MCP)
+- Single business logic implementation shared across all interfaces (CLI, API, MCP)
 - Easy testing with mock implementations of ports
 - Clear boundaries between domain logic and infrastructure concerns
 - Adding new external integrations without modifying core logic

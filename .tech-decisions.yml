@@ -174,7 +174,7 @@ authentication:
 
   secret_management:
     cli: system_keyring # macOS Keychain, Windows Credential Manager, Linux Secret Service
-    cloud: azure_key_vault
+    cloud: managed_secret_store
 
   token_types:
     - "App Private Key: Long-lived, stored securely"
@@ -185,7 +185,7 @@ authentication:
     - "Never log tokens (use secrecy crate)"
     - "Tokens must implement zeroize on drop"
     - "No Debug output for token types"
-    - "Tokens stored in Key Vault or system keyring only"
+    - "Tokens stored in managed secret stores or system keyring only"
 
 # Caching Strategy
 caching:
@@ -292,14 +292,14 @@ infrastructure:
     targets:
       - "CLI binary (single executable)"
       - "REST API server (Axum)"
-      - "Azure Functions (serverless)"
+      - "Containerized API deployment (OCI image)"
       - "MCP server (JSON-RPC)"
 
-    packaging: single_rust_binary
-    cloud_provider: azure
-    serverless: azure_functions
-    secrets: azure_key_vault
-    monitoring: azure_monitor
+    packaging: single_rust_binary_and_oci_image
+    cloud_provider: agnostic
+    runtime: container
+    secrets: managed_secret_store
+    monitoring: open_telemetry_compatible
 
   always:
     - "Include health check endpoint (for API deployments)"

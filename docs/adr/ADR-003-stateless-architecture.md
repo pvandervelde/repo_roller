@@ -6,11 +6,11 @@ Owners: RepoRoller team
 
 ## Context
 
-RepoRoller needs to store configuration, templates, and operational data. The system must support multiple deployment models including serverless (Azure Functions), containerized API servers, and CLI tools. We need to decide whether to maintain application state in a database or rely entirely on external systems (GitHub) for persistence.
+RepoRoller needs to store configuration, templates, and operational data. The system must support multiple deployment models including containerized API servers, optional on-demand runtimes, and CLI tools. We need to decide whether to maintain application state in a database or rely entirely on external systems (GitHub) for persistence.
 
 Requirements:
 
-- Support serverless deployment (Azure Functions with cold starts)
+- Support deployment on ephemeral runtimes that may incur cold starts
 - Enable horizontal scaling without state synchronization
 - Maintain audit trail of repository creation activities
 - Store configuration in version-controlled, auditable format
@@ -39,7 +39,7 @@ All application logic is stateless. Each request fetches required data from GitH
 
 **Enables:**
 
-- Simple serverless deployment (no database connection pooling or state management)
+- Simple deployment on stateless runtimes (no database connection pooling or state management)
 - Effortless horizontal scaling (no shared state to coordinate)
 - No database infrastructure to maintain (no backups, monitoring, scaling)
 - Configuration changes immediately visible through GitHub
@@ -67,7 +67,7 @@ All application logic is stateless. Each request fetches required data from GitH
 
 **Why not**:
 
-- Breaks serverless model (persistent file system required)
+- Breaks stateless ephemeral deployment model (persistent file system required)
 - Complicates deployment (where to store SQLite file?)
 - State management complexity in scaled environments
 - Backup and recovery procedures needed
@@ -90,7 +90,7 @@ All application logic is stateless. Each request fetches required data from GitH
 
 - Adds infrastructure complexity
 - Cache invalidation becomes distributed problem
-- Not needed for serverless cold-start scenario
+- Not needed for cold-start scenarios on ephemeral runtimes
 - In-memory cache with TTL sufficient for hot instances
 - Additional cost and monitoring burden
 
@@ -134,7 +134,7 @@ All application logic is stateless. Each request fetches required data from GitH
 - In-memory caches with TTL (5 minutes for config, 1 hour for environment detection)
 - Caches per-instance only (no shared cache)
 - Cache invalidation via webhook or manual API call
-- Cold-start penalty acceptable for serverless
+- Cold-start penalty acceptable for on-demand runtimes
 
 **GitHub API dependency management:**
 
