@@ -222,7 +222,7 @@ secrets:
 
 **Purpose**: Resolves secrets from Azure Key Vault via Managed Identity.
 
-**Use Case**: Azure Container Apps, Azure Functions, AKS with workload identity
+**Use Case**: Azure Container Apps, AKS with workload identity, and other Azure-hosted container runtimes
 
 **Behavior**:
 

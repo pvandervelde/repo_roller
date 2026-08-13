@@ -45,7 +45,7 @@ User Interfaces          Business Logic          Adapters
 │ CLI             │──────│                 │     │ GitHub Client   │
 │ REST API        │──────│ repo_roller_    │─────│ Config Manager  │
 │ MCP Server      │──────│ core            │─────│ Template Engine │
-│ Azure Functions │──────│                 │     │ Auth Handler    │
+│ Web UI          │──────│                 │     │ Auth Handler    │
 └─────────────────┘      └─────────────────┘     └─────────────────┘
 ```
 
@@ -62,7 +62,7 @@ See [ADR-001](adr/ADR-001-hexagonal-architecture.md) for details.
 2. **[Hierarchical Configuration](adr/ADR-002-hierarchical-configuration.md)** — 5-level config system (System → Org → Team → Type → Template)
 3. **[Stateless Architecture](adr/ADR-003-stateless-architecture.md)** — No database, all state in GitHub
 4. **[Visibility Policy System](adr/ADR-004-repository-visibility-policy.md)** — Org-enforced security policies
-5. **[Multiple User Interfaces](adr/ADR-005-multiple-user-interfaces.md)** — CLI, API, MCP, Azure Functions share core logic
+5. **[Multiple User Interfaces](adr/ADR-005-multiple-user-interfaces.md)** — CLI, API, and MCP share core logic
 6. **[GitHub App Authentication](adr/ADR-006-github-app-authentication.md)** — Installation tokens for secure, org-scoped auth
 
 ## Key Technology Choices

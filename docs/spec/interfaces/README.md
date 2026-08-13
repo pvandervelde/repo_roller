@@ -62,7 +62,7 @@ RepoRoller follows clean architecture principles with clear boundaries:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    User Interfaces                          │
-│  (CLI, API, MCP Server, Azure Function, Web UI)            │
+│  (CLI, API, MCP Server, Web UI)                            │
 └────────────────────────┬────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────────────┐
@@ -110,7 +110,7 @@ RepoRoller follows clean architecture principles with clear boundaries:
 **Infrastructure** may depend on:
 
 - Interface traits (to implement them)
-- External service clients (GitHub API, Azure SDK)
+- External service clients (GitHub API, cloud provider SDKs)
 - Business domain types (for implementation)
 
 ### ❌ Prohibited Dependencies

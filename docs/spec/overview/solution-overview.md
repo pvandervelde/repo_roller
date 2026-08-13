@@ -66,7 +66,7 @@ RepoRoller operates as a **GitHub App** to interact with the GitHub API, providi
 
 - **Performance**: Fast execution for template processing and API interactions
 - **Safety**: Memory safety and robust error handling
-- **Deployment Flexibility**: Single binary deployable as CLI, web service, or Azure Function
+- **Deployment Flexibility**: Single binary deployable as CLI, web service, or containerized API service
 
 ### Frontend (SvelteKit)
 
@@ -74,11 +74,11 @@ RepoRoller operates as a **GitHub App** to interact with the GitHub API, providi
 - **Integration**: Seamless connection to backend REST API
 - **Responsive Design**: Works across desktop and mobile devices
 
-### Infrastructure (Azure)
+### Infrastructure (Cloud-Agnostic)
 
-- **Scalability**: Azure Functions for serverless execution
-- **Security**: Azure Key Vault for credential management
-- **Observability**: Azure Monitor for logging and metrics
+- **Scalability**: Container platforms with autoscaling support
+- **Security**: Managed secret stores (Azure Key Vault, AWS Secrets Manager, HashiCorp Vault)
+- **Observability**: Monitoring backends (Azure Monitor, CloudWatch, Prometheus, etc.)
 
 ## Deployment Models
 
@@ -89,8 +89,8 @@ RepoRoller operates as a **GitHub App** to interact with the GitHub API, providi
 
 ### Production
 
-- **Azure Functions**: Serverless backend hosting
-- **Static Web Hosting**: Frontend deployment to Azure Static Web Apps or CDN
+- **Containerized Backend**: Deploy API containers to Kubernetes, Azure Container Apps, AWS ECS, or similar runtimes
+- **Static Web Hosting**: Frontend deployment to CDN or static hosting platforms
 - **Infrastructure as Code**: Terraform for reproducible deployments
 
 ## Integration Points
