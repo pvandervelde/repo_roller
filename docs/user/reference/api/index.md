@@ -68,7 +68,26 @@ Common error codes:
 
 ## Request tracing
 
-Every request is automatically assigned a unique request ID (UUID v4) that appears in server logs. When reporting an issue, include the timestamp of the request to help correlate the log entry.
+Every request is automatically assigned a unique request ID (UUID v4). The API returns it as
+an `X-Request-Id` response header on every response, and the same ID appears in every server
+log line produced while that request was handled. When reporting an issue, capture the
+`X-Request-Id` header value from the response (or the timestamp, if you don't have the
+header) to help correlate the request with the server-side log entries.
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+X-Request-Id: f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
+## Logging
+
+By default, the backend emits structured JSON logs to stdout (operators can switch to
+human-readable output for local development via the `LOG_FORMAT` environment variable — see
+[Environment variables](../environment-variables.md)). All log output — including free-text
+log messages — is automatically scanned and redacted before it is written, so tokens,
+passwords, and similarly-shaped secrets are never persisted in log storage even if they are
+accidentally included in a log call upstream.
 
 ## Metrics
 

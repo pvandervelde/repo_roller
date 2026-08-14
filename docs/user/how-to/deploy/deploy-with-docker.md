@@ -35,6 +35,7 @@ services:
       API_HOST:                 "0.0.0.0"
       API_PORT:                 "8080"
       RUST_LOG:                 "info"
+      LOG_FORMAT:               "json"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
              "http://localhost:8080/api/v1/health"]
@@ -79,6 +80,7 @@ networks:
 | `API_HOST` | No | `0.0.0.0` | Interface to bind |
 | `API_PORT` | No | `8080` | Port to listen on |
 | `RUST_LOG` | No | `info` | Log level: `error`, `warn`, `info`, `debug`, `trace` |
+| `LOG_FORMAT` | No | `json` | Log output format: `json` (default, structured, with automatic redaction of sensitive fields — recommended for containers) or `pretty` (human-readable, for local development only) |
 
 ### Frontend environment variables
 
@@ -131,6 +133,32 @@ Open `https://reporoller.myorg.example` in a browser. You should see the Sign In
 The backend should **not** be exposed directly to the internet. Only the frontend port (`3000`) should be reachable from end-user browsers. Both containers communicate over the private `internal` Docker network.
 
 If deploying behind a reverse proxy (nginx, Caddy, Traefik), proxy `https://reporoller.myorg.example` → `localhost:3000`. Do not expose port 8080 externally.
+
+## Logging
+
+The backend emits JSON-formatted structured logs to stdout by default, one JSON object per
+line — suitable for collection by a container log driver and ingestion into a log
+aggregation system. Every request handled by the backend gets a unique `request_id`, which is
+attached to every log line produced while that request is being processed and is also
+returned to the client as the `X-Request-Id` response header, so you can correlate a specific
+client-reported failure with its server-side log lines.
+
+All log output is automatically scanned and redacted before it is written: known-sensitive
+field names (tokens, passwords, secrets, etc.) are always redacted, and — independently — any
+string value that *looks like* a secret (a GitHub token, a `Bearer` header, a JWT, or a
+generic high-entropy string) is redacted too, even if it appears inside a free-text log
+message rather than a named field. Redacted values are replaced with the literal
+`[REDACTED]`. This is defense-in-depth on top of (not a replacement for) never passing raw
+secrets to a logging call.
+
+```bash
+# View backend logs (JSON lines)
+docker compose logs -f backend
+```
+
+Set `LOG_FORMAT=pretty` (see the environment variable table above) if you need
+human-readable output while debugging locally — this is not recommended for production
+containers, since most log aggregation systems expect the structured JSON format.
 
 ## Metrics (Prometheus)
 
