@@ -55,10 +55,20 @@ pub use webhook::{
 pub mod custom_property_payload;
 pub use custom_property_payload::CustomPropertiesPayload;
 
+// Business-context span-attribute sanitization (Observability Task #2).
+// See span_attributes.rs module docs for the full contract.
+pub mod span_attributes;
+
 // Reference the tests module in the separate file
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+// Span-hierarchy tests for outbound GitHub API calls (Observability Task #2).
+// See span_hierarchy_tests.rs module docs for scope and rationale.
+#[cfg(test)]
+#[path = "span_hierarchy_tests.rs"]
+mod span_hierarchy_tests;
 
 /// A client for interacting with the GitHub API, authenticated as a GitHub App.
 ///

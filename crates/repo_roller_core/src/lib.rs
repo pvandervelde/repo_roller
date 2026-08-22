@@ -165,6 +165,9 @@ pub mod event_metrics;
 // Repository-creation metrics collection (Observability Phase 1)
 pub mod repository_metrics;
 
+// Span-hierarchy contract for distributed tracing (Observability Task #2)
+pub mod observability;
+
 // Re-export error types for public API
 pub use errors::{
     AuthenticationError, AuthenticationResult, ConfigurationError, GitHubError, GitHubResult,
@@ -317,6 +320,12 @@ impl From<DateTime<Utc>> for Timestamp {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+// Span-hierarchy tests for create_repository's top-level orchestration
+// (Observability Task #2). See lib_span_tests.rs module docs for scope.
+#[cfg(test)]
+#[path = "lib_span_tests.rs"]
+mod span_tests;
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 

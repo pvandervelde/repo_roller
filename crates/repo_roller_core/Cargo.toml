@@ -39,4 +39,7 @@ octocrab.workspace = true
 proptest.workspace = true
 rustls = { version = "=0.23.46", default-features = false, features = ["aws-lc-rs"] }
 tracing-test = "=0.2.6"
+# Span-hierarchy assertions (Observability Task #2): registry()/Layer/LookupSpan
+# for the in-process SpanRecorder test harness in lib_span_tests.rs.
+tracing-subscriber.workspace = true
 wiremock.workspace = true

@@ -23,6 +23,7 @@ mod middleware;
 mod models;
 mod routes;
 mod server;
+mod tracing_otel;
 mod translation;
 
 use server::{ApiConfig, ApiServer};

@@ -41,6 +41,18 @@ services:
       # CORS — must match the public URL of the frontend so the browser is
       # allowed to make cross-origin requests to the backend API.
       FRONTEND_ORIGIN: "${ORIGIN:-http://localhost:3001}"
+
+      # Distributed tracing (Observability Task #2). Fail-safe-off by
+      # default (see repo_roller_api::tracing_otel module docs) — set
+      # OTEL_TRACES_ENABLED=true to export spans to the local Jaeger
+      # instance below via OTLP/gRPC. The "jaeger" hostname resolves via
+      # the Docker network alias defined on the jaeger service.
+      OTEL_TRACES_ENABLED: "${OTEL_TRACES_ENABLED:-false}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}"
+      OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-repo-roller-api}"
+    depends_on:
+      jaeger:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       # The backend exposes GET /api/v1/health — use wget (available in debian:slim)
@@ -50,6 +62,28 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+  # Local OTLP trace backend for Observability Task #2 (distributed
+  # tracing). Jaeger's all-in-one image bundles the collector (with an
+  # OTLP receiver enabled by default since Jaeger 1.35), storage, and query
+  # UI in a single container — sufficient for local development; production
+  # deployments should point OTEL_EXPORTER_OTLP_ENDPOINT at a real
+  # OTel Collector / managed tracing backend instead.
+  #
+  # Jaeger UI: http://localhost:16686
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    ports:
+      # Jaeger UI
+      - "16686:16686"
+      # OTLP gRPC receiver — matches OTEL_EXPORTER_OTLP_ENDPOINT above
+      - "4317:4317"
+      # OTLP HTTP receiver (not used by the default gRPC-based exporter,
+      # exposed for ad-hoc debugging with curl/other OTLP/HTTP tools)
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    restart: unless-stopped
 
   frontend:
     build:
