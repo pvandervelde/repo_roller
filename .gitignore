@@ -38,3 +38,9 @@ lcov.info
 # Ignore the review files
 reviews/
 examples/local-stack/.env.local
+
+# ignore the testing files
+mutants.out/
+crates/**/proptest-regressions/
+crates/**/proptest-regressions/
+crates/**/proptest-regressions/

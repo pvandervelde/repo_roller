@@ -1950,6 +1950,7 @@ impl RepositoryClient for GitHubClient {
     ///
     /// # Errors
     /// Returns `Error::Octocrab` for API errors or `Error::Deserialization` if the response cannot be parsed.
+    #[instrument(skip(self, payload), fields(org_name = %span_attributes::sanitize_span_attribute_value(org_name)))]
     async fn create_org_repository(
         &self,
         org_name: &str,
@@ -2034,6 +2035,7 @@ impl RepositoryClient for GitHubClient {
     ///
     /// This method queries the GitHub API to get the organization's default
     /// branch setting, which is used for newly created repositories.
+    #[instrument(skip(self), fields(org_name = %span_attributes::sanitize_span_attribute_value(org_name)))]
     async fn get_organization_default_branch(&self, org_name: &str) -> Result<String, Error> {
         info!(
             org_name = org_name,

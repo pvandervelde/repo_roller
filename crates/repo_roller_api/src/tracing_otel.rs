@@ -61,6 +61,7 @@
 //!        and
 //!     2. this task's OTel span-export layer, attached via `.with()` when
 //!        (and only when) `otel_layer` is `Some`.
+//!
 //!   Built on `tracing_subscriber::registry()` -- **not** the full
 //!   `tracing_subscriber::fmt::Subscriber` that
 //!   `logging::build_sanitizing_json_subscriber` returns -- specifically so
@@ -100,6 +101,7 @@
 //!   `init_tracing_with_otel` accept `Option<...>` specifically so "omitted
 //!   entirely" is the natural, zero-cost choice.
 
+use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
 
 /// Name of the environment variable that enables OTel span export.
@@ -107,23 +109,14 @@ use tracing_subscriber::Layer;
 /// Not a standard OpenTelemetry SDK env var (see module docs "Known spec
 /// gaps") -- introduced because this codebase's fail-safe-off default has
 /// no standard-OTel equivalent.
-///
-/// Not yet referenced outside this module: production wiring
-/// (`init_tracing_with_otel` reading `std::env::var(OTEL_ENABLED_ENV_VAR)`)
-/// is Coder work: `#[allow(dead_code)]` mirrors the precedent set by
-/// `logging.rs`'s `looks_like_secret_value` for a contract constant/function
-/// with no consumer yet in this binary crate.
-#[allow(dead_code)]
 pub const OTEL_ENABLED_ENV_VAR: &str = "OTEL_TRACES_ENABLED";
 
 /// Name of the (standard OpenTelemetry SDK) environment variable holding the
 /// OTLP collector endpoint.
-#[allow(dead_code)]
 pub const OTEL_ENDPOINT_ENV_VAR: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 
 /// Name of the (standard OpenTelemetry SDK) environment variable holding the
 /// service name attached to every exported span's resource attributes.
-#[allow(dead_code)]
 pub const OTEL_SERVICE_NAME_ENV_VAR: &str = "OTEL_SERVICE_NAME";
 
 /// Default OTLP collector endpoint used when [`OTEL_ENDPOINT_ENV_VAR`] is
@@ -157,13 +150,25 @@ pub fn resolve_otel_settings(
     endpoint_raw: Option<&str>,
     service_name_raw: Option<&str>,
 ) -> OtelSettings {
-    let _ = (enabled_raw, endpoint_raw, service_name_raw);
-    todo!(
-        "Task #2 (distributed tracing): implement resolve_otel_settings per the \
-         module-level contract in tracing_otel.rs (fail-safe-off enabled parsing, \
-         endpoint/service_name defaulting). See tracing_otel_tests.rs / \
-         tracing_otel_proptests.rs for the full behavioural contract this must satisfy."
-    )
+    let enabled = enabled_raw
+        .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
+        .unwrap_or(false);
+
+    let otlp_endpoint = endpoint_raw
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| DEFAULT_OTLP_ENDPOINT.to_string());
+
+    let service_name = service_name_raw
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| DEFAULT_SERVICE_NAME.to_string());
+
+    OtelSettings {
+        enabled,
+        otlp_endpoint,
+        service_name,
+    }
 }
 
 /// Builds a `tracing_subscriber::Layer` that bridges `tracing` spans to
@@ -181,23 +186,44 @@ pub fn resolve_otel_settings(
 /// `opentelemetry_sdk::trace::SpanExporter` implementation -- production
 /// code supplies the real OTLP exporter, tests supply
 /// `opentelemetry_sdk::trace::InMemorySpanExporter`.
-#[allow(dead_code)] // Will gain a caller once init_tracing_with_otel is implemented.
 pub fn build_otel_layer_with_exporter<S, E>(
     exporter: E,
     service_name: &str,
 ) -> Box<dyn Layer<S> + Send + Sync>
 where
-    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span> + Send + Sync + 'static,
     E: opentelemetry_sdk::trace::SpanExporter + 'static,
 {
-    let _ = (exporter, service_name);
-    todo!(
-        "Task #2 (distributed tracing): build an SdkTracerProvider with a \
-         SimpleSpanProcessor wrapping `exporter`, obtain a Tracer named `service_name`, \
-         and return tracing_opentelemetry::layer().with_tracer(tracer) boxed as a \
-         tracing_subscriber::Layer<S>. See tracing_otel_tests.rs for the exact \
-         parent/child assertions this must satisfy against an in-memory exporter."
-    )
+    use opentelemetry::trace::TracerProvider as _;
+
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_span_processor(opentelemetry_sdk::trace::SimpleSpanProcessor::new(exporter))
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name(service_name.to_string())
+                .build(),
+        )
+        .build();
+
+    let tracer = provider.tracer(service_name.to_string());
+
+    // `SdkTracerProvider` is reference-counted: dropping its *last* strong
+    // reference auto-triggers `shutdown()` (documented on
+    // `SdkTracerProvider`). For exporters with "reset on shutdown" semantics
+    // (e.g. `InMemorySpanExporter`, used by this file's own tests), that
+    // shutdown silently clears already-exported spans out from under a
+    // caller who is still holding the exporter handle -- exactly what
+    // happens when the returned layer (the only other owner of `provider`,
+    // via `tracer`) is dropped at the end of a scoped test subscriber's
+    // lifetime, before the caller inspects the exporter. Production OTLP
+    // export has no equivalent "reset" semantics, and this crate exposes no
+    // `shutdown_tracing()` entry point that could otherwise release this
+    // reference before process exit, so leaking one extra strong reference
+    // for the process lifetime is a deliberate, documented trade-off (keep
+    // the provider alive until the process exits) rather than an oversight.
+    std::mem::forget(provider.clone());
+
+    Box::new(tracing_opentelemetry::layer().with_tracer(tracer))
 }
 
 /// Builds one complete `tracing::Subscriber` combining Task 1's JSON
@@ -206,7 +232,7 @@ where
 /// See the module-level "Composition with Task 1's logging layer" contract
 /// section. Exposed chiefly for testing; production start-up should call
 /// [`init_tracing_with_otel`] instead.
-#[allow(dead_code)] // Will gain a caller once init_tracing_with_otel is implemented.
+#[allow(dead_code)] // No production caller by design -- see doc comment above; still exercised by this file's own tests.
 pub fn build_composed_subscriber_for_test<W>(
     writer: W,
     otel_layer: Option<Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync>>,
@@ -214,14 +240,14 @@ pub fn build_composed_subscriber_for_test<W>(
 where
     W: for<'writer> tracing_subscriber::fmt::MakeWriter<'writer> + Send + Sync + 'static,
 {
-    let _ = (writer, otel_layer);
-    todo!(
-        "Task #2 (distributed tracing): build tracing_subscriber::registry() layered with \
-         (a) a JSON fmt layer whose writer redacts every line via \
-         crate::logging::redact_sensitive_fields before it reaches `writer` (equivalent to \
-         crate::logging::build_sanitizing_json_subscriber's guarantee, but as a Layer -- not \
-         a full Subscriber -- so it composes with (b)), and (b) `otel_layer` when Some. \
-         See tracing_otel_tests.rs for the exact composition assertions this must satisfy."
+    let json_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_writer(SanitizingMakeWriter { inner: writer });
+
+    Box::new(
+        tracing_subscriber::registry()
+            .with(otel_layer)
+            .with(json_layer),
     )
 }
 
@@ -236,15 +262,136 @@ where
 /// Panics if a global default subscriber has already been installed for
 /// this process -- mirrors `logging::init_tracing`'s existing
 /// panic-on-double-init behaviour. Callable at most once per process.
-#[allow(dead_code)] // Will be wired into main.rs by the Coder.
 pub fn init_tracing_with_otel() {
-    todo!(
-        "Task #2 (distributed tracing): resolve OtelSettings from the real environment, \
-         construct the real OTLP exporter when enabled, build the composed subscriber via \
-         build_composed_subscriber_for_test-equivalent production wiring, and install it as \
-         the process-global default (set_global_default), mirroring logging::init_tracing's \
-         panic-on-double-init contract."
-    )
+    let log_format =
+        crate::logging::resolve_log_format(std::env::var(crate::logging::LOG_FORMAT_ENV_VAR).ok().as_deref());
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let env_filter = tracing_subscriber::EnvFilter::new(filter);
+
+    let settings = resolve_otel_settings(
+        std::env::var(OTEL_ENABLED_ENV_VAR).ok().as_deref(),
+        std::env::var(OTEL_ENDPOINT_ENV_VAR).ok().as_deref(),
+        std::env::var(OTEL_SERVICE_NAME_ENV_VAR).ok().as_deref(),
+    );
+    let otel_layer = build_production_otel_layer(&settings);
+
+    match log_format {
+        crate::logging::LogFormat::Pretty => {
+            let subscriber = tracing_subscriber::registry()
+                .with(otel_layer)
+                .with(env_filter)
+                .with(tracing_subscriber::fmt::layer());
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("global tracing subscriber must not already be installed");
+        }
+        crate::logging::LogFormat::Json => {
+            let json_layer = tracing_subscriber::fmt::layer()
+                .json()
+                .with_writer(SanitizingMakeWriter { inner: std::io::stdout });
+            let subscriber = tracing_subscriber::registry()
+                .with(otel_layer)
+                .with(env_filter)
+                .with(json_layer);
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("global tracing subscriber must not already be installed");
+        }
+    }
+}
+
+/// Builds the production OTel layer from resolved [`OtelSettings`], or
+/// `None` when export is disabled or the OTLP exporter fails to construct.
+///
+/// Exporter construction failure (e.g. an unparsable endpoint) is treated as
+/// fail-safe-off rather than a startup panic -- mirrors the module's
+/// documented preference for silently disabling network export over
+/// silently enabling it (or, worse here, crashing the whole process over an
+/// observability concern).
+fn build_production_otel_layer(
+    settings: &OtelSettings,
+) -> Option<Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync>> {
+    if !settings.enabled {
+        return None;
+    }
+
+    match build_otlp_span_exporter(&settings.otlp_endpoint) {
+        Ok(exporter) => Some(build_otel_layer_with_exporter(exporter, &settings.service_name)),
+        Err(err) => {
+            eprintln!(
+                "Failed to build OTLP span exporter for endpoint '{}': {err}. \
+                 Distributed tracing will be disabled for this process.",
+                settings.otlp_endpoint
+            );
+            None
+        }
+    }
+}
+
+/// Constructs the real gRPC/OTLP span exporter used in production, pointed
+/// at `endpoint`. Matches the docker-compose local-stack's `OTEL_EXPORTER_OTLP_ENDPOINT`
+/// default (`http://localhost:4317`), a standard OTLP/gRPC port.
+fn build_otlp_span_exporter(
+    endpoint: &str,
+) -> Result<opentelemetry_otlp::SpanExporter, opentelemetry_otlp::ExporterBuildError> {
+    use opentelemetry_otlp::WithExportConfig;
+
+    opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint)
+        .build()
+}
+
+/// A `std::io::Write` wrapper that redacts sensitive field values (via
+/// [`crate::logging::redact_sensitive_fields`]) before forwarding bytes to
+/// the wrapped writer.
+///
+/// A separate, locally-owned type from `logging::SanitizingWriter` (which is
+/// private to that module) -- reuses the module's `pub` redaction function
+/// rather than its internal `io::Write` plumbing, per this module's
+/// "Composition with Task 1's logging layer" contract.
+struct SanitizingWriter<W> {
+    inner: W,
+}
+
+impl<W: std::io::Write> std::io::Write for SanitizingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let text = String::from_utf8_lossy(buf);
+        let (body, had_trailing_newline) = match text.strip_suffix('\n') {
+            Some(stripped) => (stripped, true),
+            None => (text.as_ref(), false),
+        };
+
+        let mut sanitized = crate::logging::redact_sensitive_fields(body).into_bytes();
+        if had_trailing_newline {
+            sanitized.push(b'\n');
+        }
+
+        self.inner.write_all(&sanitized)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// A `tracing_subscriber::fmt::MakeWriter` that wraps every writer it
+/// produces in a [`SanitizingWriter`].
+#[derive(Clone)]
+struct SanitizingMakeWriter<W> {
+    inner: W,
+}
+
+impl<'a, W> tracing_subscriber::fmt::MakeWriter<'a> for SanitizingMakeWriter<W>
+where
+    W: tracing_subscriber::fmt::MakeWriter<'a>,
+{
+    type Writer = SanitizingWriter<W::Writer>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        SanitizingWriter {
+            inner: self.inner.make_writer(),
+        }
+    }
 }
 
 #[cfg(test)]

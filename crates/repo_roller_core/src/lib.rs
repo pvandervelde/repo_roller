@@ -107,7 +107,7 @@
 
 use github_client::{GitHubClient, RepositoryClient, RepositoryCreatePayload};
 use temp_dir::TempDir;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Instrument};
 
 mod errors;
 
@@ -1136,13 +1136,90 @@ pub async fn create_repository(
     environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
     event_context: event_publisher::EventNotificationContext,
 ) -> RepoRollerResult<RepositoryCreationResult> {
+    let business_context = observability::business_context_attributes(
+        request.owner.as_ref(),
+        request.template.as_ref().map(|t| t.as_ref()),
+        &event_context.created_by,
+    );
+    let top_level_span = repository_creation_span(&business_context);
+
+    create_repository_inner(
+        request,
+        metadata_provider,
+        auth_service,
+        metadata_repository_name,
+        visibility_policy_provider,
+        environment_detector,
+        event_context,
+    )
+    .instrument(top_level_span)
+    .await
+}
+
+/// Builds the top-level [`observability::SPAN_REPOSITORY_CREATION`] span,
+/// enriched with the bounded, sanitized business-context attributes computed
+/// by [`observability::business_context_attributes`].
+///
+/// Field values must be attached at span-creation time (not via
+/// `Span::record` afterwards) so they are visible to any `tracing_subscriber::Layer`
+/// that only observes `on_new_span` (e.g. this crate's own span-hierarchy
+/// test harness, and `tracing-opentelemetry`'s span attribute capture).
+fn repository_creation_span(attributes: &[(&'static str, String)]) -> tracing::Span {
+    let organization = attributes
+        .iter()
+        .find(|(key, _)| *key == observability::ATTR_ORGANIZATION)
+        .map(|(_, value)| value.clone())
+        .unwrap_or_default();
+    let requestor = attributes
+        .iter()
+        .find(|(key, _)| *key == observability::ATTR_REQUESTOR)
+        .map(|(_, value)| value.clone())
+        .unwrap_or_default();
+    let template = attributes
+        .iter()
+        .find(|(key, _)| *key == observability::ATTR_TEMPLATE)
+        .map(|(_, value)| value.clone());
+
+    match template {
+        Some(template) => tracing::info_span!(
+            observability::SPAN_REPOSITORY_CREATION,
+            organization = %organization,
+            template = %template,
+            requestor = %requestor,
+        ),
+        None => tracing::info_span!(
+            observability::SPAN_REPOSITORY_CREATION,
+            organization = %organization,
+            requestor = %requestor,
+        ),
+    }
+}
+
+/// The actual repository-creation orchestration, run inside the
+/// [`observability::SPAN_REPOSITORY_CREATION`] span opened by
+/// [`create_repository`]. Each phase-boundary call below is wrapped in its
+/// own child span using the canonical names from [`observability`], so a
+/// `create_repository` request produces one trace with correctly nested
+/// child spans for authentication, configuration resolution, template
+/// processing, and GitHub repository creation.
+async fn create_repository_inner(
+    request: RepositoryCreationRequest,
+    metadata_provider: &dyn config_manager::MetadataRepositoryProvider,
+    auth_service: &dyn auth_handler::UserAuthenticationService,
+    metadata_repository_name: &str,
+    visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
+    environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
+    event_context: event_publisher::EventNotificationContext,
+) -> RepoRollerResult<RepositoryCreationResult> {
     info!(
         "Starting repository creation: name='{}', owner='{}', template={:?}, strategy={:?}",
         request.name, request.owner, request.template, request.content_strategy
     );
 
     // Steps 1–2: Authenticate and create GitHub clients.
-    let clients = setup_github_clients(auth_service, request.owner.as_ref()).await?;
+    let clients = setup_github_clients(auth_service, request.owner.as_ref())
+        .instrument(tracing::info_span!(observability::SPAN_AUTHENTICATION))
+        .await?;
 
     // Steps 3–4: Resolve merged configuration and load the template config.
     let (merged_config, template) = load_creation_config(
@@ -1151,6 +1228,9 @@ pub async fn create_repository(
         metadata_provider,
         metadata_repository_name,
     )
+    .instrument(tracing::info_span!(
+        observability::SPAN_CONFIGURATION_RESOLUTION
+    ))
     .await?;
 
     // Step 4b: Validate the repository name against configured naming rules.
@@ -1174,6 +1254,7 @@ pub async fn create_repository(
         &merged_config,
         &clients.template_fetcher,
     )
+    .instrument(tracing::info_span!(observability::SPAN_TEMPLATE_PROCESSING))
     .await?;
 
     // Step 7: Initialize the local Git repository and create the initial commit.
@@ -1193,6 +1274,9 @@ pub async fn create_repository(
         &clients.installation_repo_client,
         visibility_decision.visibility,
     )
+    .instrument(tracing::info_span!(
+        observability::SPAN_GITHUB_REPOSITORY_CREATION
+    ))
     .await?;
 
     // Step 9: Push local content to the GitHub remote.

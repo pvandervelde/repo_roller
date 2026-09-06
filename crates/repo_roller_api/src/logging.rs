@@ -564,6 +564,13 @@ pub fn redact_sensitive_fields(json_line: &str) -> String {
 /// to the writer via exactly one `write_all` call. This lets us treat every
 /// `write` call as "one complete log line" rather than needing to buffer
 /// across calls.
+///
+/// `#[allow(dead_code)]`: this type's only production caller was
+/// `init_tracing`, which Task #2 (distributed tracing) superseded with
+/// `tracing_otel::init_tracing_with_otel` as the process's sole tracing
+/// entry point (see `main.rs`). Kept, untouched, and still exercised by
+/// this file's own tests -- Task #1 remains complete and audited.
+#[allow(dead_code)]
 struct SanitizingWriter<W> {
     inner: W,
 }
@@ -592,6 +599,10 @@ impl<W: std::io::Write> std::io::Write for SanitizingWriter<W> {
 
 /// A `tracing_subscriber::fmt::MakeWriter` that wraps every writer it
 /// produces in a [`SanitizingWriter`].
+///
+/// `#[allow(dead_code)]`: see [`SanitizingWriter`]'s doc comment -- superseded
+/// in production by `tracing_otel::init_tracing_with_otel`, kept untouched.
+#[allow(dead_code)]
 #[derive(Clone)]
 struct SanitizingMakeWriter<W> {
     inner: W,
@@ -616,6 +627,11 @@ where
 ///
 /// Exposed chiefly for testing -- production start-up should call
 /// [`init_tracing`] instead.
+///
+/// `#[allow(dead_code)]`: see [`SanitizingWriter`]'s doc comment -- superseded
+/// in production by `tracing_otel::init_tracing_with_otel`, kept untouched
+/// and still exercised by this file's own tests.
+#[allow(dead_code)]
 pub fn build_sanitizing_json_subscriber<W>(writer: W) -> Box<dyn tracing::Subscriber + Send + Sync>
 where
     W: for<'writer> tracing_subscriber::fmt::MakeWriter<'writer> + Send + Sync + 'static,
@@ -641,6 +657,15 @@ where
 /// Panics if a global default subscriber has already been installed for
 /// this process -- mirrors `tracing_subscriber::...::init()`'s existing
 /// panic-on-double-init behaviour. Callable at most once per process.
+///
+/// `#[allow(dead_code)]`: Task #2 (distributed tracing) replaced this
+/// function's sole call site in `main.rs` with
+/// `tracing_otel::init_tracing_with_otel` (JSON/pretty format selection plus
+/// an optional OTel export layer, fail-safe-off by default). Kept, untouched,
+/// and still exercised by this file's own tests -- Task #1 remains complete
+/// and audited; see `tracing_otel.rs` module docs for the production wiring
+/// this superseded it with.
+#[allow(dead_code)]
 pub fn init_tracing() {
     let format = resolve_log_format(std::env::var(LOG_FORMAT_ENV_VAR).ok().as_deref());
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());

@@ -12,6 +12,13 @@
 //! - `METADATA_REPOSITORY_NAME`: Name of metadata repository (default: .reporoller)
 //! - `GITHUB_APP_ID`: GitHub App ID (required)
 //! - `GITHUB_APP_PRIVATE_KEY`: GitHub App private key in PEM format (required)
+//! - `OTEL_TRACES_ENABLED`: Enable OpenTelemetry/OTLP distributed trace export --
+//!   `true`/`1` (case-insensitive) to enable; unset or any other value leaves it
+//!   disabled (fail-safe-off default, see `tracing_otel` module docs)
+//! - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP/gRPC collector endpoint (default:
+//!   `http://localhost:4317`)
+//! - `OTEL_SERVICE_NAME`: Service name attached to exported spans' resource
+//!   attributes (default: `repo-roller-api`)
 
 use std::env;
 
@@ -286,8 +293,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize tracing. JSON output is the default (production-safe,
     // machine-readable); set LOG_FORMAT=pretty for human-readable output
-    // during local development. See `logging::init_tracing` for details.
-    logging::init_tracing();
+    // during local development. Distributed tracing (OpenTelemetry/OTLP
+    // span export) is fail-safe-off by default -- set OTEL_TRACES_ENABLED=true
+    // to export spans to an OTLP collector. See `tracing_otel::init_tracing_with_otel`
+    // for details (replaces the former `logging::init_tracing()` call site).
+    tracing_otel::init_tracing_with_otel();
 
     // Load configuration from environment
     let config = ApiConfig {

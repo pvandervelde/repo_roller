@@ -126,20 +126,20 @@ pub const ATTR_REQUESTOR: &str = "requestor";
 /// - The returned `Vec`'s key order is stable: `organization`, then
 ///   `template` (if present), then `requestor` -- tests may rely on this
 ///   order rather than searching unordered.
-#[allow(dead_code)] // Will gain a caller once SPAN_REPOSITORY_CREATION is instrumented.
 pub fn business_context_attributes(
     organization: &str,
     template: Option<&str>,
     requestor: &str,
 ) -> Vec<(&'static str, String)> {
-    let _ = (organization, template, requestor);
-    todo!(
-        "Task #2 (distributed tracing): build the (organization, template?, requestor) \
-         attribute vec per the contract in observability.rs, sanitizing every value via \
-         github_client::span_attributes::sanitize_span_attribute_value. See \
-         observability_tests.rs / observability_proptests.rs for the full behavioural \
-         contract this must satisfy."
-    )
+    use github_client::span_attributes::sanitize_span_attribute_value;
+
+    let mut attributes = Vec::with_capacity(3);
+    attributes.push((ATTR_ORGANIZATION, sanitize_span_attribute_value(organization)));
+    if let Some(template_name) = template {
+        attributes.push((ATTR_TEMPLATE, sanitize_span_attribute_value(template_name)));
+    }
+    attributes.push((ATTR_REQUESTOR, sanitize_span_attribute_value(requestor)));
+    attributes
 }
 
 #[cfg(test)]

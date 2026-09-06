@@ -233,6 +233,69 @@ Add to this whenever a reusable component becomes "the standard way".
   value is echoed back as the `X-Request-Id` response header for client/server log
   correlation.
 
+### Distributed Tracing (Observability Task 2)
+
+- **`repo_roller_api::tracing_otel`** — OpenTelemetry/OTLP span-export wiring for
+  the API binary, composed with Task 1's sanitizing JSON logging layer on one
+  `tracing_subscriber::Registry`
+  Use when: Wiring up (or extending) the API binary's global tracing subscriber
+  with OTel export — new call sites should go through `tracing_otel::init_tracing_with_otel()`
+  (already wired in `main.rs`, replacing Task 1's `logging::init_tracing()` call
+  site) rather than calling `tracing_subscriber::fmt()...init()` or
+  `logging::init_tracing()` directly
+  Key exports: `resolve_otel_settings` (pure env-var parsing of
+  `OTEL_TRACES_ENABLED`/`OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_SERVICE_NAME`,
+  fail-safe-**off** default — unlike `logging::resolve_log_format`'s JSON-safe
+  default, an unset/unrecognised value here must never silently enable
+  background network export), `build_otel_layer_with_exporter` (exporter-agnostic
+  `Layer` builder using a synchronous `SimpleSpanProcessor` — accepts any
+  `opentelemetry_sdk::trace::SpanExporter`, so tests inject `InMemorySpanExporter`
+  and production injects the real OTLP/gRPC exporter), `build_composed_subscriber_for_test`
+  (testing seam combining Task 1's redaction layer with an optional OTel layer),
+  `init_tracing_with_otel` (production entry point)
+  Gotcha: `opentelemetry_sdk::trace::SdkTracerProvider` auto-triggers `shutdown()`
+  when its *last* strong reference is dropped, which for exporters with
+  reset-on-shutdown semantics (e.g. `InMemorySpanExporter`, used throughout this
+  module's own tests) silently clears already-exported spans. `build_otel_layer_with_exporter`
+  deliberately leaks one extra provider reference (`std::mem::forget(provider.clone())`)
+  so the returned `Layer` being dropped (e.g. a test's scoped `tracing::subscriber::set_default`
+  guard going out of scope) never triggers this — reuse this pattern for any
+  future function that builds a `Layer` from a fresh `SdkTracerProvider` and hands
+  ownership of the tracer (not the provider) to the caller.
+
+- **`github_client::span_attributes`** — business-context span-attribute
+  sanitization, a data path entirely separate from `repo_roller_api::logging`'s
+  redaction (span attributes bypass the `fmt` layer's JSON output entirely)
+  Use when: Attaching any attacker-influenceable business-context value
+  (organization login, repository name, template name, requestor/user login,
+  team slug, path, etc.) to a `tracing` span via `Span::record`/
+  `#[instrument(fields(...))]`/`tracing::field::debug` for a span that may be
+  exported to OpenTelemetry — always pass the raw value through
+  `sanitize_span_attribute_value` first, never attach it raw
+  Key exports: `sanitize_span_attribute_value` (whole-value secret-shape
+  rejection — same four shapes as `logging.rs`'s scanner, reimplemented
+  independently since `github_client` must not depend on `repo_roller_api` —
+  plus length-bounding to `MAX_SPAN_ATTRIBUTE_LEN` (128 `char`s) for cardinality
+  safety), `SPAN_ATTRIBUTE_REDACTED_MARKER`
+  Notes: as of this task, two `github_client::lib` `#[instrument]` sites
+  (`create_org_repository`, `get_organization_default_branch`) call this
+  function for their `org_name` field; ~23 other pre-existing `#[instrument(fields(...))]`
+  sites in the same file do **not** yet sanitize their business-context fields —
+  see `.llm/findings/task-2-tracing.md` for the deferred remediation.
+
+- **`repo_roller_core::observability`** — canonical span names and hierarchy
+  contract for `create_repository`'s orchestration phases
+  Use when: Instrumenting (or reasoning about) the `create_repository` span tree —
+  reference `SPAN_REPOSITORY_CREATION`/`SPAN_AUTHENTICATION`/
+  `SPAN_CONFIGURATION_RESOLUTION`/`SPAN_TEMPLATE_PROCESSING`/
+  `SPAN_GITHUB_REPOSITORY_CREATION` symbolically rather than hard-coding span
+  name string literals
+  Key exports: the five `SPAN_*` name constants above, `ATTR_ORGANIZATION`/
+  `ATTR_TEMPLATE`/`ATTR_REQUESTOR`, `business_context_attributes` (builds the
+  bounded, sanitized attribute set for the top-level span by delegating to
+  `github_client::span_attributes::sanitize_span_attribute_value` — never
+  re-implements sanitization independently)
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout
