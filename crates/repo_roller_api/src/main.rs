@@ -29,6 +29,7 @@ mod logging;
 mod middleware;
 mod models;
 mod routes;
+mod sanitizing_writer;
 mod server;
 mod tracing_otel;
 mod translation;

@@ -101,6 +101,7 @@
 //!   `init_tracing_with_otel` accept `Option<...>` specifically so "omitted
 //!   entirely" is the natural, zero-cost choice.
 
+use crate::sanitizing_writer::SanitizingMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
 
@@ -338,60 +339,6 @@ fn build_otlp_span_exporter(
         .with_tonic()
         .with_endpoint(endpoint)
         .build()
-}
-
-/// A `std::io::Write` wrapper that redacts sensitive field values (via
-/// [`crate::logging::redact_sensitive_fields`]) before forwarding bytes to
-/// the wrapped writer.
-///
-/// A separate, locally-owned type from `logging::SanitizingWriter` (which is
-/// private to that module) -- reuses the module's `pub` redaction function
-/// rather than its internal `io::Write` plumbing, per this module's
-/// "Composition with Task 1's logging layer" contract.
-struct SanitizingWriter<W> {
-    inner: W,
-}
-
-impl<W: std::io::Write> std::io::Write for SanitizingWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let text = String::from_utf8_lossy(buf);
-        let (body, had_trailing_newline) = match text.strip_suffix('\n') {
-            Some(stripped) => (stripped, true),
-            None => (text.as_ref(), false),
-        };
-
-        let mut sanitized = crate::logging::redact_sensitive_fields(body).into_bytes();
-        if had_trailing_newline {
-            sanitized.push(b'\n');
-        }
-
-        self.inner.write_all(&sanitized)?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.inner.flush()
-    }
-}
-
-/// A `tracing_subscriber::fmt::MakeWriter` that wraps every writer it
-/// produces in a [`SanitizingWriter`].
-#[derive(Clone)]
-struct SanitizingMakeWriter<W> {
-    inner: W,
-}
-
-impl<'a, W> tracing_subscriber::fmt::MakeWriter<'a> for SanitizingMakeWriter<W>
-where
-    W: tracing_subscriber::fmt::MakeWriter<'a>,
-{
-    type Writer = SanitizingWriter<W::Writer>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        SanitizingWriter {
-            inner: self.inner.make_writer(),
-        }
-    }
 }
 
 #[cfg(test)]

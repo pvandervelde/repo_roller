@@ -554,72 +554,27 @@ pub fn redact_sensitive_fields(json_line: &str) -> String {
     serde_json::to_string(&parsed).unwrap_or_else(|_| json_line.to_string())
 }
 
-/// A `std::io::Write` wrapper that redacts sensitive field values (via
-/// [`redact_sensitive_fields`]) before forwarding bytes to the wrapped
-/// writer.
+/// `SanitizingWriter` / `SanitizingMakeWriter`: relies on
+/// `tracing_subscriber::fmt`'s implementation detail (confirmed against
+/// `tracing-subscriber` 0.3.23's `fmt_layer.rs`) that a single formatted
+/// event -- JSON body plus trailing newline -- is always delivered to the
+/// writer via exactly one `write_all` call. This lets us treat every `write`
+/// call as "one complete log line" rather than needing to buffer across
+/// calls.
 ///
-/// Relies on `tracing_subscriber::fmt`'s implementation detail (confirmed
-/// against `tracing-subscriber` 0.3.23's `fmt_layer.rs`) that a single
-/// formatted event -- JSON body plus trailing newline -- is always delivered
-/// to the writer via exactly one `write_all` call. This lets us treat every
-/// `write` call as "one complete log line" rather than needing to buffer
-/// across calls.
-///
-/// `#[allow(dead_code)]`: this type's only production caller was
-/// `init_tracing`, which Task #2 (distributed tracing) superseded with
-/// `tracing_otel::init_tracing_with_otel` as the process's sole tracing
-/// entry point (see `main.rs`). Kept, untouched, and still exercised by
-/// this file's own tests -- Task #1 remains complete and audited.
-#[allow(dead_code)]
-struct SanitizingWriter<W> {
-    inner: W,
-}
-
-impl<W: std::io::Write> std::io::Write for SanitizingWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let text = String::from_utf8_lossy(buf);
-        let (body, had_trailing_newline) = match text.strip_suffix('\n') {
-            Some(stripped) => (stripped, true),
-            None => (text.as_ref(), false),
-        };
-
-        let mut sanitized = redact_sensitive_fields(body).into_bytes();
-        if had_trailing_newline {
-            sanitized.push(b'\n');
-        }
-
-        self.inner.write_all(&sanitized)?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.inner.flush()
-    }
-}
-
-/// A `tracing_subscriber::fmt::MakeWriter` that wraps every writer it
-/// produces in a [`SanitizingWriter`].
-///
-/// `#[allow(dead_code)]`: see [`SanitizingWriter`]'s doc comment -- superseded
-/// in production by `tracing_otel::init_tracing_with_otel`, kept untouched.
-#[allow(dead_code)]
-#[derive(Clone)]
-struct SanitizingMakeWriter<W> {
-    inner: W,
-}
-
-impl<'a, W> tracing_subscriber::fmt::MakeWriter<'a> for SanitizingMakeWriter<W>
-where
-    W: tracing_subscriber::fmt::MakeWriter<'a>,
-{
-    type Writer = SanitizingWriter<W::Writer>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        SanitizingWriter {
-            inner: self.inner.make_writer(),
-        }
-    }
-}
+/// Extracted to [`crate::sanitizing_writer`] during Task #2's REFACTOR pass
+/// (was previously defined here) so `tracing_otel.rs` can reuse the exact
+/// same writer-wrapping types rather than maintaining a byte-for-byte copy;
+/// see that module's doc comment for the full rationale. Re-imported here
+/// (rather than referenced via a fully-qualified path at each use site) so
+/// this module's -- and `logging_tests.rs`'s -- existing references keep
+/// compiling unchanged. `SanitizingWriter` is only named directly by
+/// `logging_tests.rs` (production code here only names `SanitizingMakeWriter`),
+/// hence the `#[cfg(test)]` on that half of the import to avoid an
+/// unused-import warning (denied as an error in CI) in non-test builds.
+use crate::sanitizing_writer::SanitizingMakeWriter;
+#[cfg(test)]
+use crate::sanitizing_writer::SanitizingWriter;
 
 /// Builds a JSON-formatted `tracing::Subscriber` that writes to `writer` and
 /// redacts sensitive fields (per [`SENSITIVE_FIELD_NAMES`] /

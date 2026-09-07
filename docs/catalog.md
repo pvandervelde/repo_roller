@@ -190,11 +190,17 @@ Add to this whenever a reusable component becomes "the standard way".
   passes non-JSON input through unchanged), `looks_like_secret_value` /
   `redact_secret_shaped_substrings` (value-level, pattern-based secret detection —
   see below), `init_tracing` (production entry point)
-  Pattern: `SanitizingWriter<W: io::Write>` / `SanitizingMakeWriter<W>` wrap any
+  Pattern: `SanitizingWriter<W: io::Write>` / `SanitizingMakeWriter<W>` (now
+  `pub(crate)` in `repo_roller_api::sanitizing_writer` -- extracted there
+  during Task #2's REFACTOR pass, previously private to this module; see
+  that module's doc comment for why the writer-wrapping *types* are shared
+  crate-wide even though `logging::build_sanitizing_json_subscriber` and
+  `tracing_otel::init_tracing_with_otel`/`build_composed_subscriber_for_test`
+  build genuinely different `Subscriber` shapes around them) wrap any
   `tracing_subscriber::fmt::MakeWriter` so every formatted JSON line is redacted
   before any byte reaches the underlying writer; `build_sanitizing_json_subscriber(writer)`
   assembles the full `Subscriber` from this wrapper (exposed chiefly for tests that
-  supply an in-memory writer). Reuse this `MakeWriter`-wrapping shape for any future
+  supply an in-memory writer). Reuse `crate::sanitizing_writer`'s types for any future
   writer-level cross-cutting concern rather than inventing a new one.
   Notes: Redaction matches on object *key* name (never a field's rendered value/prose
   by keyword), **and independently** scans every string value in the JSON tree
@@ -253,6 +259,10 @@ Add to this whenever a reusable component becomes "the standard way".
   and production injects the real OTLP/gRPC exporter), `build_composed_subscriber_for_test`
   (testing seam combining Task 1's redaction layer with an optional OTel layer),
   `init_tracing_with_otel` (production entry point)
+  Notes: builds its JSON layer with `crate::sanitizing_writer::SanitizingMakeWriter`
+  (extracted from `logging.rs` during Task #2's REFACTOR pass) rather than a
+  second copy of the same writer-wrapping types — see
+  "Logging & Correlation (Observability Task 1)" above for that pattern.
   Gotcha: `opentelemetry_sdk::trace::SdkTracerProvider` auto-triggers `shutdown()`
   when its *last* strong reference is dropped, which for exporters with
   reset-on-shutdown semantics (e.g. `InMemorySpanExporter`, used throughout this

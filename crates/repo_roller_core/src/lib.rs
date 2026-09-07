@@ -1165,20 +1165,9 @@ pub async fn create_repository(
 /// that only observes `on_new_span` (e.g. this crate's own span-hierarchy
 /// test harness, and `tracing-opentelemetry`'s span attribute capture).
 fn repository_creation_span(attributes: &[(&'static str, String)]) -> tracing::Span {
-    let organization = attributes
-        .iter()
-        .find(|(key, _)| *key == observability::ATTR_ORGANIZATION)
-        .map(|(_, value)| value.clone())
-        .unwrap_or_default();
-    let requestor = attributes
-        .iter()
-        .find(|(key, _)| *key == observability::ATTR_REQUESTOR)
-        .map(|(_, value)| value.clone())
-        .unwrap_or_default();
-    let template = attributes
-        .iter()
-        .find(|(key, _)| *key == observability::ATTR_TEMPLATE)
-        .map(|(_, value)| value.clone());
+    let organization = find_attribute(attributes, observability::ATTR_ORGANIZATION).unwrap_or_default();
+    let requestor = find_attribute(attributes, observability::ATTR_REQUESTOR).unwrap_or_default();
+    let template = find_attribute(attributes, observability::ATTR_TEMPLATE);
 
     match template {
         Some(template) => tracing::info_span!(
@@ -1193,6 +1182,17 @@ fn repository_creation_span(attributes: &[(&'static str, String)]) -> tracing::S
             requestor = %requestor,
         ),
     }
+}
+
+/// Looks up `key` in a [`observability::business_context_attributes`]-shaped
+/// slice, cloning the matching value. Small helper to avoid repeating the
+/// same `.iter().find(...).map(...)` shape once per attribute key in
+/// [`repository_creation_span`].
+fn find_attribute(attributes: &[(&'static str, String)], key: &str) -> Option<String> {
+    attributes
+        .iter()
+        .find(|(attr_key, _)| *attr_key == key)
+        .map(|(_, value)| value.clone())
 }
 
 /// The actual repository-creation orchestration, run inside the
