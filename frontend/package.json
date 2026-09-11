@@ -48,7 +48,7 @@
     "vitest": "4.1.9"
   },
   "dependencies": {
-    "smol-toml": "^1.7.0"
+    "smol-toml": "^1.7.1"
   },
   "pnpm": {
     "overrides": {
