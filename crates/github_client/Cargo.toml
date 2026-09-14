@@ -32,4 +32,4 @@ tokio = { workspace = true, features = [
 serde_json.workspace = true # For constructing mock responses
 ctor = "=1.0.7"
 proptest.workspace = true
-rustls = { version = "=0.23.41", default-features = false, features = ["aws-lc-rs"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["aws-lc-rs"] }
