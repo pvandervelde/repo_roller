@@ -37,6 +37,6 @@ walkdir.workspace = true
 ctor = "=1.0.7"
 octocrab.workspace = true
 proptest.workspace = true
-rustls = { version = "=0.23.41", default-features = false, features = ["aws-lc-rs"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["aws-lc-rs"] }
 tracing-test = "=0.2.6"
 wiremock.workspace = true
