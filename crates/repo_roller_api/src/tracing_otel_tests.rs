@@ -339,6 +339,81 @@ async fn test_build_composed_subscriber_for_test_composes_otel_layer_and_log_san
 /// `init_tracing_with_otel` always panics once a global default exists --
 /// holds regardless of which call (this test's first call, or some other
 /// test's) actually performed the installation.
+// ---------------------------------------------------------------------
+// Tier 3: Mutation-kill tests (QA audit pass, #2 tracing).
+// ---------------------------------------------------------------------
+
+#[test]
+fn test_build_production_otel_layer_returns_none_when_disabled() {
+    // Kills (in combination with the "enabled" test below):
+    // `313:5 replace build_production_otel_layer -> ... with None` would
+    // pass this specific case trivially, but the paired "enabled" test
+    // below distinguishes it from the real implementation.
+    let settings = OtelSettings {
+        enabled: false,
+        otlp_endpoint: DEFAULT_OTLP_ENDPOINT.to_string(),
+        service_name: DEFAULT_SERVICE_NAME.to_string(),
+    };
+    assert!(build_production_otel_layer(&settings).is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_build_production_otel_layer_returns_some_when_enabled_with_valid_endpoint() {
+    // Kills: `313:8 delete ! in build_production_otel_layer` (inverts the
+    // enabled check, returning None whenever export IS enabled) and
+    // `313:5 replace build_production_otel_layer -> ... with None`
+    // (unconditionally returns None). Both mutants collapse this case --
+    // which must return `Some` -- to `None`.
+    let settings = OtelSettings {
+        enabled: true,
+        otlp_endpoint: DEFAULT_OTLP_ENDPOINT.to_string(),
+        service_name: "test-service".to_string(),
+    };
+    assert!(
+        build_production_otel_layer(&settings).is_some(),
+        "enabled settings with a well-formed endpoint must produce a layer"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Tier 3: Adversarial -- repeated construction / mem::forget leak concern.
+// ---------------------------------------------------------------------
+
+/// `build_otel_layer_with_exporter` deliberately `mem::forget`s one
+/// `SdkTracerProvider` reference per call (see its doc comment) to avoid
+/// auto-shutdown wiping already-exported spans before a caller inspects
+/// them. This is a documented, reviewed trade-off, not a bug -- but calling
+/// it many times in a loop (as a hostile/careless caller, or a test suite
+/// that repeatedly exercises the OTel-enabled code path, might) should
+/// still be *functionally* safe: no crash, no cross-contamination between
+/// independently-constructed layers/exporters, no observable slowdown. This
+/// test does not attempt to assert on process memory (not reliably
+/// observable from within the test itself); it asserts the process-visible
+/// contract that actually matters -- correctness -- holds under repetition.
+#[tokio::test(flavor = "current_thread")]
+async fn test_build_otel_layer_with_exporter_repeated_construction_in_loop_is_safe() {
+    for i in 0..200 {
+        let exporter = InMemorySpanExporter::default();
+        let layer = build_otel_layer_with_exporter(exporter.clone(), &format!("loop-service-{i}"));
+        let subscriber = tracing_subscriber::registry().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        tracing::info_span!("loop_span").in_scope(|| {});
+
+        let spans = exporter
+            .get_finished_spans()
+            .expect("in-memory exporter must report finished spans");
+        assert_eq!(
+            spans.len(),
+            1,
+            "iteration {i}: expected exactly one span from this iteration's own \
+             exporter, got {spans:?} -- cross-contamination from a leaked prior \
+             provider would be a genuine defect"
+        );
+        assert_eq!(spans[0].name.as_ref(), "loop_span");
+    }
+}
+
 #[test]
 fn test_init_tracing_with_otel_first_call_succeeds_second_call_panics_on_double_init() {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(init_tracing_with_otel));
