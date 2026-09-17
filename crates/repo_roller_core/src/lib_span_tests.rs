@@ -208,16 +208,30 @@ impl GitHubEnvironmentDetector for PaidPlanEnvironmentDetector {
 /// before ever making a real network request) under a fresh `SpanRecorder`,
 /// returning the recorded spans.
 async fn run_create_repository_with_failing_auth() -> Vec<RecordedSpan> {
+    run_create_repository_with_failing_auth_and_template(Some(TemplateName::new("basic").unwrap())).await
+}
+
+/// Same as [`run_create_repository_with_failing_auth`], but lets the caller
+/// control whether the request specifies a template -- needed to assert on
+/// [`crate::observability::ATTR_TEMPLATE`]'s conditional field presence at
+/// the span level (see the `find_attribute`/`repository_creation_span`
+/// mutation-kill tests below).
+async fn run_create_repository_with_failing_auth_and_template(template: Option<TemplateName>) -> Vec<RecordedSpan> {
     let recorder = SpanRecorder::default();
     let subscriber = tracing_subscriber::registry().with(recorder.clone());
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let request = RepositoryCreationRequestBuilder::new(
+    let mut builder = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("test-repo").unwrap(),
         OrganizationName::new("test-org").unwrap(),
-    )
-    .template(TemplateName::new("basic").unwrap())
-    .build();
+    );
+    builder = match template {
+        Some(template) => builder.template(template),
+        // `ContentStrategy` defaults to `Template`, which panics on `build()`
+        // unless a template is also set -- use `Empty` for the no-template case.
+        None => builder.content_strategy(ContentStrategy::Empty),
+    };
+    let request = builder.build();
 
     let metadata_provider = EmptyMetadataProvider;
     let auth_service = FailingAuthService;
@@ -330,6 +344,58 @@ async fn test_create_repository_repository_creation_span_carries_organization_at
         "repository_creation span must record an {:?} field (Context Enrichment requirement), \
          recorded fields: {:?}",
         crate::observability::ATTR_ORGANIZATION,
+        top_level.field_names
+    );
+}
+
+// ---------------------------------------------------------------------
+// Tier 3: Mutation-kill tests (QA audit pass, #2 tracing) --
+// `find_attribute`/`repository_creation_span`'s conditional `template`
+// field presence.
+// ---------------------------------------------------------------------
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_create_repository_repository_creation_span_carries_template_attribute_when_request_has_template() {
+    // Kills: `find_attribute -> Option<String> with None` (would omit the
+    // `template` field even though this request specifies one).
+    let spans =
+        run_create_repository_with_failing_auth_and_template(Some(TemplateName::new("basic").unwrap())).await;
+    let top_level = spans
+        .iter()
+        .find(|s| s.name == crate::observability::SPAN_REPOSITORY_CREATION)
+        .expect("repository_creation span must exist");
+    assert!(
+        top_level
+            .field_names
+            .iter()
+            .any(|f| f == crate::observability::ATTR_TEMPLATE),
+        "repository_creation span must record a {:?} field when the request specifies a \
+         template, recorded fields: {:?}",
+        crate::observability::ATTR_TEMPLATE,
+        top_level.field_names
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_create_repository_repository_creation_span_omits_template_attribute_when_request_has_no_template() {
+    // Kills: `find_attribute -> Option<String> with Some(String::new())`,
+    // `find_attribute -> Option<String> with Some("xyzzy".into())`, and
+    // `replace == with != in find_attribute` -- all three cause the
+    // `template` field to be (incorrectly) present even though this
+    // request specifies no template.
+    let spans = run_create_repository_with_failing_auth_and_template(None).await;
+    let top_level = spans
+        .iter()
+        .find(|s| s.name == crate::observability::SPAN_REPOSITORY_CREATION)
+        .expect("repository_creation span must exist");
+    assert!(
+        !top_level
+            .field_names
+            .iter()
+            .any(|f| f == crate::observability::ATTR_TEMPLATE),
+        "repository_creation span must NOT record a {:?} field when the request has no \
+         template, recorded fields: {:?}",
+        crate::observability::ATTR_TEMPLATE,
         top_level.field_names
     );
 }

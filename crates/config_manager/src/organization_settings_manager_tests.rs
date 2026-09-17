@@ -1144,3 +1144,228 @@ async fn test_resolve_configuration_max_access_levels_absent_when_not_configured
         "max_collaborator_access_level should be None when not configured"
     );
 }
+
+// ============================================================================
+// RED tests: HIGH #1 security-remediation -- `organization`/`template` span
+// field sanitization consistency.
+//
+// `resolve_configuration`'s `#[instrument(fields(organization = %..., template
+// = %...))]` currently attaches these values RAW, while
+// `repo_roller_core::observability::business_context_attributes` sanitizes
+// the *same logical values* via
+// `github_client::span_attributes::sanitize_span_attribute_value` at the
+// top-level `repository_creation` span -- an inconsistency where the
+// identical value is redacted-if-necessary one span level and raw one level
+// down, in the same trace. These tests drive `resolve_configuration`
+// directly and inspect the recorded span field *values* (not just names) to
+// prove both fields go through the same sanitization contract.
+//
+// Capturing values here is safe: every "secret" used below is a
+// test-crafted fixture, never a real credential.
+// ============================================================================
+
+use std::sync::Mutex;
+use tracing::span::{Attributes, Id};
+use tracing_subscriber::{layer::Context, layer::SubscriberExt, registry::LookupSpan, Layer};
+
+/// Visitor that collects every span field's name AND formatted value.
+struct FieldValueCollector(std::collections::HashMap<String, String>);
+
+impl tracing::field::Visit for FieldValueCollector {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+}
+
+/// One recorded span's name plus its field name/value map.
+#[derive(Debug, Clone)]
+struct RecordedSpanWithValues {
+    name: &'static str,
+    fields: std::collections::HashMap<String, String>,
+}
+
+/// A `tracing_subscriber::Layer` that records every span's name and field
+/// *values* into a shared, thread-safe buffer.
+#[derive(Clone, Default)]
+struct SpanValueRecorder {
+    spans: Arc<Mutex<Vec<RecordedSpanWithValues>>>,
+}
+
+impl SpanValueRecorder {
+    fn recorded(&self) -> Vec<RecordedSpanWithValues> {
+        self.spans
+            .lock()
+            .expect("span value recorder mutex poisoned")
+            .clone()
+    }
+}
+
+impl<S> Layer<S> for SpanValueRecorder
+where
+    S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+        let span_ref = ctx
+            .span(id)
+            .expect("span must exist in registry for on_new_span");
+        let mut collector = FieldValueCollector(std::collections::HashMap::new());
+        attrs.record(&mut collector);
+        self.spans
+            .lock()
+            .expect("span value recorder mutex poisoned")
+            .push(RecordedSpanWithValues {
+                name: span_ref.name(),
+                fields: collector.0,
+            });
+    }
+}
+
+/// Runs `resolve_configuration` against a fresh `MockMetadataProvider` under
+/// a `SpanValueRecorder`, returning the recorded spans regardless of the
+/// call's success/failure (span attributes are attached at span-creation
+/// time, before the instrumented body runs, so the outcome is irrelevant to
+/// this section's assertions).
+async fn run_resolve_configuration_and_record_spans(
+    context: &crate::ConfigurationContext,
+) -> Vec<RecordedSpanWithValues> {
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let provider = Arc::new(MockMetadataProvider::new());
+    let manager = OrganizationSettingsManager::new(provider, create_test_template_loader());
+    let _ = manager.resolve_configuration(context).await;
+
+    recorder.recorded()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_organization_field_is_redacted_when_secret_shaped() {
+    let secret_shaped_org = format!("ghp_{}", "a".repeat(24));
+    let context = crate::ConfigurationContext::new(secret_shaped_org.clone(), "rust-service");
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+    let recorded_org = span
+        .fields
+        .get("organization")
+        .expect("resolve_configuration span must record an `organization` field");
+    assert_eq!(
+        recorded_org,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a GitHub-token-shaped organization value must be fully redacted before being \
+         attached as a span attribute, recorded value: {recorded_org:?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_template_field_is_redacted_when_secret_shaped() {
+    let secret_shaped_template = format!("ghp_{}", "a".repeat(24));
+    let context = crate::ConfigurationContext::new("test-org", secret_shaped_template.clone());
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+    let recorded_template = span
+        .fields
+        .get("template")
+        .expect("resolve_configuration span must record a `template` field");
+    assert_eq!(
+        recorded_template,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a GitHub-token-shaped template value must be fully redacted before being attached \
+         as a span attribute, recorded value: {recorded_template:?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_organization_field_is_truncated_when_over_max_len() {
+    let long_org = "o".repeat(200);
+    let context = crate::ConfigurationContext::new(long_org.clone(), "rust-service");
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+    let recorded_org = span
+        .fields
+        .get("organization")
+        .expect("resolve_configuration span must record an `organization` field");
+    assert!(
+        recorded_org.chars().count() <= github_client::span_attributes::MAX_SPAN_ATTRIBUTE_LEN,
+        "organization span attribute must be bounded to at most {} chars, but recorded value \
+         has {} chars: {recorded_org:?}",
+        github_client::span_attributes::MAX_SPAN_ATTRIBUTE_LEN,
+        recorded_org.chars().count()
+    );
+    assert_ne!(
+        recorded_org.chars().count(),
+        long_org.chars().count(),
+        "a 200-char organization value must actually be truncated, recorded value: {recorded_org:?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_organization_field_matches_repo_roller_core_sanitization()
+{
+    // Consistency check (the core of HIGH #1's second finding): the SAME
+    // logical organization value must be sanitized identically regardless
+    // of which span level attaches it. This asserts
+    // `resolve_configuration`'s span-level value equals what
+    // `github_client::span_attributes::sanitize_span_attribute_value` (the
+    // single canonical sanitizer, also used by
+    // `repo_roller_core::observability::business_context_attributes` for the
+    // top-level `repository_creation` span) would produce for the same raw
+    // input -- proving both span levels delegate to the same contract
+    // instead of one sanitizing and the other not.
+    let raw_org = "Org-With-Mixed-Case-And-A-Very-Long-Name-".repeat(4);
+    let context = crate::ConfigurationContext::new(raw_org.clone(), "rust-service");
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+    let recorded_org = span
+        .fields
+        .get("organization")
+        .expect("resolve_configuration span must record an `organization` field");
+
+    let expected = github_client::span_attributes::sanitize_span_attribute_value(&raw_org);
+    assert_eq!(
+        recorded_org, &expected,
+        "resolve_configuration's `organization` span field must equal \
+         sanitize_span_attribute_value's output for the same raw value, proving consistency \
+         with repo_roller_core::observability::business_context_attributes's sanitization of \
+         the identical logical value; recorded: {recorded_org:?}, expected: {expected:?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_organization_field_short_benign_value_passes_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix.
+    let context = crate::ConfigurationContext::new("my-organization", "rust-service");
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+    let recorded_org = span
+        .fields
+        .get("organization")
+        .expect("resolve_configuration span must record an `organization` field");
+    assert_eq!(
+        recorded_org, "my-organization",
+        "an ordinary, short, non-secret-shaped organization value must pass through \
+         sanitization unchanged, recorded value: {recorded_org:?}"
+    );
+}

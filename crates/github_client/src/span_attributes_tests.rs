@@ -102,6 +102,26 @@ fn test_sanitize_span_attribute_value_never_panics_on_pathologically_long_input(
 }
 
 #[test]
+fn test_sanitize_span_attribute_value_scales_linearly_not_pathologically_on_extreme_input() {
+    // Adversarial/performance: `SecretShapeScanner` documents an O(n)
+    // backward run-length precomputation specifically to avoid quadratic
+    // blowup on long input. Confirm a 1,000,000-char adversarial input
+    // (repeated char, worst case for run-length propagation) completes
+    // comfortably fast -- a quadratic-time regression here (e.g. an
+    // accidentally-reintroduced O(n^2) substring scan) would take seconds
+    // to minutes instead of milliseconds at this size.
+    let raw: String = std::iter::repeat('a').take(1_000_000).collect();
+    let start = std::time::Instant::now();
+    let _ = sanitize_span_attribute_value(&raw);
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "sanitize_span_attribute_value took {elapsed:?} for a 1,000,000-char input -- \
+         expected sub-second, this suggests a non-linear time regression"
+    );
+}
+
+#[test]
 fn test_sanitize_span_attribute_value_never_panics_on_non_ascii_unicode() {
     let raw = "组织名称-🚀-émoji-テンプレート";
     let _ = sanitize_span_attribute_value(raw);
