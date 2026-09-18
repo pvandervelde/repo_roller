@@ -317,10 +317,11 @@ fn build_production_otel_layer(
     match build_otlp_span_exporter(&settings.otlp_endpoint) {
         Ok(exporter) => Some(build_otel_layer_with_exporter(exporter, &settings.service_name)),
         Err(err) => {
-            eprintln!(
-                "Failed to build OTLP span exporter for endpoint '{}': {err}. \
-                 Distributed tracing will be disabled for this process.",
-                settings.otlp_endpoint
+            tracing::error!(
+                otlp_endpoint = %settings.otlp_endpoint,
+                error = %err,
+                "Failed to build OTLP span exporter; distributed tracing will be disabled for \
+                 this process"
             );
             None
         }
@@ -330,15 +331,47 @@ fn build_production_otel_layer(
 /// Constructs the real gRPC/OTLP span exporter used in production, pointed
 /// at `endpoint`. Matches the docker-compose local-stack's `OTEL_EXPORTER_OTLP_ENDPOINT`
 /// default (`http://localhost:4317`), a standard OTLP/gRPC port.
+///
+/// With a TLS feature enabled, `tonic`'s underlying channel construction
+/// (`Endpoint::connect_lazy`) requires an active Tokio reactor to be
+/// reachable via `tokio::runtime::Handle::current()` (it eagerly constructs
+/// an executor for its connection-management background task, even though
+/// the connection itself is not established until first use). Production's
+/// only call site (`init_tracing_with_otel`, invoked from `#[tokio::main]`'s
+/// `async fn main()`) always has a reactor available, so
+/// [`Handle::try_current`] succeeds there and this function behaves exactly
+/// as a direct `.build()` call would. The fallback branch (spinning up and
+/// entering a throwaway runtime) only exists so this function can also be
+/// unit-tested from a plain, non-async `#[test]` -- the throwaway runtime is
+/// dropped immediately after `build()` returns, which is safe because
+/// nothing in that codepath actually drives the lazily-connected channel.
 fn build_otlp_span_exporter(
     endpoint: &str,
 ) -> Result<opentelemetry_otlp::SpanExporter, opentelemetry_otlp::ExporterBuildError> {
     use opentelemetry_otlp::WithExportConfig;
 
-    opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
-        .with_endpoint(endpoint)
-        .build()
+    let build = || {
+        opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint(endpoint)
+            .build()
+    };
+
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            let _guard = handle.enter();
+            build()
+        }
+        Err(_) => {
+            let rt = tokio::runtime::Runtime::new().map_err(|err| {
+                opentelemetry_otlp::ExporterBuildError::InternalFailure(format!(
+                    "failed to create a temporary Tokio runtime for OTLP exporter construction: {err}"
+                ))
+            })?;
+            let _guard = rt.enter();
+            build()
+        }
+    }
 }
 
 #[cfg(test)]

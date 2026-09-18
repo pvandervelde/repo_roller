@@ -278,10 +278,20 @@ impl SecretShapeScanner {
 
     /// Whether `self.chars[i..]` starts with the literal (ASCII) string
     /// `literal`.
+    ///
+    /// Compares character-by-character directly against `literal`'s own
+    /// zero-allocation `chars()` iterator, rather than first collecting
+    /// `literal` into a heap-allocated `Vec<char>` -- this function is called
+    /// up to twice per scanned position (once per GH-token-prefix/Bearer
+    /// literal candidate) across the whole input, so a per-call allocation
+    /// here was the actual root cause of a measured multi-second slowdown on
+    /// million-character input (millions of tiny heap allocations, not an
+    /// algorithmic quadratic blowup -- the surrounding scan is already O(n)).
     fn matches_literal(&self, i: usize, literal: &str) -> bool {
-        let literal_chars: Vec<char> = literal.chars().collect();
-        let end = i + literal_chars.len();
-        end <= self.chars.len() && self.chars[i..end] == literal_chars[..]
+        literal
+            .chars()
+            .enumerate()
+            .all(|(offset, lit_char)| self.chars.get(i + offset) == Some(&lit_char))
     }
 
     /// Length of a match consisting of one of `literals` found at position

@@ -202,8 +202,8 @@ impl OrganizationSettingsManager {
     #[instrument(
         skip(self),
         fields(
-            organization = %context.organization(),
-            template = %context.template(),
+            organization = %github_client::span_attributes::sanitize_span_attribute_value(context.organization()),
+            template = %github_client::span_attributes::sanitize_span_attribute_value(context.template()),
             team = ?context.team(),
             repository_type = ?context.repository_type()
         )

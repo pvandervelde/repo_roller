@@ -404,7 +404,7 @@ impl GitHubClient {
     /// The metadata provider filters results to only include directories.
     ///
     /// See specs/interfaces/github-directory-listing.md for full contract
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %path, branch = %branch))]
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %span_attributes::sanitize_span_attribute_value(path), branch = %branch))]
     pub async fn list_directory_contents(
         &self,
         owner: &str,
@@ -670,7 +670,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %path))]
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %span_attributes::sanitize_span_attribute_value(path)))]
     pub async fn get_file_content(
         &self,
         owner: &str,

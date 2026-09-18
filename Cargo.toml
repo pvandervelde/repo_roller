@@ -51,7 +51,15 @@ opentelemetry_sdk = "0.32"
 # DEFAULT_OTLP_ENDPOINT in tracing_otel.rs and the Jaeger OTLP/gRPC receiver
 # wired up in examples/local-stack/docker-compose.yml). The crate's own
 # default feature set only enables the HTTP transport (port 4318).
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+# "tls-aws-lc" (-> tonic/tls-aws-lc) enables https:// OTLP endpoints. Chosen
+# over "tls-ring"/"tls-provider-agnostic" specifically to avoid introducing
+# the `ring` crypto provider into the dependency tree at all: `main.rs`
+# already installs `rustls::crypto::aws_lc_rs::default_provider()` as the
+# process-wide default (required because octocrab pulls in aws-lc-rs while
+# reqwest pulls in ring), so keeping TLS on aws-lc-rs here avoids the "both
+# providers present, no default installed" panic class entirely rather than
+# merely working around it.
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "tls-aws-lc"] }
 tracing-opentelemetry = "0.33"
 regex = "1"
 secrecy = "0.10"
