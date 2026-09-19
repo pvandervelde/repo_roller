@@ -2,7 +2,7 @@
 # Optimized for small image size and security
 
 # Stage 1: Build
-FROM rust:1.96-bookworm@sha256:d99f7b31f49909348dc59b51f3c95d1efded1701ffb222f095aaab7de3c4abd8 AS builder
+FROM rust:1.97-bookworm@sha256:408fe88047cef61a2087653b0c5255fa51c0f2d6d94ddedd7a2562a9b91a46f6 AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
