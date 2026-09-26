@@ -2184,6 +2184,200 @@ async fn test_create_github_client_span_base_url_field_short_benign_value_passes
     );
 }
 
+// ---------------------------------------------------------------------
+// RED tests: scoping-gap follow-up. The Coder's fix (commit b539eb3)
+// correctly sanitized `username`/`permission`-as-a-whole-annotation on
+// every site in this Tester's original table, but two of those table rows
+// under-scoped what needed fixing: `get_collaborator_permission` and
+// `add_repository_collaborator` each attach `owner`/`repo` (and, on the
+// latter, `permission`) on the EXACT SAME `#[instrument]` line as the
+// `username` field that did get fixed. Only `username` was sanitized;
+// `owner`/`repo`/`permission` on these two lines are still raw today:
+//
+//   get_collaborator_permission (line ~1549):
+//     fields(owner = %owner, repo = %repo,
+//            username = %span_attributes::sanitize_span_attribute_value(username))
+//   add_repository_collaborator (line ~1755):
+//     fields(owner = %owner, repo = %repo,
+//            username = %span_attributes::sanitize_span_attribute_value(username),
+//            permission = %permission)
+//
+// This section proves that gap with the same harness used throughout this
+// file. `username` is deliberately left benign in both tests below (its
+// sanitization is already covered by the tests above) so these tests
+// isolate the specific fields under scrutiny.
+// ---------------------------------------------------------------------
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_get_collaborator_permission_span_owner_repo_fields_redacted_when_secret_shaped() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "role_name": "write"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let client = mock_client(&mock_server);
+    let secret_shaped_owner = format!("ghp_{}", "u".repeat(24));
+    let secret_shaped_repo = format!("ghp_{}", "v".repeat(24));
+    let _ = client
+        .get_collaborator_permission(&secret_shaped_owner, &secret_shaped_repo, "benign-user")
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "get_collaborator_permission")
+        .expect("get_collaborator_permission must create a span");
+    for field in ["owner", "repo"] {
+        assert_eq!(
+            span.fields.get(field).unwrap_or_else(|| panic!(
+                "get_collaborator_permission span must record a `{field}` field"
+            )),
+            crate::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+            "a GitHub-token-shaped `{field}` must be fully redacted before being attached as a \
+             span attribute, even though it shares its #[instrument] line with the \
+             already-sanitized `username` field, recorded fields: {:?}",
+            span.fields
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_get_collaborator_permission_span_owner_repo_fields_short_benign_values_pass_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix that would
+    // replace every owner/repo value with the marker regardless of content.
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "role_name": "write"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let client = mock_client(&mock_server);
+    let _ = client
+        .get_collaborator_permission("benign-owner", "benign-repo", "benign-user")
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "get_collaborator_permission")
+        .expect("get_collaborator_permission must create a span");
+    assert_eq!(
+        span.fields.get("owner").unwrap(),
+        "benign-owner",
+        "recorded fields: {:?}",
+        span.fields
+    );
+    assert_eq!(
+        span.fields.get("repo").unwrap(),
+        "benign-repo",
+        "recorded fields: {:?}",
+        span.fields
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_add_repository_collaborator_span_owner_repo_permission_fields_redacted_when_secret_shaped(
+) {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let client = mock_client(&mock_server);
+    let secret_shaped_owner = format!("ghp_{}", "w".repeat(24));
+    let secret_shaped_repo = format!("ghp_{}", "x".repeat(24));
+    let secret_shaped_permission = format!("ghp_{}", "y".repeat(24));
+    let _ = client
+        .add_repository_collaborator(
+            &secret_shaped_owner,
+            &secret_shaped_repo,
+            "benign-user",
+            &secret_shaped_permission,
+        )
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "add_repository_collaborator")
+        .expect("add_repository_collaborator must create a span");
+    for field in ["owner", "repo", "permission"] {
+        assert_eq!(
+            span.fields.get(field).unwrap_or_else(|| panic!(
+                "add_repository_collaborator span must record a `{field}` field"
+            )),
+            crate::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+            "a GitHub-token-shaped `{field}` must be fully redacted before being attached as a \
+             span attribute, even though it shares its #[instrument] line with the \
+             already-sanitized `username` field, recorded fields: {:?}",
+            span.fields
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_add_repository_collaborator_span_owner_repo_permission_fields_short_benign_values_pass_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix.
+    let mock_server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+        .mount(&mock_server)
+        .await;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let client = mock_client(&mock_server);
+    let _ = client
+        .add_repository_collaborator("benign-owner", "benign-repo", "benign-user", "push")
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "add_repository_collaborator")
+        .expect("add_repository_collaborator must create a span");
+    assert_eq!(
+        span.fields.get("owner").unwrap(),
+        "benign-owner",
+        "recorded fields: {:?}",
+        span.fields
+    );
+    assert_eq!(
+        span.fields.get("repo").unwrap(),
+        "benign-repo",
+        "recorded fields: {:?}",
+        span.fields
+    );
+    assert_eq!(
+        span.fields.get("permission").unwrap(),
+        "push",
+        "recorded fields: {:?}",
+        span.fields
+    );
+}
+
 /// Pre-generated RSA-2048 test key (PKCS8 PEM), local to this file so it
 /// does not depend on the sibling `lib_tests` module's private helper.
 /// For tests only -- never use in production.
