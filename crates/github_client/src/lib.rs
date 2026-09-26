@@ -139,7 +139,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(org_name = %org_name))]
+    #[instrument(skip(self), fields(org_name = %span_attributes::sanitize_span_attribute_value(org_name)))]
     pub async fn get_installation_token_for_org(&self, org_name: &str) -> Result<String, Error> {
         info!(
             org_name = org_name,
@@ -228,7 +228,7 @@ impl GitHubClient {
     ///
     /// # Errors
     /// Returns an `Error::Octocrab` if the API call fails.
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo)))]
     pub async fn get_repository(&self, owner: &str, repo: &str) -> Result<Repository, Error> {
         let result = self.client.repos(owner, repo).get().await;
         match result {
@@ -328,7 +328,7 @@ impl GitHubClient {
     /// errors for 0 or multiple matches.
     ///
     /// See docs/spec/interfaces/github-repository-search.md for full contract
-    #[instrument(skip(self), fields(org = %org, topic = %topic))]
+    #[instrument(skip(self), fields(org = %span_attributes::sanitize_span_attribute_value(org), topic = %span_attributes::sanitize_span_attribute_value(topic)))]
     pub async fn search_repositories_by_topic(
         &self,
         org: &str,
@@ -404,7 +404,7 @@ impl GitHubClient {
     /// The metadata provider filters results to only include directories.
     ///
     /// See specs/interfaces/github-directory-listing.md for full contract
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %span_attributes::sanitize_span_attribute_value(path), branch = %branch))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), path = %span_attributes::sanitize_span_attribute_value(path), branch = %span_attributes::sanitize_span_attribute_value(branch)))]
     pub async fn list_directory_contents(
         &self,
         owner: &str,
@@ -670,7 +670,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, path = %span_attributes::sanitize_span_attribute_value(path)))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), path = %span_attributes::sanitize_span_attribute_value(path)))]
     pub async fn get_file_content(
         &self,
         owner: &str,
@@ -843,7 +843,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(org = %org))]
+    #[instrument(skip(self), fields(org = %span_attributes::sanitize_span_attribute_value(org)))]
     pub async fn list_organization_teams(&self, org: &str) -> Result<Vec<Team>, Error> {
         info!(org = org, "Listing organization teams");
 
@@ -953,7 +953,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug))]
+    #[instrument(skip(self), fields(org = %span_attributes::sanitize_span_attribute_value(org), team_slug = %span_attributes::sanitize_span_attribute_value(team_slug)))]
     pub async fn get_team_members(
         &self,
         org: &str,
@@ -1088,7 +1088,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo = %repo, permission = %permission))]
+    #[instrument(skip(self), fields(org = %span_attributes::sanitize_span_attribute_value(org), team_slug = %span_attributes::sanitize_span_attribute_value(team_slug), repo = %span_attributes::sanitize_span_attribute_value(repo), permission = %span_attributes::sanitize_span_attribute_value(permission)))]
     pub async fn add_team_to_repository(
         &self,
         org: &str,
@@ -1139,7 +1139,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo_owner = %repo_owner, repo = %repo, permission = %permission))]
+    #[instrument(skip(self), fields(org = %span_attributes::sanitize_span_attribute_value(org), team_slug = %span_attributes::sanitize_span_attribute_value(team_slug), repo_owner = %span_attributes::sanitize_span_attribute_value(repo_owner), repo = %span_attributes::sanitize_span_attribute_value(repo), permission = %span_attributes::sanitize_span_attribute_value(permission)))]
     pub async fn set_team_repository_permission(
         &self,
         org: &str,
@@ -1273,7 +1273,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(org = %org, team_slug = %team_slug, repo_owner = %repo_owner, repo = %repo))]
+    #[instrument(skip(self), fields(org = %span_attributes::sanitize_span_attribute_value(org), team_slug = %span_attributes::sanitize_span_attribute_value(team_slug), repo_owner = %span_attributes::sanitize_span_attribute_value(repo_owner), repo = %span_attributes::sanitize_span_attribute_value(repo)))]
     pub async fn get_team_repository_permission(
         &self,
         org: &str,
@@ -1402,7 +1402,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, team_slug = %team_slug))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), team_slug = %span_attributes::sanitize_span_attribute_value(team_slug)))]
     pub async fn get_repository_team_permission(
         &self,
         owner: &str,
@@ -1545,7 +1545,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username))]
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %span_attributes::sanitize_span_attribute_value(username)))]
     pub async fn get_collaborator_permission(
         &self,
         owner: &str,
@@ -1638,7 +1638,7 @@ impl GitHubClient {
     /// # Errors
     ///
     /// Returns [`Error::InvalidResponse`] if the API response cannot be parsed.
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo)))]
     pub async fn list_repository_collaborators(
         &self,
         owner: &str,
@@ -1751,7 +1751,7 @@ impl GitHubClient {
     /// * [`Error::NotFound`]        – Repository does not exist.
     /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
     /// * [`Error::InvalidResponse`] – Network or parse failure.
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username, permission = %permission))]
+    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %span_attributes::sanitize_span_attribute_value(username), permission = %permission))]
     pub async fn add_repository_collaborator(
         &self,
         owner: &str,
@@ -1839,7 +1839,7 @@ impl GitHubClient {
     /// # Errors
     ///
     /// Same as [`Self::add_repository_collaborator`].
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username, permission = %permission))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), username = %span_attributes::sanitize_span_attribute_value(username), permission = %span_attributes::sanitize_span_attribute_value(permission)))]
     pub async fn set_collaborator_permission(
         &self,
         owner: &str,
@@ -1868,7 +1868,7 @@ impl GitHubClient {
     /// * [`Error::NotFound`]        – Repository or collaborator does not exist.
     /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
     /// * [`Error::InvalidResponse`] – Network or parse failure.
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %username))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), username = %span_attributes::sanitize_span_attribute_value(username)))]
     pub async fn remove_repository_collaborator(
         &self,
         owner: &str,
@@ -2003,7 +2003,7 @@ impl RepositoryClient for GitHubClient {
     ///
     /// # Errors
     /// Returns an `Error::Octocrab` if the API call fails.
-    #[instrument(skip(self, settings), fields(owner = %owner, repo = %repo))]
+    #[instrument(skip(self, settings), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo)))]
     async fn update_repository_settings(
         &self,
         owner: &str,
@@ -3577,7 +3577,7 @@ pub struct RepositorySettingsUpdate {
 ///     Ok(())
 /// }
 /// ```
-#[instrument]
+#[instrument(skip(octocrab), fields(repository_owner = %span_attributes::sanitize_span_attribute_value(repository_owner), source_repository = %span_attributes::sanitize_span_attribute_value(source_repository)))]
 pub async fn authenticate_with_access_token(
     octocrab: &Octocrab,
     installation_id: u64,
@@ -3749,7 +3749,7 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
 ///
 /// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
 /// example, when `base_url` is syntactically invalid).
-#[instrument(skip(token))]
+#[instrument(skip(token), fields(base_url = ?base_url.map(span_attributes::sanitize_span_attribute_value)))]
 pub fn create_octocrab_client(
     token: &str,
     base_url: Option<&str>,
@@ -3772,7 +3772,7 @@ pub fn create_octocrab_client(
 ///
 /// Returns [`Error::ApiError`] if the Octocrab client cannot be built (for
 /// example, when `base_url` is syntactically invalid).
-#[instrument(skip(token))]
+#[instrument(skip(token), fields(base_url = ?base_url.map(span_attributes::sanitize_span_attribute_value)))]
 pub fn create_github_client(token: &str, base_url: Option<&str>) -> Result<GitHubClient, Error> {
     let octocrab = create_octocrab_client(token, base_url)?;
     Ok(GitHubClient::new(octocrab.as_ref().clone()))
