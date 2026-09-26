@@ -1545,7 +1545,7 @@ impl GitHubClient {
     /// #     Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %span_attributes::sanitize_span_attribute_value(username)))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), username = %span_attributes::sanitize_span_attribute_value(username)))]
     pub async fn get_collaborator_permission(
         &self,
         owner: &str,
@@ -1751,7 +1751,7 @@ impl GitHubClient {
     /// * [`Error::NotFound`]        – Repository does not exist.
     /// * [`Error::ApiError`]        – GitHub returns a non-2xx response.
     /// * [`Error::InvalidResponse`] – Network or parse failure.
-    #[instrument(skip(self), fields(owner = %owner, repo = %repo, username = %span_attributes::sanitize_span_attribute_value(username), permission = %permission))]
+    #[instrument(skip(self), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo), username = %span_attributes::sanitize_span_attribute_value(username), permission = %span_attributes::sanitize_span_attribute_value(permission)))]
     pub async fn add_repository_collaborator(
         &self,
         owner: &str,
