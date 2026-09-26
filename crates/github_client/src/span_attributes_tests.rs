@@ -122,6 +122,63 @@ fn test_sanitize_span_attribute_value_scales_linearly_not_pathologically_on_extr
 }
 
 #[test]
+fn test_sanitize_span_attribute_value_scales_linearly_on_literal_near_miss_input() {
+    // Stronger adversarial variant of the 1,000,000-char regression test
+    // above: rather than a single repeated character, this repeats a string
+    // engineered to *almost* match every literal-prefixed shape
+    // (`github_pat_`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `Bearer `/`bearer `)
+    // at (nearly) every scanned position, maximizing the number of
+    // `matches_literal` calls that walk several characters deep before
+    // failing. This is the scenario the zero-allocation fix specifically
+    // targeted (a per-call `Vec<char>` allocation per literal comparison),
+    // so a fix that merely special-cased the single-repeated-char case
+    // (e.g. by memoizing on a single previous char) would not necessarily be
+    // exercised by the 1,000,000-'a' test above but would still be slow
+    // here.
+    //
+    // Deliberately asserts on the *scaling ratio* between a small and a 10x
+    // larger input, rather than an absolute wall-clock budget: this
+    // near-miss pattern has a much higher per-position constant factor than
+    // a plain repeated character (up to 8 literal comparisons per position,
+    // each walking several chars deep), and unoptimized (`cargo test`,
+    // non-`--release`) debug-build throughput for this pattern varies
+    // significantly by machine. An absolute-time assertion tuned for one
+    // machine's debug build either flakes on slower CI hardware or is loose
+    // enough to miss a real regression; a ratio check is robust to constant
+    // factor while still failing hard on genuine O(n^2) behaviour (10x the
+    // input would take roughly 100x as long instead of roughly 10x).
+    let unit = "github_pathBearerXbearerYghpXghoXghuXghsXghrX"; // 46 chars, no real match
+    let small: String = unit.repeat(2_000); // ~92,000 chars
+    let large: String = unit.repeat(20_000); // ~920,000 chars (10x)
+
+    // Warm up (page faults, allocator, etc.) before timing either size.
+    let _ = sanitize_span_attribute_value(&small);
+
+    let start_small = std::time::Instant::now();
+    let _ = sanitize_span_attribute_value(&small);
+    let elapsed_small = start_small.elapsed();
+
+    let start_large = std::time::Instant::now();
+    let _ = sanitize_span_attribute_value(&large);
+    let elapsed_large = start_large.elapsed();
+
+    // Generous upper bound: true linear scaling gives a ~10x ratio; this
+    // allows up to 25x (headroom for measurement noise on a ~sub-100ms
+    // baseline) while still failing hard on true O(n^2) behaviour, which
+    // would produce a ~100x ratio.
+    let max_allowed = elapsed_small.saturating_mul(25).max(std::time::Duration::from_millis(50));
+    assert!(
+        elapsed_large <= max_allowed,
+        "sanitize_span_attribute_value took {elapsed_small:?} for a {}-char near-miss input \
+         but {elapsed_large:?} for a {}-char (10x) near-miss input -- a ~{:.1}x time increase \
+         for a 10x input increase suggests non-linear (e.g. quadratic) scaling",
+        small.len(),
+        large.len(),
+        elapsed_large.as_secs_f64() / elapsed_small.as_secs_f64().max(1e-9)
+    );
+}
+
+#[test]
 fn test_sanitize_span_attribute_value_never_panics_on_non_ascii_unicode() {
     let raw = "组织名称-🚀-émoji-テンプレート";
     let _ = sanitize_span_attribute_value(raw);
@@ -316,6 +373,42 @@ fn test_sanitize_span_attribute_value_jwt_second_segment_longer_than_first_bound
     // module's documented "never panics on any input" contract.
     let raw = format!("{}.{}.{}", "A".repeat(10), "B".repeat(15), "C".repeat(10));
     assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+}
+
+#[test]
+fn test_jwt_match_len_returns_exact_total_span_length_not_just_whether_it_matched() {
+    // Kills: `339:54`, `339:58`, `339:65`, `339:69` (`replace + with *` /
+    // `replace + with -` variants) in `jwt_match_len`'s final
+    // `seg1 + 1 + seg2 + 1 + seg3` expression. None of these mutants change
+    // whether `jwt_match_len` returns `Some`/`None` (the guard is
+    // `seg3 >= JWT_SEGMENT_MIN_LEN`, computed before `then_some`), so every
+    // test that only calls `sanitize_span_attribute_value` and asserts
+    // `== SPAN_ATTRIBUTE_REDACTED_MARKER` is structurally unable to kill
+    // them -- the mismatched length value is silently discarded by
+    // `contains_any_match`'s `.is_some()` check. This is a deliberate
+    // white-box test of `SecretShapeScanner`'s internal return value,
+    // needed specifically because the length is otherwise "dead" from the
+    // public API's perspective. Distinct, non-equal segment lengths (10,
+    // 13, 17) ensure `+`, `*`, and `-` at each of the four operator
+    // positions all produce a numerically different (and, for `*`, a wildly
+    // different) result than the correct `10 + 1 + 13 + 1 + 17 == 42`.
+    let raw = format!("{}.{}.{}", "A".repeat(10), "B".repeat(13), "C".repeat(17));
+    let scanner = SecretShapeScanner::new(&raw);
+    assert_eq!(scanner.jwt_match_len(0), Some(42));
+}
+
+#[test]
+fn test_gh_token_match_len_returns_exact_prefix_plus_suffix_length_not_just_whether_it_matched() {
+    // Kills: `315:60 replace + with * in literal_prefixed_run_match_len`
+    // (the `-` variant is already caught elsewhere via a `usize` underflow
+    // panic, but `*` produces a valid-but-wrong value that no
+    // black-box test can observe -- see the sibling `jwt_match_len` test
+    // above for why). `"ghp_"` (4 chars) plus a 21-char suffix run gives an
+    // unambiguous expected length of `4 + 21 == 25`; a `*` mutant would
+    // instead compute `4 * 21 == 84`.
+    let raw = format!("ghp_{}", "a".repeat(21));
+    let scanner = SecretShapeScanner::new(&raw);
+    assert_eq!(scanner.gh_token_match_len(0), Some(25));
 }
 
 #[test]
