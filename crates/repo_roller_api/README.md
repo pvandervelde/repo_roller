@@ -44,6 +44,9 @@ The RepoRoller REST API provides a comprehensive HTTP interface for automated Gi
 - **Request Tracing**: UUID-based request correlation for observability
 - **Prometheus Metrics**: Unauthenticated `GET /metrics` endpoint exposing repository-creation,
   GitHub API call, per-endpoint HTTP, and notification-delivery metrics (Observability Phase 1)
+- **Distributed Tracing**: Opt-in OpenTelemetry/OTLP span export covering the full
+  `create_repository` flow — phase boundaries and GitHub API calls — with mandatory
+  sanitization of business-context span attributes (Observability Phase 2)
 - **Production Ready**: Docker containerization, health checks, graceful shutdown
 - **Comprehensive Error Handling**: Domain error mapping to HTTP status codes
 - **Type Safety**: Rust type system with translation layer for HTTP ↔ Domain types
@@ -75,6 +78,9 @@ export PORT=3000  # Optional, defaults to 3000
 export RUST_LOG=info  # Optional, defaults to info
 export LOG_FORMAT=pretty  # Optional, defaults to json; use "pretty" for human-readable local dev logs
 export METADATA_REPOSITORY_NAME=".reporoller"  # Optional
+export OTEL_TRACES_ENABLED=true  # Optional, defaults to false (fail-safe-off); see Distributed Tracing below
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"  # Optional, defaults to http://localhost:4317
+export OTEL_SERVICE_NAME="repo-roller-api"  # Optional, defaults to repo-roller-api
 
 # Run the server
 cargo run --package repo_roller_api
@@ -812,6 +818,68 @@ scrape_configs:
 rest of the API, it must not be exposed to the public internet — restrict it exactly like the
 rest of the backend port. See [Deploy with Docker Compose](../../docs/user/how-to/deploy/deploy-with-docker.md#metrics-prometheus).
 
+### Distributed Tracing
+
+**Observability Phase 2** — opt-in OpenTelemetry span export over OTLP, disabled by default.
+
+**Enabling it**:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OTEL_TRACES_ENABLED` | `false` | Fail-safe-off. Only the case-insensitive literal values `true` or `1` enable span export; every other value (unset, empty, `false`, `0`, garbage) leaves tracing disabled — no background exporter, no network I/O. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP/gRPC collector endpoint. Use an `https://` URL to export over TLS (see **TLS** below). |
+| `OTEL_SERVICE_NAME` | `repo-roller-api` | Service name attached to every exported span's resource attributes — set this per-environment (e.g. `repo-roller-api-staging`) if you run multiple deployments against the same tracing backend. |
+
+If the OTLP exporter fails to construct (e.g. an unparseable endpoint), the process logs a
+`tracing::error!` and continues running with tracing disabled — a broken observability
+backend never crashes or blocks the API.
+
+**What gets traced**: a `create_repository` request produces one trace (span name
+`repository_creation`) with child spans for each phase boundary, in call order:
+
+1. `authentication` — GitHub App installation authentication and client construction
+2. `configuration_resolution` — organization configuration hierarchy resolution and
+   template-config loading
+3. `template_processing` — template content retrieval, variable substitution, and local
+   repository content generation
+4. `github_repository_creation` — the GitHub repository-creation API call
+
+GitHub API calls made during any phase are recorded as child spans of the phase that made
+them (via `#[instrument]` in `github_client`) — they are never orphaned or left untraced.
+Span name constants are defined in `repo_roller_core::observability` and `github_client`'s
+`#[instrument]` attributes.
+
+**Business-context attributes**: the top-level `repository_creation` span carries
+`organization`, `template` (when the request specifies one), and `requestor` attributes.
+Every one of these — along with every other business-context attribute recorded anywhere
+across `github_client`'s and `config_manager`'s instrumented functions — passes through
+`github_client::span_attributes::sanitize_span_attribute_value` before being attached to a
+span:
+
+- Values that contain a GitHub-token-shaped substring, a `Bearer` header, a JWT-shaped
+  three-segment string, or a generic high-entropy run are replaced with `[REDACTED]` in
+  their entirety (not just the matched substring).
+- Otherwise, values are truncated to at most 128 Unicode characters, bounding worst-case
+  attribute size/cardinality on the OTLP export path.
+- This is a **separate mechanism** from the log-line redaction described in
+  [Security Considerations: Token Handling](#token-handling) above — span
+  attributes are read directly off the `tracing` span by `tracing-opentelemetry`, upstream
+  of the logging `fmt` layer, so the log redaction layer never sees them. Both mechanisms
+  independently guarantee the same outcome: no raw secret or unbounded attacker-controlled
+  string reaches an external observability backend.
+
+**TLS**: OTLP export supports both `http://` (cleartext, suitable for local development) and
+`https://` (encrypted, required for any collector endpoint reachable outside a private
+network) via the `tls-aws-lc` exporter feature, consistent with the process's existing
+`aws-lc-rs` crypto provider. Point `OTEL_EXPORTER_OTLP_ENDPOINT` at an `https://` URL to use
+it — no additional configuration is required.
+
+**Local development**: `examples/local-stack/docker-compose.yml` includes a Jaeger
+all-in-one service (OTLP-enabled) so `docker compose up` gives a working trace UI at
+`http://localhost:16686` without any external dependency. See
+[Deploy with Docker Compose: Distributed Tracing](../../docs/user/how-to/deploy/deploy-with-docker.md#distributed-tracing-jaeger)
+for details.
+
 ## Authentication & Authorization
 
 ### GitHub App Authentication
@@ -1076,6 +1144,9 @@ FROM alpine:3.20
 - `RUST_LOG` - Logging level (info, debug, trace)
 - `LOG_FORMAT` - Log output format: `json` (default, structured/machine-readable with automatic redaction of sensitive fields) or `pretty` (human-readable, for local development)
 - `METADATA_REPOSITORY_NAME` - Metadata repo name (default: ".reporoller")
+- `OTEL_TRACES_ENABLED` - Enable OpenTelemetry span export (default: `false`, fail-safe-off; set to `true` or `1`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP collector endpoint (default: `http://localhost:4317`; use `https://` for TLS)
+- `OTEL_SERVICE_NAME` - Service name on exported span resource attributes (default: `repo-roller-api`)
 
 **Health Check**:
 
@@ -1322,9 +1393,16 @@ of exposed metric families:
   (`github_api_*`)
 - Notification delivery success/failure/latency (`notification_delivery_*`, pre-existing)
 
+**Delivered (Observability Phase 2)** — see [Distributed Tracing](#distributed-tracing) above:
+
+- Opt-in OpenTelemetry/OTLP span export (fail-safe-off, `OTEL_TRACES_ENABLED`)
+- One trace per `create_repository` request, with child spans for each phase boundary and
+  every GitHub API call
+- Sanitized business-context span attributes (organization, template, requestor)
+- TLS-capable OTLP export and a local Jaeger backend via `examples/local-stack/docker-compose.yml`
+
 **Not yet implemented (future phases)** — see `.llm/observability-checklist.md`:
 
-- Distributed tracing (Phase 2)
 - Frontend observability (Phase 3)
 - Log output tuning (Phase 4)
 - Authentication success/failure counters

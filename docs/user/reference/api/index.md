@@ -89,6 +89,21 @@ log messages — is automatically scanned and redacted before it is written, so 
 passwords, and similarly-shaped secrets are never persisted in log storage even if they are
 accidentally included in a log call upstream.
 
+## Distributed tracing
+
+When an operator enables it (`OTEL_TRACES_ENABLED=true` — off by default), each call to
+`POST /api/v1/repositories` produces one OpenTelemetry trace exported over OTLP, with child
+spans for authentication, configuration resolution, template processing, GitHub repository
+creation, and every underlying GitHub API call. This API does not currently accept or return
+a trace ID in the request/response body or headers — correlate a request with its trace using
+the `X-Request-Id` header above (present in server-side span/log output) and a time-range
+search in your tracing backend. See
+[Deploy with Docker Compose: Distributed Tracing](../../how-to/deploy/deploy-with-docker.md#distributed-tracing-jaeger)
+for how to view traces locally, and the
+[`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#distributed-tracing)
+for the full span hierarchy and the sanitization guarantee applied to business-context span
+attributes.
+
 ## Metrics
 
 `GET /metrics` returns Prometheus-format metrics (request rates, latencies, repository-creation

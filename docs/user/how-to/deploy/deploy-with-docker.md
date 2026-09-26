@@ -36,6 +36,7 @@ services:
       API_PORT:                 "8080"
       RUST_LOG:                 "info"
       LOG_FORMAT:               "json"
+      OTEL_TRACES_ENABLED:      "false"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
              "http://localhost:8080/api/v1/health"]
@@ -81,6 +82,9 @@ networks:
 | `API_PORT` | No | `8080` | Port to listen on |
 | `RUST_LOG` | No | `info` | Log level: `error`, `warn`, `info`, `debug`, `trace` |
 | `LOG_FORMAT` | No | `json` | Log output format: `json` (default, structured, with automatic redaction of sensitive fields — recommended for containers) or `pretty` (human-readable, for local development only) |
+| `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off — only `true`/`1` enables it. See [Distributed Tracing](#distributed-tracing-jaeger) below. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint. Use `https://` for TLS. |
+| `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to exported spans' resource attributes. |
 
 ### Frontend environment variables
 
@@ -192,6 +196,82 @@ You should see Prometheus text-format output, including families such as
 `repository_creation_requests_total`, `github_api_calls_total`, and `http_requests_total`. See
 the [`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#metrics) for
 the full list of exposed metrics and their labels.
+
+## Distributed tracing (Jaeger)
+
+The backend can export OpenTelemetry traces over OTLP for the full repository-creation flow
+(authentication, configuration resolution, template processing, GitHub repository creation,
+and every underlying GitHub API call). This is **disabled by default** (fail-safe-off) — no
+background exporter and no network I/O happen unless you explicitly opt in with
+`OTEL_TRACES_ENABLED=true`.
+
+### Running locally with the bundled Jaeger backend
+
+`examples/local-stack/docker-compose.yml` in the repository already wires up a Jaeger
+all-in-one container (OTLP-enabled) alongside the backend and frontend, so you get a working
+trace UI with no extra setup:
+
+```bash
+cd examples/local-stack
+cp .env.example .env   # fill in credentials, then:
+OTEL_TRACES_ENABLED=true docker compose up --build
+```
+
+Open the Jaeger UI at `http://localhost:16686`, select the `repo-roller-api` service, and
+search for traces after making a request (e.g. `POST /api/v1/repositories`). Each trace shows
+the `repository_creation` span with its `authentication` / `configuration_resolution` /
+`template_processing` / `github_repository_creation` child spans, plus GitHub API calls
+nested under whichever phase made them.
+
+### Adding a Jaeger service to your own docker-compose.yml
+
+If you are not using `examples/local-stack`, add a Jaeger (or other OTLP-compatible) service
+and point the backend at it:
+
+```yaml
+services:
+  backend:
+    # ...existing configuration from above...
+    environment:
+      # ...existing variables...
+      OTEL_TRACES_ENABLED:         "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+      OTEL_SERVICE_NAME:           "repo-roller-api"
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"   # OTLP gRPC receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+```
+
+### Pointing at a different collector (production)
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to your OTel Collector's or managed tracing backend's OTLP
+endpoint instead of a local Jaeger container. Use an `https://` URL for any endpoint reachable
+outside a private network — OTLP export supports TLS via the exporter's `tls-aws-lc` feature,
+consistent with the backend's existing `aws-lc-rs` crypto provider. No further configuration
+is required beyond the URL scheme; if the exporter fails to construct (e.g. an unreachable or
+malformed endpoint), the backend logs an error and continues running with tracing disabled
+rather than failing to start.
+
+### Sanitization guarantee
+
+Business-context span attributes (`organization`, `template`, `requestor`, and equivalents
+recorded elsewhere in the GitHub API client) are sanitized before being attached to a span —
+values that look like tokens, `Bearer` headers, JWTs, or high-entropy secrets are replaced
+with `[REDACTED]` in their entirety, and all other values are length-bounded. This is a
+separate mechanism from, but provides the same guarantee as, the log-line redaction described
+in [Logging](#logging) above: neither log output nor exported trace data ever carries a raw
+secret or an unbounded attacker-controlled string.
+
+See the [`repo_roller_api` crate README: Distributed Tracing](../../../../crates/repo_roller_api/README.md#distributed-tracing)
+for the full span hierarchy, environment variable reference, and sanitization details.
 
 ## Building images from source
 

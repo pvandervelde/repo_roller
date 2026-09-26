@@ -19,6 +19,9 @@ type: "reference"
 | `API_PORT` | No | `8080` | Port to listen on |
 | `RUST_LOG` | No | `info` | Log level filter: `error`, `warn`, `info`, `debug`, `trace`. Supports per-module filters (e.g. `repo_roller_core=debug,info`). |
 | `LOG_FORMAT` | No | `json` | Log output format. `json` (default) emits machine-readable structured JSON lines with sensitive fields (tokens, passwords, secrets, etc.) automatically redacted; set to `pretty` for human-readable output during local development. |
+| `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off: only the case-insensitive literal values `true` or `1` enable export; any other value (unset, empty, `false`, `0`, garbage) leaves tracing disabled with no background exporter and no network I/O. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint spans are exported to when tracing is enabled. Use an `https://` URL to export over TLS (supported via the `tls-aws-lc` exporter feature). Ignored when `OTEL_TRACES_ENABLED` is not `true`/`1`. |
+| `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to every exported span's resource attributes. Set a distinct value per environment (e.g. `repo-roller-api-staging`) when multiple deployments share one tracing backend. |
 
 ### Secret resolver variables
 
