@@ -635,3 +635,279 @@ async fn test_list_collaborators_error_returns_github_error() {
         "List failure must yield GitHubError"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// RED tests: `apply_repository_permissions`'s `owner`/`repo` span
+// attributes are NOT currently sanitized (Security Reviewer follow-up
+// pass on remaining unsanitized `#[instrument(fields(...))]` sites).
+//
+// Elsewhere the Security Reviewer characterised `owner`/`repo`-style
+// fields as lower-risk GitHub-validated identifiers. THIS call site is a
+// partial exception: `apply_repository_permissions` takes raw `&str`
+// parameters directly (unlike `request.repository_context`, which uses the
+// validated `OrganizationName`/`RepositoryName` newtypes) -- nothing in
+// this function's signature guarantees a caller has passed an
+// already-GitHub-validated value, so a caller bug or a future call site
+// could pass attacker-influenced content straight through. These tests use
+// `make_exceeding_request`/`make_exceeded_hierarchy` to hit the
+// `PolicyDenied` fast-fail path (see `test_policy_rejection_returns_policy_denied_error`
+// above) so no GitHub API call is made -- the `#[instrument]` span and its
+// fields are captured at call time, before the policy check runs.
+// ─────────────────────────────────────────────────────────────────────────
+
+struct FieldValueCollector(std::collections::HashMap<String, String>);
+
+impl tracing::field::Visit for FieldValueCollector {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RecordedSpanWithValues {
+    name: &'static str,
+    fields: std::collections::HashMap<String, String>,
+}
+
+#[derive(Clone, Default)]
+struct SpanValueRecorder {
+    spans: std::sync::Arc<std::sync::Mutex<Vec<RecordedSpanWithValues>>>,
+}
+
+impl SpanValueRecorder {
+    fn recorded(&self) -> Vec<RecordedSpanWithValues> {
+        self.spans
+            .lock()
+            .expect("span value recorder mutex poisoned")
+            .clone()
+    }
+}
+
+impl<S> tracing_subscriber::Layer<S> for SpanValueRecorder
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    fn on_new_span(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let span_ref = ctx
+            .span(id)
+            .expect("span must exist in registry for on_new_span");
+        let mut collector = FieldValueCollector(std::collections::HashMap::new());
+        attrs.record(&mut collector);
+        self.spans
+            .lock()
+            .expect("span value recorder mutex poisoned")
+            .push(RecordedSpanWithValues {
+                name: span_ref.name(),
+                fields: collector.0,
+            });
+    }
+}
+
+#[tokio::test]
+async fn test_apply_repository_permissions_span_owner_field_is_redacted_when_secret_shaped() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let server = MockServer::start().await;
+    let client = create_test_github_client(&server.uri());
+    let manager = PermissionManager::new(client, PolicyEngine::new());
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let hierarchy = make_exceeded_hierarchy(PermissionType::Push, PermissionScope::Repository);
+    let request = make_exceeding_request(
+        "my-org",
+        "my-repo",
+        PermissionType::Push,
+        PermissionScope::Repository,
+    );
+    let secret_shaped_owner = format!("ghp_{}", "e".repeat(24));
+
+    let result = manager
+        .apply_repository_permissions(
+            &secret_shaped_owner,
+            "my-repo",
+            &request,
+            &hierarchy,
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .await;
+    assert!(
+        result.is_err(),
+        "expected PolicyDenied fast-fail with no GitHub API call"
+    );
+    assert!(server
+        .received_requests()
+        .await
+        .is_none_or(|r| r.is_empty()));
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "apply_repository_permissions")
+        .expect("apply_repository_permissions must create a span");
+    let recorded_owner = span
+        .fields
+        .get("owner")
+        .expect("apply_repository_permissions span must record an `owner` field");
+    assert_eq!(
+        recorded_owner,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a GitHub-token-shaped owner must be fully redacted before being attached as a span \
+         attribute, recorded value: {recorded_owner:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_apply_repository_permissions_span_owner_field_short_benign_value_passes_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix.
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let server = MockServer::start().await;
+    let client = create_test_github_client(&server.uri());
+    let manager = PermissionManager::new(client, PolicyEngine::new());
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let hierarchy = make_exceeded_hierarchy(PermissionType::Push, PermissionScope::Repository);
+    let request = make_exceeding_request(
+        "my-org",
+        "my-repo",
+        PermissionType::Push,
+        PermissionScope::Repository,
+    );
+
+    let _ = manager
+        .apply_repository_permissions(
+            "my-org",
+            "my-repo",
+            &request,
+            &hierarchy,
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "apply_repository_permissions")
+        .expect("apply_repository_permissions must create a span");
+    let recorded_owner = span
+        .fields
+        .get("owner")
+        .expect("apply_repository_permissions span must record an `owner` field");
+    assert_eq!(
+        recorded_owner, "my-org",
+        "an ordinary, short, non-secret-shaped owner must pass through sanitization \
+         unchanged, recorded value: {recorded_owner:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_apply_repository_permissions_span_repo_field_is_redacted_when_secret_shaped() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let server = MockServer::start().await;
+    let client = create_test_github_client(&server.uri());
+    let manager = PermissionManager::new(client, PolicyEngine::new());
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let hierarchy = make_exceeded_hierarchy(PermissionType::Push, PermissionScope::Repository);
+    let request = make_exceeding_request(
+        "my-org",
+        "my-repo",
+        PermissionType::Push,
+        PermissionScope::Repository,
+    );
+    let secret_shaped_repo = format!("ghp_{}", "f".repeat(24));
+
+    let _ = manager
+        .apply_repository_permissions(
+            "my-org",
+            &secret_shaped_repo,
+            &request,
+            &hierarchy,
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "apply_repository_permissions")
+        .expect("apply_repository_permissions must create a span");
+    let recorded_repo = span
+        .fields
+        .get("repo")
+        .expect("apply_repository_permissions span must record a `repo` field");
+    assert_eq!(
+        recorded_repo,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a GitHub-token-shaped repo must be fully redacted before being attached as a span \
+         attribute, recorded value: {recorded_repo:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_apply_repository_permissions_span_repo_field_short_benign_value_passes_through_unchanged(
+) {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let server = MockServer::start().await;
+    let client = create_test_github_client(&server.uri());
+    let manager = PermissionManager::new(client, PolicyEngine::new());
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let hierarchy = make_exceeded_hierarchy(PermissionType::Push, PermissionScope::Repository);
+    let request = make_exceeding_request(
+        "my-org",
+        "my-repo",
+        PermissionType::Push,
+        PermissionScope::Repository,
+    );
+
+    let _ = manager
+        .apply_repository_permissions(
+            "my-org",
+            "my-repo",
+            &request,
+            &hierarchy,
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .await;
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "apply_repository_permissions")
+        .expect("apply_repository_permissions must create a span");
+    let recorded_repo = span
+        .fields
+        .get("repo")
+        .expect("apply_repository_permissions span must record a `repo` field");
+    assert_eq!(
+        recorded_repo, "my-repo",
+        "an ordinary, short, non-secret-shaped repo must pass through sanitization \
+         unchanged, recorded value: {recorded_repo:?}"
+    );
+}

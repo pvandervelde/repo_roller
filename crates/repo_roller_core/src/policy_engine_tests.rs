@@ -620,3 +620,157 @@ fn approved_result_merges_all_four_hierarchy_layers() {
         other => panic!("Expected Approved, got {other:?}"),
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// RED tests: `evaluate_permission_request`'s `requestor` span attribute is
+// NOT currently sanitized (Security Reviewer follow-up pass on remaining
+// unsanitized `#[instrument(fields(...))]` sites; see
+// `github_client::span_attributes` module docs for the sanitization
+// contract this crate must also honour for business-context span
+// attributes).
+//
+// `requestor` is a plain, unvalidated `String` (see `PermissionRequest` in
+// `permissions.rs`) -- unlike `repository`/`organization` on this same
+// span, which are `RepositoryName`/`OrganizationName` newtypes that
+// already enforce GitHub's identifier charset (alphanumeric, hyphens,
+// underscores, periods; bounded length) at construction time and are
+// therefore no higher risk than the `owner`/`repo`-style fields the
+// Security Reviewer characterised elsewhere as lower-risk. `requestor` has
+// no such constructor-time validation, making it structurally identical in
+// risk profile to the `path` field that was the subject of the original
+// HIGH findings in `github_client`.
+//
+// Notably, `crate::observability::business_context_attributes` already
+// sanitizes a `requestor` value for the top-level `repository_creation`
+// span (see `observability.rs`) -- proving this project already treats
+// this exact field as sensitive enough to require sanitization. This
+// `#[instrument]` site captures its own, separate, unsanitized copy of the
+// same value onto what is (in the `create_repository` call path) a
+// *child* span, so the existing top-level sanitization does not protect
+// it here.
+//
+// `repository`/`organization` are not given dedicated RED tests here since
+// their validated-newtype construction makes a secret-shaped value
+// impossible to construct in the first place (`OrganizationName::new`/
+// `RepositoryName::new` reject any character outside
+// alphanumeric/hyphen/underscore/period).
+// ─────────────────────────────────────────────────────────────────────────
+
+struct FieldValueCollector(std::collections::HashMap<String, String>);
+
+impl tracing::field::Visit for FieldValueCollector {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RecordedSpanWithValues {
+    name: &'static str,
+    fields: std::collections::HashMap<String, String>,
+}
+
+#[derive(Clone, Default)]
+struct SpanValueRecorder {
+    spans: std::sync::Arc<std::sync::Mutex<Vec<RecordedSpanWithValues>>>,
+}
+
+impl SpanValueRecorder {
+    fn recorded(&self) -> Vec<RecordedSpanWithValues> {
+        self.spans
+            .lock()
+            .expect("span value recorder mutex poisoned")
+            .clone()
+    }
+}
+
+impl<S> tracing_subscriber::Layer<S> for SpanValueRecorder
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    fn on_new_span(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let span_ref = ctx
+            .span(id)
+            .expect("span must exist in registry for on_new_span");
+        let mut collector = FieldValueCollector(std::collections::HashMap::new());
+        attrs.record(&mut collector);
+        self.spans
+            .lock()
+            .expect("span value recorder mutex poisoned")
+            .push(RecordedSpanWithValues {
+                name: span_ref.name(),
+                fields: collector.0,
+            });
+    }
+}
+
+#[test]
+fn test_evaluate_permission_request_span_requestor_field_is_redacted_when_secret_shaped() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    req.requestor = format!("ghp_{}", "a".repeat(24));
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+    let recorded_requestor = span
+        .fields
+        .get("requestor")
+        .expect("evaluate_permission_request span must record a `requestor` field");
+    assert_eq!(
+        recorded_requestor,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a GitHub-token-shaped requestor must be fully redacted before being attached as a \
+         span attribute, recorded value: {recorded_requestor:?}"
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_requestor_field_short_benign_value_passes_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix.
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    req.requestor = "jsmith".to_string();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+    let recorded_requestor = span
+        .fields
+        .get("requestor")
+        .expect("evaluate_permission_request span must record a `requestor` field");
+    assert_eq!(
+        recorded_requestor, "jsmith",
+        "an ordinary, short, non-secret-shaped requestor must pass through sanitization \
+         unchanged, recorded value: {recorded_requestor:?}"
+    );
+}

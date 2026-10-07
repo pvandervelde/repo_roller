@@ -204,8 +204,8 @@ impl OrganizationSettingsManager {
         fields(
             organization = %github_client::span_attributes::sanitize_span_attribute_value(context.organization()),
             template = %github_client::span_attributes::sanitize_span_attribute_value(context.template()),
-            team = ?context.team(),
-            repository_type = ?context.repository_type()
+            team = ?context.team().map(github_client::span_attributes::sanitize_span_attribute_value),
+            repository_type = ?context.repository_type().map(github_client::span_attributes::sanitize_span_attribute_value)
         )
     )]
     pub async fn resolve_configuration(

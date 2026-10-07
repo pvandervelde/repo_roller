@@ -287,11 +287,16 @@ Add to this whenever a reusable component becomes "the standard way".
   independently since `github_client` must not depend on `repo_roller_api` —
   plus length-bounding to `MAX_SPAN_ATTRIBUTE_LEN` (128 `char`s) for cardinality
   safety), `SPAN_ATTRIBUTE_REDACTED_MARKER`
-  Notes: as of this task, two `github_client::lib` `#[instrument]` sites
-  (`create_org_repository`, `get_organization_default_branch`) call this
-  function for their `org_name` field; ~23 other pre-existing `#[instrument(fields(...))]`
-  sites in the same file do **not** yet sanitize their business-context fields —
-  see `.llm/findings/task-2-tracing.md` for the deferred remediation.
+  Notes: as of this task, every `github_client::lib` `#[instrument]` site
+  that attaches a business-context field (`org_name`, `owner`, `repo`,
+  `team_slug`, `username`, `path`, `topic`, `permission`, `repo_owner`,
+  `base_url`, etc.) routes it through `sanitize_span_attribute_value` —
+  earlier passes left ~23 sites unsanitized (see
+  `.llm/findings/task-2-tracing.md` for history), but follow-up commits
+  closed all of them, including `repo_roller_core::permission_manager`'s
+  `owner`/`repo` fields and `repo_roller_core::policy_engine`'s `requestor`
+  field, and `config_manager::organization_settings_manager`'s `team`/
+  `repository_type` fields.
 
 - **`repo_roller_core::observability`** — canonical span names and hierarchy
   contract for `create_repository`'s orchestration phases

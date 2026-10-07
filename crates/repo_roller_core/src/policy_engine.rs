@@ -151,7 +151,7 @@ impl PolicyEngine {
     /// - [`PermissionError::TemplateRequirementConflict`] — the template
     ///   requires a permission that org policy disallows.
     #[instrument(skip(self, hierarchy), fields(
-        requestor = %request.requestor,
+        requestor = %github_client::span_attributes::sanitize_span_attribute_value(&request.requestor),
         emergency_access = request.emergency_access,
         repository = %request.repository_context.repository,
         organization = %request.repository_context.organization
