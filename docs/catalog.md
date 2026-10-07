@@ -296,7 +296,16 @@ Add to this whenever a reusable component becomes "the standard way".
   closed all of them, including `repo_roller_core::permission_manager`'s
   `owner`/`repo` fields and `repo_roller_core::policy_engine`'s `requestor`
   field, and `config_manager::organization_settings_manager`'s `team`/
-  `repository_type` fields.
+  `repository_type` fields. A later Verifier pass found that
+  `repo_roller_core::policy_engine`'s `evaluate_permission_request` span
+  also left its `repository`/`organization` fields unsanitized, on the
+  disproven assumption that the `RepositoryName`/`OrganizationName`
+  newtypes' constructor-time charset validation makes a secret-shaped value
+  impossible to construct (it does not — e.g. a 32-char mixed-case
+  alphanumeric `OrganizationName`, or a `ghp_`-prefixed `RepositoryName`,
+  both satisfy the newtypes' validation while still being secret-shaped);
+  both fields now also route through `sanitize_span_attribute_value` (via
+  each newtype's `as_str()` accessor), closing this gap.
 
 - **`repo_roller_core::observability`** — canonical span names and hierarchy
   contract for `create_repository`'s orchestration phases

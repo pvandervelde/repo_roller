@@ -649,11 +649,18 @@ fn approved_result_merges_all_four_hierarchy_layers() {
 // *child* span, so the existing top-level sanitization does not protect
 // it here.
 //
-// `repository`/`organization` are not given dedicated RED tests here since
-// their validated-newtype construction makes a secret-shaped value
-// impossible to construct in the first place (`OrganizationName::new`/
-// `RepositoryName::new` reject any character outside
-// alphanumeric/hyphen/underscore/period).
+// `repository`/`organization` were previously assumed to be safe without
+// dedicated tests, on the (disproven) theory that the validated-newtype
+// construction makes a secret-shaped value impossible to construct.
+// `OrganizationName::new` permits any alphanumeric run up to 39 characters
+// with no case/digit restriction (e.g. `"AbCdEfGhIj1234567890KlMnOpQrStUv"`
+// is a valid `OrganizationName` that trips the
+// `github_client::span_attributes::HighEntropyIndex` secret-shape scanner),
+// and `RepositoryName::new` additionally permits `_` and `.`, which admits
+// the GitHub-token-prefix shape (e.g. `"ghp_"` + alphanumeric/underscore
+// characters, bounded to 100 characters total). Both fields are therefore
+// sanitized identically to `requestor`, and are covered by dedicated tests
+// below.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct FieldValueCollector(std::collections::HashMap<String, String>);
@@ -772,5 +779,143 @@ fn test_evaluate_permission_request_span_requestor_field_short_benign_value_pass
         recorded_requestor, "jsmith",
         "an ordinary, short, non-secret-shaped requestor must pass through sanitization \
          unchanged, recorded value: {recorded_requestor:?}"
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_organization_field_is_redacted_when_secret_shaped() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    // Mixed-case alphanumeric, 32 characters: a valid `OrganizationName`
+    // (alphanumeric + hyphen only, <=39 chars) that still trips the
+    // `HighEntropyIndex` secret-shape scanner.
+    req.repository_context.organization =
+        OrganizationName::new("AbCdEfGhIj1234567890KlMnOpQrStUv").unwrap();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+    let recorded_organization = span
+        .fields
+        .get("organization")
+        .expect("evaluate_permission_request span must record an `organization` field");
+    assert_eq!(
+        recorded_organization,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a secret-shaped organization name must be fully redacted before being attached as a \
+         span attribute, recorded value: {recorded_organization:?}"
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_organization_field_short_benign_value_passes_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix.
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    req.repository_context.organization = OrganizationName::new("acme-corp").unwrap();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+    let recorded_organization = span
+        .fields
+        .get("organization")
+        .expect("evaluate_permission_request span must record an `organization` field");
+    assert_eq!(
+        recorded_organization, "acme-corp",
+        "an ordinary, short, non-secret-shaped organization name must pass through \
+         sanitization unchanged, recorded value: {recorded_organization:?}"
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_repository_field_is_redacted_when_secret_shaped() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    // `RepositoryName` additionally permits `_`, which admits the
+    // GitHub-token-prefix shape while remaining a valid repository name
+    // (alphanumeric, hyphen, underscore, period; <=100 chars).
+    req.repository_context.repository =
+        RepositoryName::new(format!("ghp_{}", "a".repeat(24))).unwrap();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+    let recorded_repository = span
+        .fields
+        .get("repository")
+        .expect("evaluate_permission_request span must record a `repository` field");
+    assert_eq!(
+        recorded_repository,
+        github_client::span_attributes::SPAN_ATTRIBUTE_REDACTED_MARKER,
+        "a secret-shaped repository name must be fully redacted before being attached as a \
+         span attribute, recorded value: {recorded_repository:?}"
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_repository_field_short_benign_value_passes_through_unchanged(
+) {
+    // Stub-killing: guards against a lazy "always redact" fix.
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    req.repository_context.repository = RepositoryName::new("my-repo").unwrap();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+    let recorded_repository = span
+        .fields
+        .get("repository")
+        .expect("evaluate_permission_request span must record a `repository` field");
+    assert_eq!(
+        recorded_repository, "my-repo",
+        "an ordinary, short, non-secret-shaped repository name must pass through \
+         sanitization unchanged, recorded value: {recorded_repository:?}"
     );
 }

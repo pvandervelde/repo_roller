@@ -153,8 +153,12 @@ impl PolicyEngine {
     #[instrument(skip(self, hierarchy), fields(
         requestor = %github_client::span_attributes::sanitize_span_attribute_value(&request.requestor),
         emergency_access = request.emergency_access,
-        repository = %request.repository_context.repository,
-        organization = %request.repository_context.organization
+        repository = %github_client::span_attributes::sanitize_span_attribute_value(
+            request.repository_context.repository.as_str()
+        ),
+        organization = %github_client::span_attributes::sanitize_span_attribute_value(
+            request.repository_context.organization.as_str()
+        )
     ))]
     pub fn evaluate_permission_request(
         &self,
