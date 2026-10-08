@@ -919,3 +919,149 @@ fn test_evaluate_permission_request_span_repository_field_short_benign_value_pas
          sanitization unchanged, recorded value: {recorded_repository:?}"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// RED tests: root-cause regression for `#[instrument(fields(...))]`
+// auto-capture leaking the raw `request: &PermissionRequest` parameter
+// under a field literally named `request`, bypassing every per-field
+// sanitization test above.
+//
+// `tracing::instrument`'s `fields(...)` list only suppresses auto-capture
+// of a parameter when a field name is IDENTICAL to that parameter's own
+// name. Every `fields(...)` entry on `evaluate_permission_request` is
+// built from a dotted/method-call expression on `request`
+// (`request.requestor`, `request.repository_context.organization`, ...),
+// which adds NEW fields but does NOT suppress `request`'s own
+// auto-captured `Debug` dump -- `request` is not listed in
+// `skip(self, hierarchy)`. The entire `PermissionRequest`, including
+// `justification` (a field NEVER individually sanitized anywhere in this
+// `fields(...)` list) and the already-covered `requestor`/`organization`/
+// `repository` in their RAW, unredacted form, is captured whole under a
+// field named `request`.
+//
+// These tests must FAIL against the current `#[instrument]` attribute.
+// They will only pass once the Coder adds `request` to `skip(...)`
+// (`skip(self, hierarchy, request)`).
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Asserts that no field in `fields` has a value containing `needle`
+/// anywhere, scanning every captured field regardless of name.
+///
+/// This is deliberately more robust than a name-based check: the bug class
+/// this guards against leaves individually-named fields (e.g.
+/// `requestor`, `organization`) correctly sanitized while an *entirely
+/// separate* auto-captured field (e.g. `request`) leaks the same -- and
+/// additional, never-individually-sanitized -- data raw. A check that only
+/// inspects known field names would miss the leak entirely.
+fn assert_no_field_value_leaks_substring(
+    fields: &std::collections::HashMap<String, String>,
+    needle: &str,
+    context_msg: &str,
+) {
+    for (name, value) in fields {
+        assert!(
+            !value.contains(needle),
+            "{context_msg}: span field `{name}` leaked forbidden substring {needle:?} in its \
+             value: {value:?}"
+        );
+    }
+}
+
+#[test]
+fn test_evaluate_permission_request_span_has_no_raw_request_field() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let req = bare_request(vec![]);
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+
+    assert!(
+        !span.fields.contains_key("request"),
+        "evaluate_permission_request span must not contain a raw `request` field (the whole \
+         PermissionRequest auto-captured via Debug); the `request` parameter must be added to \
+         skip(...) on #[instrument]. Captured fields: {:?}",
+        span.fields.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_never_leaks_justification_via_any_field() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    // `justification` is never individually sanitized anywhere in the
+    // `fields(...)` list -- it is only protected (if at all) by `request`
+    // being fully skipped. A secret-shaped canary here proves the leak
+    // independent of whichever named field happens to be exercised.
+    let canary = "SUPER-SECRET-CANARY-VALUE-zzz";
+    req.justification = canary.to_string();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+
+    assert_no_field_value_leaks_substring(
+        &span.fields,
+        canary,
+        "justification is never individually sanitized; it must never appear in any span \
+         field value, including via an auto-captured raw struct dump under a different field \
+         name such as `request`",
+    );
+}
+
+#[test]
+fn test_evaluate_permission_request_span_never_leaks_secret_shaped_requestor_via_any_field() {
+    // Complements the dedicated `requestor` redaction test above: proves
+    // that even once the NAMED `requestor` field is correctly redacted,
+    // the SAME secret-shaped value must not reappear raw under a
+    // different field (i.e. the auto-captured `request` struct dump).
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorder = SpanValueRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let e = engine();
+    let mut req = bare_request(vec![]);
+    let canary = format!("ghp_{}", "a".repeat(24));
+    req.requestor = canary.clone();
+    let hierarchy = empty_hierarchy();
+
+    let _ = e.evaluate_permission_request(&req, &hierarchy);
+
+    let spans = recorder.recorded();
+    let span = spans
+        .iter()
+        .find(|s| s.name == "evaluate_permission_request")
+        .expect("evaluate_permission_request must create a span");
+
+    assert_no_field_value_leaks_substring(
+        &span.fields,
+        &canary,
+        "a secret-shaped requestor value must never appear in any span field value, even \
+         though the dedicated `requestor` field is individually redacted -- it must not \
+         reappear raw via an auto-captured `request` struct dump",
+    );
+}

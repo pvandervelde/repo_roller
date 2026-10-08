@@ -1369,3 +1369,98 @@ async fn test_resolve_configuration_span_organization_field_short_benign_value_p
          sanitization unchanged, recorded value: {recorded_org:?}"
     );
 }
+
+// ============================================================================
+// RED tests: root-cause regression for `#[instrument(fields(...))]`
+// auto-capture leaking the raw `context: &ConfigurationContext` parameter
+// under a field literally named `context`, bypassing every per-field
+// sanitization test above.
+//
+// `tracing::instrument`'s `fields(...)` list only suppresses auto-capture
+// of a parameter when a field name is IDENTICAL to that parameter's own
+// name. Every `fields(...)` entry on `resolve_configuration` is built from
+// a method-call expression on `context` (`context.organization()`,
+// `context.template()`, ...), which adds NEW fields but does NOT suppress
+// `context`'s own auto-captured `Debug` dump -- `context` is not listed in
+// `skip(self)`. The entire `ConfigurationContext`, including the raw,
+// unredacted `organization` value already covered above, is captured
+// whole under a field named `context`.
+//
+// These tests must FAIL against the current `#[instrument]` attribute.
+// They will only pass once the Coder adds `context` to `skip(...)`
+// (`skip(self, context)`).
+//
+// NOTE on duplication: `assert_no_field_value_leaks_substring` below is
+// intentionally duplicated from the analogous helper in
+// `repo_roller_core::policy_engine_tests` -- the two call sites live in
+// different crates and the `SpanValueRecorder` infrastructure above is
+// already duplicated across both test files for the same reason. If this
+// exact bug class recurs a fourth time, promote both into a shared
+// dev-dependency-only test-utils crate rather than duplicating again.
+// ============================================================================
+
+/// Asserts that no field in `fields` has a value containing `needle`
+/// anywhere, scanning every captured field regardless of name.
+///
+/// This is deliberately more robust than a name-based check: the bug
+/// class this guards against leaves individually-named fields (e.g.
+/// `organization`) correctly sanitized while an *entirely separate*
+/// auto-captured field (e.g. `context`) leaks the same data raw. A check
+/// that only inspects known field names would miss the leak entirely.
+fn assert_no_field_value_leaks_substring(
+    fields: &std::collections::HashMap<String, String>,
+    needle: &str,
+    context_msg: &str,
+) {
+    for (name, value) in fields {
+        assert!(
+            !value.contains(needle),
+            "{context_msg}: span field `{name}` leaked forbidden substring {needle:?} in its \
+             value: {value:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_has_no_raw_context_field() {
+    let secret_shaped_org = format!("ghp_{}", "a".repeat(24));
+    let context = crate::ConfigurationContext::new(secret_shaped_org, "rust-service");
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+
+    assert!(
+        !span.fields.contains_key("context"),
+        "resolve_configuration span must not contain a raw `context` field (the whole \
+         ConfigurationContext auto-captured via Debug); the `context` parameter must be added \
+         to skip(...) on #[instrument]. Captured fields: {:?}",
+        span.fields.keys().collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_resolve_configuration_span_never_leaks_secret_shaped_organization_via_any_field() {
+    // Complements the dedicated `organization` redaction test above: proves
+    // that even once the NAMED `organization` field is correctly redacted,
+    // the SAME secret-shaped value must not reappear raw under a different
+    // field (i.e. the auto-captured `context` struct dump).
+    let canary = format!("ghp_{}", "a".repeat(24));
+    let context = crate::ConfigurationContext::new(canary.clone(), "rust-service");
+
+    let spans = run_resolve_configuration_and_record_spans(&context).await;
+    let span = spans
+        .iter()
+        .find(|s| s.name == "resolve_configuration")
+        .expect("resolve_configuration must create a span");
+
+    assert_no_field_value_leaks_substring(
+        &span.fields,
+        &canary,
+        "a secret-shaped organization value must never appear in any span field value, even \
+         though the dedicated `organization` field is individually redacted -- it must not \
+         reappear raw via an auto-captured `context` struct dump",
+    );
+}
