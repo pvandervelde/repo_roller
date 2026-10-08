@@ -306,6 +306,30 @@ Add to this whenever a reusable component becomes "the standard way".
   both satisfy the newtypes' validation while still being secret-shaped);
   both fields now also route through `sanitize_span_attribute_value` (via
   each newtype's `as_str()` accessor), closing this gap.
+  Gotcha (`#[instrument]` `fields()` override vs `skip()`): a `fields(...)`
+  entry only suppresses `tracing`'s auto-Debug-capture of a parameter when
+  the field name is an *exact* match for that parameter's name. Building a
+  sanitized field from a dotted/method-call expression on a struct
+  parameter — e.g. `fields(requestor = %sanitize(&request.requestor))` or
+  `fields(organization = %sanitize(context.organization()))` — does **not**
+  count as naming the `request`/`context` parameter itself, so unless that
+  parameter is *also* added to `skip(...)`, the whole struct still gets
+  auto-captured raw under a field literally named after the parameter
+  (`request`/`context`), re-leaking the already-sanitized values plus any
+  other never-individually-sanitized fields on the struct (e.g.
+  `justification`) right next to the correctly-sanitized named fields. Two
+  sites had exactly this gap — `repo_roller_core::policy_engine`'s
+  `evaluate_permission_request` (`skip(self, hierarchy)` missing `request`)
+  and `config_manager::organization_settings_manager`'s
+  `resolve_configuration` (`skip(self)` missing `context`) — found by a
+  Verifier after two prior fix rounds focused only on individual field
+  sanitization. Both are now fixed by adding the struct parameter to
+  `skip(...)`. Rule for future `#[instrument]` sites with a struct
+  parameter: either (a) add the struct parameter to `skip(...)` and list
+  each sanitized field individually in `fields(...)` as these two sites now
+  do, or (b) give the sanitized field the exact same name as the parameter
+  it replaces (only viable when there is a single field derived from that
+  parameter).
 
 - **`repo_roller_core::observability`** — canonical span names and hierarchy
   contract for `create_repository`'s orchestration phases

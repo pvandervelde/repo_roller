@@ -200,7 +200,7 @@ impl OrganizationSettingsManager {
     /// # }
     /// ```
     #[instrument(
-        skip(self),
+        skip(self, context),
         fields(
             organization = %github_client::span_attributes::sanitize_span_attribute_value(context.organization()),
             template = %github_client::span_attributes::sanitize_span_attribute_value(context.template()),
