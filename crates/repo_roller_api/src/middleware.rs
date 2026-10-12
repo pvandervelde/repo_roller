@@ -260,6 +260,78 @@ pub async fn organization_auth_middleware(
     Ok(next.run(request).await)
 }
 
+/// Extracts a W3C trace context from an inbound HTTP request's headers, for
+/// use as the parent context of the `http_request` span built by
+/// [`tracing_middleware`].
+///
+/// # Contract (Task #3 backend half: inbound `traceparent` propagation)
+///
+/// - Reads the standard `traceparent` header (format
+///   `{version:2 hex}-{trace_id:32 hex}-{parent_id:16 hex}-{flags:2 hex}`,
+///   see <https://www.w3.org/TR/trace-context/#traceparent-header>) from
+///   `headers`, decoding it via `opentelemetry::global::get_text_map_propagator`
+///   over an `opentelemetry::propagation::Extractor` adapter -- the
+///   idiomatic `opentelemetry`/`tracing-opentelemetry` ecosystem pattern for
+///   this ecosystem version (no bespoke parsing).
+/// - **Valid header** (well-formed, non-zero trace id, non-zero parent id,
+///   lowercase hex throughout): returns an `opentelemetry::Context` carrying
+///   a REMOTE `SpanContext` -- `span().span_context().is_valid()` and
+///   `.is_remote()` are both `true`, `.trace_id()` / `.span_id()` decode
+///   exactly the header's trace-id / parent-id fields. Passing this context
+///   to `tracing_opentelemetry::OpenTelemetrySpanExt::set_parent` on a
+///   newly-created, **not-yet-entered** span (call `set_parent` before the
+///   span is entered/instrumented -- `tracing-opentelemetry` rejects
+///   `set_parent` on an already-entered span, see its own
+///   `set_parent_fails_after_span_entered` test) makes that span, and every
+///   span nested under it, a child of the external trace.
+/// - **Absent header, or malformed/unparsable value** (wrong number of
+///   dash-delimited parts, non-hex characters, uppercase hex, all-zero trace
+///   id, all-zero parent id, empty string, or any other input that is not a
+///   spec-valid `traceparent`): returns a context with NO valid span
+///   (`span().span_context().is_valid() == false`). Passing this to
+///   `set_parent` is harmless and equivalent to a fresh root span -- i.e.
+///   today's exact pre-Task-3 behavior. **Must never panic** regardless of
+///   header content; the W3C spec requires invalid `traceparent` values to
+///   be ignored, not rejected (fail-safe, not fail-closed).
+/// - Does not read or require the `tracestate` header -- out of scope for
+///   this task (it rides alongside `traceparent` as opaque vendor data; only
+///   `traceparent` carries the parent trace/span identity this task needs).
+/// - Pure with respect to its `headers` argument: two calls with the same
+///   header content return equivalent contexts; a call with no/invalid
+///   header never leaks a valid context observed by an earlier call.
+///
+/// # Precondition (production wiring, NOT this function's responsibility)
+///
+/// `opentelemetry::global::get_text_map_propagator` falls back to a no-op
+/// propagator (which never decodes anything) until something calls
+/// `opentelemetry::global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new())`
+/// -- production startup (`tracing_otel::init_tracing_with_otel`) MUST make
+/// that call once, or every inbound `traceparent` header will silently be
+/// treated as absent. This is flagged as a spec gap for the architect / next
+/// Coder task rather than fixed here, since `tracing_otel.rs`'s existing
+/// contract (`docs` above `init_tracing_with_otel`) predates this task and
+/// does not yet mention propagator installation. `middleware_tests.rs`
+/// installs the propagator itself in test setup so these tests do not
+/// depend on that production wiring landing first.
+///
+/// `#[allow(dead_code)]`: not yet called from [`tracing_middleware`] during
+/// the RED phase (the Coder must wire it in) -- `repo_roller_api` is a
+/// binary crate with no external consumers, so unlike a library crate's
+/// public API, an unreferenced `pub(crate)` item here would otherwise fail
+/// the dead-code lint in a non-test build. Mirrors the same precedent
+/// established by `NoOpHttpMetrics` / `build_composed_subscriber_for_test`
+/// elsewhere in this crate.
+#[allow(dead_code)]
+pub(crate) fn extract_trace_context(headers: &HeaderMap) -> opentelemetry::Context {
+    todo!(
+        "extract the `traceparent` header from `headers` via \
+         opentelemetry::global::get_text_map_propagator (using an Extractor \
+         adapter over `headers`, e.g. opentelemetry_http::HeaderExtractor or \
+         an equivalent local adapter) and return the decoded \
+         opentelemetry::Context -- see the contract doc comment above"
+    )
+}
+
 /// Request tracing middleware.
 ///
 /// Generates a per-request correlation ID (`request_id`) and attaches it as
@@ -270,6 +342,15 @@ pub async fn organization_auth_middleware(
 /// crates -- automatically inherits `request_id`. The same value is also
 /// returned to the caller as an `X-Request-Id` response header so client-
 /// and server-side logs can be correlated.
+///
+/// # Trace-context propagation (Task #3 backend half)
+///
+/// If the request carries a valid inbound `traceparent` header, the
+/// `http_request` span (and everything nested under it) becomes a CHILD of
+/// that external trace via [`extract_trace_context`] -- see its doc comment
+/// for the exact contract. Absent or malformed `traceparent` headers fall
+/// back to today's behavior unchanged: a fresh root span. This is purely
+/// additive and does not alter `request_id` generation/behavior in any way.
 pub async fn tracing_middleware(request: Request, next: Next) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
 
@@ -288,9 +369,7 @@ pub async fn tracing_middleware(request: Request, next: Next) -> Response {
         tracing::info!(status = %response.status(), "Request completed");
 
         if let Ok(header_value) = axum::http::HeaderValue::from_str(&request_id) {
-            response
-                .headers_mut()
-                .insert("x-request-id", header_value);
+            response.headers_mut().insert("x-request-id", header_value);
         } else {
             tracing::warn!("Failed to build X-Request-Id header from generated request_id");
         }
@@ -386,3 +465,7 @@ impl IntoResponse for AuthError {
 #[cfg(test)]
 #[path = "middleware_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "middleware_proptests.rs"]
+mod proptests;
