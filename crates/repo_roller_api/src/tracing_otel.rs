@@ -264,6 +264,18 @@ where
 /// this process -- mirrors `logging::init_tracing`'s existing
 /// panic-on-double-init behaviour. Callable at most once per process.
 pub fn init_tracing_with_otel() {
+    // Install the W3C `traceparent` propagator globally so
+    // `middleware::extract_trace_context` can decode inbound trace context
+    // from real requests. Without this call,
+    // `opentelemetry::global::get_text_map_propagator` falls back to a no-op
+    // propagator and every inbound `traceparent` header is silently treated
+    // as absent -- see `middleware::extract_trace_context`'s doc comment.
+    // Backed by an `RwLock` (see `opentelemetry::global::set_text_map_propagator`),
+    // so this is safe even if called more than once.
+    opentelemetry::global::set_text_map_propagator(
+        opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+    );
+
     let log_format =
         crate::logging::resolve_log_format(std::env::var(crate::logging::LOG_FORMAT_ENV_VAR).ok().as_deref());
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());

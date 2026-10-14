@@ -300,36 +300,39 @@ pub async fn organization_auth_middleware(
 ///   header content return equivalent contexts; a call with no/invalid
 ///   header never leaks a valid context observed by an earlier call.
 ///
-/// # Precondition (production wiring, NOT this function's responsibility)
+/// # Precondition (production wiring)
 ///
 /// `opentelemetry::global::get_text_map_propagator` falls back to a no-op
 /// propagator (which never decodes anything) until something calls
-/// `opentelemetry::global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new())`
-/// -- production startup (`tracing_otel::init_tracing_with_otel`) MUST make
-/// that call once, or every inbound `traceparent` header will silently be
-/// treated as absent. This is flagged as a spec gap for the architect / next
-/// Coder task rather than fixed here, since `tracing_otel.rs`'s existing
-/// contract (`docs` above `init_tracing_with_otel`) predates this task and
-/// does not yet mention propagator installation. `middleware_tests.rs`
-/// installs the propagator itself in test setup so these tests do not
-/// depend on that production wiring landing first.
+/// `opentelemetry::global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new())`.
+/// Production startup (`tracing_otel::init_tracing_with_otel`) makes that
+/// call once, so every inbound `traceparent` header is decoded for real
+/// requests. `middleware_tests.rs` / `middleware_proptests.rs` also install
+/// the propagator themselves in test setup so these tests do not depend on
+/// that production call site.
 ///
-/// `#[allow(dead_code)]`: not yet called from [`tracing_middleware`] during
-/// the RED phase (the Coder must wire it in) -- `repo_roller_api` is a
-/// binary crate with no external consumers, so unlike a library crate's
-/// public API, an unreferenced `pub(crate)` item here would otherwise fail
-/// the dead-code lint in a non-test build. Mirrors the same precedent
-/// established by `NoOpHttpMetrics` / `build_composed_subscriber_for_test`
-/// elsewhere in this crate.
-#[allow(dead_code)]
+/// Called from [`tracing_middleware`], which attaches the resulting
+/// `Context` as the parent of the `http_request` span.
 pub(crate) fn extract_trace_context(headers: &HeaderMap) -> opentelemetry::Context {
-    todo!(
-        "extract the `traceparent` header from `headers` via \
-         opentelemetry::global::get_text_map_propagator (using an Extractor \
-         adapter over `headers`, e.g. opentelemetry_http::HeaderExtractor or \
-         an equivalent local adapter) and return the decoded \
-         opentelemetry::Context -- see the contract doc comment above"
-    )
+    /// Local `opentelemetry::propagation::Extractor` adapter over
+    /// `axum::http::HeaderMap` -- `opentelemetry-http`'s `HeaderExtractor` is
+    /// not a dependency of this crate, so this tiny adapter avoids adding one
+    /// solely for this.
+    struct HeaderMapExtractor<'a>(&'a HeaderMap);
+
+    impl opentelemetry::propagation::Extractor for HeaderMapExtractor<'_> {
+        fn get(&self, key: &str) -> Option<&str> {
+            self.0.get(key).and_then(|value| value.to_str().ok())
+        }
+
+        fn keys(&self) -> Vec<&str> {
+            self.0.keys().map(|key| key.as_str()).collect()
+        }
+    }
+
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.extract(&HeaderMapExtractor(headers))
+    })
 }
 
 /// Request tracing middleware.
@@ -353,6 +356,7 @@ pub(crate) fn extract_trace_context(headers: &HeaderMap) -> opentelemetry::Conte
 /// additive and does not alter `request_id` generation/behavior in any way.
 pub async fn tracing_middleware(request: Request, next: Next) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
+    let parent_cx = extract_trace_context(request.headers());
 
     let span = tracing::info_span!(
         "http_request",
@@ -360,6 +364,15 @@ pub async fn tracing_middleware(request: Request, next: Next) -> Response {
         method = %request.method(),
         uri = %request.uri(),
     );
+    // `set_parent` must run before the span is entered/instrumented --
+    // `tracing-opentelemetry` rejects it on an already-started span. When
+    // `parent_cx` carries no valid span context (no/malformed `traceparent`),
+    // this is a harmless no-op and the span remains a fresh root, matching
+    // today's pre-Task-3 behavior.
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+    if let Err(err) = span.set_parent(parent_cx) {
+        tracing::debug!(error = %err, "Failed to set inbound trace context as span parent");
+    }
 
     async move {
         tracing::info!("Request started");
