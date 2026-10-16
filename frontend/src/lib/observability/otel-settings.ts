@@ -1,10 +1,6 @@
 /**
  * Pure OTLP export configuration resolution.
  *
- * STATUS: STUB — not yet implemented. `resolveOtelSettings` currently
- * throws. This file defines the CONTRACT the Coder must implement; it is
- * not production code.
- *
  * Deliberately mirrors `crates/repo_roller_api/src/tracing_otel.rs`'s
  * `OtelSettings`/`resolve_otel_settings` in behaviour (same env var names,
  * same defaults, same fail-safe-off semantics) so the frontend and backend
@@ -110,15 +106,19 @@ export interface OtelSettings {
  * environment variables, or `null`/`undefined` if a given one is unset. See
  * the module-level contract for the exact matching/default rules. Never
  * throws.
- *
- * STUB: throws until implemented.
  */
 export function resolveOtelSettings(
   enabledRaw: string | null | undefined,
   endpointRaw: string | null | undefined,
   serviceNameRaw: string | null | undefined,
 ): OtelSettings {
-  throw new Error(
-    `otel-settings.ts: resolveOtelSettings() not implemented (enabledRaw=${JSON.stringify(enabledRaw)}, endpointRaw=${JSON.stringify(endpointRaw)}, serviceNameRaw=${JSON.stringify(serviceNameRaw)})`,
-  );
+  const enabled = enabledRaw != null && (enabledRaw.toLowerCase() === 'true' || enabledRaw === '1');
+
+  const otlpEndpoint =
+    endpointRaw != null && endpointRaw !== '' ? endpointRaw : DEFAULT_OTLP_ENDPOINT;
+
+  const serviceName =
+    serviceNameRaw != null && serviceNameRaw !== '' ? serviceNameRaw : DEFAULT_SERVICE_NAME;
+
+  return { enabled, otlpEndpoint, serviceName };
 }

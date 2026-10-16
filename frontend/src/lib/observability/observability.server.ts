@@ -1,21 +1,17 @@
 /**
  * Node-side OpenTelemetry SDK bootstrap for the SvelteKit server runtime.
  *
- * STATUS: PARTIALLY IMPLEMENTED. `initServerObservability` and
- * `isServerObservabilityInitialized` are real, working code (idempotency
- * and browser/SSR guards are correct and covered by
- * `tests/observability-server.test.ts`). `buildServerSpanExporter` below is
- * a NEW stub — it currently throws — defining the contract for the
- * still-outstanding "real OTLP exporter" requirement; see
- * `tests/observability-server-otlp.test.ts`.
- *
  * MUST NOT be imported from client-side code (server-only).
  *
- * Contract for the Coder:
  * - `initServerObservability()` registers the Node OTel SDK (a trace
  *   provider, plus instrumentation for outbound HTTP/undici requests so that
  *   `proxy.server.ts`'s outbound fetch to the Rust backend is automatically
- *   captured as a child span) exactly once per process.
+ *   captured as a child span) exactly once per process. It resolves
+ *   {@link OtelSettings} via `resolveOtelSettings()` (from `./otel-settings`)
+ *   reading `OTEL_TRACES_ENABLED`/`OTEL_EXPORTER_OTLP_ENDPOINT`/
+ *   `OTEL_SERVICE_NAME` directly from `process.env`, then passes the result
+ *   to `buildServerSpanExporter(settings)` to obtain the exporter handed to
+ *   `SimpleSpanProcessor`/`NodeTracerProvider`.
  * - Calling `initServerObservability()` more than once MUST be a safe no-op
  *   the second and subsequent times — no duplicate provider registration, no
  *   duplicate instrumentation, no thrown error. (OTel's own SDK registration
@@ -29,33 +25,20 @@
  * - `isServerObservabilityInitialized()` reports whether init has
  *   successfully completed in this process.
  *
- * ### Real OTLP exporter wiring (follow-up requirement, RED as of this
- * ### comment — see `tests/otel-settings.test.ts` and
- * ### `tests/observability-server-otlp.test.ts`)
- * - `initServerObservability()` MUST resolve {@link OtelSettings} via
- *   `resolveOtelSettings(process.env.OTEL_TRACES_ENABLED,
- *   process.env.OTEL_EXPORTER_OTLP_ENDPOINT, process.env.OTEL_SERVICE_NAME)`
- *   (from `./otel-settings`) and pass the result to
- *   `buildServerSpanExporter(settings)` to obtain the exporter it hands to
- *   `SimpleSpanProcessor`/`NodeTracerProvider` — replacing today's
- *   unconditional `new ConsoleSpanExporter()`.
- * - `buildServerSpanExporter(settings)` MUST return a real OTLP exporter
- *   instance (this contract's reference implementation uses
- *   `@opentelemetry/exporter-trace-otlp-grpc`'s `OTLPTraceExporter`,
- *   constructed with `{ url: settings.otlpEndpoint }` — chosen for
- *   transport symmetry with the Rust backend's own gRPC/4317 OTLP exporter
- *   and with `examples/local-stack/docker-compose.yml`'s Jaeger gRPC
- *   receiver port; `-http`/`-proto` are acceptable alternatives if gRPC
- *   proves awkward in this Node runtime, but the test suite's `instanceof`
- *   assertions would need updating to match) **only when
- *   `settings.enabled` is `true`** — fail-safe-off: when `false`, it MUST
- *   return a `ConsoleSpanExporter` (or equivalent no-network-I/O stand-in)
- *   WITHOUT ever constructing/touching the real OTLP exporter class, so
- *   that no network connection is attempted when nobody asked for one.
+ * ### Real OTLP exporter wiring
+ * - `buildServerSpanExporter(settings)` returns a real OTLP exporter
+ *   instance (`@opentelemetry/exporter-trace-otlp-grpc`'s
+ *   `OTLPTraceExporter`, constructed with `{ url: settings.otlpEndpoint }` —
+ *   chosen for transport symmetry with the Rust backend's own gRPC/4317 OTLP
+ *   exporter and with `examples/local-stack/docker-compose.yml`'s Jaeger
+ *   gRPC receiver port) **only when `settings.enabled` is `true`** —
+ *   fail-safe-off: when `false`, it returns a `ConsoleSpanExporter` WITHOUT
+ *   ever constructing/touching the real OTLP exporter class, so that no
+ *   network connection is attempted when nobody asked for one.
  * - Exporter construction failure (e.g. a malformed endpoint, if the chosen
- *   exporter package validates eagerly) MUST be treated as fail-safe-off
- *   (fall back to `ConsoleSpanExporter`) rather than thrown — mirrors the
- *   Rust precedent's `build_production_otel_layer` catch-and-log-not-panic
+ *   exporter package validates eagerly) is treated as fail-safe-off (fall
+ *   back to `ConsoleSpanExporter`) rather than thrown — mirrors the Rust
+ *   precedent's `build_production_otel_layer` catch-and-log-not-panic
  *   behaviour.
  */
 
@@ -63,11 +46,13 @@ import {
   ConsoleSpanExporter,
   NodeTracerProvider,
   SimpleSpanProcessor,
+  type SpanExporter,
 } from '@opentelemetry/sdk-trace-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici';
 import { logger } from '../logger.server';
-import type { OtelSettings } from './otel-settings';
+import { resolveOtelSettings, type OtelSettings } from './otel-settings';
 
 /** Module-level bookkeeping: has init already run (successfully) in this process? */
 let initialized = false;
@@ -76,18 +61,22 @@ let initialized = false;
  * Initialise the Node OTel SDK for this process. Safe to call multiple
  * times; only the first call has an effect.
  *
- * No OTLP exporter is wired up yet (see `OTEL_EXPORTER_OTLP_ENDPOINT` below)
- * — spans are currently exported via `ConsoleSpanExporter` as a safe,
- * dependency-free default. Swapping in a real OTLP exporter is tracked as
- * follow-up work once an exporter package is selected.
+ * Resolves {@link OtelSettings} from `process.env` and uses
+ * `buildServerSpanExporter()` to pick a real OTLP exporter when enabled, or
+ * a `ConsoleSpanExporter` fail-safe-off default otherwise.
  */
 export function initServerObservability(): void {
   if (initialized) return;
 
   try {
-    const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    const settings = resolveOtelSettings(
+      process.env.OTEL_TRACES_ENABLED,
+      process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      process.env.OTEL_SERVICE_NAME,
+    );
+    const exporter = buildServerSpanExporter(settings) as SpanExporter;
     const provider = new NodeTracerProvider({
-      spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
     });
     provider.register();
 
@@ -95,7 +84,7 @@ export function initServerObservability(): void {
 
     initialized = true;
     logger.info('Server observability initialized', {
-      otlpEndpointConfigured: Boolean(otlpEndpoint),
+      otlpEndpointConfigured: settings.enabled,
     });
   } catch (err) {
     // Observability bootstrap must never be able to crash server startup.
@@ -137,11 +126,18 @@ export function _resetObservabilityForTesting(): void {
  *   package this contract expects (`@opentelemetry/exporter-trace-otlp-grpc`).
  * - MUST NOT throw. Exporter-construction failure must fall back to
  *   `ConsoleSpanExporter` (fail-safe-off), not propagate.
- *
- * STUB: throws until implemented.
  */
 export function buildServerSpanExporter(settings: OtelSettings): unknown {
-  throw new Error(
-    `observability.server.ts: buildServerSpanExporter() not implemented (settings=${JSON.stringify(settings)})`,
-  );
+  if (!settings.enabled) {
+    return new ConsoleSpanExporter();
+  }
+
+  try {
+    return new OTLPTraceExporter({ url: settings.otlpEndpoint });
+  } catch (err) {
+    logger.warn('Failed to build OTLP span exporter; falling back to ConsoleSpanExporter', {
+      err,
+    });
+    return new ConsoleSpanExporter();
+  }
 }

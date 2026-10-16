@@ -388,17 +388,39 @@ Add to this whenever a reusable component becomes "the standard way".
 
 - **`frontend/src/lib/observability/observability.server.ts` /
   `observability.client.ts`** — Node/browser OTel SDK bootstrap (`NodeTracerProvider`/
-  `WebTracerProvider` + `UndiciInstrumentation`/`FetchInstrumentation`)
+  `WebTracerProvider` + `UndiciInstrumentation`/`FetchInstrumentation`), with real OTLP
+  exporters wired in (mirroring the backend's `repo_roller_api::tracing_otel`)
   Use when: Already wired globally — `initServerObservability()` is called once at module
-  load in `hooks.server.ts`, `initClientObservability()` once at module load in
-  `hooks.client.ts`. No per-route code needed.
+  load in `hooks.server.ts` (reads `OTEL_TRACES_ENABLED`/`OTEL_EXPORTER_OTLP_ENDPOINT`/
+  `OTEL_SERVICE_NAME` from `process.env` internally), `initClientObservability({ otlpEndpoint })`
+  once at module load in `hooks.client.ts` (endpoint read from `$env/dynamic/public`'s
+  `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT` by the caller, since the browser cannot read
+  `process.env`). No per-route code needed.
   Key exports: `init*Observability()` (idempotent, never throws — falls back silently if SDK
-  registration fails), `is*ObservabilityInitialized()`, `_resetObservabilityForTesting()`
+  registration fails), `is*ObservabilityInitialized()`, `_resetObservabilityForTesting()`,
+  `buildServerSpanExporter(settings)` (gRPC `OTLPTraceExporter` from
+  `@opentelemetry/exporter-trace-otlp-grpc` when `settings.enabled`, else
+  `ConsoleSpanExporter`), `buildClientSpanExporter(otlpEndpoint)` (HTTP `OTLPTraceExporter`
+  from `@opentelemetry/exporter-trace-otlp-http` when a non-empty endpoint is given, else
+  `ConsoleSpanExporter`)
   Notes: `observability.client.ts` is browser-only and throws synchronously (before any OTel
-  work) if `window` is undefined — never import it from `*.server.ts` code.
-  No OTLP exporter is wired up yet; both currently export via `ConsoleSpanExporter` as a
-  safe, dependency-free placeholder — swap in a real OTLP exporter package once one is
-  selected for the frontend (mirroring the backend's `repo_roller_api::tracing_otel`).
+  work) if `window` is undefined — never import it from `*.server.ts` code. Both
+  `build*SpanExporter()` functions are fail-safe-off: exporter construction failure (e.g. a
+  malformed endpoint) falls back to `ConsoleSpanExporter` rather than throwing.
+
+- **`frontend/src/lib/observability/otel-settings.ts`** — pure OTLP export configuration
+  resolution, mirrors `repo_roller_api::tracing_otel::resolve_otel_settings`'s env-var
+  semantics exactly (frontend and backend agree on what "OTel export enabled" means)
+  Use when: Resolving `OTEL_TRACES_ENABLED`/`OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_SERVICE_NAME`
+  into settings for the Node-side exporter. Not used by the browser side directly — see
+  `PUBLIC_OTEL_ENDPOINT_ENV_VAR` doc comment for why the browser's endpoint is a separate,
+  `$env/dynamic/public`-sourced concern threaded through `initClientObservability()` instead.
+  Key exports: `resolveOtelSettings(enabledRaw, endpointRaw, serviceNameRaw)` (pure, never
+  throws, fail-safe-off default `enabled: false`), `OtelSettings` type,
+  `DEFAULT_OTLP_ENDPOINT`/`DEFAULT_SERVICE_NAME`, `OTEL_ENABLED_ENV_VAR`/
+  `OTEL_ENDPOINT_ENV_VAR`/`OTEL_SERVICE_NAME_ENV_VAR`/`PUBLIC_OTEL_ENDPOINT_ENV_VAR`
+  Notes: Only the case-insensitive literals `"true"`/`"1"` enable export; every other value
+  (including unset) resolves to disabled.
 
 ## Cross-Cutting Helpers
 

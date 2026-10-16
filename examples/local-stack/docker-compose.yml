@@ -115,6 +115,28 @@ services:
       # Docker network. The alias "backend" matches the service name above.
       BACKEND_API_URL: "http://backend:8080"
 
+      # Distributed tracing (Observability Task #3, frontend). Fail-safe-off
+      # by default (see frontend/src/lib/observability/otel-settings.ts
+      # module docs) — set OTEL_TRACES_ENABLED=true to export server-side
+      # (Node/SvelteKit) spans to the local Jaeger instance above via
+      # OTLP/gRPC. The "jaeger" hostname resolves via the Docker network
+      # alias defined on the jaeger service, same as the backend's own
+      # OTEL_EXPORTER_OTLP_ENDPOINT.
+      OTEL_TRACES_ENABLED: "${OTEL_TRACES_ENABLED:-false}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}"
+      OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME_FRONTEND:-repo-roller-frontend}"
+
+      # Browser-side OTLP endpoint for client-exported spans. MUST be
+      # publicly reachable from the end user's browser (unlike the
+      # Docker-internal "jaeger" hostname used above) — gRPC is not usable
+      # from a browser at all, so this points at Jaeger's OTLP/HTTP receiver
+      # instead, via the same host/port the Jaeger service publishes to the
+      # host machine (see the jaeger service's ports above). MUST be
+      # PUBLIC_-prefixed so SvelteKit exposes it to client bundles (see
+      # frontend/src/lib/observability/otel-settings.ts's
+      # PUBLIC_OTEL_ENDPOINT_ENV_VAR doc comment).
+      PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT: "${PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318/v1/traces}"
+
       # Optional branding overrides
       BRAND_APP_NAME: "${BRAND_APP_NAME:-RepoRoller}"
     depends_on:
