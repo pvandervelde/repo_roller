@@ -7,3 +7,6 @@ overrides:
 
 onlyBuiltDependencies:
   - esbuild
+
+allowBuilds:
+  protobufjs: true

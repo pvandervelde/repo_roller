@@ -50,6 +50,8 @@
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.223.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
     "@opentelemetry/instrumentation": "^0.223.0",
     "@opentelemetry/instrumentation-fetch": "0.223.0",
     "@opentelemetry/instrumentation-undici": "0.33.0",
