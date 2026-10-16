@@ -26,34 +26,65 @@
  *   successfully completed for this page session.
  */
 
+import {
+  ConsoleSpanExporter,
+  SimpleSpanProcessor,
+  WebTracerProvider,
+} from '@opentelemetry/sdk-trace-web';
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+
+/** Module-level bookkeeping: has init already run (successfully) in this page session? */
+let initialized = false;
+
 /**
  * Initialise the browser OTel SDK for this page session. Safe to call
  * multiple times; only the first call has an effect. Throws if called
  * outside a browser context (`window` undefined).
  *
- * STUB: throws "not implemented" until implemented — this is a deliberately
- * wrong message so it is distinguishable from the eventual real
- * browser-context guard-clause error.
+ * No OTLP exporter is wired up yet — spans are currently exported via
+ * `ConsoleSpanExporter` as a safe, dependency-free default. Swapping in a
+ * real OTLP exporter is tracked as follow-up work once an exporter package
+ * is selected.
  */
 export function initClientObservability(): void {
-  throw new Error('observability.client.ts: initClientObservability() not implemented');
+  // Guard clause MUST run before any OTel registration work — this module is
+  // browser-only and must fail loudly (not silently no-op) if mis-imported
+  // into SSR code.
+  if (typeof window === 'undefined') {
+    throw new Error(
+      'observability.client.ts: initClientObservability() must only be called in a browser context (window is undefined) — this module is browser-only and must not be imported from server-side code',
+    );
+  }
+
+  if (initialized) return;
+
+  try {
+    const provider = new WebTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
+    });
+    provider.register();
+
+    registerInstrumentations({ instrumentations: [new FetchInstrumentation()] });
+
+    initialized = true;
+  } catch {
+    // Observability bootstrap must never be able to break the page. Leave
+    // `initialized` false so a later call can retry.
+  }
 }
 
 /**
  * Whether `initClientObservability()` has successfully run in this page
  * session.
- *
- * STUB: throws until implemented.
  */
 export function isClientObservabilityInitialized(): boolean {
-  throw new Error('observability.client.ts: isClientObservabilityInitialized() not implemented');
+  return initialized;
 }
 
 /**
  * Test-only hook: reset module-level init state between tests.
  */
 export function _resetObservabilityForTesting(): void {
-  // Intentionally a no-op for now: there is no state to reset yet because
-  // the real implementation (and its module-level init flag) does not exist
-  // yet. The Coder must make this actually reset that flag once it exists.
+  initialized = false;
 }

@@ -36,6 +36,8 @@
  * operation's name) is a simple equality check away from being caught.
  */
 
+import { SpanStatusCode, trace, type Exception } from '@opentelemetry/api';
+
 /** Canonical span names for instrumented user-facing operations. */
 export const SPAN_NAMES = {
   /** Wraps the `createRepository()` call made when the user submits the /create wizard. */
@@ -49,17 +51,51 @@ export interface SpanHandle {
   recordException(err: unknown): void;
 }
 
+/** Tracer name shared by every span this module creates. */
+const TRACER_NAME = 'repo-roller-frontend';
+
+/**
+ * Convert an arbitrary thrown/rejected value into something the OTel API's
+ * `recordException()` accepts without itself throwing — `Error` instances
+ * and strings are passed through untouched; anything else is coerced to a
+ * descriptive string so a non-Error/non-string rejection can never break
+ * instrumentation.
+ */
+function toRecordableException(err: unknown): Exception {
+  if (err instanceof Error || typeof err === 'string') return err;
+  try {
+    return String(err);
+  } catch {
+    return 'Unserializable exception value';
+  }
+}
+
 /**
  * Run `fn` inside a named span. See the contract above for exact semantics.
- *
- * STUB: throws synchronously (before even calling `fn`) until implemented.
  */
 export async function withSpan<T>(
   name: string,
   fn: (span: SpanHandle) => Promise<T> | T,
   attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
-  throw new Error(
-    `spans.ts: withSpan() not implemented (name=${name}, attributes=${JSON.stringify(attributes)}, fn=${typeof fn})`,
-  );
+  const tracer = trace.getTracer(TRACER_NAME);
+  return tracer.startActiveSpan(name, async (span) => {
+    if (attributes) {
+      span.setAttributes(attributes);
+    }
+    const handle: SpanHandle = {
+      setAttribute: (key, value) => span.setAttribute(key, value),
+      recordException: (err) => span.recordException(toRecordableException(err)),
+    };
+    try {
+      const result = await fn(handle);
+      span.end();
+      return result;
+    } catch (err) {
+      span.recordException(toRecordableException(err));
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      span.end();
+      throw err;
+    }
+  });
 }

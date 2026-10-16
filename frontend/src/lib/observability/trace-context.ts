@@ -51,6 +51,8 @@
  * invalid and MUST never be emitted by a conforming implementation.
  */
 
+import { trace } from '@opentelemetry/api';
+
 /** A minimal, library-agnostic view of an active span's identifying context. */
 export interface ActiveSpanContext {
   /** 32 lowercase hex characters. Must not be all zeros. */
@@ -64,15 +66,79 @@ export interface ActiveSpanContext {
 /** Regex matching a syntactically valid W3C `traceparent` header value. */
 export const TRACEPARENT_FORMAT = /^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
 
+const ALL_ZERO_TRACE_ID = '0'.repeat(32);
+const ALL_ZERO_SPAN_ID = '0'.repeat(16);
+/** Bit 0 of the W3C trace-flags byte marks a trace as sampled. */
+const SAMPLED_FLAG_BIT = 1;
+
+/**
+ * Fill `bytes` with cryptographically-strong random values when available,
+ * falling back to `Math.random()` (e.g. in an environment with no `crypto`
+ * global) so id minting can never throw.
+ */
+function fillRandomBytes(bytes: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
+  if (cryptoObj?.getRandomValues) {
+    return cryptoObj.getRandomValues(bytes);
+  }
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return bytes;
+}
+
+/** Mint a random, non-all-zero lowercase hex id of `byteLength` bytes. */
+function mintHexId(byteLength: number): string {
+  const zeroPattern = new RegExp(`^0{${byteLength * 2}}$`);
+  let hex: string;
+  do {
+    const bytes = fillRandomBytes(new Uint8Array(byteLength));
+    hex = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } while (zeroPattern.test(hex));
+  return hex;
+}
+
+/** Mint a fresh, non-all-zero 32-hex-char (16 byte) trace id. */
+function mintTraceId(): string {
+  return mintHexId(16);
+}
+
+/** Mint a fresh, non-all-zero 16-hex-char (8 byte) span id. */
+function mintSpanId(): string {
+  return mintHexId(8);
+}
+
 /**
  * Return the span context of the currently active span (e.g. via the OTel JS
  * API's `trace.getActiveSpan()`), or `null` if there is no active span in
  * scope for the calling context.
  *
- * STUB: throws until implemented.
+ * Also returns `null` if the active span's context is the OTel "invalid"
+ * sentinel (all-zero trace-id/span-id) that the API's no-op tracer produces
+ * when no real SDK has been registered — that sentinel is never a valid
+ * `traceparent` value and must be treated the same as "no active span".
  */
 export function getActiveSpanContext(): ActiveSpanContext | null {
-  throw new Error('trace-context.ts: getActiveSpanContext() not implemented');
+  try {
+    const span = trace.getActiveSpan();
+    if (!span) return null;
+
+    const spanContext = span.spanContext();
+    if (!spanContext) return null;
+    if (spanContext.traceId === ALL_ZERO_TRACE_ID || spanContext.spanId === ALL_ZERO_SPAN_ID) {
+      return null;
+    }
+
+    return {
+      traceId: spanContext.traceId,
+      spanId: spanContext.spanId,
+      sampled: (spanContext.traceFlags & SAMPLED_FLAG_BIT) === SAMPLED_FLAG_BIT,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -88,13 +154,16 @@ export function getActiveSpanContext(): ActiveSpanContext | null {
  *   the header is always present and well-formed, never omitted.
  *
  * MUST NOT throw. MUST always return a string matching `TRACEPARENT_FORMAT`.
- *
- * STUB: throws until implemented.
  */
 export function buildTraceparentHeader(parent?: ActiveSpanContext | null): string {
-  throw new Error(
-    `trace-context.ts: buildTraceparentHeader() not implemented (parent=${JSON.stringify(parent)})`,
-  );
+  const traceId = parent?.traceId ?? mintTraceId();
+  const spanId = parent?.spanId ?? mintSpanId();
+  // When minting a fresh root trace there is no prior sampling decision to
+  // honour, so default to "sampled" — a freshly-minted trace is exactly the
+  // one we want recorded downstream.
+  const sampled = parent?.sampled ?? true;
+  const flags = sampled ? '01' : '00';
+  return `00-${traceId}-${spanId}-${flags}`;
 }
 
 /**
@@ -105,9 +174,14 @@ export function buildTraceparentHeader(parent?: ActiveSpanContext | null): strin
  * MUST NOT throw under any circumstance — logging/tracing must never be able
  * to break a real HTTP request. MUST always return a string matching
  * `TRACEPARENT_FORMAT`.
- *
- * STUB: throws until implemented.
  */
 export function getCurrentTraceparent(): string {
-  throw new Error('trace-context.ts: getCurrentTraceparent() not implemented');
+  try {
+    return buildTraceparentHeader(getActiveSpanContext());
+  } catch {
+    // getActiveSpanContext() already guards against throwing, but
+    // buildTraceparentHeader() itself could theoretically throw on a future
+    // change; a tracing bug must never be able to break a real HTTP request.
+    return buildTraceparentHeader(null);
+  }
 }

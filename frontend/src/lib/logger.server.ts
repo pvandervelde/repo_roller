@@ -63,38 +63,103 @@ export interface Logger {
 
 export type LogSink = (record: LogRecord) => void;
 
-function notImplemented(level: string): never {
-  throw new Error(`logger.server.ts: logger.${level}() not implemented`);
+/** Overridden by `_setLogSinkForTesting`; `null` means "use the real default sink". */
+let testSink: LogSink | null = null;
+
+/**
+ * Recursively convert `value` into something that is always safely
+ * JSON-serialisable:
+ *  - `Error` instances become a plain object preserving `name`/`message`/
+ *    `stack` as strings (a bare `JSON.stringify(someError)` silently
+ *    produces `{}`, which this specifically avoids).
+ *  - Circular object references are replaced with the string `'[Circular]'`
+ *    instead of recursing forever / throwing.
+ *  - Everything else is returned unchanged.
+ */
+function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
+  if (value instanceof Error) {
+    return { name: value.name, message: value.message, stack: value.stack };
+  }
+  if (value !== null && typeof value === 'object') {
+    if (seen.has(value)) return '[Circular]';
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((item) => sanitizeValue(item, seen));
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      out[key] = sanitizeValue(nested, seen);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Sanitize every field of `meta` so the resulting object can never throw when serialised. */
+function sanitizeMeta(meta: LogMetadata | undefined): LogMetadata {
+  if (!meta) return {};
+  const result: LogMetadata = {};
+  for (const [key, value] of Object.entries(meta)) {
+    try {
+      result[key] = sanitizeValue(value, new WeakSet<object>());
+    } catch {
+      result[key] = '[Unserializable]';
+    }
+  }
+  return result;
+}
+
+/**
+ * Real (non-test) emission path: write one structured JSON line to stdout.
+ * Never throws — logging must never be able to break the caller.
+ */
+function writeToStdout(record: LogRecord): void {
+  try {
+    process.stdout.write(`${JSON.stringify(record)}\n`);
+  } catch {
+    // Swallow: a logging failure (e.g. a closed stdout stream) must never
+    // propagate to the caller.
+  }
+}
+
+function emit(level: LogRecord['level'], message: string, meta?: LogMetadata): void {
+  const record: LogRecord = {
+    ...sanitizeMeta(meta),
+    level,
+    message,
+    time: new Date().toISOString(),
+  };
+
+  if (testSink) {
+    testSink(record);
+    return;
+  }
+
+  writeToStdout(record);
 }
 
 /**
  * The shared server-side structured logger instance. Import this directly;
  * do not construct your own.
- *
- * STUB: every method throws until implemented.
  */
 export const logger: Logger = {
-  debug: () => notImplemented('debug'),
-  info: () => notImplemented('info'),
-  warn: () => notImplemented('warn'),
-  error: () => notImplemented('error'),
+  debug: (message, meta) => emit('debug', message, meta),
+  info: (message, meta) => emit('info', message, meta),
+  warn: (message, meta) => emit('warn', message, meta),
+  error: (message, meta) => emit('error', message, meta),
 };
 
 /**
  * Test-only hook: redirect log output to a custom sink instead of the real
- * backend (e.g. pino writing to stdout), so tests can assert on the
+ * backend (writing structured JSON to stdout), so tests can assert on the
  * structured record produced by a log call without depending on stdout
  * capture or on which specific logging library backs this module.
- *
- * Must be implemented alongside `logger` itself — currently unused by the
- * stub (there is no real emission pathway yet to redirect).
  */
-export function _setLogSinkForTesting(_sink: LogSink): void {
-  throw new Error('logger.server.ts: _setLogSinkForTesting() not implemented');
+export function _setLogSinkForTesting(sink: LogSink): void {
+  testSink = sink;
 }
 
 /** Test-only hook: remove any sink set via `_setLogSinkForTesting` and restore normal output. */
 export function _resetLogSinkForTesting(): void {
-  // Intentionally a no-op for now: there is no sink-override state to reset
-  // yet because the real implementation does not exist yet.
+  testSink = null;
 }

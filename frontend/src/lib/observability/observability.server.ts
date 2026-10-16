@@ -26,34 +26,65 @@
  *   successfully completed in this process.
  */
 
+import {
+  ConsoleSpanExporter,
+  NodeTracerProvider,
+  SimpleSpanProcessor,
+} from '@opentelemetry/sdk-trace-node';
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici';
+import { logger } from '../logger.server';
+
+/** Module-level bookkeeping: has init already run (successfully) in this process? */
+let initialized = false;
+
 /**
  * Initialise the Node OTel SDK for this process. Safe to call multiple
  * times; only the first call has an effect.
  *
- * STUB: throws until implemented.
+ * No OTLP exporter is wired up yet (see `OTEL_EXPORTER_OTLP_ENDPOINT` below)
+ * — spans are currently exported via `ConsoleSpanExporter` as a safe,
+ * dependency-free default. Swapping in a real OTLP exporter is tracked as
+ * follow-up work once an exporter package is selected.
  */
 export function initServerObservability(): void {
-  throw new Error('observability.server.ts: initServerObservability() not implemented');
+  if (initialized) return;
+
+  try {
+    const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    const provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
+    });
+    provider.register();
+
+    registerInstrumentations({ instrumentations: [new UndiciInstrumentation()] });
+
+    initialized = true;
+    logger.info('Server observability initialized', {
+      otlpEndpointConfigured: Boolean(otlpEndpoint),
+    });
+  } catch (err) {
+    // Observability bootstrap must never be able to crash server startup.
+    // Leave `initialized` false so a later call can retry.
+    logger.warn('Server observability initialization failed; continuing without tracing', {
+      err,
+    });
+  }
 }
 
 /**
  * Whether `initServerObservability()` has successfully run in this process.
- *
- * STUB: throws until implemented.
  */
 export function isServerObservabilityInitialized(): boolean {
-  throw new Error('observability.server.ts: isServerObservabilityInitialized() not implemented');
+  return initialized;
 }
 
 /**
  * Test-only hook: reset module-level init state between tests so each test
  * can observe `initServerObservability()`'s first-call behaviour freshly.
  * Has no effect on any already-registered global OTel provider beyond this
- * module's own bookkeeping flag — real implementations should document any
- * additional teardown needed here once written.
+ * module's own bookkeeping flag.
  */
 export function _resetObservabilityForTesting(): void {
-  // Intentionally a no-op for now: there is no state to reset yet because
-  // the real implementation (and its module-level init flag) does not exist
-  // yet. The Coder must make this actually reset that flag once it exists.
+  initialized = false;
 }

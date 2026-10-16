@@ -2,6 +2,11 @@ import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit/hooks';
 import type { Session } from '$lib/types/session';
 import { parseSessionCookie } from '$lib/session.server';
+import { initServerObservability } from '$lib/observability/observability.server';
+
+// Bootstrap the Node OTel SDK exactly once when this module is first loaded
+// by the server process (before any request is handled).
+initServerObservability();
 
 /** Routes that require an authenticated session. */
 const PROTECTED_PREFIXES = ['/create'];

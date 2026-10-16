@@ -344,6 +344,62 @@ Add to this whenever a reusable component becomes "the standard way".
   `github_client::span_attributes::sanitize_span_attribute_value` — never
   re-implements sanitization independently)
 
+### Frontend Observability (Observability Task 3)
+
+- **`frontend/src/lib/logger.server.ts`** — server-only structured logger
+  Use when: Logging anything in `*.server.ts`/`+page.server.ts`/`+server.ts` SvelteKit code —
+  replaces raw `console.*` calls
+  Key exports: `logger` (singleton `Logger`: `debug`/`info`/`warn`/`error`, each taking
+  `(message: string, meta?: LogMetadata)`), `LogRecord`/`LogMetadata`/`LogSink` types,
+  `_setLogSinkForTesting(sink)`/`_resetLogSinkForTesting()` test hooks (mirrors
+  `brand.server.ts`'s `_resetBrandConfigForTesting` convention)
+  Notes: Library-agnostic by design — does NOT use `pino` (see Rules & Tips in
+  `.llm/tasks.md` for why: `pino`'s `"browser"` package.json field gets picked up under this
+  project's Vitest config and silently falls back to calling `console.*` internally). Default
+  (no test sink) emission path writes one JSON line per call via `process.stdout.write()`.
+  Every field under `meta` is deep-sanitized before emission: `Error` instances become
+  `{name, message, stack}` (plain `JSON.stringify` of an `Error` produces `{}`), circular
+  references become the string `'[Circular]'`. Never throws regardless of `meta` contents.
+  Server-only (not safe to import client-side).
+
+- **`frontend/src/lib/observability/trace-context.ts`** — W3C Trace Context (`traceparent`)
+  helpers, pure/framework-agnostic (works in both browser and server code)
+  Use when: Attaching a `traceparent` header to any outbound `fetch()` call that should
+  participate in the same distributed trace as the backend (Task 2)
+  Key exports: `getCurrentTraceparent()` (never throws, always returns a well-formed header —
+  the function to call at an actual `fetch()` call site), `getActiveSpanContext()`,
+  `buildTraceparentHeader(parent?)`, `TRACEPARENT_FORMAT` regex, `ActiveSpanContext` type
+  Notes: Manual propagation by design, NOT OTel auto-instrumentation — auto-instrumentation
+  patches global `fetch`, which is invisible to this codebase's `vi.stubGlobal('fetch', ...)`
+  test pattern. Already wired into `api/client.ts`'s `apiFetch()` and `proxy.server.ts`'s
+  `proxyToBackend()` — any other outbound `fetch()` call that should be traced must call
+  `getCurrentTraceparent()` itself the same way, auto-instrumentation will not catch it.
+
+- **`frontend/src/lib/observability/spans.ts`** — span-wrapping helper for instrumenting
+  discrete user operations (form submissions, data loads)
+  Use when: Instrumenting a user-facing async operation (API call triggered by a component
+  action) with a named span
+  Key exports: `withSpan(name, fn, attributes?)` (starts a span, runs `fn` with it active,
+  ends it exactly once on every path, rethrows `fn`'s error unchanged), `SPAN_NAMES`
+  (`CREATE_REPOSITORY_SUBMIT`, `LOAD_TEMPLATES` — add new operation names here, never inline
+  a span-name string literal at a call site), `SpanHandle` type
+  Notes: Already wired into `routes/create/+page.svelte`'s `loadTemplates()` (wraps
+  `listTemplates()`) and `submitCreate()` (wraps `createRepository()`).
+
+- **`frontend/src/lib/observability/observability.server.ts` /
+  `observability.client.ts`** — Node/browser OTel SDK bootstrap (`NodeTracerProvider`/
+  `WebTracerProvider` + `UndiciInstrumentation`/`FetchInstrumentation`)
+  Use when: Already wired globally — `initServerObservability()` is called once at module
+  load in `hooks.server.ts`, `initClientObservability()` once at module load in
+  `hooks.client.ts`. No per-route code needed.
+  Key exports: `init*Observability()` (idempotent, never throws — falls back silently if SDK
+  registration fails), `is*ObservabilityInitialized()`, `_resetObservabilityForTesting()`
+  Notes: `observability.client.ts` is browser-only and throws synchronously (before any OTel
+  work) if `window` is undefined — never import it from `*.server.ts` code.
+  No OTLP exporter is wired up yet; both currently export via `ConsoleSpanExporter` as a
+  safe, dependency-free placeholder — swap in a real OTLP exporter package once one is
+  selected for the frontend (mirroring the backend's `repo_roller_api::tracing_otel`).
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout
