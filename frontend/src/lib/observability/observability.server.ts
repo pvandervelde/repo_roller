@@ -52,6 +52,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici';
 import { logger } from '../logger.server';
+import { buildFailSafeSpanExporter } from './exporter-fallback';
 import { resolveOtelSettings, type OtelSettings } from './otel-settings';
 
 /** Module-level bookkeeping: has init already run (successfully) in this process? */
@@ -128,16 +129,13 @@ export function _resetObservabilityForTesting(): void {
  *   `ConsoleSpanExporter` (fail-safe-off), not propagate.
  */
 export function buildServerSpanExporter(settings: OtelSettings): unknown {
-  if (!settings.enabled) {
-    return new ConsoleSpanExporter();
-  }
-
-  try {
-    return new OTLPTraceExporter({ url: settings.otlpEndpoint });
-  } catch (err) {
-    logger.warn('Failed to build OTLP span exporter; falling back to ConsoleSpanExporter', {
-      err,
-    });
-    return new ConsoleSpanExporter();
-  }
+  return buildFailSafeSpanExporter<SpanExporter>(
+    settings.enabled,
+    () => new OTLPTraceExporter({ url: settings.otlpEndpoint }),
+    () => new ConsoleSpanExporter(),
+    (err) =>
+      logger.warn('Failed to build OTLP span exporter; falling back to ConsoleSpanExporter', {
+        err,
+      }),
+  );
 }

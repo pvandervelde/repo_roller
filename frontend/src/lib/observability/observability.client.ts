@@ -52,6 +52,7 @@ import {
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { buildFailSafeSpanExporter } from './exporter-fallback';
 
 /** Module-level bookkeeping: has init already run (successfully) in this page session? */
 let initialized = false;
@@ -138,14 +139,9 @@ export function _resetObservabilityForTesting(): void {
  *   `ConsoleSpanExporter`, not propagate.
  */
 export function buildClientSpanExporter(otlpEndpoint: string | null | undefined): unknown {
-  if (!otlpEndpoint) {
-    return new ConsoleSpanExporter();
-  }
-
-  try {
-    return new OTLPTraceExporter({ url: otlpEndpoint });
-  } catch {
-    // Exporter construction must never be able to break the page.
-    return new ConsoleSpanExporter();
-  }
+  return buildFailSafeSpanExporter<SpanExporter>(
+    Boolean(otlpEndpoint),
+    () => new OTLPTraceExporter({ url: otlpEndpoint as string }),
+    () => new ConsoleSpanExporter(),
+  );
 }

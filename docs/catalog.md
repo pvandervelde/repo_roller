@@ -436,7 +436,32 @@ Add to this whenever a reusable component becomes "the standard way".
   Notes: `observability.client.ts` is browser-only and throws synchronously (before any OTel
   work) if `window` is undefined — never import it from `*.server.ts` code. Both
   `build*SpanExporter()` functions are fail-safe-off: exporter construction failure (e.g. a
-  malformed endpoint) falls back to `ConsoleSpanExporter` rather than throwing.
+  malformed endpoint) falls back to `ConsoleSpanExporter` rather than throwing — both now
+  delegate that shared gate/try/fallback decision to
+  `exporter-fallback.ts`'s `buildFailSafeSpanExporter()` (extracted during this task's
+  REFACTOR pass) rather than each re-implementing it; see that entry below.
+
+- **`frontend/src/lib/observability/exporter-fallback.ts`** — shared "fail-safe-off"
+  span exporter selection logic, factored out (REFACTOR pass) of
+  `observability.server.ts`'s `buildServerSpanExporter()` and `observability.client.ts`'s
+  `buildClientSpanExporter()`, which both independently implemented the identical
+  gate/try/fallback control flow despite constructing different concrete exporters
+  (`sdk-trace-node` + gRPC vs. `sdk-trace-web` + HTTP)
+  Use when: Building any `SpanExporter`-selection function that must be fail-safe-off
+  (return a no-op exporter when export isn't enabled/configured, and ALSO fall back to
+  the no-op exporter — never throw — if constructing the real exporter fails)
+  Key exports: `buildFailSafeSpanExporter<E>(shouldExportReal, buildReal, buildFallback,
+  onFallback?)` — generic over the exporter type so this module never imports either OTel
+  SDK package itself; callers supply both constructors as closures and own their own
+  imports
+  Notes: Both current call sites explicitly instantiate the generic as
+  `buildFailSafeSpanExporter<SpanExporter>(...)` — omitting the explicit type argument
+  lets TypeScript infer `E` from whichever closure it checks first, which then fails to
+  unify against the other closure's unrelated concrete exporter type. Verified before
+  extraction that `@opentelemetry/sdk-trace-node` and `@opentelemetry/sdk-trace-web` both
+  depend on the same `@opentelemetry/sdk-trace-base` version (pnpm dedupes to one copy),
+  so `ConsoleSpanExporter`/`SpanExporter` instances remain `instanceof`-compatible across
+  either import path — existing tests assert on this and needed no changes.
 
 - **`frontend/src/lib/observability/otel-settings.ts`** — pure OTLP export configuration
   resolution, mirrors `repo_roller_api::tracing_otel::resolve_otel_settings`'s env-var
