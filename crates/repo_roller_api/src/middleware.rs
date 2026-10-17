@@ -475,6 +475,14 @@ impl IntoResponse for AuthError {
     }
 }
 
+// `extract_trace_context`'s test-only support (shared by the sibling
+// `middleware_tests.rs` / `middleware_proptests.rs` submodules below) lives
+// in `middleware_test_support.rs` rather than inline here, to keep this
+// production file under the project's `max_file_length` budget.
+#[cfg(test)]
+#[path = "middleware_test_support.rs"]
+mod test_support;
+
 #[cfg(test)]
 #[path = "middleware_tests.rs"]
 mod tests;

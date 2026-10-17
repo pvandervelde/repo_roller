@@ -6,7 +6,8 @@
 //!
 //! These tests install the W3C `TraceContextPropagator` as the process-
 //! global text-map propagator in their own setup (see
-//! `ensure_trace_context_propagator_installed`) so they do not depend on
+//! `middleware_test_support::ensure_trace_context_propagator_installed`,
+//! shared with `middleware_tests.rs`) so they do not depend on
 //! `tracing_otel::init_tracing_with_otel` having done so first -- that
 //! production call site is a separate, flagged spec gap (see
 //! `extract_trace_context`'s doc comment in `middleware.rs`). Installing the
@@ -16,30 +17,9 @@
 //! global-default-subscriber, which may only be installed once per process.
 
 use super::*;
-use axum::http::HeaderValue;
+use super::test_support::{ensure_trace_context_propagator_installed, headers_with_traceparent};
 use opentelemetry::trace::{SpanId, TraceContextExt, TraceId};
 use proptest::prelude::*;
-
-/// Installs the W3C `TraceContextPropagator` as the global text-map
-/// propagator. Idempotent and safe to call from many concurrently-running
-/// proptest cases.
-fn ensure_trace_context_propagator_installed() {
-    opentelemetry::global::set_text_map_propagator(
-        opentelemetry_sdk::propagation::TraceContextPropagator::new(),
-    );
-}
-
-/// Builds a `HeaderMap` with a single `traceparent` header set to `value`,
-/// or an empty `HeaderMap` if `value` is not a legal HTTP header value
-/// (e.g. contains a control character) -- in which case the caller's
-/// assertions should treat this identically to "header absent".
-fn headers_with_traceparent(value: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    if let Ok(header_value) = HeaderValue::from_str(value) {
-        headers.insert("traceparent", header_value);
-    }
-    headers
-}
 
 proptest! {
     /// `extract_trace_context` must never panic for ANY string placed in the

@@ -688,20 +688,13 @@ async fn test_organization_auth_middleware_forwards_request_to_next_handler() {
 use crate::tracing_otel::build_otel_layer_with_exporter;
 use axum::http::HeaderValue;
 use opentelemetry::trace::{SpanId, TraceContextExt, TraceId};
-use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::InMemorySpanExporter;
 use tracing_subscriber::layer::SubscriberExt;
 
-/// Installs the W3C `TraceContextPropagator` as the global text-map
-/// propagator, so `extract_trace_context`'s (eventual) use of
-/// `opentelemetry::global::get_text_map_propagator` actually decodes
-/// `traceparent` headers instead of falling back to the no-op default.
-/// Backed by an `RwLock` (see `opentelemetry::global::set_text_map_propagator`),
-/// so repeated/concurrent calls across many tests are safe -- unlike
-/// `tracing`'s once-only global default subscriber.
-fn ensure_trace_context_propagator_installed() {
-    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
-}
+// `ensure_trace_context_propagator_installed` and `headers_with_traceparent`
+// are shared with the sibling `middleware_proptests.rs` module via
+// `middleware_test_support.rs` -- see that module's doc comment for why.
+use super::test_support::{ensure_trace_context_propagator_installed, headers_with_traceparent};
 
 /// A W3C-valid `traceparent` header value (trace id / parent id taken
 /// verbatim from the W3C trace-context spec's own worked example).
@@ -777,16 +770,6 @@ fn known_invalid_traceparents() -> Vec<(&'static str, &'static str)> {
         ("", "empty string"),
         ("not-a-traceparent-at-all", "complete garbage"),
     ]
-}
-
-/// Builds a `HeaderMap` with a single `traceparent` header set to `value`,
-/// or an empty `HeaderMap` if `value` is not a legal HTTP header value.
-fn headers_with_traceparent(value: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    if let Ok(header_value) = HeaderValue::from_str(value) {
-        headers.insert("traceparent", header_value);
-    }
-    headers
 }
 
 // ---- Tier 1/2: unit tests on `extract_trace_context` directly ----------

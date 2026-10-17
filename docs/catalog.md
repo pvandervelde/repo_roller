@@ -331,6 +331,36 @@ Add to this whenever a reusable component becomes "the standard way".
   it replaces (only viable when there is a single field derived from that
   parameter).
 
+- **`repo_roller_api::middleware::extract_trace_context`** — inbound W3C
+  `traceparent` extraction/continuation (the receiving-side counterpart to
+  `tracing_otel`'s outbound OTLP export above — extraction decodes an
+  external caller's trace context *into* this process; `tracing_otel`
+  decodes nothing, it only ships this process's own spans *out*)
+  Use when: Any inbound-HTTP entry point that should continue an external
+  caller's trace rather than always starting a fresh root span — currently
+  wired into `middleware::tracing_middleware`'s `http_request` span via
+  `tracing_opentelemetry::OpenTelemetrySpanExt::set_parent` (call before the
+  span is entered, never after — `tracing-opentelemetry` rejects a
+  post-entry `set_parent`)
+  Key exports: `extract_trace_context(&HeaderMap) -> opentelemetry::Context`
+  (reads the `opentelemetry::global::get_text_map_propagator`, i.e. honors
+  whatever propagator `tracing_otel::init_tracing_with_otel` installed
+  process-wide — currently `opentelemetry_sdk::propagation::TraceContextPropagator`;
+  absent/malformed `traceparent` fail-safe to an invalid context, equivalent
+  to today's pre-extraction fresh-root behavior, never panics)
+  Notes: `HeaderMapExtractor` (private, local to `extract_trace_context`) is
+  a minimal `opentelemetry::propagation::Extractor` adapter over
+  `axum::http::HeaderMap` — deliberately NOT a dependency on
+  `opentelemetry-http`'s `HeaderExtractor`, to avoid pulling in a whole crate
+  for one trait impl; reuse this adapter (or lift it out of the function) if
+  a second inbound-extraction call site appears rather than re-deriving it.
+  Test-only helpers `ensure_trace_context_propagator_installed` /
+  `headers_with_traceparent`, shared by `middleware_tests.rs` and
+  `middleware_proptests.rs`, live in `middleware_test_support.rs` (extracted
+  there during this task's REFACTOR pass to remove a duplicate definition in
+  each file) — reuse these rather than re-defining either helper if a third
+  test module needs them.
+
 - **`repo_roller_core::observability`** — canonical span names and hierarchy
   contract for `create_repository`'s orchestration phases
   Use when: Instrumenting (or reasoning about) the `create_repository` span tree —
