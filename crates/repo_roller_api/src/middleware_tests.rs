@@ -874,6 +874,62 @@ fn test_extract_trace_context_with_non_utf8_header_bytes_never_panics() {
     let _ = extract_trace_context(&headers);
 }
 
+/// Adversarial (QA audit): HTTP technically permits multiple header lines
+/// with the same name (RFC 7230 ยง3.2.2 restricts this to comma-combinable
+/// fields, but nothing at the `axum::http::HeaderMap` level enforces that
+/// restriction for the caller -- `HeaderMap::append` happily stores several
+/// values under one key). `HeaderMapExtractor::get` forwards directly to
+/// `HeaderMap::get`, which is documented to return only the FIRST value
+/// when multiple are present (see `http::HeaderMap::get`'s own doc example).
+///
+/// This pins that behavior through `extract_trace_context`: when a VALID
+/// `traceparent` is appended (not replacing a prior insert), followed by a
+/// SECOND, DIFFERENT valid `traceparent` value, the first one wins -- the
+/// decoded trace id must match the first header, never the second. This is
+/// the only sane interpretation available without bespoke multi-value
+/// handling, and matches the W3C spec's implicit single-value expectation.
+#[test]
+fn test_extract_trace_context_with_repeated_traceparent_header_uses_first_value_only() {
+    ensure_trace_context_propagator_installed();
+
+    let mut headers = HeaderMap::new();
+    headers.append(
+        "traceparent",
+        HeaderValue::from_str(VALID_TRACEPARENT).unwrap(),
+    );
+    headers.append(
+        "traceparent",
+        HeaderValue::from_str(VALID_TRACEPARENT_B).unwrap(),
+    );
+
+    // Sanity: confirm the HeaderMap really does carry two distinct values
+    // under this key before asserting on extraction behavior, so a future
+    // change to this test fixture can't silently degrade into a single-value
+    // case without failing loudly here first.
+    let all_values: Vec<_> = headers.get_all("traceparent").iter().collect();
+    assert_eq!(
+        all_values.len(),
+        2,
+        "test fixture must carry exactly two traceparent header lines"
+    );
+
+    let cx = extract_trace_context(&headers);
+    let span_ref = cx.span();
+    let span_context = span_ref.span_context();
+
+    assert!(
+        span_context.is_valid(),
+        "a repeated-but-individually-valid traceparent header must still decode to a valid \
+         span context, not be rejected outright"
+    );
+    assert_eq!(
+        span_context.trace_id(),
+        TraceId::from_hex(VALID_TRACEPARENT_TRACE_ID_HEX).unwrap(),
+        "with multiple traceparent header lines, HeaderMapExtractor::get (via \
+         HeaderMap::get) must resolve to the FIRST value, never the second"
+    );
+}
+
 /// Stub-killing: a hardcoded/cached return would pass the single-header
 /// tests above but fail to distinguish between two different valid inputs.
 #[test]
