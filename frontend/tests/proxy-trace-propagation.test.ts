@@ -165,6 +165,56 @@ describe('proxyToBackend — real (unmocked) traceparent is well-formed end-to-e
   });
 });
 
+describe('proxyToBackend — malformed/duplicated inbound header shapes (adversarial, QA audit)', () => {
+  // The Fetch/Headers spec combines multiple entries for the same header
+  // name into a SINGLE comma-joined value at Request-construction time (so
+  // `request.headers.entries()` never actually yields two separate
+  // `traceparent` entries) — but the override in `proxyToBackend` is
+  // unconditional (`forwardHeaders.set('traceparent', getCurrentTraceparent())`
+  // always runs after the generic-forwarding loop, with no "is this already
+  // a valid traceparent?" check), so this is safe either way. This test
+  // pins that down explicitly rather than relying on it being an accidental
+  // consequence of the Headers spec.
+  it('still overrides with its own value when the inbound request has multiple traceparent-shaped header entries', async () => {
+    vi.mocked(getCurrentTraceparent).mockReturnValue(OWN_HEADER);
+    mockBackendFetchOk();
+    const req = new Request('http://localhost/api/v1/orgs/acme/templates', {
+      headers: [
+        ['traceparent', INBOUND_BROWSER_HEADER],
+        ['traceparent', '00-77777777777777777777777777777777-8888888888888888-01'],
+      ],
+    });
+    // Sanity check on the test's own premise: the Headers spec already
+    // combined the two entries into one comma-joined (and therefore
+    // W3C-malformed) value before proxyToBackend ever sees it.
+    expect(req.headers.get('traceparent')).toContain(',');
+
+    await proxyToBackend('/api/v1/orgs/acme/templates', req, SESSION);
+
+    const call = vi.mocked(fetch).mock.calls[0];
+    const headers = new Headers(call[1]?.headers);
+    expect(headers.get('traceparent')).toBe(OWN_HEADER);
+  });
+
+  it('still overrides with its own value when the inbound traceparent is almost-but-not-quite valid W3C format', async () => {
+    vi.mocked(getCurrentTraceparent).mockReturnValue(OWN_HEADER);
+    mockBackendFetchOk();
+    // One hex digit short in the trace-id segment (31 chars, not 32) — looks
+    // superficially plausible but fails TRACEPARENT_FORMAT.
+    const almostValid = '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01';
+    const req = new Request('http://localhost/api/v1/orgs/acme/templates', {
+      headers: { traceparent: almostValid },
+    });
+
+    await proxyToBackend('/api/v1/orgs/acme/templates', req, SESSION);
+
+    const call = vi.mocked(fetch).mock.calls[0];
+    const headers = new Headers(call[1]?.headers);
+    expect(headers.get('traceparent')).toBe(OWN_HEADER);
+    expect(headers.get('traceparent')).not.toBe(almostValid);
+  });
+});
+
 describe('proxyToBackend — property: outbound header is always well-formed regardless of inbound header (adversarial)', () => {
   // Restricted to characters that are always legal in an HTTP header value
   // (hex digits and dashes), so the generator produces realistic

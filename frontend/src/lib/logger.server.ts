@@ -71,26 +71,58 @@ let testSink: LogSink | null = null;
  * JSON-serialisable:
  *  - `Error` instances become a plain object preserving `name`/`message`/
  *    `stack` as strings (a bare `JSON.stringify(someError)` silently
- *    produces `{}`, which this specifically avoids).
+ *    produces `{}`, which this specifically avoids). Any other enumerable
+ *    own property an `Error` happens to carry (e.g. `statusCode`) is
+ *    deliberately NOT copied through, so callers cannot smuggle arbitrary
+ *    extra data onto an Error and have it bypass the rest of this function.
  *  - Circular object references are replaced with the string `'[Circular]'`
- *    instead of recursing forever / throwing.
+ *    instead of recursing forever / throwing. `seen` tracks only the
+ *    object's current ANCESTORS (it is removed again once that subtree
+ *    finishes processing) so that two separate, non-circular references to
+ *    the *same* shared object (e.g. the same object appearing twice in an
+ *    array, or under two different keys) are each serialised in full rather
+ *    than being misreported as circular.
+ *  - Function values (including one hiding under a `toJSON` key, which
+ *    `JSON.stringify` would otherwise invoke at emission time — completely
+ *    bypassing this sanitisation, re-introducing the exact "throws on
+ *    circular/unserialisable data" failure mode this function exists to
+ *    prevent) are replaced with a descriptive placeholder string rather than
+ *    returned as-is.
  *  - Everything else is returned unchanged.
  */
 function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value instanceof Error) {
     return { name: value.name, message: value.message, stack: value.stack };
   }
+  if (typeof value === 'function') {
+    // Never return a function verbatim: besides being meaningless once
+    // serialised, a function surviving into the sanitized output under a
+    // key named `toJSON` would be invoked by `JSON.stringify` at emission
+    // time with its ORIGINAL (unsanitized) return value — e.g. a live
+    // circular reference — defeating the circular-reference guard above and
+    // causing the real emission path (`writeToStdout`) to silently drop the
+    // entire log record when `JSON.stringify` throws.
+    return `[Function: ${value.name || 'anonymous'}]`;
+  }
   if (value !== null && typeof value === 'object') {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    if (Array.isArray(value)) {
-      return value.map((item) => sanitizeValue(item, seen));
+    try {
+      if (Array.isArray(value)) {
+        return value.map((item) => sanitizeValue(item, seen));
+      }
+      const out: Record<string, unknown> = {};
+      for (const [key, nested] of Object.entries(value)) {
+        out[key] = sanitizeValue(nested, seen);
+      }
+      return out;
+    } finally {
+      // Remove this object from the ancestor set once its subtree is fully
+      // processed, so a later SIBLING reference to the same object (not an
+      // ancestor of itself) is serialised normally instead of being
+      // mislabelled '[Circular]'.
+      seen.delete(value);
     }
-    const out: Record<string, unknown> = {};
-    for (const [key, nested] of Object.entries(value)) {
-      out[key] = sanitizeValue(nested, seen);
-    }
-    return out;
   }
   return value;
 }
