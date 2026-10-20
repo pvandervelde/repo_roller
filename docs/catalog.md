@@ -405,16 +405,39 @@ Add to this whenever a reusable component becomes "the standard way".
   `proxyToBackend()` — any other outbound `fetch()` call that should be traced must call
   `getCurrentTraceparent()` itself the same way, auto-instrumentation will not catch it.
 
-- **`frontend/src/lib/observability/spans.ts`** — span-wrapping helper for instrumenting
-  discrete user operations (form submissions, data loads)
+- **`frontend/src/lib/observability/spans.ts`** — span-wrapping helpers for instrumenting
+  discrete user operations (form submissions, data loads) AND for continuing an inbound
+  distributed trace across the SvelteKit server hop
   Use when: Instrumenting a user-facing async operation (API call triggered by a component
-  action) with a named span
-  Key exports: `withSpan(name, fn, attributes?)` (starts a span, runs `fn` with it active,
-  ends it exactly once on every path, rethrows `fn`'s error unchanged), `SPAN_NAMES`
-  (`CREATE_REPOSITORY_SUBMIT`, `LOAD_TEMPLATES` — add new operation names here, never inline
-  a span-name string literal at a call site), `SpanHandle` type
-  Notes: Already wired into `routes/create/+page.svelte`'s `loadTemplates()` (wraps
-  `listTemplates()`) and `submitCreate()` (wraps `createRepository()`).
+  action) with a named span (`withSpan`), or wrapping the SvelteKit server's own per-request
+  handling so it parents to whatever trace the browser started (`withRequestSpan`)
+  Key exports: `withSpan(name, fn, attributes?)` (starts a span — fresh root or child of
+  whatever's currently active — runs `fn` with it active, ends it exactly once on every path,
+  rethrows `fn`'s error unchanged); `withRequestSpan(request, fn)` (extracts a W3C
+  `traceparent` from `request.headers` via `propagation.extract()` against the globally
+  registered propagator, starts `SPAN_NAMES.SVELTEKIT_REQUEST` as a child of that extracted
+  context — or a fresh root span if the header is absent/malformed/all-zero — then runs `fn`
+  with the same end-exactly-once/error-passthrough contract as `withSpan`; depends only on
+  the standard `Request.headers` interface, not SvelteKit's `RequestEvent`, so it stays
+  testable independent of SvelteKit's routing machinery); `SPAN_NAMES` (`CREATE_REPOSITORY_SUBMIT`,
+  `LOAD_TEMPLATES`, `SVELTEKIT_REQUEST` — add new operation names here, never inline a
+  span-name string literal at a call site); `SpanHandle` type
+  Notes: `withSpan` is wired into `routes/create/+page.svelte`'s `loadTemplates()` (wraps
+  `listTemplates()`) and `submitCreate()` (wraps `createRepository()`); `withRequestSpan` is
+  wired into `hooks.server.ts`'s `handle` hook, wrapping its `resolve(event)` call — this is
+  what lets `proxy.server.ts`'s `proxyToBackend()` → `getCurrentTraceparent()` (see
+  `trace-context.ts` above) find an active span to continue later in the same request instead
+  of minting a disconnected new root trace. Both functions share their end-exactly-once /
+  error-passthrough span lifecycle via a private `runSpanLifecycle(span, fn)` helper
+  (extracted during this task's REFACTOR pass — `withRequestSpan` initially duplicated
+  `withSpan`'s inline try/end/catch-record-status-end-rethrow block verbatim); reuse this
+  helper rather than re-inlining that block if a third `withSpan`-family function is ever
+  added. Internal-only `headersTextMapGetter` (private, local to this module) is a minimal
+  `@opentelemetry/api` `TextMapGetter<Headers>` adapter letting the registered
+  `TextMapPropagator` read a standard `Headers` object — the conceptual (not code-shared,
+  different language) counterpart to the Rust backend's `HeaderMapExtractor` in
+  `repo_roller_api::middleware::extract_trace_context` above; confirmed no second copy exists
+  elsewhere in `frontend/`.
 
 - **`frontend/src/lib/observability/observability.server.ts` /
   `observability.client.ts`** — Node/browser OTel SDK bootstrap (`NodeTracerProvider`/

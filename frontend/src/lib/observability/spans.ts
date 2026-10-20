@@ -42,6 +42,7 @@ import {
   SpanStatusCode,
   trace,
   type Exception,
+  type Span,
   type TextMapGetter,
 } from '@opentelemetry/api';
 
@@ -95,6 +96,38 @@ function toRecordableException(err: unknown): Exception {
 }
 
 /**
+ * Shared span-lifecycle body for every `withSpan`-family function: wraps
+ * `span` in a `SpanHandle`, runs `fn` with it, and enforces the
+ * end-exactly-once / error-passthrough contract documented on `withSpan` and
+ * `withRequestSpan` above — end the span on success and resolve with `fn`'s
+ * value unchanged; on sync throw or async rejection, record the exception,
+ * mark `SpanStatusCode.ERROR`, end the span, and rethrow the ORIGINAL error
+ * reference unchanged. Callers differ only in how they obtain `span` (a
+ * fresh root-or-current-context span for `withSpan`, an extracted-context
+ * child span for `withRequestSpan`) — this function is deliberately agnostic
+ * to that.
+ */
+async function runSpanLifecycle<T>(
+  span: Span,
+  fn: (span: SpanHandle) => Promise<T> | T,
+): Promise<T> {
+  const handle: SpanHandle = {
+    setAttribute: (key, value) => span.setAttribute(key, value),
+    recordException: (err) => span.recordException(toRecordableException(err)),
+  };
+  try {
+    const result = await fn(handle);
+    span.end();
+    return result;
+  } catch (err) {
+    span.recordException(toRecordableException(err));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.end();
+    throw err;
+  }
+}
+
+/**
  * Run `fn` inside a named span. See the contract above for exact semantics.
  */
 export async function withSpan<T>(
@@ -107,20 +140,7 @@ export async function withSpan<T>(
     if (attributes) {
       span.setAttributes(attributes);
     }
-    const handle: SpanHandle = {
-      setAttribute: (key, value) => span.setAttribute(key, value),
-      recordException: (err) => span.recordException(toRecordableException(err)),
-    };
-    try {
-      const result = await fn(handle);
-      span.end();
-      return result;
-    } catch (err) {
-      span.recordException(toRecordableException(err));
-      span.setStatus({ code: SpanStatusCode.ERROR });
-      span.end();
-      throw err;
-    }
+    return runSpanLifecycle(span, fn);
   });
 }
 
@@ -210,25 +230,7 @@ export async function withRequestSpan<T>(
   // a fresh root span — exactly the required fallback.
   const extractedContext = propagation.extract(ROOT_CONTEXT, request.headers, headersTextMapGetter);
 
-  return tracer.startActiveSpan(
-    SPAN_NAMES.SVELTEKIT_REQUEST,
-    {},
-    extractedContext,
-    async (span) => {
-      const handle: SpanHandle = {
-        setAttribute: (key, value) => span.setAttribute(key, value),
-        recordException: (err) => span.recordException(toRecordableException(err)),
-      };
-      try {
-        const result = await fn(handle);
-        span.end();
-        return result;
-      } catch (err) {
-        span.recordException(toRecordableException(err));
-        span.setStatus({ code: SpanStatusCode.ERROR });
-        span.end();
-        throw err;
-      }
-    },
+  return tracer.startActiveSpan(SPAN_NAMES.SVELTEKIT_REQUEST, {}, extractedContext, (span) =>
+    runSpanLifecycle(span, fn),
   );
 }
