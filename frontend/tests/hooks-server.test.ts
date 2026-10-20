@@ -31,7 +31,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fc from 'fast-check';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import type { RequestEvent } from '@sveltejs/kit';
 import { handle } from '../src/hooks.server';
 import { getCurrentTraceparent, TRACEPARENT_FORMAT } from '../src/lib/observability/trace-context';
@@ -253,6 +253,52 @@ describe('handle() — malformed inbound traceparent fails safe (adversarial)', 
       expect(captured).toMatch(TRACEPARENT_FORMAT);
     },
   );
+
+  // QA audit finding: a REPEATED `traceparent` header does NOT reproduce the
+  // Rust backend's "first value wins" behaviour here. The Fetch API's
+  // `Headers` object (which both `new Request(...)` below and the real
+  // `request.headers` SvelteKit hands to `handle()` are instances of) already
+  // comma-joins same-name header entries into ONE string value BEFORE
+  // `headersTextMapGetter.get()` (whose `carrier.get(key)` call is just
+  // `Headers.prototype.get`) ever sees it — so OTel's
+  // `W3CTraceContextPropagator.extract()` never takes its `Array.isArray(...)
+  // ? traceParentHeader[0] : traceParentHeader` branch at all (that branch
+  // only fires for carriers whose getter can return an array, which `Headers`
+  // never does). The single comma-joined string it does see
+  // ("00-aaa...-01, 00-bbb...-01") fails `TRACE_PARENT_REGEX` outright (a
+  // comma is not a valid trailing character), so extraction yields NO span
+  // context at all, and `withRequestSpan` falls back to a brand-new ROOT
+  // trace — NEITHER of the two supplied trace ids is "won". This is a
+  // divergence from the Rust backend's documented first-value-wins
+  // behaviour, though both are W3C-conformant ("invalid header" handling is
+  // implementation-defined) and neither throws/hangs, so it is a
+  // documentation-worthy behavioural difference rather than a defect.
+  it('a repeated traceparent header falls back to a FRESH ROOT trace (neither duplicate value wins), unlike the Rust backend', async () => {
+    const firstDuplicateTraceId = 'e'.repeat(32);
+    const secondDuplicateTraceId = 'f'.repeat(32);
+    const request = new Request('http://localhost/api/v1/orgs/acme/templates', {
+      headers: [
+        ['traceparent', `00-${firstDuplicateTraceId}-${'1'.repeat(16)}-01`],
+        ['traceparent', `00-${secondDuplicateTraceId}-${'2'.repeat(16)}-01`],
+      ],
+    });
+    // Sanity check on the finding's own premise: Headers already comma-joined
+    // the two entries before handle()/withRequestSpan ever see them.
+    expect(request.headers.get('traceparent')).toContain(',');
+    const event = buildFakeEvent(request, buildFakeCookies());
+    let captured = '';
+    const resolve = async (): Promise<Response> => {
+      captured = getCurrentTraceparent();
+      return new Response('ok');
+    };
+
+    await handle({ event, resolve } as HandleArgs);
+
+    expect(captured).toMatch(TRACEPARENT_FORMAT);
+    const capturedTraceId = captured.split('-')[1];
+    expect(capturedTraceId).not.toBe(firstDuplicateTraceId);
+    expect(capturedTraceId).not.toBe(secondDuplicateTraceId);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -290,6 +336,42 @@ describe('handle() — resolve() response and error behaviour is unaffected by s
     };
 
     await expect(handle({ event, resolve } as HandleArgs)).rejects.toBe('a string rejection');
+  });
+
+  it('ends the SvelteKit-request span with ERROR status exactly once, AND still propagates the original error to resolve()\'s caller (QA audit: a route handler throwing must still surface SvelteKit\'s own error page while the span correctly records the failure)', async () => {
+    const request = new Request('http://localhost/api/v1/orgs/acme/templates', {
+      headers: { traceparent: INBOUND_HEADER },
+    });
+    const event = buildFakeEvent(request, buildFakeCookies());
+    const boom = new Error('route handler exploded');
+
+    let setStatusSpy: ReturnType<typeof vi.spyOn> | undefined;
+    let endSpy: ReturnType<typeof vi.spyOn> | undefined;
+    let recordExceptionSpy: ReturnType<typeof vi.spyOn> | undefined;
+    const resolve = async (): Promise<Response> => {
+      // Spy on the REAL active span's own methods (no module mocking) so we
+      // can observe exactly what withRequestSpan/runSpanLifecycle does to it
+      // on the error path, while still letting the real implementation run.
+      const activeSpan = trace.getActiveSpan() as unknown as Record<string, unknown>;
+      setStatusSpy = vi.spyOn(activeSpan, 'setStatus' as never);
+      endSpy = vi.spyOn(activeSpan, 'end' as never);
+      recordExceptionSpy = vi.spyOn(activeSpan, 'recordException' as never);
+      throw boom;
+    };
+
+    const thrown = await Promise.resolve(handle({ event, resolve } as HandleArgs)).catch(
+      (e: unknown) => e,
+    );
+
+    // The original error reaches SvelteKit's own error handling unchanged —
+    // this is what lets the user-facing error page still render correctly.
+    expect(thrown).toBe(boom);
+    // The span recorded the failure exactly once, with ERROR status, and was
+    // ended exactly once — never left open, never ended twice.
+    expect(recordExceptionSpy).toHaveBeenCalledTimes(1);
+    expect(setStatusSpy).toHaveBeenCalledTimes(1);
+    expect(setStatusSpy).toHaveBeenCalledWith({ code: SpanStatusCode.ERROR });
+    expect(endSpy).toHaveBeenCalledTimes(1);
   });
 
   it('calls resolve() exactly once', async () => {
