@@ -1,10 +1,6 @@
 /**
  * W3C Trace Context (`traceparent` header) helpers — pure, framework-agnostic.
  *
- * STATUS: STUB — not yet implemented. Every exported function currently
- * throws. This file defines the CONTRACT the Coder must implement; it is not
- * production code.
- *
  * Used by:
  *  - `src/lib/api/client.ts`'s `apiFetch()` (browser → SvelteKit server hop)
  *  - `src/lib/proxy.server.ts`'s `proxyToBackend()` (SvelteKit server → Rust

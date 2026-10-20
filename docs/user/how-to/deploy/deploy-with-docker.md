@@ -62,6 +62,8 @@ services:
       SESSION_SECRET:       "${SESSION_SECRET}"
       BACKEND_API_URL:      "http://backend:8080"
       NODE_ENV:             "production"
+      OTEL_TRACES_ENABLED:  "false"
+      PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT: ""
 
 networks:
   internal:
@@ -103,6 +105,10 @@ networks:
 | `BRAND_LOGO_ALT` | No | `<name> logo` | Logo alt text |
 | `BRAND_PRIMARY_COLOR` | No | `#0969da` | CSS accent colour |
 | `BRAND_PRIMARY_COLOR_DARK` | No | (none) | Dark-mode accent colour |
+| `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export from the SvelteKit **server** process. Fail-safe-off, same matching rule as the backend variable of the same name. See [Distributed tracing](#distributed-tracing-jaeger) below. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC endpoint the SvelteKit **server** process exports spans to. Ignored unless `OTEL_TRACES_ENABLED` is `true`/`1`. |
+| `OTEL_SERVICE_NAME` | No | `repo-roller-frontend` | Service name attached to spans exported by the SvelteKit server process. |
+| `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT` | No | *(unset)* | OTLP/**HTTP** endpoint the **browser** exports spans to directly. Fail-safe-off — leave unset to keep browser tracing off entirely. Must be publicly reachable from end-user browsers (not the Docker-internal address used by `OTEL_EXPORTER_OTLP_ENDPOINT`). |
 
 ## Starting and stopping
 
@@ -164,6 +170,24 @@ Set `LOG_FORMAT=pretty` (see the environment variable table above) if you need
 human-readable output while debugging locally — this is not recommended for production
 containers, since most log aggregation systems expect the structured JSON format.
 
+### Frontend logging
+
+The frontend's SvelteKit server process also emits structured JSON lines (one JSON object per
+line: `level`, `message`, `time`, plus any caller-supplied metadata) to stdout, rather than
+unstructured `console.*` output — collect it the same way as the backend's logs:
+
+```bash
+docker compose logs -f frontend
+```
+
+`Error` values passed as metadata are serialized as `{name, message, stack}` rather than
+silently collapsing to `{}`, and circular references or function values embedded in metadata
+are neutralized (replaced with `'[Circular]'` / a `[Function: ...]` placeholder) instead of
+crashing the log call. There is no `LOG_FORMAT` toggle for the frontend — output is always
+structured JSON. This logging is separate from the frontend's OpenTelemetry tracing (below);
+logs and traces are two independent signals, correlated only by timestamp and, once a trace is
+open in Jaeger, by the request path being investigated.
+
 ## Metrics (Prometheus)
 
 The backend exposes a Prometheus-format scrape endpoint at `GET /metrics` on the same port as
@@ -222,6 +246,49 @@ search for traces after making a request (e.g. `POST /api/v1/repositories`). Eac
 the `repository_creation` span with its `authentication` / `configuration_resolution` /
 `template_processing` / `github_repository_creation` child spans, plus GitHub API calls
 nested under whichever phase made them.
+
+### End-to-end tracing: browser → SvelteKit server → Rust API
+
+The frontend participates in the same trace rather than producing a disconnected one. When
+both `OTEL_TRACES_ENABLED=true` (frontend server) and a non-empty
+`PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT` (browser) are set, a single user action — e.g. submitting
+the `/create` wizard — produces **one continuous trace** spanning:
+
+1. The browser page-load/form-submission span (exported over OTLP/HTTP to
+   `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT`).
+2. A `sveltekit.request` span representing the SvelteKit server's own hop, which is a *child*
+   of the browser's span (the server extracts the browser's `traceparent` header rather than
+   minting a new root — exported over OTLP/gRPC to `OTEL_EXPORTER_OTLP_ENDPOINT`).
+3. The Rust backend's `http_request` span and everything nested under it (`repository_creation`
+   and its phase/GitHub-API children), which is in turn a child of the SvelteKit server's span
+   — the backend extracts the `traceparent` header the SvelteKit server sets on its proxied
+   call.
+
+Every hop propagates a standard W3C `traceparent` header on its outbound request
+(`lib/api/client.ts`'s `apiFetch`, `lib/proxy.server.ts`'s `proxyToBackend`, and the Rust
+backend's `tracing_middleware`/`extract_trace_context` all participate), so searching Jaeger
+for the trace ID shown in the browser's devtools network panel — or simply opening the newest
+trace for the `repo-roller-frontend` or `repo-roller-api` service after making a request —
+surfaces the whole chain as one trace, not three separate ones.
+
+If either `OTEL_TRACES_ENABLED` (server) or `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT` (browser) is
+left unset, that hop's spans are simply not exported (fail-safe-off) — the remaining hops still
+trace correctly on their own, they just won't have that hop's spans attached to the same trace.
+
+To exercise this locally with `examples/local-stack`, set all four variables referenced above
+before starting the stack:
+
+```bash
+cd examples/local-stack
+cp .env.example .env   # fill in credentials, then:
+OTEL_TRACES_ENABLED=true \
+PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces \
+docker compose up --build
+```
+
+(`examples/local-stack/docker-compose.yml` already wires these through to both the backend and
+frontend services, with the Jaeger container's OTLP/HTTP receiver published on `4318` for the
+browser's benefit, alongside its OTLP/gRPC receiver on `4317` used by both server processes.)
 
 ### Adding a Jaeger service to your own docker-compose.yml
 

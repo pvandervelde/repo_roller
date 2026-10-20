@@ -880,6 +880,21 @@ all-in-one service (OTLP-enabled) so `docker compose up` gives a working trace U
 [Deploy with Docker Compose: Distributed Tracing](../../docs/user/how-to/deploy/deploy-with-docker.md#distributed-tracing-jaeger)
 for details.
 
+**Inbound trace context (trace continuation)**: `tracing_middleware` (in `src/middleware.rs`)
+extracts a standard W3C `traceparent` header from the inbound request via
+`extract_trace_context` and, when present and well-formed, sets it as the parent context of
+the `http_request` span — so this request's entire span tree becomes a child of whatever
+external trace the caller is part of, rather than starting a disconnected new one. This is how
+the bundled RepoRoller frontend's browser → SvelteKit-server → backend hop chain shows up as
+one continuous trace in Jaeger (see
+[Deploy with Docker Compose: End-to-end tracing](../../docs/user/how-to/deploy/deploy-with-docker.md#end-to-end-tracing-browser--sveltekit-server--rust-api)).
+An absent or malformed `traceparent` header is harmless and falls back to today's pre-existing
+behavior (a fresh root span) — no caller is required to send this header, and no caller is
+ever rejected for omitting or mis-forming it. The global `TraceContextPropagator` this
+extraction relies on is installed once, unconditionally, by `tracing_otel::init_tracing_with_otel`
+at process startup — independent of whether `OTEL_TRACES_ENABLED` is set, since inbound
+propagation is free to support even when this process's own span export is disabled.
+
 ## Authentication & Authorization
 
 ### GitHub App Authentication

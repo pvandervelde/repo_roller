@@ -1,26 +1,22 @@
 /**
  * Server-only structured logger.
  *
- * STATUS: STUB — not yet implemented. Every level function currently
- * throws. This file defines the CONTRACT the Coder must implement; it is
- * not production code.
+ * MUST NOT be imported from client-side code (server-only: the implementation
+ * uses `process.env` / `process.stdout`, etc).
  *
- * MUST NOT be imported from client-side code (server-only: the real
- * implementation may use `process.env` / `process.stdout`, etc).
+ * Scoping decision: this logger is intentionally SERVER-ONLY. The only
+ * genuine `console.*` call site found by audit (`src/lib/brand.server.ts`, a
+ * `console.warn`, now replaced by a call into this logger) was itself
+ * server-only code, and browser-side observability is covered separately by
+ * tracing (see `./observability/`), not logging — so there is currently no
+ * requirement for a browser-safe structured logger. Scoping to server-only
+ * keeps this module free to depend on Node-only APIs (`process.stdout`)
+ * without needing to worry about browser bundle size or browser API
+ * availability.
  *
- * Scoping decision (Tester, RED phase): this logger is intentionally
- * SERVER-ONLY. The only genuine `console.*` call site found by audit
- * (`src/lib/brand.server.ts:66`, a `console.warn`) is itself server-only
- * code, and the task's OTel instrumentation requirement covers browser-side
- * observability separately (tracing, not logging) — so there is currently
- * no requirement for a browser-safe structured logger. Scoping to
- * server-only keeps this module free to depend on Node-only structured
- * logging libraries (the task brief suggests `pino`) without needing to
- * worry about browser bundle size or browser API availability.
- *
- * Contract for the Coder:
- * - MUST implement all four levels below: debug, info, warn, error.
- * - MUST emit a STRUCTURED record (an object with at least `level`,
+ * Contract:
+ * - Implements all four levels below: debug, info, warn, error.
+ * - Emits a STRUCTURED record (an object with at least `level`,
  *   `message`, and `time` fields, plus any caller-supplied metadata fields
  *   merged in) — not a plain formatted string passed to `console.*`. In
  *   particular, `logger.warn()` and `logger.error()` MUST NOT call the

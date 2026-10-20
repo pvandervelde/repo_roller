@@ -3,13 +3,9 @@
  * operations (form submissions, data loads) from Svelte components and
  * server code.
  *
- * STATUS: STUB — not yet implemented. `withSpan` currently throws. This file
- * defines the CONTRACT the Coder must implement; it is not production code.
- *
- * Contract for the Coder:
- * - Implement `withSpan` using the OpenTelemetry JS tracer appropriate to the
- *   calling context (Web SDK tracer in browser code, Node SDK tracer in
- *   server code).
+ * Contract:
+ * - `withSpan` uses the OpenTelemetry JS tracer appropriate to the calling
+ *   context (Web SDK tracer in browser code, Node SDK tracer in server code).
  * - `withSpan(name, fn, attributes?)` MUST:
  *     1. Start a span named exactly `name`, with `attributes` (if given) set
  *        on it at start.
@@ -150,18 +146,15 @@ export async function withSpan<T>(
  * Rust-backend distributed trace), parented to whatever W3C `traceparent`
  * context can be extracted from `request`'s headers.
  *
- * STATUS: STUB — not yet implemented. Currently always throws. This function
- * defines the CONTRACT the Coder must implement; it is not production code.
+ * Caller: `src/hooks.server.ts`'s `handle` hook, which wraps its call to
+ * `resolve(event)` as `withRequestSpan(event.request, () => resolve(event))`
+ * so that any code running during request handling — including
+ * `proxy.server.ts`'s `proxyToBackend()` → `getCurrentTraceparent()` call
+ * later in the same request — finds this span as the "current active span"
+ * via `trace.getActiveSpan()` and derives a *continuing* `traceparent` from
+ * it, rather than minting a disconnected new root trace.
  *
- * Intended caller: `src/hooks.server.ts`'s `handle` hook, wrapping its call
- * to `resolve(event)` as `withRequestSpan(event.request, () => resolve(event))`
- * (or equivalent) so that any code running during request handling —
- * including `proxy.server.ts`'s `proxyToBackend()` → `getCurrentTraceparent()`
- * call later in the same request — finds this span as the "current active
- * span" via `trace.getActiveSpan()` and derives a *continuing* `traceparent`
- * from it, rather than minting a disconnected new root trace.
- *
- * Contract for the Coder:
+ * Contract:
  * - MUST extract an OTel `Context` from `request.headers` using
  *   `@opentelemetry/api`'s `propagation.extract()` against the GLOBALLY
  *   REGISTERED `TextMapPropagator` (e.g. via an `Extractor` adapter over the
