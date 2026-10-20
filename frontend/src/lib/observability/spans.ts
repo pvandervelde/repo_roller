@@ -36,7 +36,14 @@
  * operation's name) is a simple equality check away from being caught.
  */
 
-import { SpanStatusCode, trace, type Exception } from '@opentelemetry/api';
+import {
+  propagation,
+  ROOT_CONTEXT,
+  SpanStatusCode,
+  trace,
+  type Exception,
+  type TextMapGetter,
+} from '@opentelemetry/api';
 
 /** Canonical span names for instrumented user-facing operations. */
 export const SPAN_NAMES = {
@@ -59,6 +66,17 @@ export interface SpanHandle {
 
 /** Tracer name shared by every span this module creates. */
 const TRACER_NAME = 'repo-roller-frontend';
+
+/**
+ * `TextMapGetter` adapter letting the globally-registered `TextMapPropagator`
+ * read headers off a standard `Headers` object (the default OTel getter
+ * assumes a plain `Record<string, string>` carrier, which `Headers` is not).
+ * Read-only: never mutates `carrier`.
+ */
+const headersTextMapGetter: TextMapGetter<Headers> = {
+  keys: (carrier) => Array.from(carrier.keys()),
+  get: (carrier, key) => carrier.get(key) ?? undefined,
+};
 
 /**
  * Convert an arbitrary thrown/rejected value into something the OTel API's
@@ -183,7 +201,34 @@ export async function withRequestSpan<T>(
   request: Request,
   fn: (span: SpanHandle) => Promise<T> | T,
 ): Promise<T> {
-  throw new Error(
-    `spans.ts: withRequestSpan() not implemented (request url=${request.url}, fn=${typeof fn})`,
+  const tracer = trace.getTracer(TRACER_NAME);
+  // Extract from a fresh ROOT_CONTEXT (not `context.active()`) so this
+  // function's behaviour depends only on `request`'s headers, never on
+  // whatever context happens to be active at the call site. If the header is
+  // absent/malformed/all-zero, the globally-registered propagator leaves the
+  // context unchanged (no span info), and `startActiveSpan` below then starts
+  // a fresh root span — exactly the required fallback.
+  const extractedContext = propagation.extract(ROOT_CONTEXT, request.headers, headersTextMapGetter);
+
+  return tracer.startActiveSpan(
+    SPAN_NAMES.SVELTEKIT_REQUEST,
+    {},
+    extractedContext,
+    async (span) => {
+      const handle: SpanHandle = {
+        setAttribute: (key, value) => span.setAttribute(key, value),
+        recordException: (err) => span.recordException(toRecordableException(err)),
+      };
+      try {
+        const result = await fn(handle);
+        span.end();
+        return result;
+      } catch (err) {
+        span.recordException(toRecordableException(err));
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        span.end();
+        throw err;
+      }
+    },
   );
 }

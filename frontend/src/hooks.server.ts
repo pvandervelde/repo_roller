@@ -3,6 +3,7 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import type { Session } from '$lib/types/session';
 import { parseSessionCookie } from '$lib/session.server';
 import { initServerObservability } from '$lib/observability/observability.server';
+import { withRequestSpan } from '$lib/observability/spans';
 
 // Bootstrap the Node OTel SDK exactly once when this module is first loaded
 // by the server process (before any request is handled).
@@ -40,5 +41,5 @@ export const handle: Handle = async ({ event, resolve }) => {
     redirect(302, '/sign-in');
   }
 
-  return resolve(event);
+  return withRequestSpan(event.request, () => resolve(event));
 };
