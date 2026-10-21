@@ -75,5 +75,5 @@ uuid = { version = "1.23", features = ["v4", "serde"] }
 # Testing dependencies
 hyper = "1.10"
 proptest = "1"
-serial_test = "3.5"
+serial_test = "4.0"
 wiremock = "=0.6.5"
