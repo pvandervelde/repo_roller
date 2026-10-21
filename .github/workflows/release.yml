@@ -175,7 +175,7 @@ jobs:
 
             - name: Build and push API image
               id: build
-              uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6
+              uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
               with:
                   context: .
                   file: crates/repo_roller_api/Dockerfile
@@ -232,7 +232,7 @@ jobs:
 
             - name: Build and push frontend image
               id: build
-              uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6
+              uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
               with:
                   context: frontend
                   file: frontend/Dockerfile
