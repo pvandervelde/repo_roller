@@ -14,7 +14,7 @@ User scenarios:
 - **Users**: Web UI for guided repository creation with forms and validation
 - **Automation**: REST API for integration with other tools and platforms
 - **AI Agents**: MCP (Model Context Protocol) server for LLM workflows
-- **Cloud Deployments**: Azure Functions for serverless execution
+- **Cloud Deployments**: Containerized API hosting across cloud platforms
 
 Challenge: Maintain consistent behavior across all interfaces while avoiding code duplication. Each interface has unique concerns (HTTP handling, CLI argument parsing, terminal output, JSON formatting) that shouldn't leak into business logic.
 
@@ -31,7 +31,6 @@ Implement **multiple thin interface layers** sharing a single business logic cor
 - `repo_roller_cli` - Command-line interface (Clap argument parsing, terminal output)
 - `repo_roller_api` - REST API (Axum HTTP server, JSON request/response)
 - `repo_roller_mcp` - MCP server (JSON-RPC tool definitions)
-- `repo_roller_azure_fn` - Azure Functions wrapper (Azure bindings, HTTP triggers)
 
 Each interface:
 
@@ -46,7 +45,7 @@ Each interface:
 **Enables:**
 
 - Single business logic implementation shared by all interfaces
-- Consistent behavior across CLI, API, MCP, and Azure Functions
+- Consistent behavior across CLI, API, and MCP
 - Independent evolution of interface UX without affecting others
 - Easy testing of business logic without interface concerns
 - Adding new interfaces without modifying core logic
@@ -91,8 +90,7 @@ Each interface:
 ```
 repo_roller_cli ─┐
 repo_roller_api ─┼─> repo_roller_core ─> [adapters: github_client, config_manager, template_engine]
-repo_roller_mcp ─┤
-repo_roller_azure_fn ┘
+repo_roller_mcp ─┘
 ```
 
 **Translation pattern:**
@@ -115,7 +113,6 @@ fn domain_result_to_output(result: Repository) -> CliOutput
 | CLI | Command args | Terminal text/JSON | Colors, progress bars, interactive prompts |
 | API | HTTP JSON | HTTP JSON | Status codes, headers, content negotiation |
 | MCP | JSON-RPC | JSON-RPC | Tool schemas, parameter validation |
-| Azure Fn | HTTP (Azure bindings) | HTTP (Azure bindings) | Azure context, logging, response formatting |
 
 **Shared business logic examples:**
 
@@ -130,7 +127,7 @@ fn domain_result_to_output(result: Repository) -> CliOutput
 - CLI: Colored output, progress indicators, interactive mode
 - API: Rate limiting, API versioning, batch operations
 - MCP: Tool discovery, schema generation, streaming results
-- Azure Fn: Cold-start optimization, Azure Monitor integration
+- Deployment: Container probes, runtime configuration, autoscaling policies
 
 ## Examples
 
@@ -208,26 +205,16 @@ async fn create_repository(
 }
 ```
 
-**Azure Function wrapper (`repo_roller_azure_fn`):**
+**Containerized API deployment (`repo_roller_api`):**
 
 ```rust
-// Azure-specific: function binding
-#[azure_function]
-async fn create_repository_http(
-    req: HttpRequest,
-    _context: Context,
-) -> HttpResponse {
-    // Parse Azure HTTP request
-    let body: CreateRepoApiRequest = req.json().await?;
-
-    // Translation to domain types (reuse API translation)
-    let request = translate_api_request_to_domain(body)?;
-
-    // Shared business logic
-    let result = get_orchestrator().create_repository(request).await?;
-
-    // Azure-specific: HTTP response formatting
-    HttpResponse::Ok().json(CreateRepoApiResponse::from(result))
+// Container runtime starts the API server binary directly
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let app = create_router().await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 ```
 

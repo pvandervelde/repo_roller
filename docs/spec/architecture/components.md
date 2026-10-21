@@ -177,7 +177,7 @@ pub struct RepositorySettings {
 - **Primary Config**: Main application configuration file (TOML/YAML)
 - **Template Definitions**: Individual template configuration files
 - **Environment Variables**: Runtime configuration overrides
-- **Azure Key Vault**: Sensitive configuration values (production)
+- **Managed Secret Stores**: Sensitive configuration values (production)
 
 ### `auth_handler` - Authentication & Authorization
 
@@ -270,35 +270,35 @@ GET  /api/v1/user/permissions      # User permission information
 
 ## Deployment Components
 
-### Azure Function Adapter
+### Container Deployment Package
 
-**Function Bindings:**
+**Container Components:**
 
-- **HTTP Trigger**: Handles incoming HTTP requests
-- **Key Vault Integration**: Retrieves secrets at runtime
-- **Application Insights**: Telemetry and logging integration
+- **OCI Image**: Packages the API binary and runtime dependencies
+- **Runtime Configuration**: Environment-driven configuration and secret injection
+- **Health Endpoints**: Readiness/liveness probes for orchestrators
 
-**Adapter Responsibilities:**
+**Deployment Responsibilities:**
 
-- **Request Translation**: Convert Azure Function context to standard HTTP requests
-- **Response Formatting**: Format responses for Azure Function runtime
-- **Cold Start Optimization**: Minimize initialization overhead
-- **Configuration Management**: Azure-specific configuration handling
+- **HTTP Serving**: Expose API endpoints through a standard HTTP server
+- **Environment Integration**: Consume platform-provided secrets and configuration
+- **Startup Efficiency**: Keep container startup fast and deterministic
+- **Operational Portability**: Run unchanged across container platforms
 
 ### Infrastructure Components
 
 **Terraform Modules:**
 
-- **Core Infrastructure**: Resource groups, storage accounts, networking
-- **Compute Resources**: Azure Functions, App Service Plans
-- **Security Resources**: Key Vault, managed identities, access policies
-- **Monitoring Resources**: Application Insights, Log Analytics, alerts
+- **Core Infrastructure**: Networking, container registry, runtime identity
+- **Compute Resources**: Kubernetes clusters, Azure Container Apps, AWS ECS/Fargate
+- **Security Resources**: Secret managers (Key Vault, Secrets Manager), identities, access policies
+- **Monitoring Resources**: Platform monitoring backends and alerting stacks
 
 **Deployment Pipeline:**
 
 - **Build Stage**: Compile Rust binaries, build frontend assets
 - **Test Stage**: Run unit tests, integration tests, security scans
 - **Infrastructure Stage**: Apply Terraform configurations
-- **Deployment Stage**: Deploy applications to Azure resources
+- **Deployment Stage**: Deploy OCI images to target container platforms
 
 This component structure provides clear separation of concerns while enabling flexible deployment and testing scenarios. Each component has well-defined interfaces and responsibilities, making the system maintainable and extensible.

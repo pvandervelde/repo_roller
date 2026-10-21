@@ -134,7 +134,7 @@ GitHub Apps provide the most secure and scalable authentication model for organi
 
 ## Deployment Architecture
 
-### Decision: Multi-Modal Deployment (CLI + API + Azure Functions)
+### Decision: Multi-Modal Deployment (CLI + API + Container Runtime)
 
 **Alternatives Considered:**
 
@@ -148,13 +148,13 @@ GitHub Apps provide the most secure and scalable authentication model for organi
    - Cons: Always-on infrastructure costs, single point of failure
    - Rejected: Overkill for some usage patterns
 
-3. **Serverless Functions Only**
+3. **Functions-Only Serverless**
    - Pros: Cost-effective scaling, no infrastructure management
    - Cons: Cold start latency, timeout limitations
    - Rejected: Poor user experience for CLI scenarios
 
-4. **Multi-Modal Architecture (CHOSEN)**
-   - Pros: Flexibility for different use cases, shared core logic
+4. **Multi-Modal Architecture with Containerized API (CHOSEN)**
+   - Pros: Flexibility for different use cases, shared core logic, cloud-portable container deployment
    - Cons: Multiple deployment pipelines, testing complexity
    - Chosen: Maximizes adoption by supporting diverse usage patterns
 
@@ -206,7 +206,7 @@ I/O operations (GitHub API, file system) benefit from async, while domain logic 
 1. **Embedded Database (SQLite)**
    - Pros: Simple deployment, ACID guarantees
    - Cons: Limits scalability, state management complexity
-   - Rejected: Conflicts with serverless deployment model
+   - Rejected: Conflicts with stateless, ephemeral deployment model
 
 2. **External Database (PostgreSQL/SQL Server)**
    - Pros: Full ACID guarantees, complex query capabilities
@@ -214,7 +214,7 @@ I/O operations (GitHub API, file system) benefit from async, while domain logic 
    - Rejected: Unnecessary complexity for current requirements
 
 3. **Stateless with External APIs Only (CHOSEN)**
-   - Pros: Simple scaling, no data management, fits serverless model
+   - Pros: Simple scaling, no data management, fits stateless container model
    - Cons: Dependent on external service availability, no local caching persistence
    - Chosen: Simplifies deployment and aligns with GitHub-centric workflow
 

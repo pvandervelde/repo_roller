@@ -62,14 +62,14 @@ Security considerations and implementation details.
 - [**Threat Model**](security/threat-model.md) - Security threats and attack vectors
 - [**Authentication & Authorization**](security/authentication-authorization.md) - Authentication flows and RBAC
 - [**Input Validation**](security/input-validation.md) - Security validation and protection
-- [**Secrets Management**](security/secrets-management.md) - Credential storage and Azure Key Vault
+- [**Secrets Management**](security/secrets-management.md) - Credential storage and managed secret stores
 
 ### 🔧 Operations
 
 Running, monitoring, and maintaining the system.
 
 - [**Observability**](operations/observability.md) - Logging, metrics, and tracing
-- [**Deployment Infrastructure**](operations/deployment-infrastructure.md) - Azure setup and Infrastructure as Code
+- [**Deployment Infrastructure**](operations/deployment-infrastructure.md) - Container/cloud setup and Infrastructure as Code
 - [**Maintenance**](operations/maintenance.md) - Operational procedures and troubleshooting
 
 ### 🔌 Interfaces
