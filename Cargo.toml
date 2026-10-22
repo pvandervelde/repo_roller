@@ -29,10 +29,10 @@ license-file = "LICENSE"
 [workspace.dependencies]
 # Core utilities
 async-trait = "0.1"
-base64 = "0.22"
+base64 = "0.23"
 hex = "0.4"
 hmac = "0.13"
-octocrab = { version = "0.53", default-features = false, features = [
+octocrab = { version = "0.54", default-features = false, features = [
     "default-client",
     "follow-redirect",
     "jwt-rust-crypto",
@@ -75,5 +75,5 @@ uuid = { version = "1.23", features = ["v4", "serde"] }
 # Testing dependencies
 hyper = "1.10"
 proptest = "1"
-serial_test = "3.5"
+serial_test = "4.0"
 wiremock = "=0.6.5"
