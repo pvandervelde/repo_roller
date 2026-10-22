@@ -88,8 +88,10 @@ fn validate_backend_jwt(token: &str, secret: &str) -> Result<Claims, AuthError> 
     // Use 30-second leeway to tolerate minor clock drift between the issuing
     // server and the validating server without meaningfully extending the
     // effective 8-hour session window.
-    let mut validation = Validation::default();
-    validation.leeway = 30;
+    let validation = Validation {
+        leeway: 30,
+        ..Default::default()
+    };
     jsonwebtoken::decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),

@@ -5,7 +5,6 @@
 
 use async_trait::async_trait;
 use base64::Engine;
-use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, Result as OctocrabResult};
 use secrecy::ExposeSecret;
 use serde::Serialize;
@@ -3655,19 +3654,18 @@ pub async fn create_app_client(app_id: u64, private_key: &str) -> Result<Octocra
         "Creating GitHub App client with provided credentials"
     );
 
-    let key = EncodingKey::from_rsa_pem(private_key.as_bytes()).map_err(|e| {
-        error!(
-            app_id = app_id,
-            error = %e,
-            "Failed to parse RSA private key - key format is invalid"
-        );
-        Error::AuthError(format!("Failed to translate the private key. Error was: {e}").to_string())
-    })?;
-
-    info!(app_id = app_id, "Successfully parsed RSA private key");
-
     let octocrab = Octocrab::builder()
-        .app(app_id.into(), key)
+        .app_from_rsa_pem(app_id.into(), private_key.as_bytes())
+        .map_err(|e| {
+            error!(
+                app_id = app_id,
+                error = %e,
+                "Failed to parse RSA private key - key format is invalid"
+            );
+            Error::AuthError(
+                format!("Failed to translate the private key. Error was: {e}").to_string(),
+            )
+        })?
         .build()
         .map_err(|e| {
             error!(
