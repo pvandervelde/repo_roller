@@ -25,7 +25,7 @@
  *   resolved internally the way `observability.server.ts` resolves its own
  *   (see `./otel-settings`'s module doc comment for the full explanation of
  *   why the browser needs a SEPARATE, publicly-routable endpoint, delivered
- *   via `$env/dynamic/public`'s `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT`). The
+ *   via `$app/env/public`'s `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT`). The
  *   caller (`src/hooks.client.ts`) reads that value and passes it through
  *   `initClientObservability({ otlpEndpoint })`.
  * - `initClientObservability(options?)` passes `options?.otlpEndpoint` to

@@ -23,7 +23,7 @@
  * id from browser to backend, with a distinct span id per hop.
  *
  * Deliberately UNMOCKED: `hooks.server.ts`, `observability.server.ts`,
- * `spans.ts`, and `trace-context.ts`. Only `$env/dynamic/private` (a
+ * `spans.ts`, and `trace-context.ts`. Only `$app/env/private` (a
  * SvelteKit virtual module baked in at module-resolution time, see the
  * comment in `proxy-trace-propagation.test.ts`) and the global `fetch` are
  * mocked — the minimum needed to run `proxyToBackend()` against a fake
@@ -42,7 +42,11 @@ const { mockEnv } = vi.hoisted(() => ({
   >,
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: mockEnv }));
+vi.mock('$app/env/private', () => ({
+  get BACKEND_API_URL() {
+    return mockEnv.BACKEND_API_URL;
+  },
+}));
 
 const { handle } = await import('../src/hooks.server');
 const { proxyToBackend } = await import('../src/lib/proxy.server');
@@ -109,11 +113,7 @@ describe('end-to-end: browser traceparent survives handle() -> resolve() -> prox
     });
     const event = buildFakeEvent(request, buildFakeCookies(cookieValue));
     const resolve = async (): Promise<Response> =>
-      proxyToBackend(
-        '/api/v1/orgs/acme/templates',
-        event.request,
-        event.locals.session as Session,
-      );
+      proxyToBackend('/api/v1/orgs/acme/templates', event.request, event.locals.session as Session);
 
     const response = await handle({ event, resolve } as HandleArgs);
 
@@ -138,11 +138,7 @@ describe('end-to-end: browser traceparent survives handle() -> resolve() -> prox
     const request = new Request('http://localhost/api/v1/orgs/acme/templates');
     const event = buildFakeEvent(request, buildFakeCookies(cookieValue));
     const resolve = async (): Promise<Response> =>
-      proxyToBackend(
-        '/api/v1/orgs/acme/templates',
-        event.request,
-        event.locals.session as Session,
-      );
+      proxyToBackend('/api/v1/orgs/acme/templates', event.request, event.locals.session as Session);
 
     await handle({ event, resolve } as HandleArgs);
 
@@ -160,11 +156,7 @@ describe('end-to-end: browser traceparent survives handle() -> resolve() -> prox
     });
     const event = buildFakeEvent(request, buildFakeCookies(cookieValue));
     const resolve = async (): Promise<Response> =>
-      proxyToBackend(
-        '/api/v1/orgs/acme/templates',
-        event.request,
-        event.locals.session as Session,
-      );
+      proxyToBackend('/api/v1/orgs/acme/templates', event.request, event.locals.session as Session);
 
     await handle({ event, resolve } as HandleArgs);
 

@@ -24,11 +24,16 @@
 
 use super::*;
 use async_trait::async_trait;
-use config_manager::{ConfigurationResult, MetadataRepository, MetadataRepositoryProvider, TemplateConfig};
+use config_manager::{
+    ConfigurationResult, MetadataRepository, MetadataRepositoryProvider, TemplateConfig,
+};
 use std::sync::{Arc, Mutex};
 use tracing::span::{Attributes, Id};
 use tracing_subscriber::{layer::Context, layer::SubscriberExt, registry::LookupSpan, Layer};
-use visibility::{GitHubEnvironmentDetector, PlanLimitations, VisibilityError, VisibilityPolicy, VisibilityPolicyProvider};
+use visibility::{
+    GitHubEnvironmentDetector, PlanLimitations, VisibilityError, VisibilityPolicy,
+    VisibilityPolicyProvider,
+};
 
 #[ctor::ctor(unsafe)]
 fn init_default_crypto_provider() {
@@ -53,7 +58,10 @@ struct SpanRecorder {
 
 impl SpanRecorder {
     fn recorded(&self) -> Vec<RecordedSpan> {
-        self.spans.lock().expect("span recorder mutex poisoned").clone()
+        self.spans
+            .lock()
+            .expect("span recorder mutex poisoned")
+            .clone()
     }
 }
 
@@ -70,17 +78,22 @@ where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        let span_ref = ctx.span(id).expect("span must exist in registry for on_new_span");
+        let span_ref = ctx
+            .span(id)
+            .expect("span must exist in registry for on_new_span");
         let parent_name = span_ref.parent().map(|p| p.name().to_string());
 
         let mut collector = FieldNameCollector(Vec::new());
         attrs.record(&mut collector);
 
-        self.spans.lock().expect("span recorder mutex poisoned").push(RecordedSpan {
-            name: span_ref.name(),
-            parent_name,
-            field_names: collector.0,
-        });
+        self.spans
+            .lock()
+            .expect("span recorder mutex poisoned")
+            .push(RecordedSpan {
+                name: span_ref.name(),
+                parent_name,
+                field_names: collector.0,
+            });
     }
 }
 
@@ -156,7 +169,10 @@ impl MetadataRepositoryProvider for EmptyMetadataProvider {
         unimplemented!("not used in these tests")
     }
 
-    async fn validate_repository_structure(&self, _repo: &MetadataRepository) -> ConfigurationResult<()> {
+    async fn validate_repository_structure(
+        &self,
+        _repo: &MetadataRepository,
+    ) -> ConfigurationResult<()> {
         unimplemented!("not used in these tests")
     }
 
@@ -208,7 +224,8 @@ impl GitHubEnvironmentDetector for PaidPlanEnvironmentDetector {
 /// before ever making a real network request) under a fresh `SpanRecorder`,
 /// returning the recorded spans.
 async fn run_create_repository_with_failing_auth() -> Vec<RecordedSpan> {
-    run_create_repository_with_failing_auth_and_template(Some(TemplateName::new("basic").unwrap())).await
+    run_create_repository_with_failing_auth_and_template(Some(TemplateName::new("basic").unwrap()))
+        .await
 }
 
 /// Same as [`run_create_repository_with_failing_auth`], but lets the caller
@@ -216,7 +233,9 @@ async fn run_create_repository_with_failing_auth() -> Vec<RecordedSpan> {
 /// [`crate::observability::ATTR_TEMPLATE`]'s conditional field presence at
 /// the span level (see the `find_attribute`/`repository_creation_span`
 /// mutation-kill tests below).
-async fn run_create_repository_with_failing_auth_and_template(template: Option<TemplateName>) -> Vec<RecordedSpan> {
+async fn run_create_repository_with_failing_auth_and_template(
+    template: Option<TemplateName>,
+) -> Vec<RecordedSpan> {
     let recorder = SpanRecorder::default();
     let subscriber = tracing_subscriber::registry().with(recorder.clone());
     let _guard = tracing::subscriber::set_default(subscriber);
@@ -239,7 +258,9 @@ async fn run_create_repository_with_failing_auth_and_template(template: Option<T
     let environment_detector = Arc::new(PaidPlanEnvironmentDetector);
     let secret_resolver = Arc::new(crate::event_secrets::EnvironmentSecretResolver::new());
     let test_registry = prometheus::Registry::new();
-    let metrics = Arc::new(crate::event_metrics::PrometheusEventMetrics::new(&test_registry));
+    let metrics = Arc::new(crate::event_metrics::PrometheusEventMetrics::new(
+        &test_registry,
+    ));
 
     let result = create_repository(
         request,
@@ -268,7 +289,9 @@ async fn run_create_repository_with_failing_auth_and_template(template: Option<T
 async fn test_create_repository_opens_repository_creation_span() {
     let spans = run_create_repository_with_failing_auth().await;
     assert!(
-        spans.iter().any(|s| s.name == crate::observability::SPAN_REPOSITORY_CREATION),
+        spans
+            .iter()
+            .any(|s| s.name == crate::observability::SPAN_REPOSITORY_CREATION),
         "create_repository must open a span named {:?}, recorded spans: {spans:?}",
         crate::observability::SPAN_REPOSITORY_CREATION
     );
@@ -355,11 +378,14 @@ async fn test_create_repository_repository_creation_span_carries_organization_at
 // ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "current_thread")]
-async fn test_create_repository_repository_creation_span_carries_template_attribute_when_request_has_template() {
+async fn test_create_repository_repository_creation_span_carries_template_attribute_when_request_has_template(
+) {
     // Kills: `find_attribute -> Option<String> with None` (would omit the
     // `template` field even though this request specifies one).
-    let spans =
-        run_create_repository_with_failing_auth_and_template(Some(TemplateName::new("basic").unwrap())).await;
+    let spans = run_create_repository_with_failing_auth_and_template(Some(
+        TemplateName::new("basic").unwrap(),
+    ))
+    .await;
     let top_level = spans
         .iter()
         .find(|s| s.name == crate::observability::SPAN_REPOSITORY_CREATION)
@@ -377,7 +403,8 @@ async fn test_create_repository_repository_creation_span_carries_template_attrib
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn test_create_repository_repository_creation_span_omits_template_attribute_when_request_has_no_template() {
+async fn test_create_repository_repository_creation_span_omits_template_attribute_when_request_has_no_template(
+) {
     // Kills: `find_attribute -> Option<String> with Some(String::new())`,
     // `find_attribute -> Option<String> with Some("xyzzy".into())`, and
     // `replace == with != in find_attribute` -- all three cause the

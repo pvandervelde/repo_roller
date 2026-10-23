@@ -285,11 +285,17 @@ fn uuid_like_strategy() -> impl Strategy<Value = String> {
 /// An ISO-8601-shaped timestamp string with random (valid-range) components.
 /// Must never be classified as secret-shaped.
 fn iso_timestamp_like_strategy() -> impl Strategy<Value = String> {
-    (2000u32..2100, 1u32..13, 1u32..29, 0u32..24, 0u32..60, 0u32..60).prop_map(
-        |(year, month, day, hour, minute, second)| {
-            format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
-        },
+    (
+        2000u32..2100,
+        1u32..13,
+        1u32..29,
+        0u32..24,
+        0u32..60,
+        0u32..60,
     )
+        .prop_map(|(year, month, day, hour, minute, second)| {
+            format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+        })
 }
 
 proptest! {

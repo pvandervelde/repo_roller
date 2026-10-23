@@ -192,7 +192,11 @@ pub fn build_otel_layer_with_exporter<S, E>(
     service_name: &str,
 ) -> Box<dyn Layer<S> + Send + Sync>
 where
-    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span> + Send + Sync + 'static,
+    S: tracing::Subscriber
+        + for<'span> tracing_subscriber::registry::LookupSpan<'span>
+        + Send
+        + Sync
+        + 'static,
     E: opentelemetry_sdk::trace::SpanExporter + 'static,
 {
     use opentelemetry::trace::TracerProvider as _;
@@ -276,8 +280,11 @@ pub fn init_tracing_with_otel() {
         opentelemetry_sdk::propagation::TraceContextPropagator::new(),
     );
 
-    let log_format =
-        crate::logging::resolve_log_format(std::env::var(crate::logging::LOG_FORMAT_ENV_VAR).ok().as_deref());
+    let log_format = crate::logging::resolve_log_format(
+        std::env::var(crate::logging::LOG_FORMAT_ENV_VAR)
+            .ok()
+            .as_deref(),
+    );
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let env_filter = tracing_subscriber::EnvFilter::new(filter);
 
@@ -298,9 +305,12 @@ pub fn init_tracing_with_otel() {
                 .expect("global tracing subscriber must not already be installed");
         }
         crate::logging::LogFormat::Json => {
-            let json_layer = tracing_subscriber::fmt::layer()
-                .json()
-                .with_writer(SanitizingMakeWriter { inner: std::io::stdout });
+            let json_layer =
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_writer(SanitizingMakeWriter {
+                        inner: std::io::stdout,
+                    });
             let subscriber = tracing_subscriber::registry()
                 .with(otel_layer)
                 .with(env_filter)
@@ -327,7 +337,10 @@ fn build_production_otel_layer(
     }
 
     match build_otlp_span_exporter(&settings.otlp_endpoint) {
-        Ok(exporter) => Some(build_otel_layer_with_exporter(exporter, &settings.service_name)),
+        Ok(exporter) => Some(build_otel_layer_with_exporter(
+            exporter,
+            &settings.service_name,
+        )),
         Err(err) => {
             tracing::error!(
                 otlp_endpoint = %settings.otlp_endpoint,

@@ -11,7 +11,7 @@
  * The browser cannot read `process.env` — see `otel-settings.ts`'s module
  * doc comment for why the endpoint must instead arrive as an explicit
  * `options.otlpEndpoint` parameter (sourced by the Coder-updated
- * `hooks.client.ts` from `$env/dynamic/public`), rather than being resolved
+ * `hooks.client.ts` from `$app/env/public`), rather than being resolved
  * internally by this module the way the server side resolves its own.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

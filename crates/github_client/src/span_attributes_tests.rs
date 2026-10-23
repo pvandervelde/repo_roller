@@ -21,17 +21,25 @@ fn test_sanitize_span_attribute_value_empty_string_returns_empty() {
 
 #[test]
 fn test_sanitize_span_attribute_value_short_plain_org_name_passes_through_unchanged() {
-    assert_eq!(sanitize_span_attribute_value("my-organization"), "my-organization");
+    assert_eq!(
+        sanitize_span_attribute_value("my-organization"),
+        "my-organization"
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_short_plain_template_name_passes_through_unchanged() {
-    assert_eq!(sanitize_span_attribute_value("rust-library"), "rust-library");
+    assert_eq!(
+        sanitize_span_attribute_value("rust-library"),
+        "rust-library"
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_value_at_exactly_max_len_is_unchanged() {
-    let value: String = std::iter::repeat('a').take(MAX_SPAN_ATTRIBUTE_LEN).collect();
+    let value: String = std::iter::repeat('a')
+        .take(MAX_SPAN_ATTRIBUTE_LEN)
+        .collect();
     assert_eq!(sanitize_span_attribute_value(&value), value);
 }
 
@@ -55,24 +63,28 @@ fn test_sanitize_span_attribute_value_value_one_under_max_len_is_unchanged() {
 #[test]
 fn test_sanitize_span_attribute_value_gh_token_shape_is_fully_redacted() {
     let raw = format!("ghp_{}", "a".repeat(24));
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_bearer_shape_is_fully_redacted() {
     let raw = "Bearer abcdefgh12345678";
-    assert_eq!(sanitize_span_attribute_value(raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_jwt_shape_is_fully_redacted() {
-    let raw = format!(
-        "{}.{}.{}",
-        "a".repeat(12),
-        "b".repeat(12),
-        "c".repeat(12)
+    let raw = format!("{}.{}.{}", "a".repeat(12), "b".repeat(12), "c".repeat(12));
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
     );
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
 }
 
 #[test]
@@ -80,7 +92,10 @@ fn test_sanitize_span_attribute_value_high_entropy_shape_is_fully_redacted() {
     // >= 32 chars from [A-Za-z0-9+/], mixed case + digit.
     let raw = "aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3";
     assert!(raw.len() >= 32);
-    assert_eq!(sanitize_span_attribute_value(raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -92,7 +107,10 @@ fn test_sanitize_span_attribute_value_secret_shape_embedded_inside_longer_org_na
     // A business-context value should never legitimately contain a secret
     // shape; if it does, the whole value is discarded, not just the match.
     let raw = format!("my-org-ghp_{}", "a".repeat(24));
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -166,7 +184,9 @@ fn test_sanitize_span_attribute_value_scales_linearly_on_literal_near_miss_input
     // allows up to 25x (headroom for measurement noise on a ~sub-100ms
     // baseline) while still failing hard on true O(n^2) behaviour, which
     // would produce a ~100x ratio.
-    let max_allowed = elapsed_small.saturating_mul(25).max(std::time::Duration::from_millis(50));
+    let max_allowed = elapsed_small
+        .saturating_mul(25)
+        .max(std::time::Duration::from_millis(50));
     assert!(
         elapsed_large <= max_allowed,
         "sanitize_span_attribute_value took {elapsed_small:?} for a {}-char near-miss input \
@@ -249,14 +269,20 @@ fn test_sanitize_span_attribute_value_does_not_always_pass_through_unchanged() {
 fn test_sanitize_span_attribute_value_gh_token_boundary_19_chars_is_not_redacted() {
     // 19-char suffix is one below the 20-char threshold -- must NOT match.
     let raw = format!("ghp_{}", "a".repeat(19));
-    assert_ne!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_gh_token_boundary_20_chars_is_redacted() {
     // Exactly 20-char suffix is the minimum that matches.
     let raw = format!("ghp_{}", "a".repeat(20));
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -264,20 +290,29 @@ fn test_sanitize_span_attribute_value_does_not_false_positive_on_uuid() {
     // UUIDs contain hyphens, which are excluded from the high-entropy
     // alphabet, so a UUID must never be misclassified as secret-shaped.
     let uuid = "550e8400-e29b-41d4-a716-446655440000";
-    assert_ne!(sanitize_span_attribute_value(uuid), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(uuid),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_does_not_false_positive_on_iso8601_timestamp() {
     let ts = "2026-08-22T10:15:30Z";
-    assert_ne!(sanitize_span_attribute_value(ts), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(ts),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_does_not_false_positive_on_git_commit_sha() {
     // All-lowercase hex -- fails the mixed-case requirement for high-entropy.
     let sha = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
-    assert_ne!(sanitize_span_attribute_value(sha), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(sha),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -295,7 +330,10 @@ fn test_sanitize_span_attribute_value_jwt_shape_with_hyphens_in_segments_is_reda
     // includes '-') -- a scanner that drops it would fragment every segment
     // containing a hyphen below the minimum length threshold.
     let raw = format!("{}.{}.{}", "A-AAAAAAAA", "B-BBBBBBBB", "C-CCCCCCCC");
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -304,7 +342,10 @@ fn test_sanitize_span_attribute_value_gh_token_suffix_with_underscore_is_redacte
     // must be included in the token-suffix alphabet -- GitHub tokens can
     // (and often do) contain underscores.
     let raw = format!("ghp_{}_{}", "a".repeat(10), "a".repeat(13));
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -314,7 +355,10 @@ fn test_sanitize_span_attribute_value_gh_token_suffix_run_broken_by_space_is_not
     // token suffix and falsely redact this otherwise-benign value (real
     // suffix run is only 2 chars, well under the 20-char minimum).
     let raw = format!("ghp_ab {}", "c".repeat(20));
-    assert_ne!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -324,7 +368,10 @@ fn test_sanitize_span_attribute_value_jwt_first_segment_below_minimum_is_not_red
     // minimum) even though it is immediately followed by a valid dot --
     // both mutated comparisons fail to reject this too-short segment.
     let raw = format!("AAAAA.{}.{}", "B".repeat(10), "C".repeat(10));
-    assert_ne!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -334,7 +381,10 @@ fn test_sanitize_span_attribute_value_jwt_missing_dot_after_first_segment_is_not
     // mutated `&&` fails to reject this, silently skipping past the
     // missing separator.
     let raw = format!("{}#{}.{}", "A".repeat(10), "B".repeat(10), "C".repeat(10));
-    assert_ne!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -343,7 +393,10 @@ fn test_sanitize_span_attribute_value_jwt_second_segment_below_minimum_is_not_re
     // 5 chars (below the 10-char minimum) even though it is immediately
     // followed by a valid dot.
     let raw = format!("{}.BBBBB.{}", "A".repeat(10), "C".repeat(10));
-    assert_ne!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -351,7 +404,10 @@ fn test_sanitize_span_attribute_value_jwt_missing_dot_after_second_segment_is_no
     // Kills: `324:39 replace || with && in jwt_match_len`. Segment 2 is a
     // valid length but is NOT followed by a dot ('#' instead).
     let raw = format!("{}.{}#{}", "A".repeat(10), "B".repeat(10), "C".repeat(10));
-    assert_ne!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -361,7 +417,10 @@ fn test_sanitize_span_attribute_value_jwt_exact_minimum_segment_lengths_is_redac
     // than a uniform repeated character) ensures a miscomputed boundary
     // lands on a run that is too short to still coincidentally match.
     let raw = format!("{}.{}.{}", "A".repeat(10), "B".repeat(10), "C".repeat(10));
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -372,7 +431,10 @@ fn test_sanitize_span_attribute_value_jwt_second_segment_longer_than_first_bound
     // and panic -- this is also a defense-in-depth regression test for the
     // module's documented "never panics on any input" contract.
     let raw = format!("{}.{}.{}", "A".repeat(10), "B".repeat(15), "C".repeat(10));
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -419,7 +481,10 @@ fn test_sanitize_span_attribute_value_high_entropy_lowercase_only_late_in_run_is
     // report `has_lower[0] == false` and miss the match.
     let raw = format!("3B{}", "a".repeat(30));
     assert_eq!(raw.chars().count(), 32);
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -428,7 +493,10 @@ fn test_sanitize_span_attribute_value_high_entropy_uppercase_only_late_in_run_is
     // `has_upper[i + 1]` propagation term).
     let raw = format!("3a{}", "B".repeat(30));
     assert_eq!(raw.chars().count(), 32);
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -437,7 +505,10 @@ fn test_sanitize_span_attribute_value_high_entropy_digit_only_late_in_run_is_sti
     // `has_digit[i + 1]` propagation term).
     let raw = format!("aB{}", "3".repeat(30));
     assert_eq!(raw.chars().count(), 32);
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -448,7 +519,10 @@ fn test_sanitize_span_attribute_value_high_entropy_run_containing_slash_is_redac
     // must not break an otherwise-qualifying run.
     let raw = format!("aB3/{}", "aB3".repeat(10));
     assert_eq!(raw.chars().count(), 34);
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -458,7 +532,10 @@ fn test_sanitize_span_attribute_value_high_entropy_run_containing_plus_is_redact
     // an otherwise-qualifying run.
     let raw = format!("aB3+{}", "aB3".repeat(10));
     assert_eq!(raw.chars().count(), 34);
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -470,7 +547,10 @@ fn test_sanitize_span_attribute_value_sentence_with_spaces_is_not_misclassified_
     // "always true" (or near-always-true) predicate ignores whitespace.
     let raw = "Organization Display Name For Team 7";
     assert!(raw.chars().count() >= 32);
-    assert_ne!(sanitize_span_attribute_value(raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_ne!(
+        sanitize_span_attribute_value(raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
@@ -484,5 +564,8 @@ fn test_sanitize_span_attribute_value_high_entropy_length_exactly_at_threshold_w
     // collapses to "never matches" instead of "always matches except at 0".
     let raw = format!("A3{}", "a".repeat(30));
     assert_eq!(raw.chars().count(), 32);
-    assert_eq!(sanitize_span_attribute_value(&raw), SPAN_ATTRIBUTE_REDACTED_MARKER);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }

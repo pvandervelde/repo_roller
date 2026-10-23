@@ -16,8 +16,8 @@
 //! proptest cases and test threads are safe -- unlike `tracing`'s
 //! global-default-subscriber, which may only be installed once per process.
 
-use super::*;
 use super::test_support::{ensure_trace_context_propagator_installed, headers_with_traceparent};
+use super::*;
 use opentelemetry::trace::{SpanId, TraceContextExt, TraceId};
 use proptest::prelude::*;
 

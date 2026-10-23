@@ -850,7 +850,9 @@ async fn test_get_collaborator_permission_span_username_field_short_benign_value
 ) {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/repos/test-org/test-repo/collaborators/alice/permission"))
+        .and(path(
+            "/repos/test-org/test-repo/collaborators/alice/permission",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "role_name": "write"
         })))
@@ -1343,9 +1345,7 @@ async fn test_get_team_members_span_fields_short_benign_values_pass_through_unch
     let _guard = tracing::subscriber::set_default(subscriber);
 
     let client = mock_client(&mock_server);
-    let _ = client
-        .get_team_members("benign-org", "benign-team")
-        .await;
+    let _ = client.get_team_members("benign-org", "benign-team").await;
 
     let spans = recorder.recorded();
     let span = spans
@@ -1696,8 +1696,8 @@ async fn test_list_repository_collaborators_span_fields_redacted_when_secret_sha
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn test_list_repository_collaborators_span_fields_short_benign_values_pass_through_unchanged(
-) {
+async fn test_list_repository_collaborators_span_fields_short_benign_values_pass_through_unchanged()
+{
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
@@ -1768,8 +1768,7 @@ async fn test_set_collaborator_permission_span_fields_redacted_when_secret_shape
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn test_set_collaborator_permission_span_fields_short_benign_values_pass_through_unchanged()
-{
+async fn test_set_collaborator_permission_span_fields_short_benign_values_pass_through_unchanged() {
     let mock_server = MockServer::start().await;
     Mock::given(method("PUT"))
         .respond_with(ResponseTemplate::new(204))
@@ -1979,12 +1978,11 @@ async fn test_authenticate_with_access_token_span_fields_redacted_when_secret_sh
     let subscriber = tracing_subscriber::registry().with(recorder.clone());
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(test_rsa_private_key_pem().as_bytes())
-        .expect("test RSA PEM must parse");
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(99999u64.into(), key)
+        .app_from_rsa_pem(99999u64.into(), test_rsa_private_key_pem().as_bytes())
+        .expect("test RSA PEM must parse")
         .build()
         .expect("test octocrab client must build");
 
@@ -2035,36 +2033,25 @@ async fn test_authenticate_with_access_token_span_fields_short_benign_values_pas
     let subscriber = tracing_subscriber::registry().with(recorder.clone());
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(test_rsa_private_key_pem().as_bytes())
-        .expect("test RSA PEM must parse");
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(99999u64.into(), key)
+        .app_from_rsa_pem(99999u64.into(), test_rsa_private_key_pem().as_bytes())
+        .expect("test RSA PEM must parse")
         .build()
         .expect("test octocrab client must build");
 
-    let _ = authenticate_with_access_token(
-        &octocrab,
-        installation_id,
-        "benign-owner",
-        "benign-repo",
-    )
-    .await;
+    let _ =
+        authenticate_with_access_token(&octocrab, installation_id, "benign-owner", "benign-repo")
+            .await;
 
     let spans = recorder.recorded();
     let span = spans
         .iter()
         .find(|s| s.name == "authenticate_with_access_token")
         .expect("authenticate_with_access_token must create a span");
-    assert_eq!(
-        span.fields.get("repository_owner").unwrap(),
-        "benign-owner"
-    );
-    assert_eq!(
-        span.fields.get("source_repository").unwrap(),
-        "benign-repo"
-    );
+    assert_eq!(span.fields.get("repository_owner").unwrap(), "benign-owner");
+    assert_eq!(span.fields.get("source_repository").unwrap(), "benign-repo");
 }
 
 // --- create_octocrab_client (line 3754) / create_github_client (line 3777): base_url ---
@@ -2160,8 +2147,8 @@ async fn test_create_github_client_span_base_url_field_redacted_when_secret_shap
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn test_create_github_client_span_base_url_field_short_benign_value_passes_through_unchanged(
-) {
+async fn test_create_github_client_span_base_url_field_short_benign_value_passes_through_unchanged()
+{
     let recorder = SpanValueRecorder::default();
     let subscriber = tracing_subscriber::registry().with(recorder.clone());
     let _guard = tracing::subscriber::set_default(subscriber);

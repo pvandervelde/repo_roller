@@ -400,7 +400,12 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureBuffer {
 /// file, matching the shape `GET /repos/{owner}/{repo}/contents/{path}`
 /// returns for a file. Mirrors
 /// `crates/repo_roller_api/src/handlers_tests.rs::file_content_response`.
-fn file_content_response(org: &str, repo: &str, file_path: &str, toml_content: &str) -> serde_json::Value {
+fn file_content_response(
+    org: &str,
+    repo: &str,
+    file_path: &str,
+    toml_content: &str,
+) -> serde_json::Value {
     let encoded = general_purpose::STANDARD.encode(toml_content.as_bytes());
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/contents/{file_path}");
     let html_url = format!("https://github.com/{org}/{repo}/blob/main/{file_path}");
@@ -474,12 +479,14 @@ async fn test_load_template_configuration_never_logs_secret_shaped_variable_defa
         .and(path(format!(
             "/repos/{org}/{template}/contents/.reporoller/template.toml"
         )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(file_content_response(
-            org,
-            template,
-            ".reporoller/template.toml",
-            &template_toml_with_secret_shaped_variable_default(secret),
-        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                org,
+                template,
+                ".reporoller/template.toml",
+                &template_toml_with_secret_shaped_variable_default(secret),
+            )),
+        )
         .mount(&mock_server)
         .await;
 
@@ -527,12 +534,14 @@ async fn test_load_template_configuration_never_logs_bearer_jwt_shaped_variable_
         .and(path(format!(
             "/repos/{org}/{template}/contents/.reporoller/template.toml"
         )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(file_content_response(
-            org,
-            template,
-            ".reporoller/template.toml",
-            &template_toml_with_secret_shaped_variable_default(&secret),
-        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                org,
+                template,
+                ".reporoller/template.toml",
+                &template_toml_with_secret_shaped_variable_default(&secret),
+            )),
+        )
         .mount(&mock_server)
         .await;
 
@@ -571,12 +580,14 @@ async fn test_load_template_configuration_still_logs_something_on_success() {
         .and(path(format!(
             "/repos/{org}/{template}/contents/.reporoller/template.toml"
         )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(file_content_response(
-            org,
-            template,
-            ".reporoller/template.toml",
-            &template_toml_with_secret_shaped_variable_default(secret),
-        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                org,
+                template,
+                ".reporoller/template.toml",
+                &template_toml_with_secret_shaped_variable_default(secret),
+            )),
+        )
         .mount(&mock_server)
         .await;
 

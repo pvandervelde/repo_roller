@@ -26,10 +26,10 @@ import fc from 'fast-check';
 import { TRACEPARENT_FORMAT } from '../src/lib/observability/trace-context';
 import type { Session } from '../src/lib/types/session';
 
-// `$env/dynamic/private` is a SvelteKit virtual module. Under Vite's dev/test
+// `$app/env/private` is a SvelteKit virtual module. Under Vite's dev/test
 // ("serve") command it is generated as a static snapshot object baked in at
 // module-resolution time (see `@sveltejs/kit/src/core/env.js`'s
-// `create_dynamic_module`), NOT a live view of `process.env` — so
+// `create_env_modules`), NOT a live view of `process.env` — so
 // `vi.stubEnv('BACKEND_API_URL', ...)` in a `beforeEach` has no effect on it
 // (confirmed experimentally while writing this suite: the env var was always
 // seen as unset by `proxy.server.ts`, causing every call to short-circuit to
@@ -42,7 +42,11 @@ const { mockEnv } = vi.hoisted(() => ({
   >,
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: mockEnv }));
+vi.mock('$app/env/private', () => ({
+  get BACKEND_API_URL() {
+    return mockEnv.BACKEND_API_URL;
+  },
+}));
 
 vi.mock('../src/lib/observability/trace-context', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/lib/observability/trace-context')>();

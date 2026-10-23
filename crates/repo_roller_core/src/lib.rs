@@ -1165,7 +1165,8 @@ pub async fn create_repository(
 /// that only observes `on_new_span` (e.g. this crate's own span-hierarchy
 /// test harness, and `tracing-opentelemetry`'s span attribute capture).
 fn repository_creation_span(attributes: &[(&'static str, String)]) -> tracing::Span {
-    let organization = find_attribute(attributes, observability::ATTR_ORGANIZATION).unwrap_or_default();
+    let organization =
+        find_attribute(attributes, observability::ATTR_ORGANIZATION).unwrap_or_default();
     let requestor = find_attribute(attributes, observability::ATTR_REQUESTOR).unwrap_or_default();
     let template = find_attribute(attributes, observability::ATTR_TEMPLATE);
 

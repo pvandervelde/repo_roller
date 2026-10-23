@@ -28,7 +28,10 @@ fn test_span_template_processing_name_is_template_processing() {
 
 #[test]
 fn test_span_github_repository_creation_name_is_github_repository_creation() {
-    assert_eq!(SPAN_GITHUB_REPOSITORY_CREATION, "github_repository_creation");
+    assert_eq!(
+        SPAN_GITHUB_REPOSITORY_CREATION,
+        "github_repository_creation"
+    );
 }
 
 #[test]
@@ -130,8 +133,7 @@ fn test_business_context_attributes_bounds_pathologically_long_template_name() {
         .map(|(_, v)| v.clone())
         .expect("template attribute must be present when Some");
     assert!(
-        template_value.chars().count()
-            <= github_client::span_attributes::MAX_SPAN_ATTRIBUTE_LEN
+        template_value.chars().count() <= github_client::span_attributes::MAX_SPAN_ATTRIBUTE_LEN
     );
 }
 
@@ -141,8 +143,18 @@ fn test_business_context_attributes_distinct_organizations_produce_distinct_valu
     // ignores its `organization` parameter.
     let a = business_context_attributes("org-alpha", None, "alice");
     let b = business_context_attributes("org-beta", None, "alice");
-    let a_org = a.iter().find(|(k, _)| *k == ATTR_ORGANIZATION).unwrap().1.clone();
-    let b_org = b.iter().find(|(k, _)| *k == ATTR_ORGANIZATION).unwrap().1.clone();
+    let a_org = a
+        .iter()
+        .find(|(k, _)| *k == ATTR_ORGANIZATION)
+        .unwrap()
+        .1
+        .clone();
+    let b_org = b
+        .iter()
+        .find(|(k, _)| *k == ATTR_ORGANIZATION)
+        .unwrap()
+        .1
+        .clone();
     assert_ne!(a_org, b_org);
 }
 
@@ -150,8 +162,18 @@ fn test_business_context_attributes_distinct_organizations_produce_distinct_valu
 fn test_business_context_attributes_distinct_requestors_produce_distinct_values() {
     let a = business_context_attributes("my-org", None, "alice");
     let b = business_context_attributes("my-org", None, "bob");
-    let a_req = a.iter().find(|(k, _)| *k == ATTR_REQUESTOR).unwrap().1.clone();
-    let b_req = b.iter().find(|(k, _)| *k == ATTR_REQUESTOR).unwrap().1.clone();
+    let a_req = a
+        .iter()
+        .find(|(k, _)| *k == ATTR_REQUESTOR)
+        .unwrap()
+        .1
+        .clone();
+    let b_req = b
+        .iter()
+        .find(|(k, _)| *k == ATTR_REQUESTOR)
+        .unwrap()
+        .1
+        .clone();
     assert_ne!(a_req, b_req);
 }
 

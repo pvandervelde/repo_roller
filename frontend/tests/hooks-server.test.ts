@@ -338,7 +338,7 @@ describe('handle() — resolve() response and error behaviour is unaffected by s
     await expect(handle({ event, resolve } as HandleArgs)).rejects.toBe('a string rejection');
   });
 
-  it('ends the SvelteKit-request span with ERROR status exactly once, AND still propagates the original error to resolve()\'s caller (QA audit: a route handler throwing must still surface SvelteKit\'s own error page while the span correctly records the failure)', async () => {
+  it("ends the SvelteKit-request span with ERROR status exactly once, AND still propagates the original error to resolve()'s caller (QA audit: a route handler throwing must still surface SvelteKit's own error page while the span correctly records the failure)", async () => {
     const request = new Request('http://localhost/api/v1/orgs/acme/templates', {
       headers: { traceparent: INBOUND_HEADER },
     });

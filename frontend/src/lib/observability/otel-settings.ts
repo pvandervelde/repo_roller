@@ -57,26 +57,28 @@ export const OTEL_SERVICE_NAME_ENV_VAR = 'OTEL_SERVICE_NAME';
  * Name of the SvelteKit PUBLIC (browser-exposed) env var carrying the OTLP
  * endpoint the BROWSER should export spans to.
  *
- * MUST be read via `$env/dynamic/public` — NOT `$env/static/public` — by
- * the caller that wires this into `initClientObservability()` (expected to
- * be `src/hooks.client.ts`, updated by the Coder). Rationale: this app's
- * entire configuration model (`BACKEND_API_URL`, `GITHUB_ORG`, `ORIGIN`,
- * `SESSION_SECRET`, `brand.toml`) is "build the Docker image once, configure
- * every value via `docker-compose.yml`'s `environment:` block at container
- * START" (see `examples/local-stack/docker-compose.yml`) — i.e. RUNTIME
- * configuration, not build-time. `$env/static/public` is inlined by Vite at
+ * MUST be read via `$app/env/public` — declared in `src/env.ts` with
+ * `public: true` and no `static: true` — by the caller that wires this into
+ * `initClientObservability()` (expected to be `src/hooks.client.ts`, updated
+ * by the Coder). Rationale: this app's entire configuration model
+ * (`BACKEND_API_URL`, `GITHUB_ORG`, `ORIGIN`, `SESSION_SECRET`,
+ * `brand.toml`) is "build the Docker image once, configure every value via
+ * `docker-compose.yml`'s `environment:` block at container START" (see
+ * `examples/local-stack/docker-compose.yml`) — i.e. RUNTIME configuration,
+ * not build-time. A `static: true` declaration would be inlined by Vite at
  * `vite build` time, which happens INSIDE the Dockerfile, before any
  * `docker compose up` env vars exist — using it here would freeze this
  * value at whatever it was during the image build (almost certainly
- * unset). `$env/dynamic/public` is instead read at actual server-process
- * runtime for a production (`adapter-node`) build, exactly like
- * `$env/dynamic/private` already is for `BACKEND_API_URL` in
+ * unset). Leaving `static` at its default (`false`, i.e. dynamic) instead
+ * reads the value at actual server-process runtime for a production
+ * (`adapter-node`) build, exactly like `BACKEND_API_URL` already is in
  * `proxy.server.ts`.
  *
- * MUST be `PUBLIC_`-prefixed — SvelteKit refuses to expose any env var
- * without that prefix to client bundles, as a deliberate secret-leak guard;
- * this is exactly why the browser-facing name cannot simply reuse
- * `OTEL_ENDPOINT_ENV_VAR`.
+ * Named with a `PUBLIC_` prefix purely by convention, matching the old
+ * `$env/*\/public` naming — exposure to client bundles is actually
+ * controlled by the explicit `public: true` field in `src/env.ts`, not by
+ * the variable name, which is exactly why the browser-facing name cannot
+ * simply reuse `OTEL_ENDPOINT_ENV_VAR` (that one defaults to private).
  */
 export const PUBLIC_OTEL_ENDPOINT_ENV_VAR = 'PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT';
 

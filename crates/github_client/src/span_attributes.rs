@@ -188,7 +188,11 @@ impl CharRunIndex {
     fn build(chars: &[char], predicate: impl Fn(char) -> bool) -> Self {
         let mut run_len = vec![0usize; chars.len() + 1];
         for i in (0..chars.len()).rev() {
-            run_len[i] = if predicate(chars[i]) { run_len[i + 1] + 1 } else { 0 };
+            run_len[i] = if predicate(chars[i]) {
+                run_len[i + 1] + 1
+            } else {
+                0
+            };
         }
         Self { run_len }
     }
@@ -317,11 +321,21 @@ impl SecretShapeScanner {
     }
 
     fn gh_token_match_len(&self, i: usize) -> Option<usize> {
-        self.literal_prefixed_run_match_len(i, GH_TOKEN_PREFIXES, &self.gh_suffix, GH_TOKEN_SUFFIX_MIN_LEN)
+        self.literal_prefixed_run_match_len(
+            i,
+            GH_TOKEN_PREFIXES,
+            &self.gh_suffix,
+            GH_TOKEN_SUFFIX_MIN_LEN,
+        )
     }
 
     fn bearer_match_len(&self, i: usize) -> Option<usize> {
-        self.literal_prefixed_run_match_len(i, &["Bearer ", "bearer "], &self.bearer_token, BEARER_TOKEN_MIN_LEN)
+        self.literal_prefixed_run_match_len(
+            i,
+            &["Bearer ", "bearer "],
+            &self.bearer_token,
+            BEARER_TOKEN_MIN_LEN,
+        )
     }
 
     fn jwt_match_len(&self, i: usize) -> Option<usize> {

@@ -134,7 +134,10 @@ pub fn business_context_attributes(
     use github_client::span_attributes::sanitize_span_attribute_value;
 
     let mut attributes = Vec::with_capacity(3);
-    attributes.push((ATTR_ORGANIZATION, sanitize_span_attribute_value(organization)));
+    attributes.push((
+        ATTR_ORGANIZATION,
+        sanitize_span_attribute_value(organization),
+    ));
     if let Some(template_name) = template {
         attributes.push((ATTR_TEMPLATE, sanitize_span_attribute_value(template_name)));
     }
