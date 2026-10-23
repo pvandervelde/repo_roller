@@ -1,8 +1,20 @@
+import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig(({ mode }) => ({
-  plugins: [sveltekit()],
+  // svelte.config.js is no longer read by @sveltejs/kit 3 — SvelteKit config
+  // is now passed directly to the sveltekit() plugin instead.
+  plugins: [
+    sveltekit({
+      preprocess: vitePreprocess(),
+      adapter: adapter(),
+      // $lib was replaced by #lib in kit 3; keep the existing $lib imports
+      // across the codebase working rather than doing a repo-wide rename.
+      alias: { $lib: 'src/lib' },
+    }),
+  ],
   // In test mode, use browser conditions so Svelte resolves to client-side build
   resolve: mode === 'test' ? { conditions: ['browser'] } : {},
   test: {

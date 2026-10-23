@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import type { RequestHandler } from './$types';
 import { proxyToBackend } from '$lib/proxy.server';
 

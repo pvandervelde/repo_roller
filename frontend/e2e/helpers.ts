@@ -37,6 +37,7 @@ export function makeSessionCookie(): Cookie {
     }),
     domain: 'localhost',
     path: '/',
+    expires: -1, // session cookie, matches the app's own no-explicit-expiry cookie
     httpOnly: true,
     secure: false,
     sameSite: 'Lax',

@@ -1,5 +1,10 @@
 import { redirect } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import {
+  BACKEND_API_URL,
+  GITHUB_CLIENT_ID,
+  GITHUB_CLIENT_SECRET,
+  NODE_ENV,
+} from '$app/env/private';
 import type { PageServerLoad } from './$types';
 import type { Session } from '$lib/types/session';
 import { signSessionCookie } from '$lib/session.server';
@@ -48,8 +53,8 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
         Accept: 'application/json',
       },
       body: JSON.stringify({
-        client_id: env.GITHUB_CLIENT_ID ?? '',
-        client_secret: env.GITHUB_CLIENT_SECRET ?? '',
+        client_id: GITHUB_CLIENT_ID ?? '',
+        client_secret: GITHUB_CLIENT_SECRET ?? '',
         code,
       }),
     });
@@ -98,7 +103,7 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
   // the complete OAuth+exchange flow locally must run the Rust API locally and
   // set BACKEND_API_URL (e.g. http://localhost:3000) in their .env file.
   let backendToken: string;
-  const backendUrl = env.BACKEND_API_URL?.replace(/\/$/, '');
+  const backendUrl = BACKEND_API_URL?.replace(/\/$/, '');
   if (!backendUrl) {
     redirect(302, '/auth/denied?reason=configuration_error');
   }
@@ -126,7 +131,7 @@ export const load: PageServerLoad = async ({ url, cookies }): Promise<Record<str
   cookies.set('session', signSessionCookie(session), {
     path: '/',
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
+    secure: NODE_ENV === 'production',
     sameSite: 'lax',
     // 8-hour session lifetime. Re-authenticate after this window.
     maxAge: 60 * 60 * 8,

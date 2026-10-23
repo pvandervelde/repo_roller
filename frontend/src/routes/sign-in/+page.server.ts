@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { GITHUB_CLIENT_ID, NODE_ENV } from '$app/env/private';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -21,12 +21,12 @@ export const load: PageServerLoad = async ({ cookies, locals }) => {
   cookies.set('oauth_state', state, {
     path: '/auth/callback',
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
+    secure: NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 600, // 10 minutes
   });
 
-  const clientId = env.GITHUB_CLIENT_ID ?? '';
+  const clientId = GITHUB_CLIENT_ID ?? '';
   const params = new URLSearchParams({
     client_id: clientId,
     scope: 'read:user read:org',
