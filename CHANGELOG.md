@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.10.0] - 2026-10-23
+
+### Features
+- **github_client**: implement GitHub API call metrics (Observability Phase 1) [00779bae414879e5006782b65a1940a5eec3b76a]
+- **observability**: Phase 1 backend metrics foundation (#281) [cf7f9afb55a4d3fd6a24aab40e54852930a137b3]
+- **repo_roller_api**: implement HTTP metrics, shared registry, and /metrics route (Observability Phase 1) [4f661b2aaf4c10f499d1c93a9eb73e1bc7ab35fd]
+- **repo_roller_core**: implement repository-creation metrics (Observability Phase 1) [326f6c95b620ed1bc2c7ec5ad853c266f73783df]
+### Bug Fixes
+- **deps**: update rust crate bollard to 0.21 [a6e7b0a129c8f0e80b00a26ef227661b002a9b18]
+- **deps**: update rust crate bollard to 0.21 (#260) [112ab339af49536e7ea78ccc6456ebe8a933a8bd]
+- **frontend**: bump brace-expansion and postcss to resolve OSV advisories [f8459f8c0afc81baf7781875a20a5347fb56b4bf]
+- **observability**: drop org/template as repository-creation metric labels [3bb3e8367ae158c9c2d2607ddda9dd2accd3d959]
+- **repo_roller_api**: bound HTTP method label to prevent unbounded cardinality [ccbd3769a44844de5be2fcab236d17414b57c8b9]
+- **repo_roller_api**: record GitHub API errors for get_repository availability check [cf96d220843463281383aa679c270d6b8f9b03d6]
+### Documentation
+- **catalog**: add Observability Phase 1 metrics abstractions [6cdfc9236e1d545a4d5bcdfb79ce4f04805877fd]
+- **observability**: clarify metric semantics and codify bounded-label rule [6cd1bc18a052ffb5771a6473f462a182830941c9]
+- **observability**: update user docs for Phase 1 metrics foundation [77763114c52e7c1fed739e730f83760d81632a1a]
+- fix 22 configuration discrepancies between code and user docs (#280) [025c3aed955de78afe48670817879fd48d1f40a2]
+- fix 22 configuration documentation discrepancies (#279) [607c49119af8f02715de5bbaf8a3686ab48d5b76]
+- remove Azure Functions as first-class deployment interface [5d01e336fc2cdd1e58f93e0383c74b2e49ba5b27]
+### Styles
+- apply cargo fmt to Observability Phase 1 metrics files [9a896ca8713154ef5fd47d1130822622aaca68d7]
+- fix fmt violation in api_metrics_tests.rs [f571bca7dee871624aca4a7a9610f278e3c54261]
+### Code Refactoring
+- **observability**: dedupe metrics registry construction and route wiring [f5571c8004ef383c193c3af0f93d159900ae0df3]
+### Tests
+- **audit**: add mutation-kill tests for category mappings and metrics instrumentation [f762c6aa9e8cd4c1b19c373e953cc4027fae943a]
+- Add RED-phase test suite for Observability Phase 1 metrics [693d40e42e57cb2307cc590aaeccf0471f8e35bb]
+### Chores
+- **deps**: bump @sveltejs/kit to 3 and adapter-node to 6 [834b372983bac4e0ead212dc3944b4b5d59a9efc]
+- **deps**: bump @sveltejs/kit to 3 and adapter-node to 6 (#341) [e0acdecd01081210d4592875b444c0df0a5292e2]
+- **deps**: bump jsonwebtoken to 11 via octocrab's app_from_rsa_pem [ecf5b94a2815e3bf6cfca0ef11fc9e6384682674]
+- **deps**: bump jsonwebtoken to 11 via octocrab's app_from_rsa_pem (#340) [7fa8b4a980521b080226e4c130aad2b195ff8385]
+- **deps**: combine outstanding Renovate updates [5ace41d040e9568d28b0e3d3028a1317aa8833e2]
+- **deps**: combine outstanding Renovate updates (#339) [04d3a56e5a954f9749b685e039f045d7bdc71bb4]
+- **deps**: update debian:bookworm-slim docker digest to 60eac75 [6038c986c7cbed9e04906360e27fb7ab9dbaafe9]
+- **deps**: update debian:bookworm-slim docker digest to 60eac75 (#235) [7091160025f58f6ec2d73d7805c4924789065c38]
+- **deps**: update dependency @sveltejs/kit to v2.70.2 [security] [d05174f5cc1d7b08dc19a98ffcad5dd009e0c692]
+- **deps**: update dependency @sveltejs/kit to v2.70.2 [security] (#289) [701be0300d2c80cf586f0369fac8ab9b08db3d54]
+- **deps**: update dependency cookie to v2 [ef467e63051dd171a4541c24f57302e3c341d155]
+- **deps**: update dependency cookie to v2 (#294) [03d3efdd46af412f826bab8476c17403c9791ed0]
+- **deps**: update dependency smol-toml to v1.9.0 [security] [d14882bacfd097e48b850bb0d17b93f26c00074a]
+- **deps**: update dependency smol-toml to v1.9.0 [security] (#298) [200980339c8e9105c58f0d5692b25e59a954dda0]
+- **deps**: update dependency vite to v8.1.6 [security] [57e29fc5a34f072fc402921ecfb203cb4f43397a]
+- **deps**: update dependency vite to v8.1.6 [security] (#302) [da762e743f337da99a3b6ee3aba6423bb01e524b]
+- **deps**: update dependency vitest to v4.1.11 [security] [9feca96b29801ef117bd5c451c5becce5f5d9ed7]
+- **deps**: update dependency vitest to v4.1.11 [security] (#297) [45c4cfae1e68026cf33de7d60a4c59e3cae5cd66]
+- **deps**: update docker/build-push-action digest to 10e90e3 [d778213f02fbd44169485bb357c167961e2b6ad7]
+- **deps**: update docker/build-push-action digest to 10e90e3 (#241) [1396ab39f6c9647b71c681237ee57e4e7b0baaa6]
+- **deps**: update docker/login-action digest to c94ce9f [0dc7825c80de51e46160c5fa05813b1d009a7fe6]
+- **deps**: update docker/login-action digest to c94ce9f (#242) [40baee9957a913f5c29a71b16cf011fbe6411d3f]
+- **deps**: update docker/setup-buildx-action digest to 8d2750c [abb1ce83ebdaf5fc302046ebc8fa626db5ea30c9]
+- **deps**: update docker/setup-buildx-action digest to 8d2750c (#263) [fd687049353040b9d7dd8307a6e392819ca3909a]
+- **deps**: update pnpm to v11.11.0 [security] [894871113d02fa91d4a4de95dc8a3826a501810c]
+- **deps**: update pnpm to v11.11.0 [security] (#296) [31578a5f9647c56802d43a088e2b8e670bbbf2d4]
+- **deps**: update rust crate rustls to v0.23.46 [security] [0e92aa2a3897b062fd834a87a2bdcf81f01d04de]
+- **deps**: update rust crate rustls to v0.23.46 [security] (#301) [8eb8f3374dc9cbf7e26ca6e1ab054b4bd9216959]
+- **deps**: update rust:1.96-bookworm docker digest to d99f7b3 [d3cf386ad512c06be87c69a9b83e8aecf5b09614]
+- **deps**: update rust:1.96-bookworm docker digest to d99f7b3 (#264) [c55af51801c627998172dd9a730191dc462bb813]
+- **deps**: update swatinem/rust-cache digest to 6323deb [70f0fc2ba3cfef17248dcd6f13dc0b3ccb43ded9]
+- **deps**: update swatinem/rust-cache digest to 6323deb (#266) [cfaa04d929cd147828c92243de8045a264bd3323]
+- Fix two doc discrepancies from PR review [7b54f88f9e137c0caa2e167d06df8e261c472d2a]
+- Initial plan [e13ec7afdcd161ba5c279e9f510522649db3f0fa]
+- Initial plan [b10754dcee7cf4afd9cebde099e0372395e48cb8]
+- Removing beads [7e3458be2f279821766af2cf467fe770c9a8b64b]
+### Docs
+- remove Azure Functions as first-class architecture; align with container-based deployment (#290) [bbf4ef817b3421e80118646cdc5707e515b81c7a]
+
 ## [0.9.3] - 2026-07-10
 
 ### Bug Fixes
@@ -118,6 +187,7 @@
 - Fixing build issues [e3b460114f645346be06efea045a9f5556abf5d5]
 - Increase Renovate PR number and wait on minimumReleaseAge [0b20fe433b1116ea4b5c9fb7af0d41d88492c8be]
 - Increase Renovate PR number and wait on minimumReleaseAge (#250) [8c3ce971f84c294d03aefde864909b2449e744ca]
+
 
 
 
