@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import type { Handle } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
 import type { Session } from '$lib/types/session';
 import { parseSessionCookie } from '$lib/session.server';
 

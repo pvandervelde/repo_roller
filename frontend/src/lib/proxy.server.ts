@@ -10,7 +10,7 @@
  *
  * MUST NOT be imported from client-side code.
  */
-import { env } from '$env/dynamic/private';
+import { BACKEND_API_URL } from '$app/env/private';
 import type { Session } from '$lib/types/session';
 
 // Headers that must not be forwarded to the backend.
@@ -36,7 +36,7 @@ export async function proxyToBackend(
     );
   }
 
-  const backendUrl = env.BACKEND_API_URL?.replace(/\/$/, '');
+  const backendUrl = BACKEND_API_URL?.replace(/\/$/, '');
   if (!backendUrl) {
     return new Response(
       JSON.stringify({

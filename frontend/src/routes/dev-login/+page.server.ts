@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import type { PageServerLoad } from './$types';
 import type { Session } from '$lib/types/session';
 import { signSessionCookie } from '$lib/session.server';
