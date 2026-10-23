@@ -69,11 +69,11 @@ async fn test_create_org_repository_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -106,11 +106,11 @@ async fn test_create_user_repository_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -161,11 +161,11 @@ async fn test_get_repository_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -199,11 +199,11 @@ async fn test_update_repository_settings_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -281,11 +281,11 @@ async fn test_list_installations_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -318,11 +318,11 @@ async fn test_list_installations_empty() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -387,11 +387,11 @@ async fn test_get_installation_token_for_org_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -447,11 +447,11 @@ async fn test_get_installation_token_for_org_not_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -514,11 +514,11 @@ async fn test_get_installation_token_case_insensitive() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -565,11 +565,11 @@ async fn test_set_repository_custom_properties_success() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -613,11 +613,11 @@ async fn test_set_repository_custom_properties_api_error() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -647,11 +647,11 @@ async fn test_set_repository_custom_properties_empty() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -688,11 +688,11 @@ async fn test_set_repository_custom_properties_permission_denied() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -729,11 +729,11 @@ async fn test_set_repository_custom_properties_repo_not_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -787,11 +787,11 @@ async fn test_list_directory_contents_empty_directory() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -826,11 +826,11 @@ async fn test_list_directory_contents_path_not_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -873,11 +873,11 @@ async fn test_list_directory_contents_path_is_file() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -914,11 +914,11 @@ async fn test_list_directory_contents_auth_error() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -960,11 +960,11 @@ async fn test_list_directory_contents_rate_limit() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1012,11 +1012,11 @@ async fn test_list_organization_teams_returns_all_teams() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1069,11 +1069,11 @@ async fn test_list_organization_teams_paginates_multiple_pages() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1102,11 +1102,11 @@ async fn test_list_organization_teams_returns_empty_when_no_teams() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1131,11 +1131,11 @@ async fn test_list_organization_teams_returns_error_on_api_failure() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1169,11 +1169,11 @@ async fn test_get_team_members_returns_all_members() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1225,11 +1225,11 @@ async fn test_get_team_members_paginates_multiple_pages() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1260,11 +1260,11 @@ async fn test_get_team_members_returns_empty_when_no_members() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1291,11 +1291,11 @@ async fn test_get_team_members_returns_error_on_not_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1323,11 +1323,11 @@ async fn test_add_team_to_repository_succeeds() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1362,11 +1362,11 @@ async fn test_add_team_to_repository_returns_error_on_api_failure() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1397,11 +1397,11 @@ async fn test_set_team_repository_permission_succeeds() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1439,11 +1439,11 @@ async fn test_set_team_repository_permission_returns_error_on_not_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1481,11 +1481,11 @@ async fn test_get_team_repository_permission_returns_role_when_access_exists() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1524,11 +1524,11 @@ async fn test_get_team_repository_permission_returns_none_when_no_access() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1566,11 +1566,11 @@ async fn test_get_team_repository_permission_returns_none_on_empty_body() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1609,11 +1609,11 @@ async fn test_get_team_repository_permission_returns_error_on_api_failure() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1658,11 +1658,11 @@ async fn test_get_repository_team_permission_returns_role_when_team_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1697,11 +1697,11 @@ async fn test_get_repository_team_permission_normalises_pull_and_push() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1779,11 +1779,11 @@ async fn test_get_repository_team_permission_returns_none_when_team_not_found() 
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1813,11 +1813,11 @@ async fn test_get_repository_team_permission_returns_none_on_empty_list() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1846,11 +1846,11 @@ async fn test_get_repository_team_permission_returns_error_on_api_failure() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1884,11 +1884,11 @@ async fn test_get_collaborator_permission_returns_role_for_existing_collaborator
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1922,11 +1922,11 @@ async fn test_get_collaborator_permission_returns_not_found_for_non_collaborator
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -1967,11 +1967,11 @@ async fn test_list_repository_collaborators_returns_all_collaborators() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2012,11 +2012,11 @@ async fn test_list_repository_collaborators_paginates_multiple_pages() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2041,11 +2041,11 @@ async fn test_list_repository_collaborators_returns_empty_when_none() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2070,11 +2070,11 @@ async fn test_list_repository_collaborators_returns_error_on_api_failure() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2102,11 +2102,11 @@ async fn test_add_repository_collaborator_succeeds() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2141,11 +2141,11 @@ async fn test_add_repository_collaborator_returns_not_found_for_missing_repo() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2181,11 +2181,11 @@ async fn test_set_collaborator_permission_succeeds() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2220,11 +2220,11 @@ async fn test_remove_repository_collaborator_succeeds() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
@@ -2261,11 +2261,11 @@ async fn test_remove_repository_collaborator_returns_not_found() {
         .mount(&mock_server)
         .await;
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(create_test_pem().as_bytes()).unwrap();
     let octocrab = octocrab::Octocrab::builder()
         .base_uri(mock_server.uri())
         .unwrap()
-        .app(TEST_APP_ID.into(), key)
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
         .build()
         .unwrap();
     let client = GitHubClient { client: octocrab };
