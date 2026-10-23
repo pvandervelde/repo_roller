@@ -1,8 +1,11 @@
 overrides:
-  brace-expansion: '>=5.0.8'
+  brace-expansion: '>=5.0.12'
   cookie: '>=0.7.0 <3'
   js-yaml: '>=4.2.0'
+  nanoid: '>=3.3.18'
   postcss: '>=8.5.18'
+  postcss-selector-parser: '>=7.1.6'
+  source-map-js: '>=1.2.2'
   ws: '>=8.20.1'
 
 onlyBuiltDependencies:
