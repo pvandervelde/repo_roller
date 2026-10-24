@@ -155,6 +155,7 @@ pub struct MetadataRepository {
 /// }
 /// ```
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait MetadataRepositoryProvider: Send + Sync {
     /// Discover the metadata repository for an organization.
     ///

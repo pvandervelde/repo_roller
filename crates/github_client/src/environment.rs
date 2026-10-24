@@ -106,6 +106,7 @@ impl PlanLimitations {
 ///
 /// See: specs/interfaces/repository-visibility.md#githubenvironmentdetector
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait GitHubEnvironmentDetector: Send + Sync {
     /// Get plan limitations for an organization.
     ///

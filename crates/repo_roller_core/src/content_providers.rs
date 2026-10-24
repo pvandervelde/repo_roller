@@ -98,6 +98,7 @@ use tracing::{error, info};
 ///
 /// See specs/interfaces/content-providers.md for complete contract specification.
 #[async_trait::async_trait]
+#[allow(clippy::double_must_use)]
 pub trait ContentProvider: Send + Sync {
     /// Provide content for a new repository.
     ///

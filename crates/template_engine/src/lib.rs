@@ -194,6 +194,7 @@ mod multiple_missing_variables_tests;
 /// println!("Fetched {} files", files.len());
 /// ```
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait TemplateFetcher: Send + Sync {
     async fn fetch_template_files(&self, source: &str) -> Result<Vec<(String, Vec<u8>)>, String>;
 }

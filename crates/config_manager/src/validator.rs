@@ -241,6 +241,7 @@ pub struct ValidationWarning {
 /// }
 /// ```
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait ConfigurationValidator: Send + Sync {
     /// Validate global defaults configuration.
     ///

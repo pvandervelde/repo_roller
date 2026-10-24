@@ -2892,6 +2892,7 @@ pub struct RepositoryCreatePayload {
 /// }
 /// ```
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait RepositoryClient: Send + Sync {
     /// Creates a new repository within a specified organization.
     ///
