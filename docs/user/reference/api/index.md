@@ -68,7 +68,52 @@ Common error codes:
 
 ## Request tracing
 
-Every request is automatically assigned a unique request ID (UUID v4) that appears in server logs. When reporting an issue, include the timestamp of the request to help correlate the log entry.
+Every request is automatically assigned a unique request ID (UUID v4). The API returns it as
+an `X-Request-Id` response header on every response, and the same ID appears in every server
+log line produced while that request was handled. When reporting an issue, capture the
+`X-Request-Id` header value from the response (or the timestamp, if you don't have the
+header) to help correlate the request with the server-side log entries.
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+X-Request-Id: f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
+## Logging
+
+By default, the backend emits structured JSON logs to stdout (operators can switch to
+human-readable output for local development via the `LOG_FORMAT` environment variable — see
+[Environment variables](../environment-variables.md)). All log output — including free-text
+log messages — is automatically scanned and redacted before it is written, so tokens,
+passwords, and similarly-shaped secrets are never persisted in log storage even if they are
+accidentally included in a log call upstream.
+
+## Distributed tracing
+
+When an operator enables it (`OTEL_TRACES_ENABLED=true` — off by default), each call to
+`POST /api/v1/repositories` produces one OpenTelemetry trace exported over OTLP, with child
+spans for authentication, configuration resolution, template processing, GitHub repository
+creation, and every underlying GitHub API call.
+
+This API accepts a standard W3C `traceparent` request header (see the
+[Trace Context specification](https://www.w3.org/TR/trace-context/#traceparent-header)). If
+present and well-formed, the request's top-level `http_request` span is recorded as a *child*
+of the trace identified by that header, rather than starting a new, disconnected trace —
+this is how the bundled RepoRoller frontend's browser → SvelteKit-server → backend calls all
+appear as one continuous trace instead of three separate ones. The header is entirely
+optional: if it is absent, empty, or malformed, the request starts a fresh root trace exactly
+as before (fail-safe, not fail-closed) — no caller is required to send it, and no caller is
+ever rejected for omitting or mis-forming it. The API does not currently return a trace ID in
+the response body or headers — correlate a request with its trace using the `X-Request-Id`
+header above (present in server-side span/log output) and a time-range search in your tracing
+backend. See
+[Deploy with Docker Compose: Distributed Tracing](../../how-to/deploy/deploy-with-docker.md#distributed-tracing-jaeger)
+for how to view traces locally — including the full browser → SvelteKit-server → backend
+chain — and the
+[`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#distributed-tracing)
+for the full span hierarchy and the sanitization guarantee applied to business-context span
+attributes.
 
 ## Metrics
 

@@ -93,6 +93,7 @@ mod tests;
 /// }
 /// ```
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait TemplateRepository: Send + Sync {
     /// Load template configuration from a template repository.
     ///

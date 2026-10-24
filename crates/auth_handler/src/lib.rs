@@ -39,6 +39,7 @@ pub enum AuthError {
 ///
 /// Handles user identity verification and session management.
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait UserAuthenticationService: Send + Sync {
     /// Get installation token for an organization
     ///

@@ -271,7 +271,7 @@ impl PermissionManager {
     /// - [`PermissionManagerError::GitHubError`] — GitHub API error while listing
     ///   collaborators for `AccessLevel::None` checks (team and per-collaborator
     ///   failures are counted in the result, not returned as errors).
-    #[instrument(skip(self, request, hierarchy, teams, collaborators), fields(owner = %owner, repo = %repo))]
+    #[instrument(skip(self, request, hierarchy, teams, collaborators), fields(owner = %github_client::span_attributes::sanitize_span_attribute_value(owner), repo = %github_client::span_attributes::sanitize_span_attribute_value(repo)))]
     pub async fn apply_repository_permissions(
         &self,
         owner: &str,

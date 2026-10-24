@@ -623,7 +623,24 @@ impl MetadataRepositoryProvider for GitHubMetadataProvider {
                 }
             })?;
 
-        tracing::debug!("Successfully loaded template configuration: {:?}", config);
+        // SECURITY: never log the parsed `TemplateConfig` via `{:?}` -- it
+        // originates from untrusted, org-supplied template content (see
+        // `docs/spec/security/threat-model.md`) and may embed a raw secret
+        // (e.g. a GitHub token) in a variable's `default` value. Log only a
+        // bounded summary of variable *names*, never any value.
+        let variable_names: Vec<&str> = config
+            .variables
+            .as_ref()
+            .map(|vars| vars.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+
+        tracing::debug!(
+            org = %org,
+            template = %template_name,
+            variable_count = variable_names.len(),
+            variable_names = ?variable_names,
+            "Successfully loaded template configuration"
+        );
 
         Ok(config)
     }

@@ -32,3 +32,6 @@ serde_json.workspace = true # For constructing mock responses
 ctor = "=1.0.13"
 proptest.workspace = true
 rustls = { version = "=0.23.46", default-features = false, features = ["aws-lc-rs"] }
+# Span-hierarchy assertions (Observability Task #2): registry()/Layer/LookupSpan
+# for the in-process SpanRecorder test harness in span_hierarchy_tests.rs.
+tracing-subscriber.workspace = true
