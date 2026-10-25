@@ -516,19 +516,27 @@ Discovers template repositories by GitHub topic search.
   "templates": [
     {
       "name": "rust-library",
+      "displayName": "Rust Library",
       "description": "Rust library template with CI/CD",
-      "category": "rust"
+      "tags": ["rust"],
+      "variables": ["project_name", "author"]
     }
   ]
 }
 ```
+
+- `name` is the template's repository slug (identifier). `displayName` is the human-readable
+  name from the template's `.reporoller/template.toml` `name` field, falling back to `name`
+  (the slug) when the template author left it unset.
+- `tags` is the full list of tags declared by the template (previously only the first tag was
+  exposed, as a single `category` field — `category` no longer exists in the response).
 
 **Implementation**:
 
 - Calls `MetadataRepositoryProvider.list_templates()`
 - Searches GitHub for repos with "reporoller-template" topic
 - Loads `.reporoller/template.toml` for each template
-- Returns summary with name, description, category
+- Returns summary with name, display name, description, tags, and variable names
 
 #### `GET /api/v1/orgs/{org}/templates/{template}`
 
@@ -541,7 +549,9 @@ Loads complete template configuration.
 ```json
 {
   "name": "rust-library",
+  "displayName": "Rust Library",
   "description": "Rust library template",
+  "tags": ["rust"],
   "variables": {
     "project_name": {
       "description": "Project name",
@@ -557,6 +567,10 @@ Loads complete template configuration.
   }
 }
 ```
+
+Like the list endpoint above, `displayName` falls back to `name` (the slug) when the
+template's `template.toml` does not set `name`, and `tags` carries the template's full tag
+list (`category` no longer exists in the response).
 
 **Implementation**:
 
@@ -1445,7 +1459,8 @@ of exposed metric families:
    - Cursor-based pagination
 
 2. **Filtering & Search**:
-   - Filter templates by category
+   - Filter templates by tag (server-side; the frontend already does this client-side
+     against the `tags` field)
    - Search templates by keyword
    - Filter repository types
 

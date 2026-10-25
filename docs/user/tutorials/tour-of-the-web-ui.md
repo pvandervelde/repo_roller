@@ -85,15 +85,21 @@ The main screen. This is a three-step wizard.
 **What you see:**
 
 - A grid of template cards, each showing:
-  - Template name
-  - Short description
-  - Tags (e.g. `rust`, `microservice`)
-- A search field to filter by name or tag
+  - Template name (the human-readable display name configured by the template author; falls
+    back to the repository slug if the template doesn't set one)
+  - Description, clamped to two lines with a **Show more** link beneath it. Clicking **Show
+    more** expands the card to show the full description in place (the card's selection state
+    is unaffected); clicking again (**Show less**) collapses it back to two lines.
+  - All of the template's tags (e.g. `rust`, `microservice`) — up to four are shown
+- A search field to filter by name, display name, description, or tag (case-insensitive,
+  partial match)
 
 **What you do:**
 
-1. Browse or search for the template you want.
-2. Click a card to select it (the card highlights with a border).
+1. Browse or search for the template you want (searching for a tag such as `rust` narrows the
+   grid to templates that have that tag).
+2. Click a card to select it (the card highlights with a border). Clicking **Show more**/**Show
+   less** does not change which card is selected.
 3. Optionally, click the info icon on a card to see the full description, variable list, and what the template includes.
 4. Click **Next** when you have selected a template.
 
