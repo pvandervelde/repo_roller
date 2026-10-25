@@ -13,6 +13,7 @@ import {
   ApiServerError,
   ApiValidationError,
 } from './errors';
+import { getCurrentTraceparent } from '../observability/trace-context';
 import type {
   CreateRepositoryRequest,
   CreateRepositoryResponse,
@@ -57,7 +58,15 @@ interface RawTemplateDetailsResponse {
 
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, init);
+    // Merged as a plain object (not a `Headers` instance) so the shape stays
+    // introspectable by callers/tests that assert on the raw headers value
+    // passed to `fetch()`. All call sites in this file only ever pass plain
+    // Record<string, string> headers (or omit them), so this is safe.
+    const headers = {
+      ...(init?.headers as Record<string, string> | undefined),
+      traceparent: getCurrentTraceparent(),
+    };
+    return await fetch(url, { ...init, headers });
   } catch (err) {
     throw new ApiNetworkError(err);
   }

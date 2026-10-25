@@ -18,6 +18,10 @@ type: "reference"
 | `API_HOST` | No | `0.0.0.0` | Network interface to bind to |
 | `API_PORT` | No | `8080` | Port to listen on |
 | `RUST_LOG` | No | `info` | Log level filter: `error`, `warn`, `info`, `debug`, `trace`. Supports per-module filters (e.g. `repo_roller_core=debug,info`). |
+| `LOG_FORMAT` | No | `json` | Log output format. `json` (default) emits machine-readable structured JSON lines with sensitive fields (tokens, passwords, secrets, etc.) automatically redacted; set to `pretty` for human-readable output during local development. |
+| `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off: only the case-insensitive literal values `true` or `1` enable export; any other value (unset, empty, `false`, `0`, garbage) leaves tracing disabled with no background exporter and no network I/O. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint spans are exported to when tracing is enabled. Use an `https://` URL to export over TLS (supported via the `tls-aws-lc` exporter feature). Ignored when `OTEL_TRACES_ENABLED` is not `true`/`1`. |
+| `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to every exported span's resource attributes. Set a distinct value per environment (e.g. `repo-roller-api-staging`) when multiple deployments share one tracing backend. |
 
 ### Secret resolver variables
 
@@ -42,6 +46,15 @@ REPOROLLER_WEBHOOK_SECRET=your-actual-secret-value
 | `SESSION_SECRET` | Yes | — | HMAC-SHA256 key for signing session cookies. Minimum 32 characters. |
 | `BACKEND_API_URL` | Yes | — | Base URL of the backend container, e.g. `http://backend:8080`. Must be reachable from the frontend container. Not exposed to browsers. |
 | `NODE_ENV` | No | `production` | Set to `production` for container deployments |
+
+### Observability variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP from the SvelteKit **server** process (Node-side spans: page-load/form-submission handling, the outbound proxy call to the backend). Fail-safe-off — same matching rule as the backend variable of the same name: only the case-insensitive literal values `true` or `1` enable export. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint the SvelteKit **server** process exports spans to. Ignored when `OTEL_TRACES_ENABLED` is not `true`/`1`. Not reachable from browsers — use a Docker-internal address (e.g. `http://jaeger:4317`) when the collector runs as a sibling container. |
+| `OTEL_SERVICE_NAME` | No | `repo-roller-frontend` | Service name attached to every span exported by the SvelteKit server process. |
+| `PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT` | No | *(unset)* | OTLP/**HTTP** collector endpoint the **browser** exports spans to directly (e.g. `http://localhost:4318/v1/traces`). Must be a publicly-routable URL reachable from the end user's browser, not the Docker-internal address used by `OTEL_EXPORTER_OTLP_ENDPOINT` above — gRPC is not usable from a browser, so this must point at an OTLP/HTTP receiver. Must be `PUBLIC_`-prefixed for SvelteKit to expose it to client bundles. Fail-safe-off: when unset or empty, the browser never attempts network export (spans go to the console only). There is no separate browser-side "enabled" flag — setting this variable is itself what turns browser export on. |
 
 ### Branding variables
 

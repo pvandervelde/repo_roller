@@ -9,18 +9,6 @@
 [advisories]
 # advisory IDs to ignore e.g. ["RUSTSEC-2019-0001", ...]
 ignore = [
-    # Crate:     rsa
-    # Version:   0.9.8
-    # Title:     Marvin Attack: potential key recovery through timing sidechannels
-    # Date:      2023-11-22
-    # ID:        RUSTSEC-2023-0071
-    # URL:       https://rustsec.org/advisories/RUSTSEC-2023-0071
-    # Severity:  5.9 (medium)
-    # Solution:  No fixed upgrade is available!
-    #
-    # Ignoring because the crate is only used in tests to generate a keypair for the mock server.
-    "RUSTSEC-2023-0071",
-
     # Crate:     tokio-tar
     # Version:   0.3.1
     # Title:     `tokio-tar` parses PAX extended headers incorrectly, allows file smuggling

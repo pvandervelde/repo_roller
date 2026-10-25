@@ -9,6 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { parse } from 'smol-toml';
 import { DEFAULT_BRAND_CONFIG, type BrandConfig } from './types/brand';
+import { logger } from './logger.server';
 
 /** Shape of fields accepted in brand.toml. */
 interface TomlBrandConfig {
@@ -63,7 +64,7 @@ export async function loadBrandConfig(): Promise<BrandConfig> {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
       // Parse errors or unexpected I/O errors — log and continue with whatever we have
-      console.warn('[brand] Failed to read brand.toml:', err);
+      logger.warn('Failed to read brand.toml', { err });
     }
   }
 

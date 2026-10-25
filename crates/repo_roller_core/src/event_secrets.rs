@@ -42,6 +42,7 @@ pub enum SecretResolutionError {
 ///
 /// See docs/spec/interfaces/event-secrets.md#secretresolver-trait
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait SecretResolver: Send + Sync {
     /// Resolves a secret reference to its actual value.
     ///

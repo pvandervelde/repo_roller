@@ -20,6 +20,7 @@
     createRepository,
   } from '$lib/api/client';
   import { ApiConflictError, ApiAuthError, ApiNetworkError } from '$lib/api/errors';
+  import { withSpan, SPAN_NAMES } from '$lib/observability/spans';
   import type { GetTemplateDetailsResponse, TemplateSummary } from '$lib/api/types';
   import type { NameValidationResult } from '$lib/components/RepositoryNameField.svelte';
   import type { RepositoryTypeOption } from '$lib/components/RepositoryTypePicker.svelte';
@@ -183,7 +184,7 @@
     templatesLoading = true;
     templatesError = null;
     try {
-      templates = await listTemplates(data.organization);
+      templates = await withSpan(SPAN_NAMES.LOAD_TEMPLATES, () => listTemplates(data.organization));
     } catch {
       templatesError = 'Could not load templates.';
     } finally {
@@ -264,15 +265,17 @@
     createError = null;
     creatingRepo = true;
     try {
-      const result = await createRepository({
-        organization: data.organization,
-        name: repoName,
-        template: selectedTemplateName!,
-        visibility,
-        team: selectedTeamName ?? undefined,
-        repository_type: selectedTypeName ?? undefined,
-        variables: Object.keys(variables).length > 0 ? variables : undefined,
-      });
+      const result = await withSpan(SPAN_NAMES.CREATE_REPOSITORY_SUBMIT, () =>
+        createRepository({
+          organization: data.organization,
+          name: repoName,
+          template: selectedTemplateName!,
+          visibility,
+          team: selectedTeamName ?? undefined,
+          repository_type: selectedTypeName ?? undefined,
+          variables: Object.keys(variables).length > 0 ? variables : undefined,
+        }),
+      );
       // Success: navigate away (guard already suppressed while creatingRepo=true)
       await goto(`/create/success?repo=${encodeURIComponent(result.repository.fullName)}`);
     } catch (err) {

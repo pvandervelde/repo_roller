@@ -253,6 +253,7 @@ pub enum VisibilityError {
 ///
 /// See: specs/interfaces/repository-visibility.md#visibilitypolicyprovider
 #[async_trait]
+#[allow(clippy::double_must_use)]
 pub trait VisibilityPolicyProvider: Send + Sync {
     /// Get the visibility policy for an organization.
     ///

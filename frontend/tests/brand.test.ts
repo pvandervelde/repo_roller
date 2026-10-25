@@ -192,4 +192,39 @@ describe('loadBrandConfig()', () => {
     const config = await loadBrandConfig();
     expect(config.appName).toBe(DEFAULT_BRAND_CONFIG.appName);
   });
+
+  // ---------------------------------------------------------------------
+  // Observability: brand.toml read failures must go through the structured
+  // logger, not a raw console.warn (see src/lib/logger.server.ts contract).
+  // Two distinct non-ENOENT failure modes are exercised so a fix that only
+  // special-cases one error shape (e.g. parse errors) is still caught.
+  // ---------------------------------------------------------------------
+
+  it('does not call console.warn when brand.toml contains a parse error', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockReadFile.mockImplementation(() => Promise.resolve('this is not valid toml ='));
+
+    await loadBrandConfig();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not call console.warn when brand.toml read fails with a non-ENOENT I/O error', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockReadFile.mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+
+    await loadBrandConfig();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('still falls through to defaults (does not throw) when the logger replaces console.warn', async () => {
+    mockReadFile.mockImplementation(() => Promise.resolve('this is not valid toml ='));
+
+    // The behavioural guarantee (never throw, always fall back) must survive
+    // the swap from console.warn to the structured logger.
+    await expect(loadBrandConfig()).resolves.toMatchObject({
+      appName: DEFAULT_BRAND_CONFIG.appName,
+    });
+  });
 });

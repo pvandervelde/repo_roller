@@ -178,7 +178,12 @@ test.describe('Creation wizard — Step 2: Repository settings (SCR-004)', () =>
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ types: ['service', 'library'] }),
+        body: JSON.stringify({
+          types: [
+            { name: 'service', description: 'Backend service or REST API' },
+            { name: 'library', description: 'Reusable shared library' },
+          ],
+        }),
       });
     });
 
@@ -209,7 +214,9 @@ test.describe('Creation wizard — Step 2: Repository settings (SCR-004)', () =>
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ types: ['service'] }),
+        body: JSON.stringify({
+          types: [{ name: 'service', description: 'Backend service or REST API' }],
+        }),
       });
     });
 

@@ -12,6 +12,7 @@
  */
 import { BACKEND_API_URL } from '$app/env/private';
 import type { Session } from '$lib/types/session';
+import { getCurrentTraceparent } from './observability/trace-context';
 
 // Headers that must not be forwarded to the backend.
 const HOP_BY_HOP = ['host', 'cookie', 'authorization', 'connection', 'transfer-encoding'];
@@ -53,6 +54,12 @@ export async function proxyToBackend(
     }
   }
   forwardHeaders.set('Authorization', `Bearer ${session.backendToken}`);
+  // Override (not forward) any inbound traceparent: this represents the
+  // SvelteKit-server's OWN span in the browser -> SvelteKit -> Rust chain,
+  // as a child of whatever trace context was received, rather than silently
+  // relaying the browser's original span id straight through with no
+  // SvelteKit-server hop visible in the trace.
+  forwardHeaders.set('traceparent', getCurrentTraceparent());
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const body = hasBody ? await request.arrayBuffer() : undefined;
