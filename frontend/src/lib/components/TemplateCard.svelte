@@ -16,6 +16,7 @@
 
   interface Props {
     name: string;
+    displayName: string;
     description: string;
     tags?: string[];
     repositoryTypeBadge?: RepositoryTypeBadge;
@@ -27,6 +28,7 @@
 
   let {
     name,
+    displayName,
     description,
     tags = [],
     repositoryTypeBadge = null,
@@ -37,6 +39,13 @@
   }: Props = $props();
 
   const visibleTags = $derived(tags.slice(0, 4));
+
+  let descriptionExpanded = $state(false);
+
+  function toggleDescription(event: MouseEvent) {
+    event.stopPropagation();
+    descriptionExpanded = !descriptionExpanded;
+  }
 </script>
 
 {#if loading}
@@ -65,8 +74,21 @@
     {#if selected}
       <span class="template-card__checkmark" aria-hidden="true">✓</span>
     {/if}
-    <h3 class="template-card__name">{name}</h3>
-    <p class="template-card__description">{description}</p>
+    <h3 class="template-card__name">{displayName}</h3>
+    <p
+      class="template-card__description"
+      class:template-card__description--expanded={descriptionExpanded}
+    >
+      {description}
+    </p>
+    <button
+      type="button"
+      class="template-card__description-toggle"
+      aria-expanded={descriptionExpanded}
+      onclick={toggleDescription}
+    >
+      {descriptionExpanded ? 'Show less' : 'Show more'}
+    </button>
     {#if visibleTags.length > 0}
       <ul class="template-card__tags" aria-label="Tags">
         {#each visibleTags as tag (tag)}
@@ -145,6 +167,30 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  .template-card__description--expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    overflow: visible;
+  }
+
+  .template-card__description-toggle {
+    display: inline-block;
+    padding: 0;
+    margin: 0 0 0.5rem;
+    border: none;
+    background: none;
+    color: var(--brand-primary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .template-card__description-toggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   .template-card__tags {
