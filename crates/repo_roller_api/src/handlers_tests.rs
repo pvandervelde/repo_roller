@@ -56,8 +56,44 @@ async fn test_health_check_timestamp_format() {
 }
 
 // ============================================================================
-// Repository Management Handler Tests
+// is_valid_repository_name unit tests (mutation audit kill tests)
+//
+// QA audit (post-#286 mutation campaign, cargo-mutants scoped to
+// handlers.rs): the `||` -> `&&` mutants below survived because no existing
+// test exercised a name that starts with a dot but has no consecutive dots,
+// nor a name whose only "special" character is an underscore. Both gaps are
+// in `is_valid_repository_name`, independent of the #286 displayName/tags
+// changes but surfaced by the same file-scoped mutation run.
 // ============================================================================
+
+/// `name.is_empty() || name.starts_with('.') || name.contains("..")`: both
+/// `||` operators in this guard, if flipped to `&&` by a mutation, are
+/// defeated by any name that starts with a dot but does not contain `..`
+/// (operator precedence pairs the mutated `&&` with one of its neighbours,
+/// so the guard as a whole evaluates to `false` and the name falls through
+/// to the character whitelist, where `.` is itself a permitted character).
+/// This single case kills both `||`->`&&` mutants on this line.
+#[test]
+fn test_is_valid_repository_name_rejects_leading_dot_without_double_dot() {
+    assert!(
+        !is_valid_repository_name(".hidden-repo"),
+        "a name starting with '.' must be rejected even when it contains no '..'"
+    );
+}
+
+/// The character whitelist closure ORs together five independent character
+/// classes. A `||` -> `&&` mutation on the last operator (between the `_`
+/// and `.` checks) is only observable with a name whose *sole* non-alnum,
+/// non-hyphen character is an underscore — paired with `&&`, `c == '_' &&
+/// c == '.'` can never be true for any single `char`, silently dropping
+/// underscore support.
+#[test]
+fn test_is_valid_repository_name_accepts_underscore_only_special_char() {
+    assert!(
+        is_valid_repository_name("repo_name"),
+        "a name containing only lowercase letters and an underscore must be valid"
+    );
+}
 
 /// Test validate_repository_name endpoint with valid name.
 ///
@@ -245,6 +281,99 @@ async fn test_validate_repository_request_valid() {
     if let Some(errors) = response_json.get("errors") {
         assert!(errors.as_array().unwrap().is_empty());
     }
+}
+
+/// Mutation-kill (QA audit, #286 scoped mutation run):
+/// `if visibility != "public" && visibility != "private"` had a surviving
+/// `!=` -> `==` mutant on the *first* comparison. The only existing coverage
+/// used `visibility: "private"`, which happens to produce the same
+/// (no-error) outcome whether or not that specific operator is mutated,
+/// because the second comparison (`visibility != "private"`) short-circuits
+/// the mutated clause to `false` either way. `"public"` is the only value
+/// that distinguishes the two: the mutated condition evaluates to
+/// `true && true`, incorrectly flagging a valid "public" visibility as an
+/// error.
+#[tokio::test]
+async fn test_validate_repository_request_public_visibility_is_valid() {
+    let app = create_router_without_auth(test_app_state());
+
+    let request_body = json!({
+        "organization": "testorg",
+        "name": "test-repo",
+        "template": "rust-library",
+        "visibility": "public"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        response_json["valid"], true,
+        "'public' is a legal visibility value and must not produce a validation error; got: {response_json}"
+    );
+    if let Some(errors) = response_json.get("errors") {
+        assert!(
+            errors.as_array().unwrap().is_empty(),
+            "expected no errors for visibility='public'; got: {response_json}"
+        );
+    }
+}
+
+/// Companion to the test above: an out-of-range visibility value must still
+/// be rejected with a field-level error, proving the branch is reachable at
+/// all (not just vacuously true/false for the two legal values).
+#[tokio::test]
+async fn test_validate_repository_request_invalid_visibility_value_returns_error() {
+    let app = create_router_without_auth(test_app_state());
+
+    let request_body = json!({
+        "organization": "testorg",
+        "name": "test-repo",
+        "template": "rust-library",
+        "visibility": "internal"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(response_json["valid"], false);
+    let errors = response_json["errors"]
+        .as_array()
+        .expect("errors must be a JSON array when invalid");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "visibility"),
+        "expected a 'visibility' field error for an out-of-range value; got: {response_json}"
+    );
 }
 
 /// Test validate_repository_request endpoint with missing template variables
