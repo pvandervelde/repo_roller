@@ -675,8 +675,10 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up Docker resources..."
-          docker ps -a | grep repo_roller_api_test | awk '{print $1}' | xargs -r docker rm -f
-          docker images | grep repo_roller_api | grep test | awk '{print $3}' | xargs -r docker rmi -f
+          # Best-effort tidy-up — must never fail the job, since the real
+          # test outcome was already recorded by the preceding steps.
+          docker ps -a --filter "name=repo_roller_api_test" -q | xargs -r docker rm -f || true
+          docker images --filter "reference=*repo_roller_api*test*" -q | xargs -r docker rmi -f || true
           echo "✓ Docker cleanup complete"
 
       - name: Upload test logs
