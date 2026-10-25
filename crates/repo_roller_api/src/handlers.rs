@@ -648,10 +648,17 @@ pub async fn list_templates(
                     .cloned()
                     .collect();
 
+                let display_name = if config.template.name.is_empty() {
+                    template_name.clone()
+                } else {
+                    config.template.name.clone()
+                };
+
                 templates.push(TemplateSummary {
                     name: template_name.clone(),
+                    display_name,
                     description: config.template.description.clone(),
-                    category: config.template.tags.first().cloned(),
+                    tags: config.template.tags.clone(),
                     variables: variable_names,
                 });
             }
@@ -733,10 +740,17 @@ pub async fn get_template_details(
         "branch_protection": config.branch_protection,
     });
 
+    let display_name = if config.template.name.is_empty() {
+        params.template.clone()
+    } else {
+        config.template.name.clone()
+    };
+
     let response = TemplateDetailsResponse {
         name: params.template.clone(),
+        display_name,
         description: config.template.description.clone(),
-        category: config.template.tags.first().cloned(),
+        tags: config.template.tags.clone(),
         variables,
         configuration,
     };
