@@ -500,6 +500,44 @@ Add to this whenever a reusable component becomes "the standard way".
   Notes: Only the case-insensitive literals `"true"`/`"1"` enable export; every other value
   (including unset) resolves to disabled.
 
+### Template Listing API Contract (Frontend Usability, #286)
+
+- **`resolve_template_display_name`** — fn — `repo_roller_api::handlers` —
+  Resolves a template's human-readable `display_name`, falling back to the
+  template slug when the configured `template.name` is empty. Shared by
+  `list_templates` and `get_template_details` (extracted during this task's
+  REFACTOR pass — both handlers previously duplicated the identical
+  `if config.template.name.is_empty() { slug } else { config.template.name }`
+  block inline). Use when adding a third endpoint that surfaces a template's
+  display name — call this rather than re-inlining the empty-check.
+  Tags: templates, api, naming
+
+- **`TemplateSummary`/`TemplateDetailsResponse` display_name/tags fields** —
+  struct fields — `repo_roller_api::models::response` — Both response types
+  now carry `name` (slug), `display_name` (human-readable, falls back to slug
+  server-side via `resolve_template_display_name` above), and `tags: Vec<String>`
+  (replacing the old single `category: Option<String>` field, which was always
+  just `tags.first()`). Frontend's `frontend/src/lib/api/types.ts` `Template`/
+  `TemplateDetails` interfaces and `frontend/src/lib/api/client.ts`'s
+  `getTemplateDetails` mirror this shape 1:1, including the same slug-fallback
+  rule for `displayName` as a defensive client-side re-check (not shared code —
+  same concept implemented independently per language, same pattern as
+  `HeaderMapExtractor`/`headersTextMapGetter` under Distributed Tracing above).
+  Use when consuming or extending the templates-list/template-details API —
+  don't resurrect `category`.
+  Tags: templates, api, contract
+
+- **Deferred (cross-scope, not touched by this task)**: `repo_roller_cli`'s
+  `template_cmd.rs` (~line 291) and `org_settings_cmd.rs` (~lines 298, 350)
+  each independently implement the same shape of "fall back to a default when
+  a configured string is empty" (`metadata_repository_name` falling back to
+  `DEFAULT_METADATA_REPOSITORY_NAME`), 3 occurrences total, structurally
+  identical to the `display_name` pattern above but a different concept and a
+  different crate. Not extracted here — doing so would require a shared
+  helper living in a crate both `repo_roller_cli` and `repo_roller_api` depend
+  on (e.g. `repo_roller_core`), which is an architecture decision out of this
+  task's scope. Filed as tech debt — labels `tech-debt,refactor`.
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout
