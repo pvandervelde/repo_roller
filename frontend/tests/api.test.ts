@@ -57,13 +57,16 @@ describe('listTemplates()', () => {
     templates: [
       {
         name: 'rust-library',
+        displayName: 'Rust Library',
         description: 'Rust library template',
-        category: 'library',
+        tags: ['library'],
         variables: [],
       },
       {
         name: 'python-service',
+        displayName: 'python-service',
         description: 'Python service template',
+        tags: [],
         variables: [],
       },
     ],
@@ -109,8 +112,9 @@ describe('listTemplates()', () => {
 describe('getTemplateDetails()', () => {
   const DETAILS_RESPONSE = {
     name: 'rust-library',
+    displayName: 'Rust Library',
     description: 'Rust library with CI/CD',
-    category: 'library',
+    tags: ['library'],
     repository_type: { policy: 'fixed', type_name: 'library' },
     // Backend returns variables as a Record; the client normalizes to an array.
     variables: {

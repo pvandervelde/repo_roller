@@ -71,9 +71,11 @@ export interface RepositoryTypePolicy {
 /** A single template entry returned by GET /api/v1/orgs/:org/templates */
 export interface TemplateSummary {
   name: string;
+  /** Human-readable display name (falls back to the slug `name` when unset) */
+  displayName: string;
   description: string;
-  /** Primary category tag for the template (first tag from backend config) */
-  category?: string;
+  /** All tags for the template (used for display and search filtering) */
+  tags: string[];
   /** Names of template variables (used to show variable-count badge) */
   variables: string[];
 }
@@ -124,8 +126,11 @@ export interface TemplateVariable {
 /** 200 response for GET /api/v1/orgs/:org/templates/:name (normalized by client) */
 export interface GetTemplateDetailsResponse {
   name: string;
+  /** Human-readable display name (falls back to the slug `name` when unset) */
+  displayName: string;
   description: string;
-  category?: string;
+  /** All tags for the template */
+  tags: string[];
   /**
    * Repository type guidance from the template configuration.
    * Not guaranteed to be present — the backend may omit it for templates

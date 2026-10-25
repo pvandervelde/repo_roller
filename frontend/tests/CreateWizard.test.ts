@@ -44,8 +44,20 @@ const brandConfig: BrandConfig = {
 };
 
 const mockTemplates: TemplateSummary[] = [
-  { name: 'rust-library', description: 'A Rust library template', variables: [] },
-  { name: 'python-service', description: 'A Python service template', variables: [] },
+  {
+    name: 'rust-library',
+    displayName: 'Rust Library',
+    description: 'A Rust library template',
+    tags: [],
+    variables: [],
+  },
+  {
+    name: 'python-service',
+    displayName: 'Python Service',
+    description: 'A Python service template',
+    tags: [],
+    variables: [],
+  },
 ];
 
 function makeProps() {
@@ -64,7 +76,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue([]);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
+      displayName: 'Rust Library',
       description: 'A Rust library template',
+      tags: [],
       variables: [],
     });
     vi.mocked(listRepositoryTypes).mockResolvedValue([]);
@@ -160,7 +174,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
+      displayName: 'Rust Library',
       description: 'A Rust library template',
+      tags: [],
       variables: [], // no variables
     });
     render(CreatePage, { props: makeProps() });
@@ -177,7 +193,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'A Python service template',
+      tags: [],
       variables: [{ name: 'service_name', required: true }],
     });
     render(CreatePage, { props: makeProps() });
@@ -220,7 +238,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'A Python service template',
+      tags: [],
       variables: [{ name: 'service_name', required: true }],
     });
     render(CreatePage, { props: makeProps() });
@@ -244,7 +264,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'Python service',
+      tags: [],
       variables: [
         { name: 'service_name', required: true },
         { name: 'owner_team', required: false, default: 'platform' },
@@ -279,7 +301,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'Python service',
+      tags: [],
       variables: [
         { name: 'service_name', required: true },
         { name: 'owner_team', required: false, default: 'platform' },
@@ -309,7 +333,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'Python service',
+      tags: [],
       variables: [{ name: 'service_name', required: true }],
     });
     render(CreatePage, { props: makeProps() });
@@ -337,7 +363,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'Python service',
+      tags: [],
       variables: [{ name: 'service_name', required: true }],
     });
     render(CreatePage, { props: makeProps() });
@@ -370,7 +398,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
+      displayName: 'Python Service',
       description: 'Python service',
+      tags: [],
       variables: [{ name: 'service_name', required: true }],
     });
     render(CreatePage, { props: makeProps() });
@@ -403,7 +433,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
+      displayName: 'Rust Library',
       description: 'A Rust library template',
+      tags: [],
       variables: [],
     });
     render(CreatePage, { props: makeProps() });
@@ -425,7 +457,9 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
+      displayName: 'Rust Library',
       description: 'Template',
+      tags: [],
       variables: [],
     });
     const { createRepository } = await import('../src/lib/api/client');

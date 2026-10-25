@@ -53,7 +53,13 @@ const brandConfig: BrandConfig = {
 };
 
 const mockTemplates: TemplateSummary[] = [
-  { name: 'rust-library', description: 'A Rust library template', variables: [] },
+  {
+    name: 'rust-library',
+    displayName: 'Rust Library',
+    description: 'A Rust library template',
+    tags: [],
+    variables: [],
+  },
 ];
 
 function makeProps() {
@@ -72,7 +78,9 @@ beforeEach(() => {
   vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
   vi.mocked(getTemplateDetails).mockResolvedValue({
     name: 'rust-library',
+    displayName: 'Rust Library',
     description: 'A Rust library template',
+    tags: [],
     variables: [],
   });
   vi.mocked(listRepositoryTypes).mockResolvedValue([]);
