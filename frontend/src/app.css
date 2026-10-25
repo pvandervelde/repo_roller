@@ -3,6 +3,10 @@
 :root {
   /* Brand accent colour — overridden by server-injected <style> block from brand config */
   --brand-primary: #0969da;
+  /* Text colour for content rendered directly on --brand-primary (e.g. avatar
+     initials). Brand primary is not re-themed between light/dark mode, so
+     this stays constant rather than being redefined in the dark-mode blocks. */
+  --color-on-brand: #ffffff;
 
   /* Surface colours — light mode */
   --color-bg: #ffffff;
