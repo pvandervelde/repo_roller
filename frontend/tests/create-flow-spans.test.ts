@@ -113,7 +113,15 @@ describe('/create wizard — template loading is wrapped in a span', () => {
 });
 
 describe('/create wizard — repository creation submission is wrapped in a span', () => {
-  async function advanceToStep2AndFillName() {
+  // CODER NOTE: this helper previously stopped on Settings, where
+  // "Create Repository" used to live directly (pre-Review, no-variables
+  // flow). The create-wizard sidebar/review follow-up task moves that
+  // action to a new, final Review step exclusively, so the helper now
+  // advances one step further and lands on Review before returning. The
+  // span-wrapping behaviour under test (withSpan around the actual
+  // createRepository call) is otherwise unaffected by *where* the button
+  // lives.
+  async function advanceToReviewAndFillName() {
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
@@ -131,12 +139,16 @@ describe('/create wizard — repository creation submission is wrapped in a span
     await fireEvent.input(input, { target: { value: 'my-new-service' } });
     await fireEvent.blur(input);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /create repository/i })).not.toBeDisabled(),
+      expect(screen.getByRole('button', { name: /next: review/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
     );
   }
 
   it('calls withSpan with SPAN_NAMES.CREATE_REPOSITORY_SUBMIT when "Create Repository" is clicked', async () => {
-    await advanceToStep2AndFillName();
+    await advanceToReviewAndFillName();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
@@ -149,7 +161,7 @@ describe('/create wizard — repository creation submission is wrapped in a span
   });
 
   it('does not use the LOAD_TEMPLATES span name for the submit operation (stub-killing)', async () => {
-    await advanceToStep2AndFillName();
+    await advanceToReviewAndFillName();
     vi.mocked(withSpan).mockClear();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));

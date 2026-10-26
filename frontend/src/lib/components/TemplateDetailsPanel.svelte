@@ -36,10 +36,7 @@
     <p class="template-details-panel__description">{templateDetails.description}</p>
 
     {#if templateDetails.repository_type}
-      <span
-        class="template-card__type-badge"
-        data-policy={templateDetails.repository_type.policy}
-      >
+      <span class="template-card__type-badge" data-policy={templateDetails.repository_type.policy}>
         {templateDetails.repository_type.type_name}
       </span>
     {/if}

@@ -210,7 +210,11 @@
 
   .app-shell__main {
     padding: 2rem 1.5rem;
-    max-width: 72rem;
+    /* Widened from 72rem so the create-wizard's Step-1 two-column
+       template/sidebar layout (.wizard--step1, up to 80rem) has room to
+       breathe within the page shell. Chosen near the middle of the
+       90-100rem range specified for this change. */
+    max-width: 96rem;
     margin: 0 auto;
     width: 100%;
   }
