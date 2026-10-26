@@ -160,6 +160,28 @@ describe('RepositorySummary (CMP-009)', () => {
       expect(screen.getByText('platform')).toBeInTheDocument();
     });
 
+    // -------------------------------------------------------------------------
+    // AUDIT: the test above only proves each string appears *somewhere* in
+    // the DOM — it would still pass if the component swapped which span
+    // (`.repo-summary__variable-name` vs `.repo-summary__variable-value`)
+    // each field was rendered into. This test queries the specific slots so
+    // a name/value swap mutant is structurally visible, not just textually.
+    // -------------------------------------------------------------------------
+    it('renders the variable name specifically in the name slot and the value specifically in the value slot (kills a name/value-swap mutant)', () => {
+      const { container } = render(RepositorySummary, {
+        props: {
+          ...baseProps,
+          variables: [{ name: 'service_name', value: 'my-service' }],
+        },
+      });
+      const nameEl = container.querySelector('.repo-summary__variable-name');
+      const valueEl = container.querySelector('.repo-summary__variable-value');
+      expect(nameEl).toHaveTextContent('service_name');
+      expect(valueEl).toHaveTextContent('my-service');
+      expect(nameEl).not.toHaveTextContent('my-service');
+      expect(valueEl).not.toHaveTextContent('service_name');
+    });
+
     it('does not render a configured-variables list when the prop is omitted', () => {
       render(RepositorySummary, { props: baseProps });
       expect(screen.queryByRole('list', { name: 'Configured variables' })).toBeNull();

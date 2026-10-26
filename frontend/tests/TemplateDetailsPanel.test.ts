@@ -117,6 +117,30 @@ describe('TemplateDetailsPanel (new component)', () => {
     expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
   });
 
+  // ---------------------------------------------------------------------------
+  // AUDIT: branch-priority — loading vs. error, both truthy at once.
+  //
+  // Every other state-priority pair in this file is exercised with both
+  // conditions simultaneously truthy (loading+content above; error+content
+  // here), which is what actually proves the `{#if}/{:else if}` ordering
+  // rather than just the individual branches. The loading/error pair was
+  // the one combination never exercised that way — a mutant that swapped
+  // the `{#if loading}` and `{:else if error}` branches (checking error
+  // first) would still pass every existing test, since no existing test
+  // sets both `loading` and `error` truthy at the same time.
+  // ---------------------------------------------------------------------------
+  it('prioritises the loading state over the error state when both are truthy (kills a loading/error branch-swap mutant)', () => {
+    render(TemplateDetailsPanel, {
+      props: {
+        templateDetails: null,
+        loading: true,
+        error: 'Could not load template details.',
+      },
+    });
+    expect(screen.getByText('Loading template details...')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   // -------------------------------------------------------------------------
   // Content state — heading / description
   // -------------------------------------------------------------------------

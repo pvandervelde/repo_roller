@@ -657,6 +657,73 @@ describe('Create wizard (SCR-004)', () => {
     expect(screen.getByText('owner_team')).toBeInTheDocument();
   });
 
+  // ---------------------------------------------------------------------------
+  // AUDIT: kills a mutant that swaps `name`/`value` in +page.svelte's
+  // `reviewVariables` derived (`{ name: v.name, value: variableValues[v.name]
+  // ?? v.default ?? '' }` -> `{ name: variableValues[...], value: v.name }`).
+  // The test above only proves each string is present *somewhere* in the
+  // DOM — it would still pass even if every name/value pair were swapped,
+  // since both strings would still appear, just under the opposite class.
+  // This test instead queries the specific name/value slots that
+  // RepositorySummary renders them into, so a swap is structurally visible.
+  // ---------------------------------------------------------------------------
+  it('maps each variable to its OWN name/value slot on Review, not a swapped one (kills a name/value-swap mutant)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      displayName: 'Python Service',
+      description: 'Python service',
+      tags: [],
+      variables: [
+        { name: 'service_name', required: true },
+        { name: 'owner_team', required: false, default: 'platform' },
+      ],
+    });
+    const { container } = render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    const input = screen.getByRole('textbox', { name: /service name/i });
+    await fireEvent.input(input, { target: { value: 'checkout-api' } });
+
+    const nextReview = screen.getByRole('button', { name: /next: review/i });
+    await waitFor(() => expect(nextReview).not.toBeDisabled());
+    await fireEvent.click(nextReview);
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
+
+    const items = container.querySelectorAll('.repo-summary__variable');
+    expect(items.length).toBe(2);
+
+    const byName = (n: string) =>
+      Array.from(items).find(
+        (li) => li.querySelector('.repo-summary__variable-name')?.textContent?.trim() === n,
+      );
+
+    const serviceNameItem = byName('service_name');
+    const ownerTeamItem = byName('owner_team');
+    expect(serviceNameItem).toBeTruthy();
+    expect(ownerTeamItem).toBeTruthy();
+    expect(serviceNameItem?.querySelector('.repo-summary__variable-value')).toHaveTextContent(
+      'checkout-api',
+    );
+    expect(ownerTeamItem?.querySelector('.repo-summary__variable-value')).toHaveTextContent(
+      'platform',
+    );
+  });
+
   it('moves focus to the Review step heading when advancing (UX-ASSERT-024, generalized)', async () => {
     await advanceToReviewNoVars();
     await waitFor(() => {
