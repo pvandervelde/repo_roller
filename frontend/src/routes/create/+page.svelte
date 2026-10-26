@@ -396,6 +396,19 @@
             ontemplateDeselect={handleTemplateDeselect}
             onretry={loadTemplates}
           />
+
+          <div class="wizard__actions wizard__actions--step1">
+            <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
+              <button
+                type="button"
+                class="wizard__btn-next"
+                disabled={!step1NextEnabled}
+                onclick={advanceStep}
+              >
+                Next: Repository settings →
+              </button>
+            </span>
+          </div>
         </div>
         <div class="wizard__step1-sidebar">
           <TemplateDetailsPanel
@@ -404,19 +417,6 @@
             error={templateDetailsError}
           />
         </div>
-      </div>
-
-      <div class="wizard__actions wizard__actions--step1">
-        <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
-          <button
-            type="button"
-            class="wizard__btn-next"
-            disabled={!step1NextEnabled}
-            onclick={advanceStep}
-          >
-            Next: Repository settings →
-          </button>
-        </span>
       </div>
     {:else if currentStep === 2}
       <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Repository settings</h1>
