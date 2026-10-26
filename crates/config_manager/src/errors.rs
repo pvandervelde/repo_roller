@@ -98,3 +98,7 @@ pub enum ConfigurationError {
 
 /// Result type alias for configuration operations.
 pub type ConfigurationResult<T> = Result<T, ConfigurationError>;
+
+#[cfg(test)]
+#[path = "errors_tests.rs"]
+mod tests;

@@ -15,6 +15,14 @@ use crate::{
 #[path = "request_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "creation_mode_tests.rs"]
+mod creation_mode_tests;
+
+#[cfg(test)]
+#[path = "source_reference_proptests.rs"]
+mod source_reference_proptests;
+
 /// Content generation strategy for repository creation.
 ///
 /// Specifies how repository content should be generated during creation.

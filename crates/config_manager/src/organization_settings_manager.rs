@@ -649,3 +649,7 @@ impl std::fmt::Debug for OrganizationSettingsManager {
 #[cfg(test)]
 #[path = "organization_settings_manager_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "organization_settings_manager_designation_tests.rs"]
+mod designation_tests;

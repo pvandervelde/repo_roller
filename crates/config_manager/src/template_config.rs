@@ -437,3 +437,11 @@ pub struct TemplateVariable {
 #[cfg(test)]
 #[path = "template_config_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "template_config_designation_tests.rs"]
+mod designation_tests;
+
+#[cfg(test)]
+#[path = "template_config_creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;

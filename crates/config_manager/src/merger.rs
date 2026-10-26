@@ -1259,3 +1259,11 @@ mod tests;
 #[cfg(test)]
 #[path = "merger_ruleset_tests.rs"]
 mod ruleset_tests;
+
+#[cfg(test)]
+#[path = "merger_creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;
+
+#[cfg(test)]
+#[path = "merger_creation_capabilities_proptests.rs"]
+mod creation_capabilities_proptests;

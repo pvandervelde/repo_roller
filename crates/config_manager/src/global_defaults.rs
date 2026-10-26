@@ -223,3 +223,7 @@ pub struct GlobalDefaults {
 #[cfg(test)]
 #[path = "global_defaults_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "global_defaults_creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;

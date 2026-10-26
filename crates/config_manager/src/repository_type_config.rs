@@ -189,3 +189,7 @@ pub struct RepositoryTypeConfig {
 #[cfg(test)]
 #[path = "repository_type_config_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "repository_type_config_creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;

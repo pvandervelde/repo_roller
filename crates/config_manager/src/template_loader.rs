@@ -57,6 +57,10 @@ use tracing::{debug, info};
 #[path = "template_loader_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "template_loader_designation_tests.rs"]
+mod designation_tests;
+
 /// Interface for accessing template repositories.
 ///
 /// This trait abstracts the storage mechanism for templates, allowing

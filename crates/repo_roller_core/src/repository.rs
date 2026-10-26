@@ -11,6 +11,10 @@ use crate::errors::ValidationError;
 #[path = "repository_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "source_reference_tests.rs"]
+mod source_reference_tests;
+
 /// Validated GitHub repository name
 ///
 /// Represents a repository name that conforms to GitHub's naming rules.

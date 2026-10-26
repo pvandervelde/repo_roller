@@ -2283,3 +2283,464 @@ async fn test_remove_repository_collaborator_returns_not_found() {
         "Expected NotFound error"
     );
 }
+
+// ============================================================================
+// Fork & Mirror operations (RCA-004/005/006) — RepositoryClient contract tests
+//
+// See docs/spec/interfaces/fork-mirror-operations.md §5.
+// ============================================================================
+
+/// A representative GitHub pull-request API response body, used by all
+/// `create_pull_request`/`mark_pull_request_ready_for_review` contract tests
+/// below so octocrab's `pulls::PullRequest` model has everything it expects.
+fn sample_pull_request_json(number: u64, draft: bool, state: &str) -> serde_json::Value {
+    json!({
+        "id": 1_000_000 + number,
+        "node_id": format!("PR_kwDOABCDEF{number}"),
+        "html_url": format!("https://github.com/test-org/test-repo/pull/{number}"),
+        "diff_url": format!("https://github.com/test-org/test-repo/pull/{number}.diff"),
+        "patch_url": format!("https://github.com/test-org/test-repo/pull/{number}.patch"),
+        "issue_url": format!("https://api.github.com/repos/test-org/test-repo/issues/{number}"),
+        "number": number,
+        "state": state,
+        "locked": false,
+        "title": "Mirror source contents",
+        "user": {
+            "login": "reporoller-bot",
+            "id": 1,
+            "node_id": "U_1",
+            "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/reporoller-bot",
+            "html_url": "https://github.com/reporoller-bot",
+            "type": "Bot",
+            "site_admin": false
+        },
+        "body": "Mirrors the current contents of the source repository.",
+        "created_at": "2026-10-26T00:00:00Z",
+        "updated_at": "2026-10-26T00:00:00Z",
+        "closed_at": null,
+        "merged_at": null,
+        "merge_commit_sha": null,
+        "assignee": null,
+        "assignees": [],
+        "requested_reviewers": [],
+        "requested_teams": [],
+        "labels": [],
+        "milestone": null,
+        "draft": draft,
+        "commits_url": format!("https://api.github.com/repos/test-org/test-repo/pulls/{number}/commits"),
+        "review_comments_url": format!("https://api.github.com/repos/test-org/test-repo/pulls/{number}/comments"),
+        "review_comment_url": "https://api.github.com/repos/test-org/test-repo/pulls/comments{/number}",
+        "comments_url": format!("https://api.github.com/repos/test-org/test-repo/issues/{number}/comments"),
+        "statuses_url": "https://api.github.com/repos/test-org/test-repo/statuses/abc123",
+        "head": {
+            "label": "test-org:mirror-branch",
+            "ref": "mirror-branch",
+            "sha": "abc123",
+            "user": { "login": "test-org", "id": 2, "node_id": "U_2", "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4", "gravatar_id": "", "url": "https://api.github.com/users/test-org", "html_url": "https://github.com/test-org", "type": "Organization", "site_admin": false },
+            "repo": {
+                "id": 123456,
+                "name": "test-repo",
+                "full_name": "test-org/test-repo",
+                "private": true,
+                "owner": { "login": "test-org", "id": 2, "node_id": "U_2", "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4", "gravatar_id": "", "url": "https://api.github.com/users/test-org", "html_url": "https://github.com/test-org", "type": "Organization", "site_admin": false },
+                "html_url": "https://github.com/test-org/test-repo",
+                "url": "https://api.github.com/repos/test-org/test-repo"
+            }
+        },
+        "base": {
+            "label": "test-org:main",
+            "ref": "main",
+            "sha": "def456",
+            "user": { "login": "test-org", "id": 2, "node_id": "U_2", "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4", "gravatar_id": "", "url": "https://api.github.com/users/test-org", "html_url": "https://github.com/test-org", "type": "Organization", "site_admin": false },
+            "repo": {
+                "id": 123456,
+                "name": "test-repo",
+                "full_name": "test-org/test-repo",
+                "private": true,
+                "owner": { "login": "test-org", "id": 2, "node_id": "U_2", "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4", "gravatar_id": "", "url": "https://api.github.com/users/test-org", "html_url": "https://github.com/test-org", "type": "Organization", "site_admin": false },
+                "html_url": "https://github.com/test-org/test-repo",
+                "url": "https://api.github.com/repos/test-org/test-repo"
+            }
+        },
+        "_links": {
+            "self": { "href": format!("https://api.github.com/repos/test-org/test-repo/pulls/{number}") },
+            "html": { "href": format!("https://github.com/test-org/test-repo/pull/{number}") },
+            "issue": { "href": format!("https://api.github.com/repos/test-org/test-repo/issues/{number}") },
+            "comments": { "href": format!("https://api.github.com/repos/test-org/test-repo/issues/{number}/comments") },
+            "review_comments": { "href": format!("https://api.github.com/repos/test-org/test-repo/pulls/{number}/comments") },
+            "review_comment": { "href": "https://api.github.com/repos/test-org/test-repo/pulls/comments{/number}" },
+            "commits": { "href": format!("https://api.github.com/repos/test-org/test-repo/pulls/{number}/commits") },
+            "statuses": { "href": "https://api.github.com/repos/test-org/test-repo/statuses/abc123" }
+        },
+        "author_association": "NONE",
+        "auto_merge": null,
+        "active_lock_reason": null,
+        "merged": false,
+        "mergeable": null,
+        "rebaseable": null,
+        "mergeable_state": "unknown",
+        "merged_by": null,
+        "comments": 0,
+        "review_comments": 0,
+        "maintainer_can_modify": false,
+        "commits": 1,
+        "additions": 1,
+        "deletions": 0,
+        "changed_files": 1
+    })
+}
+
+fn test_client(mock_server: &MockServer) -> GitHubClient {
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
+        .build()
+        .unwrap();
+    GitHubClient { client: octocrab }
+}
+
+// --- create_fork ---------------------------------------------------------
+
+#[tokio::test]
+async fn test_create_fork_success_returns_the_new_repository() {
+    let mock_server = MockServer::start().await;
+    let source_owner = "upstream-org";
+    let source_repo = "upstream-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{source_owner}/{source_repo}/forks")))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({
+            "id": 42,
+            "node_id": "R_kgDOfork",
+            "name": source_repo,
+            "full_name": format!("fork-owner/{source_repo}"),
+            "private": false,
+            "owner": { "login": "fork-owner", "id": 9, "node_id": "U_9", "avatar_url": "https://avatars.githubusercontent.com/u/9?v=4", "gravatar_id": "", "url": "https://api.github.com/users/fork-owner", "html_url": "https://github.com/fork-owner", "type": "Organization", "site_admin": false },
+            "html_url": format!("https://github.com/fork-owner/{source_repo}"),
+            "fork": true,
+            "url": format!("https://api.github.com/repos/fork-owner/{source_repo}")
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .create_fork(source_owner, source_repo, Some("fork-owner"))
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("create_fork error: {e:?}");
+    }
+    let repo = result.expect("fork creation should succeed");
+    assert_eq!(repo.name(), source_repo);
+}
+
+#[tokio::test]
+async fn test_create_fork_into_authenticated_identity_when_target_owner_is_none() {
+    let mock_server = MockServer::start().await;
+    let source_owner = "upstream-org";
+    let source_repo = "upstream-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{source_owner}/{source_repo}/forks")))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({
+            "id": 43,
+            "node_id": "R_kgDOfork2",
+            "name": source_repo,
+            "full_name": format!("authenticated-user/{source_repo}"),
+            "private": false,
+            "owner": { "login": "authenticated-user", "id": 10, "node_id": "U_10", "avatar_url": "https://avatars.githubusercontent.com/u/10?v=4", "gravatar_id": "", "url": "https://api.github.com/users/authenticated-user", "html_url": "https://github.com/authenticated-user", "type": "User", "site_admin": false },
+            "html_url": format!("https://github.com/authenticated-user/{source_repo}"),
+            "fork": true,
+            "url": format!("https://api.github.com/repos/authenticated-user/{source_repo}")
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.create_fork(source_owner, source_repo, None).await;
+
+    if let Err(e) = &result {
+        eprintln!("create_fork (no target_owner) error: {e:?}");
+    }
+    assert!(result.is_ok());
+}
+
+/// Stub-killing / error-path: the source repository does not exist.
+#[tokio::test]
+async fn test_create_fork_source_not_found_returns_error() {
+    let mock_server = MockServer::start().await;
+    let source_owner = "upstream-org";
+    let source_repo = "does-not-exist";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{source_owner}/{source_repo}/forks")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest/repos/forks#create-a-fork"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .create_fork(source_owner, source_repo, Some("fork-owner"))
+        .await;
+
+    assert!(
+        result.is_err(),
+        "forking a nonexistent source repository must fail"
+    );
+}
+
+/// Stub-killing / error-path: a repository with the fork's resulting name
+/// already exists at the target owner (422).
+#[tokio::test]
+async fn test_create_fork_name_conflict_at_target_owner_returns_error() {
+    let mock_server = MockServer::start().await;
+    let source_owner = "upstream-org";
+    let source_repo = "upstream-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{source_owner}/{source_repo}/forks")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Repository creation failed.",
+            "errors": [{"resource": "Repository", "code": "custom", "field": "name", "message": "name already exists on this account"}]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .create_fork(source_owner, source_repo, Some("fork-owner"))
+        .await;
+
+    assert!(result.is_err());
+}
+
+// --- create_pull_request --------------------------------------------------
+
+#[tokio::test]
+async fn test_create_pull_request_success_returns_pull_request_not_draft() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{owner}/{repo}/pulls")))
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(sample_pull_request_json(7, false, "open")),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let payload = PullRequestCreatePayload {
+        title: "Mirror source contents".to_string(),
+        head: "mirror-branch".to_string(),
+        base: "main".to_string(),
+        body: Some("Mirrors the current contents of the source repository.".to_string()),
+        draft: false,
+    };
+
+    let result = client.create_pull_request(owner, repo, &payload).await;
+
+    if let Err(e) = &result {
+        eprintln!("create_pull_request error: {e:?}");
+    }
+    let pull_request = result.expect("pull request creation should succeed");
+    assert_eq!(pull_request.number, 7);
+    assert!(
+        !pull_request.draft,
+        "PR created with draft: false must not be draft"
+    );
+    assert_eq!(pull_request.state, "open");
+}
+
+/// Stub-killing: a hardcoded `draft: false` return would pass the test above
+/// but fail here, where the mocked API response says the PR IS a draft.
+#[tokio::test]
+async fn test_create_pull_request_surfaces_draft_flag_from_response() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{owner}/{repo}/pulls")))
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(sample_pull_request_json(8, true, "open")),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let payload = PullRequestCreatePayload {
+        title: "t".to_string(),
+        head: "branch".to_string(),
+        base: "main".to_string(),
+        body: None,
+        draft: true,
+    };
+
+    let result = client
+        .create_pull_request(owner, repo, &payload)
+        .await
+        .expect("creation should succeed");
+
+    assert!(
+        result.draft,
+        "response says draft:true, PullRequest.draft must reflect that"
+    );
+}
+
+#[tokio::test]
+async fn test_create_pull_request_branch_not_found_returns_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{owner}/{repo}/pulls")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Validation Failed",
+            "errors": [{"resource": "PullRequest", "code": "invalid", "field": "head", "message": "head branch does not exist"}]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let payload = PullRequestCreatePayload {
+        title: "t".to_string(),
+        head: "nonexistent-branch".to_string(),
+        base: "main".to_string(),
+        body: None,
+        draft: false,
+    };
+
+    let result = client.create_pull_request(owner, repo, &payload).await;
+
+    assert!(
+        result.is_err(),
+        "PR creation against a nonexistent branch must fail"
+    );
+}
+
+#[tokio::test]
+async fn test_create_pull_request_already_exists_returns_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{owner}/{repo}/pulls")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Validation Failed",
+            "errors": [{"resource": "PullRequest", "code": "custom", "message": "A pull request already exists for test-org:mirror-branch."}]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let payload = PullRequestCreatePayload {
+        title: "t".to_string(),
+        head: "mirror-branch".to_string(),
+        base: "main".to_string(),
+        body: None,
+        draft: false,
+    };
+
+    let result = client.create_pull_request(owner, repo, &payload).await;
+
+    assert!(result.is_err());
+}
+
+// --- mark_pull_request_ready_for_review -----------------------------------
+
+#[tokio::test]
+async fn test_mark_pull_request_ready_for_review_success_returns_non_draft() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let pr_number = 9;
+
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/pulls/{pr_number}")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(sample_pull_request_json(pr_number, false, "open")),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .mark_pull_request_ready_for_review(owner, repo, pr_number)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("mark_pull_request_ready_for_review error: {e:?}");
+    }
+    let pull_request = result.expect("transition should succeed");
+    assert_eq!(pull_request.number, pr_number);
+    assert!(!pull_request.draft);
+}
+
+#[tokio::test]
+async fn test_mark_pull_request_ready_for_review_not_found_returns_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+    let pr_number = 999;
+
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}/pulls/{pr_number}")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest/pulls/pulls#update-a-pull-request"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .mark_pull_request_ready_for_review(owner, repo, pr_number)
+        .await;
+
+    assert!(result.is_err(), "transitioning a nonexistent PR must fail");
+}
+
+// --- PullRequestCreatePayload / PullRequest type sanity --------------------
+
+#[test]
+fn test_pull_request_create_payload_default_is_not_draft() {
+    let payload = PullRequestCreatePayload::default();
+    assert!(
+        !payload.draft,
+        "Default::default() must not silently create a draft PR"
+    );
+    assert!(payload.body.is_none());
+}
+
+#[test]
+fn test_pull_request_create_payload_is_cloneable() {
+    let payload = PullRequestCreatePayload {
+        title: "t".to_string(),
+        head: "h".to_string(),
+        base: "b".to_string(),
+        body: Some("body".to_string()),
+        draft: true,
+    };
+    let cloned = payload.clone();
+    assert_eq!(cloned.title, payload.title);
+    assert_eq!(cloned.draft, payload.draft);
+}
