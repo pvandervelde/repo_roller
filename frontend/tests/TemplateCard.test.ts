@@ -38,9 +38,7 @@ describe('TemplateCard (CMP-004)', () => {
     // the heading (or ignores `displayName` entirely): the heading's own
     // text must not equal the slug, even though the slug is deliberately a
     // substring-free, distinct value here.
-    expect(screen.getByRole('heading', { level: 3 }).textContent?.trim()).not.toBe(
-      baseProps.name,
-    );
+    expect(screen.getByRole('heading', { level: 3 }).textContent?.trim()).not.toBe(baseProps.name);
   });
 
   it('still uses the slug `name` (not displayName) for the radio value, independent of the heading', () => {

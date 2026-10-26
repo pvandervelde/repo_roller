@@ -369,9 +369,7 @@ async fn test_validate_repository_request_invalid_visibility_value_returns_error
         .as_array()
         .expect("errors must be a JSON array when invalid");
     assert!(
-        errors
-            .iter()
-            .any(|e| e["field"] == "visibility"),
+        errors.iter().any(|e| e["field"] == "visibility"),
         "expected a 'visibility' field error for an out-of-range value; got: {response_json}"
     );
 }
@@ -1819,8 +1817,7 @@ async fn test_list_templates_uses_config_template_name_as_display_name_when_pres
     Mock::given(method("GET"))
         .and(path("/search/repositories"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(search_repositories_response(org, &[slug])),
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
         )
         .mount(&mock_server)
         .await;
@@ -1873,8 +1870,7 @@ async fn test_list_templates_falls_back_to_slug_for_display_name_when_config_nam
     Mock::given(method("GET"))
         .and(path("/search/repositories"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(search_repositories_response(org, &[slug])),
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
         )
         .mount(&mock_server)
         .await;
@@ -1921,16 +1917,13 @@ async fn test_list_templates_returns_full_tags_array_not_first_tag_only() {
     Mock::given(method("GET"))
         .and(path("/search/repositories"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(search_repositories_response(org, &[slug])),
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
         )
         .mount(&mock_server)
         .await;
 
-    let toml = template_toml_with_name_and_tags(
-        "Multi Tag Template",
-        &["rust", "grpc", "observability"],
-    );
+    let toml =
+        template_toml_with_name_and_tags("Multi Tag Template", &["rust", "grpc", "observability"]);
     mount_template_config_mock(&mock_server, org, slug, &toml).await;
 
     let app = template_test_app(&mock_server);
@@ -1970,8 +1963,7 @@ async fn test_list_templates_empty_tags_serializes_as_empty_array() {
     Mock::given(method("GET"))
         .and(path("/search/repositories"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(search_repositories_response(org, &[slug])),
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
         )
         .mount(&mock_server)
         .await;
@@ -2011,10 +2003,8 @@ async fn test_get_template_details_uses_config_template_name_as_display_name_whe
     let org = "testorg";
     let slug = "python-library";
 
-    let toml = template_toml_with_name_and_tags(
-        "Python Library (Pretty Name)",
-        &["python", "library"],
-    );
+    let toml =
+        template_toml_with_name_and_tags("Python Library (Pretty Name)", &["python", "library"]);
     mount_template_config_mock(&mock_server, org, slug, &toml).await;
 
     let app = template_test_app(&mock_server);

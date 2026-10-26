@@ -90,9 +90,7 @@ describe('Spinner (new component — extracted from CreationOverlay)', () => {
 
   it('exposes role="status" with the given aria-label when label is provided', () => {
     render(Spinner, { props: { label: 'Loading template details' } });
-    expect(
-      screen.getByRole('status', { name: 'Loading template details' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading template details' })).toBeInTheDocument();
   });
 
   it('uses a different aria-label text verbatim when label changes (kills a hardcoded label stub)', () => {

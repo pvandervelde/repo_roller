@@ -53,11 +53,7 @@
 </script>
 
 {#if visibleTags.length > 0}
-  <ul
-    class="template-card__tags"
-    class:template-card__tags--gap={topGap}
-    aria-label={ariaLabel}
-  >
+  <ul class="template-card__tags" class:template-card__tags--gap={topGap} aria-label={ariaLabel}>
     {#each visibleTags as tag (tag)}
       <li class="template-card__tag">{tag}</li>
     {/each}

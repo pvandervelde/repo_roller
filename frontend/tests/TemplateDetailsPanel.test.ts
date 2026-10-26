@@ -146,12 +146,16 @@ describe('TemplateDetailsPanel (new component)', () => {
   // -------------------------------------------------------------------------
 
   it('renders displayName as a level-2 heading', () => {
-    render(TemplateDetailsPanel, { props: { templateDetails: baseTemplateDetails, loading: false } });
+    render(TemplateDetailsPanel, {
+      props: { templateDetails: baseTemplateDetails, loading: false },
+    });
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Rust Library');
   });
 
   it('renders the full, untruncated description text', () => {
-    render(TemplateDetailsPanel, { props: { templateDetails: baseTemplateDetails, loading: false } });
+    render(TemplateDetailsPanel, {
+      props: { templateDetails: baseTemplateDetails, loading: false },
+    });
     expect(screen.getByText(baseTemplateDetails.description)).toBeInTheDocument();
   });
 
@@ -160,12 +164,16 @@ describe('TemplateDetailsPanel (new component)', () => {
   // -------------------------------------------------------------------------
 
   it('renders a tags list labelled "Tags"', () => {
-    render(TemplateDetailsPanel, { props: { templateDetails: baseTemplateDetails, loading: false } });
+    render(TemplateDetailsPanel, {
+      props: { templateDetails: baseTemplateDetails, loading: false },
+    });
     expect(screen.getByRole('list', { name: 'Tags' })).toBeInTheDocument();
   });
 
-  it('renders every tag, not just the first 4 (regression against TemplateCard\'s cap)', () => {
-    render(TemplateDetailsPanel, { props: { templateDetails: baseTemplateDetails, loading: false } });
+  it("renders every tag, not just the first 4 (regression against TemplateCard's cap)", () => {
+    render(TemplateDetailsPanel, {
+      props: { templateDetails: baseTemplateDetails, loading: false },
+    });
     for (const tag of baseTemplateDetails.tags) {
       expect(screen.getByText(tag)).toBeInTheDocument();
     }
@@ -254,7 +262,7 @@ describe('TemplateDetailsPanel (new component)', () => {
     expect(screen.queryByRole('list', { name: 'Template variables' })).toBeNull();
   });
 
-  it('renders each variable\'s name', () => {
+  it("renders each variable's name", () => {
     render(TemplateDetailsPanel, {
       props: {
         templateDetails: {
@@ -274,7 +282,10 @@ describe('TemplateDetailsPanel (new component)', () => {
   it('shows a "Required" indicator for required variables', () => {
     render(TemplateDetailsPanel, {
       props: {
-        templateDetails: { ...baseTemplateDetails, variables: [{ name: 'service_name', required: true }] },
+        templateDetails: {
+          ...baseTemplateDetails,
+          variables: [{ name: 'service_name', required: true }],
+        },
         loading: false,
       },
     });
@@ -325,7 +336,10 @@ describe('TemplateDetailsPanel (new component)', () => {
   it('does not render a "Default:" line when no default is present', () => {
     render(TemplateDetailsPanel, {
       props: {
-        templateDetails: { ...baseTemplateDetails, variables: [{ name: 'service_name', required: true }] },
+        templateDetails: {
+          ...baseTemplateDetails,
+          variables: [{ name: 'service_name', required: true }],
+        },
         loading: false,
       },
     });
@@ -348,7 +362,10 @@ describe('TemplateDetailsPanel (new component)', () => {
   it('does not render a "Pattern:" line when no pattern is present', () => {
     render(TemplateDetailsPanel, {
       props: {
-        templateDetails: { ...baseTemplateDetails, variables: [{ name: 'service_name', required: true }] },
+        templateDetails: {
+          ...baseTemplateDetails,
+          variables: [{ name: 'service_name', required: true }],
+        },
         loading: false,
       },
     });
@@ -362,7 +379,10 @@ describe('TemplateDetailsPanel (new component)', () => {
   it('renders a description containing markup-like text as literal text, not parsed HTML', () => {
     const malicious = '<img src=x onerror="window.__pwned=true">';
     const { container } = render(TemplateDetailsPanel, {
-      props: { templateDetails: { ...baseTemplateDetails, description: malicious }, loading: false },
+      props: {
+        templateDetails: { ...baseTemplateDetails, description: malicious },
+        loading: false,
+      },
     });
     expect(container.querySelector('img')).toBeNull();
     expect(container.textContent).toContain(malicious);
