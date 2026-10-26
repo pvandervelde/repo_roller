@@ -54,4 +54,31 @@ describe('CreationOverlay (CMP-011)', () => {
       .closest('[aria-live]') as HTMLElement;
     expect(content).toHaveAttribute('aria-live', 'polite');
   });
+
+  // -------------------------------------------------------------------------
+  // ADDITIVE — Spinner extraction (ask #4)
+  //
+  // `.creation-overlay__spinner` + its `@keyframes spin` is being extracted
+  // into a shared `Spinner.svelte` component (see Spinner.test.ts). These
+  // tests are purely additive: every assertion above this comment must keep
+  // passing unmodified. They prove the overlay still satisfies its existing
+  // accessibility contract (role="status", aria-label="Creating repository")
+  // via the shared component rather than ad-hoc markup, and that no second,
+  // duplicate `@keyframes spin` definition sneaks into the codebase.
+  // -------------------------------------------------------------------------
+
+  it('renders the shared Spinner component (via its "spinner" class) instead of bespoke markup', () => {
+    const { container } = render(CreationOverlay, { props: { visible: true } });
+    expect(container.querySelector('.spinner')).toBeTruthy();
+  });
+
+  it('renders the spinner at the "lg" size, matching the overlay\'s original 3rem spinner', () => {
+    const { container } = render(CreationOverlay, { props: { visible: true } });
+    expect(container.querySelector('.spinner--lg')).toBeTruthy();
+  });
+
+  it('still exposes exactly one role="status" region labelled "Creating repository" after extraction', () => {
+    render(CreationOverlay, { props: { visible: true } });
+    expect(screen.getAllByRole('status', { name: 'Creating repository' }).length).toBe(1);
+  });
 });

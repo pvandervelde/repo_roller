@@ -12,6 +12,7 @@ import { makeSessionCookie } from './helpers';
 const MOCK_TEMPLATES = [
   {
     name: 'basic-service',
+    displayName: 'Basic Service',
     description: 'A basic service template',
     tags: ['service'],
     repository_type_name: 'service',
@@ -20,6 +21,7 @@ const MOCK_TEMPLATES = [
   },
   {
     name: 'data-pipeline',
+    displayName: 'Data Pipeline',
     description: 'A data pipeline template',
     tags: ['data'],
     repository_type_name: null,
@@ -30,6 +32,7 @@ const MOCK_TEMPLATES = [
 
 const MOCK_TEMPLATE_DETAIL_NO_VARS = {
   name: 'basic-service',
+  displayName: 'Basic Service',
   description: 'A basic service template',
   tags: ['service'],
   repository_type_name: 'service',
@@ -90,8 +93,8 @@ test.describe('Creation wizard — Step 1: Choose a template (SCR-004)', () => {
     });
 
     await page.goto('/create');
-    await expect(page.getByText('basic-service')).toBeVisible();
-    await expect(page.getByText('data-pipeline')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Basic Service' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Data Pipeline' })).toBeVisible();
   });
 
   test('API error shows retry button (UX-ASSERT-008)', async ({ page }) => {
@@ -121,7 +124,7 @@ test.describe('Creation wizard — Step 1: Choose a template (SCR-004)', () => {
 
     await page.goto('/create');
     // Wait for templates to load
-    await expect(page.getByText('basic-service')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Basic Service' })).toBeVisible();
     // Next button should be disabled before selection
     const nextBtn = page.getByRole('button', { name: /next/i });
     await expect(nextBtn).toBeDisabled();
@@ -144,8 +147,8 @@ test.describe('Creation wizard — Step 1: Choose a template (SCR-004)', () => {
     });
 
     await page.goto('/create');
-    await expect(page.getByText('basic-service')).toBeVisible();
-    await page.getByRole('heading', { level: 3, name: 'basic-service' }).click();
+    await expect(page.getByRole('heading', { level: 3, name: 'Basic Service' })).toBeVisible();
+    await page.getByRole('heading', { level: 3, name: 'Basic Service' }).click();
     await expect(page.getByRole('button', { name: /next/i })).toBeEnabled();
   });
 });
@@ -188,8 +191,8 @@ test.describe('Creation wizard — Step 2: Repository settings (SCR-004)', () =>
     });
 
     await page.goto('/create');
-    await expect(page.getByText('basic-service')).toBeVisible();
-    await page.getByRole('heading', { level: 3, name: 'basic-service' }).click();
+    await expect(page.getByRole('heading', { level: 3, name: 'Basic Service' })).toBeVisible();
+    await page.getByRole('heading', { level: 3, name: 'Basic Service' }).click();
     await page.getByRole('button', { name: /next/i }).click();
 
     await expect(page.getByRole('heading', { name: /repository settings/i })).toBeVisible();
@@ -221,8 +224,8 @@ test.describe('Creation wizard — Step 2: Repository settings (SCR-004)', () =>
     });
 
     await page.goto('/create');
-    await expect(page.getByText('basic-service')).toBeVisible();
-    await page.getByRole('heading', { level: 3, name: 'basic-service' }).click();
+    await expect(page.getByRole('heading', { level: 3, name: 'Basic Service' })).toBeVisible();
+    await page.getByRole('heading', { level: 3, name: 'Basic Service' }).click();
     await page.getByRole('button', { name: /next/i }).click();
 
     await expect(page.getByRole('textbox', { name: /repository name/i })).toBeVisible();

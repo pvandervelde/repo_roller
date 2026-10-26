@@ -6,26 +6,30 @@ import { proxyToBackend } from '$lib/proxy.server';
 const MOCK_TEMPLATES = [
   {
     name: 'basic-service',
+    displayName: 'Basic Service',
     description: 'A minimal REST API service with health check and CI/CD pipeline.',
-    category: 'service',
+    tags: ['service', 'rest', 'api'],
     variables: [],
   },
   {
     name: 'data-pipeline',
+    displayName: 'Data Pipeline',
     description: 'A batch data processing pipeline with scheduling and monitoring.',
-    category: 'data',
+    tags: ['data', 'pipeline', 'batch'],
     variables: ['project_name', 'schedule_cron', 'team_slack_channel'],
   },
   {
     name: 'frontend-app',
+    displayName: 'Frontend Application',
     description: 'A modern single-page application with TypeScript and testing setup.',
-    category: 'frontend',
+    tags: ['frontend', 'typescript', 'spa'],
     variables: ['app_display_name'],
   },
   {
     name: 'library',
+    displayName: 'Shared Library',
     description: 'A reusable library with semantic versioning and publishing pipeline.',
-    category: 'library',
+    tags: ['library', 'semver'],
     variables: [],
   },
 ];

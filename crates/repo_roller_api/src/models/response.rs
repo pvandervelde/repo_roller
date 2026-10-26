@@ -229,8 +229,9 @@ pub enum ValidationSeverity {
 ///   "templates": [
 ///     {
 ///       "name": "rust-library",
+///       "displayName": "Rust Library",
 ///       "description": "Rust library template with CI/CD",
-///       "category": "rust",
+///       "tags": ["rust"],
 ///       "variables": ["project_name", "author"]
 ///     }
 ///   ]
@@ -249,15 +250,17 @@ pub struct ListTemplatesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplateSummary {
-    /// Template name (identifier)
+    /// Template name (identifier/slug)
     pub name: String,
+
+    /// Human-readable display name (falls back to the slug when unset)
+    pub display_name: String,
 
     /// Human-readable description
     pub description: String,
 
-    /// Template category (e.g., "rust", "python", "documentation")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub category: Option<String>,
+    /// Tags for categorization and discovery
+    pub tags: Vec<String>,
 
     /// Required variable names
     pub variables: Vec<String>,
@@ -272,8 +275,9 @@ pub struct TemplateSummary {
 /// ```json
 /// {
 ///   "name": "rust-library",
+///   "displayName": "Rust Library",
 ///   "description": "Rust library template with CI/CD",
-///   "category": "rust",
+///   "tags": ["rust"],
 ///   "variables": {
 ///     "project_name": {
 ///       "description": "Name of the project",
@@ -292,15 +296,17 @@ pub struct TemplateSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplateDetailsResponse {
-    /// Template name
+    /// Template name (identifier/slug)
     pub name: String,
+
+    /// Human-readable display name (falls back to the slug when unset)
+    pub display_name: String,
 
     /// Description
     pub description: String,
 
-    /// Category
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub category: Option<String>,
+    /// Tags for categorization and discovery
+    pub tags: Vec<String>,
 
     /// Variable definitions
     pub variables: HashMap<String, VariableDefinition>,

@@ -71,10 +71,11 @@
     padding: 0.25rem 0.5rem;
     cursor: pointer;
     border-radius: 0.25rem;
+    color: var(--color-text);
   }
 
   .user-badge__toggle:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: var(--color-border);
   }
 
   .user-badge__avatar {
@@ -88,8 +89,8 @@
     width: 2rem;
     height: 2rem;
     border-radius: 50%;
-    background-color: var(--brand-primary, #2563eb);
-    color: #fff;
+    background-color: var(--brand-primary);
+    color: var(--color-on-brand);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -102,8 +103,8 @@
     right: 0;
     top: calc(100% + 0.25rem);
     min-width: 10rem;
-    background-color: #fff;
-    border: 1px solid #e5e7eb;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 0.25rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     list-style: none;
@@ -121,10 +122,10 @@
     padding: 0.5rem 1rem;
     cursor: pointer;
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-text);
   }
 
   .user-badge__menu-item:hover {
-    background-color: #f3f4f6;
+    background-color: var(--color-border);
   }
 </style>

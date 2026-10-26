@@ -9,6 +9,9 @@
    * Spec: docs/spec/ux/components/component-inventory.md — CMP-004
    */
 
+  import TagList from './TagList.svelte';
+  import TypeBadge from './RepositoryTypeBadge.svelte';
+
   export type RepositoryTypeBadge = {
     typeName: string;
     policy: 'fixed' | 'preferable' | 'optional';
@@ -16,6 +19,7 @@
 
   interface Props {
     name: string;
+    displayName: string;
     description: string;
     tags?: string[];
     repositoryTypeBadge?: RepositoryTypeBadge;
@@ -27,6 +31,7 @@
 
   let {
     name,
+    displayName,
     description,
     tags = [],
     repositoryTypeBadge = null,
@@ -36,7 +41,12 @@
     ondeselect,
   }: Props = $props();
 
-  const visibleTags = $derived(tags.slice(0, 4));
+  let descriptionExpanded = $state(false);
+
+  function toggleDescription(event: MouseEvent) {
+    event.stopPropagation();
+    descriptionExpanded = !descriptionExpanded;
+  }
 </script>
 
 {#if loading}
@@ -65,19 +75,28 @@
     {#if selected}
       <span class="template-card__checkmark" aria-hidden="true">✓</span>
     {/if}
-    <h3 class="template-card__name">{name}</h3>
-    <p class="template-card__description">{description}</p>
-    {#if visibleTags.length > 0}
-      <ul class="template-card__tags" aria-label="Tags">
-        {#each visibleTags as tag (tag)}
-          <li class="template-card__tag">{tag}</li>
-        {/each}
-      </ul>
-    {/if}
+    <h3 class="template-card__name">{displayName}</h3>
+    <p
+      class="template-card__description"
+      class:template-card__description--expanded={descriptionExpanded}
+    >
+      {description}
+    </p>
+    <button
+      type="button"
+      class="template-card__description-toggle"
+      aria-expanded={descriptionExpanded}
+      onclick={toggleDescription}
+    >
+      {descriptionExpanded ? 'Show less' : 'Show more'}
+    </button>
+    <TagList {tags} max={4} ariaLabel="Tags" topGap />
     {#if repositoryTypeBadge}
-      <span class="template-card__type-badge" data-policy={repositoryTypeBadge.policy}>
-        {repositoryTypeBadge.typeName}
-      </span>
+      <TypeBadge
+        typeName={repositoryTypeBadge.typeName}
+        policy={repositoryTypeBadge.policy}
+        topGap
+      />
     {/if}
   </label>
 {/if}
@@ -147,33 +166,35 @@
     overflow: hidden;
   }
 
-  .template-card__tags {
-    list-style: none;
-    padding: 0;
-    margin: 0.5rem 0 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
+  .template-card__description--expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    overflow: visible;
   }
 
-  .template-card__tag {
-    font-size: 0.75rem;
-    padding: 0.125rem 0.5rem;
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 9999px;
-    color: var(--color-text-muted);
-  }
-
-  .template-card__type-badge {
+  .template-card__description-toggle {
     display: inline-block;
-    margin-top: 0.5rem;
-    font-size: 0.75rem;
-    padding: 0.125rem 0.5rem;
-    background-color: color-mix(in srgb, var(--brand-primary) 15%, transparent);
+    padding: 0;
+    margin: 0 0 0.5rem;
+    border: none;
+    background: none;
     color: var(--brand-primary);
-    border-radius: 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
   }
+
+  .template-card__description-toggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Tag chips and the repository-type badge are now owned by the shared
+     TagList/RepositoryTypeBadge components (see imports above) — extracted
+     during the create-wizard sidebar/review follow-up task's REFACTOR pass
+     to remove duplication against RepositorySummary/TemplateDetailsPanel,
+     which had each independently reimplemented or copy-pasted this CSS. */
 
   /* Loading skeleton */
   .template-card--loading {

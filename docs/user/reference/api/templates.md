@@ -26,17 +26,26 @@ Templates are discovered by searching for repositories with the `reporoller-temp
   "templates": [
     {
       "name": "rust-library",
+      "displayName": "Rust Library",
       "description": "Rust library template with CI/CD",
-      "category": "rust"
+      "tags": ["rust"],
+      "variables": ["project_name"]
     },
     {
       "name": "rust-service",
+      "displayName": "Rust Service",
       "description": "Production-ready Rust microservice",
-      "category": "rust"
+      "tags": ["rust", "microservice"],
+      "variables": ["project_name", "service_port"]
     }
   ]
 }
 ```
+
+- `name` is the template repository's slug. `displayName` is the human-readable name
+  configured in the template's `.reporoller/template.toml` (`name` field); if the template
+  author left it unset, `displayName` is the same as `name`.
+- `tags` lists every tag declared by the template. There is no `category` field.
 
 ---
 
@@ -56,7 +65,9 @@ Loads the full configuration for a specific template.
 ```json
 {
   "name": "rust-library",
+  "displayName": "Rust Library",
   "description": "Rust library template with CI/CD",
+  "tags": ["rust"],
   "variables": {
     "project_name": {
       "description": "Human-readable project name",

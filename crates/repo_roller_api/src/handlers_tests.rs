@@ -56,8 +56,44 @@ async fn test_health_check_timestamp_format() {
 }
 
 // ============================================================================
-// Repository Management Handler Tests
+// is_valid_repository_name unit tests (mutation audit kill tests)
+//
+// QA audit (post-#286 mutation campaign, cargo-mutants scoped to
+// handlers.rs): the `||` -> `&&` mutants below survived because no existing
+// test exercised a name that starts with a dot but has no consecutive dots,
+// nor a name whose only "special" character is an underscore. Both gaps are
+// in `is_valid_repository_name`, independent of the #286 displayName/tags
+// changes but surfaced by the same file-scoped mutation run.
 // ============================================================================
+
+/// `name.is_empty() || name.starts_with('.') || name.contains("..")`: both
+/// `||` operators in this guard, if flipped to `&&` by a mutation, are
+/// defeated by any name that starts with a dot but does not contain `..`
+/// (operator precedence pairs the mutated `&&` with one of its neighbours,
+/// so the guard as a whole evaluates to `false` and the name falls through
+/// to the character whitelist, where `.` is itself a permitted character).
+/// This single case kills both `||`->`&&` mutants on this line.
+#[test]
+fn test_is_valid_repository_name_rejects_leading_dot_without_double_dot() {
+    assert!(
+        !is_valid_repository_name(".hidden-repo"),
+        "a name starting with '.' must be rejected even when it contains no '..'"
+    );
+}
+
+/// The character whitelist closure ORs together five independent character
+/// classes. A `||` -> `&&` mutation on the last operator (between the `_`
+/// and `.` checks) is only observable with a name whose *sole* non-alnum,
+/// non-hyphen character is an underscore — paired with `&&`, `c == '_' &&
+/// c == '.'` can never be true for any single `char`, silently dropping
+/// underscore support.
+#[test]
+fn test_is_valid_repository_name_accepts_underscore_only_special_char() {
+    assert!(
+        is_valid_repository_name("repo_name"),
+        "a name containing only lowercase letters and an underscore must be valid"
+    );
+}
 
 /// Test validate_repository_name endpoint with valid name.
 ///
@@ -245,6 +281,97 @@ async fn test_validate_repository_request_valid() {
     if let Some(errors) = response_json.get("errors") {
         assert!(errors.as_array().unwrap().is_empty());
     }
+}
+
+/// Mutation-kill (QA audit, #286 scoped mutation run):
+/// `if visibility != "public" && visibility != "private"` had a surviving
+/// `!=` -> `==` mutant on the *first* comparison. The only existing coverage
+/// used `visibility: "private"`, which happens to produce the same
+/// (no-error) outcome whether or not that specific operator is mutated,
+/// because the second comparison (`visibility != "private"`) short-circuits
+/// the mutated clause to `false` either way. `"public"` is the only value
+/// that distinguishes the two: the mutated condition evaluates to
+/// `true && true`, incorrectly flagging a valid "public" visibility as an
+/// error.
+#[tokio::test]
+async fn test_validate_repository_request_public_visibility_is_valid() {
+    let app = create_router_without_auth(test_app_state());
+
+    let request_body = json!({
+        "organization": "testorg",
+        "name": "test-repo",
+        "template": "rust-library",
+        "visibility": "public"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        response_json["valid"], true,
+        "'public' is a legal visibility value and must not produce a validation error; got: {response_json}"
+    );
+    if let Some(errors) = response_json.get("errors") {
+        assert!(
+            errors.as_array().unwrap().is_empty(),
+            "expected no errors for visibility='public'; got: {response_json}"
+        );
+    }
+}
+
+/// Companion to the test above: an out-of-range visibility value must still
+/// be rejected with a field-level error, proving the branch is reachable at
+/// all (not just vacuously true/false for the two legal values).
+#[tokio::test]
+async fn test_validate_repository_request_invalid_visibility_value_returns_error() {
+    let app = create_router_without_auth(test_app_state());
+
+    let request_body = json!({
+        "organization": "testorg",
+        "name": "test-repo",
+        "template": "rust-library",
+        "visibility": "internal"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/repositories/validate")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(response_json["valid"], false);
+    let errors = response_json["errors"]
+        .as_array()
+        .expect("errors must be a JSON array when invalid");
+    assert!(
+        errors.iter().any(|e| e["field"] == "visibility"),
+        "expected a 'visibility' field error for an out-of-range value; got: {response_json}"
+    );
 }
 
 /// Test validate_repository_request endpoint with missing template variables
@@ -1585,4 +1712,424 @@ async fn test_preview_configuration_unknown_repository_type_returns_400() {
         StatusCode::BAD_REQUEST,
         "Expected 400 when repository_type does not exist"
     );
+}
+
+// ============================================================================
+// list_templates / get_template_details -- displayName + tags (#286)
+//
+// Issue 2 ("Human-readable display name"): both handlers must populate a new
+// `displayName` field from `config.template.name`, falling back to the
+// slug/template-name parameter when that field is empty.
+//
+// Issue 3 ("Tags not displaying properly"): both handlers must return the
+// *full* `config.template.tags` array as `tags`, replacing the old
+// `category: config.template.tags.first().cloned()` behaviour. The
+// serialized response must never contain a `"category"` key.
+//
+// Neither handler calls `discover_metadata_repository` -- `list_templates`
+// goes straight to the GitHub search API (`GET /search/repositories`) and
+// `load_template_configuration` fetches `.reporoller/template.toml` directly
+// from the *template* repository, not the org's metadata repository. So,
+// unlike the `preview_configuration` tests above, no `.reporoller` discovery
+// mock is required here.
+// ============================================================================
+
+/// Build a GitHub search-repositories response body shaped the way
+/// octocrab's `search().repositories(query).send()` expects: a
+/// `total_count`/`incomplete_results`/`items` envelope wrapping full
+/// repository objects (reusing the `repo_json` helper already defined above
+/// for the `preview_configuration` tests).
+fn search_repositories_response(org: &str, template_names: &[&str]) -> serde_json::Value {
+    let items: Vec<serde_json::Value> = template_names
+        .iter()
+        .map(|name| repo_json(org, name))
+        .collect();
+    json!({
+        "total_count": items.len(),
+        "incomplete_results": false,
+        "items": items,
+    })
+}
+
+/// Build a minimal `.reporoller/template.toml` body with an explicit
+/// `[template] name` and `tags` list, so tests can control both independently
+/// of the repository slug used in the URL/search results.
+fn template_toml_with_name_and_tags(name: &str, tags: &[&str]) -> String {
+    let tags_toml = tags
+        .iter()
+        .map(|t| format!("\"{t}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "[template]\nname = \"{name}\"\ndescription = \"A test template\"\nauthor = \"Test Author\"\ntags = [{tags_toml}]\n"
+    )
+}
+
+/// Mount the mock for fetching a single template's `.reporoller/template.toml`
+/// configuration file, used by both `list_templates` (after the search step)
+/// and `get_template_details`.
+async fn mount_template_config_mock(
+    server: &MockServer,
+    org: &str,
+    slug: &str,
+    template_toml: &str,
+) {
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/repos/{org}/{slug}/contents/.reporoller/template.toml"
+        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(file_content_response(
+                org,
+                slug,
+                ".reporoller/template.toml",
+                template_toml,
+            )),
+        )
+        .mount(server)
+        .await;
+}
+
+/// Build the unauthenticated test router with a mock GitHub API base URL,
+/// matching the pattern used by the `preview_configuration` tests above.
+fn template_test_app(mock_server: &MockServer) -> axum::Router {
+    let state = AppState::default()
+        .with_github_api_base_url(mock_server.uri())
+        .with_mock_installation_token("x");
+    create_router_without_auth(state).layer(middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(crate::middleware::AuthContext::new());
+            next.run(req).await
+        },
+    ))
+}
+
+/// GET /api/v1/orgs/:org/templates: when `config.template.name` is a
+/// non-empty human-readable string, `displayName` must carry that value
+/// (not the slug used for search/API calls).
+#[tokio::test]
+async fn test_list_templates_uses_config_template_name_as_display_name_when_present() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "rust-service";
+
+    Mock::given(method("GET"))
+        .and(path("/search/repositories"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let toml =
+        template_toml_with_name_and_tags("Rust Service (Human Readable)", &["rust", "service"]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let templates = json_body["templates"]
+        .as_array()
+        .expect("templates must be a JSON array");
+    assert_eq!(
+        templates.len(),
+        1,
+        "expected exactly one template; got: {json_body}"
+    );
+    assert_eq!(
+        templates[0]["name"], slug,
+        "name must remain the repository slug, not the human-readable name"
+    );
+    assert_eq!(
+        templates[0]["displayName"], "Rust Service (Human Readable)",
+        "displayName must come from config.template.name when it is non-empty; got: {json_body}"
+    );
+}
+
+/// GET /api/v1/orgs/:org/templates: when `config.template.name` is an empty
+/// string, `displayName` must fall back to the template slug rather than
+/// serializing an empty string.
+#[tokio::test]
+async fn test_list_templates_falls_back_to_slug_for_display_name_when_config_name_empty() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "nameless-template";
+
+    Mock::given(method("GET"))
+        .and(path("/search/repositories"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let toml = template_toml_with_name_and_tags("", &["misc"]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let templates = json_body["templates"].as_array().unwrap();
+    assert_eq!(templates.len(), 1);
+    assert_eq!(
+        templates[0]["displayName"], slug,
+        "displayName must fall back to the slug when config.template.name is empty; got: {json_body}"
+    );
+    assert_ne!(
+        templates[0]["displayName"], "",
+        "displayName must never serialize as an empty string"
+    );
+}
+
+/// GET /api/v1/orgs/:org/templates: `tags` must carry the *entire*
+/// `config.template.tags` array, not just the first element (the old
+/// `category` behaviour), and the response must not contain a `category` key
+/// at all.
+#[tokio::test]
+async fn test_list_templates_returns_full_tags_array_not_first_tag_only() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "multi-tag-template";
+
+    Mock::given(method("GET"))
+        .and(path("/search/repositories"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let toml =
+        template_toml_with_name_and_tags("Multi Tag Template", &["rust", "grpc", "observability"]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let templates = json_body["templates"].as_array().unwrap();
+    assert_eq!(
+        templates[0]["tags"],
+        json!(["rust", "grpc", "observability"]),
+        "tags must contain the full array in order, not just the first tag; got: {json_body}"
+    );
+    assert!(
+        templates[0].get("category").is_none(),
+        "the deprecated 'category' field must not appear in the response; got: {json_body}"
+    );
+}
+
+/// GET /api/v1/orgs/:org/templates: an empty `tags` array in the template
+/// config must serialize as `[]`, not be omitted.
+#[tokio::test]
+async fn test_list_templates_empty_tags_serializes_as_empty_array() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "no-tags-template";
+
+    Mock::given(method("GET"))
+        .and(path("/search/repositories"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(search_repositories_response(org, &[slug])),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let toml = template_toml_with_name_and_tags("No Tags Template", &[]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let templates = json_body["templates"].as_array().unwrap();
+    let tags_value = &templates[0]["tags"];
+    assert!(
+        tags_value.is_array(),
+        "tags must be present as an array even when empty; got: {json_body}"
+    );
+    assert_eq!(tags_value.as_array().unwrap().len(), 0);
+}
+
+/// GET /api/v1/orgs/:org/templates/:template: when `config.template.name` is
+/// non-empty, `displayName` must carry that human-readable value while `name`
+/// stays the slug/template path parameter.
+#[tokio::test]
+async fn test_get_template_details_uses_config_template_name_as_display_name_when_present() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "python-library";
+
+    let toml =
+        template_toml_with_name_and_tags("Python Library (Pretty Name)", &["python", "library"]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates/{slug}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json_body["name"], slug, "name must remain the slug");
+    assert_eq!(
+        json_body["displayName"], "Python Library (Pretty Name)",
+        "displayName must come from config.template.name; got: {json_body}"
+    );
+}
+
+/// GET /api/v1/orgs/:org/templates/:template: when `config.template.name` is
+/// empty, `displayName` must fall back to the `:template` path parameter
+/// (the slug), never serializing as an empty string.
+#[tokio::test]
+async fn test_get_template_details_falls_back_to_slug_for_display_name_when_config_name_empty() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "nameless-detail-template";
+
+    let toml = template_toml_with_name_and_tags("", &["misc"]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates/{slug}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        json_body["displayName"], slug,
+        "displayName must fall back to the slug when config.template.name is empty; got: {json_body}"
+    );
+    assert_ne!(json_body["displayName"], "");
+}
+
+/// GET /api/v1/orgs/:org/templates/:template: `tags` must carry the *entire*
+/// `config.template.tags` array (not just `tags.first()`), and the response
+/// must not contain a `category` key at all.
+#[tokio::test]
+async fn test_get_template_details_returns_full_tags_array_not_first_tag_only() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "multi-tag-detail-template";
+
+    let toml = template_toml_with_name_and_tags(
+        "Multi Tag Detail Template",
+        &["rust", "grpc", "observability"],
+    );
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates/{slug}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        json_body["tags"],
+        json!(["rust", "grpc", "observability"]),
+        "tags must contain the full array in order, not just the first tag; got: {json_body}"
+    );
+    assert!(
+        json_body.get("category").is_none(),
+        "the deprecated 'category' field must not appear in the response; got: {json_body}"
+    );
+}
+
+/// GET /api/v1/orgs/:org/templates/:template: an empty `tags` array in the
+/// template config must serialize as `[]`, not be omitted.
+#[tokio::test]
+async fn test_get_template_details_empty_tags_serializes_as_empty_array() {
+    let mock_server = MockServer::start().await;
+    let org = "testorg";
+    let slug = "no-tags-detail-template";
+
+    let toml = template_toml_with_name_and_tags("No Tags Detail Template", &[]);
+    mount_template_config_mock(&mock_server, org, slug, &toml).await;
+
+    let app = template_test_app(&mock_server);
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/orgs/{org}/templates/{slug}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let tags_value = &json_body["tags"];
+    assert!(
+        tags_value.is_array(),
+        "tags must be present as an array even when empty; got: {json_body}"
+    );
+    assert_eq!(tags_value.as_array().unwrap().len(), 0);
 }

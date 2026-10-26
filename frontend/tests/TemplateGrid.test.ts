@@ -3,23 +3,49 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import TemplateGrid from '../src/lib/components/TemplateGrid.svelte';
 import type { TemplateSummary } from '../src/lib/api/types';
 
+// #286 issue 2/3/4: `TemplateSummary` gains `displayName` (independent of the
+// slug `name`) and a full `tags: string[]` array (replacing the old
+// single-value `category`). Fixtures below are deliberately crafted so that
+// name/description/tags/displayName matches don't accidentally overlap,
+// letting each filtering test isolate exactly one match reason.
 const templates: TemplateSummary[] = [
   {
     name: 'typescript-service',
-    description: 'A Node.js TypeScript microservice',
-    category: 'typescript',
+    displayName: 'TypeScript Service',
+    description: 'A fast backend microservice template',
+    tags: ['typescript', 'node'],
     variables: [],
   },
   {
     name: 'python-library',
+    displayName: 'Python Library',
     description: 'A reusable Python library',
-    category: 'python',
+    tags: ['python', 'library'],
     variables: [],
   },
   {
     name: 'frontend-app',
+    displayName: 'Frontend Application',
     description: 'SvelteKit frontend application',
-    category: 'frontend',
+    tags: ['frontend', 'sveltekit'],
+    variables: [],
+  },
+  {
+    name: 'rust-microservice',
+    displayName: 'Rust Microservice',
+    description: 'Production-ready backend service',
+    // 'grpc' is the *second* tag -- used to prove the full array is
+    // searched, not just the first element (the old `category` bug).
+    tags: ['rust', 'grpc', 'observability'],
+    variables: [],
+  },
+  {
+    name: 'proj-42',
+    // Deliberately shares no substring with the slug, so matching on this
+    // value alone proves displayName (not name) is being searched.
+    displayName: 'Quantum Launcher',
+    description: 'Internal tooling scaffold',
+    tags: [],
     variables: [],
   },
 ];
@@ -76,6 +102,48 @@ describe('TemplateGrid (CMP-005)', () => {
     await fireEvent.input(search, { target: { value: 'node' } });
     expect(screen.getByRole('radio', { name: 'typescript-service' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'python-library' })).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------
+  // #286 issue 4: search by tags (full array, not just the first tag) and
+  // by displayName.
+  // ---------------------------------------------------------------------
+
+  it('matches a tag that is not the first element of the tags array (regression against first-tag-only search)', async () => {
+    render(TemplateGrid, { props: { templates } });
+    const search = screen.getByRole('searchbox');
+    // 'grpc' is rust-microservice's *second* tag. A stub that only searches
+    // `tags[0]` (mirroring the old single-`category` bug) would never match.
+    await fireEvent.input(search, { target: { value: 'grpc' } });
+    expect(screen.getByRole('radio', { name: 'rust-microservice' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'typescript-service' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'python-library' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'frontend-app' })).toBeNull();
+  });
+
+  it('matches tags case-insensitively', async () => {
+    render(TemplateGrid, { props: { templates } });
+    const search = screen.getByRole('searchbox');
+    await fireEvent.input(search, { target: { value: 'GRPC' } });
+    expect(screen.getByRole('radio', { name: 'rust-microservice' })).toBeInTheDocument();
+  });
+
+  it('matches displayName when the query matches the human-readable name but not the slug', async () => {
+    render(TemplateGrid, { props: { templates } });
+    const search = screen.getByRole('searchbox');
+    // 'quantum' appears only in proj-42's displayName ('Quantum Launcher'),
+    // never in its slug, description, or tags.
+    await fireEvent.input(search, { target: { value: 'quantum' } });
+    expect(screen.getByRole('radio', { name: 'proj-42' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'typescript-service' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'rust-microservice' })).toBeNull();
+  });
+
+  it('still matches by the slug name even when it differs from displayName', async () => {
+    render(TemplateGrid, { props: { templates } });
+    const search = screen.getByRole('searchbox');
+    await fireEvent.input(search, { target: { value: 'proj-42' } });
+    expect(screen.getByRole('radio', { name: 'proj-42' })).toBeInTheDocument();
   });
 
   it('shows a "No templates match" message with role="status" when search finds nothing', async () => {
@@ -162,5 +230,41 @@ describe('TemplateGrid (CMP-005)', () => {
     });
     expect(screen.getByRole('radio', { name: 'frontend-app' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'typescript-service' })).not.toBeChecked();
+  });
+
+  // -------------------------------------------------------------------------
+  // #286 issue 2/3: full displayName/tags passthrough to TemplateCard.
+  //
+  // The grid currently wraps a single `category` into a one-element tags
+  // array (`template.category ? [template.category] : []`) and never passes
+  // `displayName` at all. These tests exercise the *full* multi-tag array
+  // and the human-readable heading through the real child component, so a
+  // stub that keeps wrapping a single value (or keeps using `name` for the
+  // heading) fails even though each individual prop "looks" wired.
+  // -------------------------------------------------------------------------
+
+  it('passes the full tags array through to TemplateCard, not just a single wrapped value', () => {
+    render(TemplateGrid, { props: { templates } });
+    // rust-microservice has three tags; all three must be visible, not just
+    // one derived the way the old `category` field was.
+    expect(screen.getByText('rust')).toBeInTheDocument();
+    expect(screen.getByText('grpc')).toBeInTheDocument();
+    expect(screen.getByText('observability')).toBeInTheDocument();
+  });
+
+  it("passes each template's displayName through to TemplateCard's heading, not the slug", () => {
+    render(TemplateGrid, { props: { templates } });
+    // proj-42's displayName ('Quantum Launcher') shares no text with its
+    // slug, so finding this heading proves displayName is actually wired
+    // through the grid to the card, not silently defaulted to `name`.
+    expect(screen.getByRole('heading', { level: 3, name: 'Quantum Launcher' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3, name: 'proj-42' })).toBeNull();
+  });
+
+  it('renders no tags for a template whose tags array is empty', () => {
+    render(TemplateGrid, { props: { templates } });
+    const quantumRadio = screen.getByRole('radio', { name: 'proj-42' });
+    const card = quantumRadio.closest('label');
+    expect(card?.querySelector('.template-card__tags')).toBeNull();
   });
 });

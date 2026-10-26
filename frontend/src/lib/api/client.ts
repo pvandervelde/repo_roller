@@ -44,8 +44,9 @@ interface RawVariableDefinition {
 /** Raw template details response before variable normalization. */
 interface RawTemplateDetailsResponse {
   name: string;
+  displayName?: string;
   description: string;
-  category?: string;
+  tags?: string[];
   repository_type?: { policy: string; type_name?: string | null } | null;
   /** Backend returns variables as a Record<name, RawVariableDefinition>. */
   variables?: Record<string, RawVariableDefinition> | TemplateVariable[];
@@ -146,8 +147,11 @@ export async function getTemplateDetails(
   const raw = (await response.json()) as RawTemplateDetailsResponse;
   return {
     name: raw.name,
+    // Defensive fallback mirroring the backend's own slug-fallback logic, in
+    // case a caller (e.g. a dev mock route) omits displayName or sends it empty.
+    displayName: raw.displayName && raw.displayName.length > 0 ? raw.displayName : raw.name,
     description: raw.description,
-    category: raw.category,
+    tags: raw.tags ?? [],
     repository_type: raw.repository_type ?? null,
     variables: normalizeVariables(raw.variables),
   };

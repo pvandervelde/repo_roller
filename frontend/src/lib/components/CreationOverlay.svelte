@@ -12,6 +12,8 @@
    * Copy: docs/spec/ux/copy.md — Creation overlay
    */
 
+  import Spinner from './Spinner.svelte';
+
   interface Props {
     visible: boolean;
   }
@@ -22,7 +24,7 @@
 {#if visible}
   <div class="creation-overlay" role="dialog" aria-modal="true" aria-label="Creating repository">
     <div class="creation-overlay__content" aria-live="polite">
-      <div class="creation-overlay__spinner" role="status" aria-label="Creating repository"></div>
+      <Spinner size="lg" label="Creating repository" />
       <h2 class="creation-overlay__heading">Creating your repository…</h2>
       <p class="creation-overlay__message">
         This may take up to a minute. Please don't close this page.
@@ -55,21 +57,6 @@
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
-  }
-
-  .creation-overlay__spinner {
-    width: 3rem;
-    height: 3rem;
-    border: 4px solid var(--color-border);
-    border-top-color: var(--brand-primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   .creation-overlay__heading {

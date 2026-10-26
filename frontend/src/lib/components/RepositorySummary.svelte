@@ -8,6 +8,13 @@
    * Spec: docs/spec/ux/components/component-inventory.md — CMP-009
    */
 
+  import TagList from './TagList.svelte';
+
+  interface ConfiguredVariable {
+    name: string;
+    value: string;
+  }
+
   interface Props {
     organization: string;
     repositoryName: string;
@@ -15,6 +22,9 @@
     typeName?: string | null;
     visibility: 'private' | 'public';
     teamName?: string | null;
+    description?: string;
+    tags?: string[];
+    variables?: ConfiguredVariable[];
   }
 
   let {
@@ -24,6 +34,9 @@
     typeName = null,
     visibility,
     teamName = null,
+    description,
+    tags = [],
+    variables = [],
   }: Props = $props();
 
   const displayName = $derived(repositoryName || '—');
@@ -60,6 +73,30 @@
       </li>
     {/if}
   </ul>
+
+  {#if description || tags.length > 0}
+    <div class="repo-summary__section">
+      <h3 class="repo-summary__section-title">Template details</h3>
+      {#if description}
+        <p class="repo-summary__description">{description}</p>
+      {/if}
+      <TagList {tags} ariaLabel="Template tags" />
+    </div>
+  {/if}
+
+  {#if variables.length > 0}
+    <div class="repo-summary__section">
+      <h3 class="repo-summary__section-title">Variables</h3>
+      <ul class="repo-summary__variables" aria-label="Configured variables">
+        {#each variables as variable (variable.name)}
+          <li class="repo-summary__variable">
+            <span class="repo-summary__variable-name">{variable.name}</span>
+            <span class="repo-summary__variable-value">{variable.value}</span>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -118,6 +155,60 @@
   }
 
   .repo-summary__chip-value {
+    color: var(--color-text);
+    font-weight: 500;
+  }
+
+  .repo-summary__section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    margin-top: 0.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .repo-summary__section-title {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-muted);
+  }
+
+  .repo-summary__description {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  /* Tags are now rendered by the shared TagList component (see import
+     above) — extracted during this task's REFACTOR pass to remove this
+     component's duplication of TemplateCard's identical chip CSS. */
+
+  .repo-summary__variables {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .repo-summary__variable {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .repo-summary__variable-name {
+    font-family: monospace;
+    color: var(--color-text-muted);
+  }
+
+  .repo-summary__variable-value {
     color: var(--color-text);
     font-weight: 500;
   }

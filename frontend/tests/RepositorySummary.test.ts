@@ -80,4 +80,140 @@ describe('RepositorySummary (CMP-009)', () => {
     render(RepositorySummary, { props: { ...baseProps, visibility: 'public' as const } });
     expect(screen.getByText('public')).toBeInTheDocument();
   });
+
+  // -------------------------------------------------------------------------
+  // RED-phase spec-gap notes (Tester → Coder):
+  //
+  // The Interface Contract adds three new optional props (`description`,
+  // `tags`, `variables`) for the new Review step, but does not fix exact
+  // markup. These tests assume:
+  //   - `description`, when provided, renders as plain text somewhere in the
+  //     component (no specific element required beyond that).
+  //   - `tags`, when provided, render in a <ul aria-label="Template tags">
+  //     of <li> items, UNCAPPED (the Review step is a final summary, not a
+  //     space-constrained card, so unlike TemplateCard's 4-tag slice every
+  //     tag is shown).
+  //   - `variables`, when provided, render in a
+  //     <ul aria-label="Configured variables"> of <li> items, each showing
+  //     both the variable's `name` and its `value` as visible text.
+  // The Coder may choose different class/aria-label strings as long as the
+  // corresponding assertions below are updated to match (same latitude
+  // granted to the #286 RED phase for its documented spec gaps).
+  // -------------------------------------------------------------------------
+
+  describe('new optional props — description/tags/variables (Review step)', () => {
+    it('renders the description text when provided', () => {
+      render(RepositorySummary, {
+        props: { ...baseProps, description: 'A template for Rust libraries.' },
+      });
+      expect(screen.getByText('A template for Rust libraries.')).toBeInTheDocument();
+    });
+
+    it('does not render a description region when the prop is omitted', () => {
+      const { container } = render(RepositorySummary, { props: baseProps });
+      expect(container.querySelector('.repo-summary__description')).toBeNull();
+    });
+
+    it('renders a tags list labelled "Template tags" when tags are provided', () => {
+      render(RepositorySummary, { props: { ...baseProps, tags: ['rust', 'library'] } });
+      expect(screen.getByRole('list', { name: 'Template tags' })).toBeInTheDocument();
+    });
+
+    it('renders every tag, not capped at 4, when 5 tags are provided (unlike TemplateCard)', () => {
+      const tags = ['one', 'two', 'three', 'four', 'fifth-tag'];
+      render(RepositorySummary, { props: { ...baseProps, tags } });
+      for (const tag of tags) {
+        expect(screen.getByText(tag)).toBeInTheDocument();
+      }
+    });
+
+    it('does not render a tags list when the prop is omitted', () => {
+      render(RepositorySummary, { props: baseProps });
+      expect(screen.queryByRole('list', { name: 'Template tags' })).toBeNull();
+    });
+
+    it('does not render a tags list when an empty array is provided', () => {
+      render(RepositorySummary, { props: { ...baseProps, tags: [] } });
+      expect(screen.queryByRole('list', { name: 'Template tags' })).toBeNull();
+    });
+
+    it('renders a configured-variables list labelled "Configured variables" when variables are provided', () => {
+      render(RepositorySummary, {
+        props: { ...baseProps, variables: [{ name: 'service_name', value: 'my-service' }] },
+      });
+      expect(screen.getByRole('list', { name: 'Configured variables' })).toBeInTheDocument();
+    });
+
+    it('renders both the name and the chosen value for each configured variable', () => {
+      render(RepositorySummary, {
+        props: {
+          ...baseProps,
+          variables: [
+            { name: 'service_name', value: 'my-service' },
+            { name: 'owner_team', value: 'platform' },
+          ],
+        },
+      });
+      expect(screen.getByText('service_name')).toBeInTheDocument();
+      expect(screen.getByText('my-service')).toBeInTheDocument();
+      expect(screen.getByText('owner_team')).toBeInTheDocument();
+      expect(screen.getByText('platform')).toBeInTheDocument();
+    });
+
+    // -------------------------------------------------------------------------
+    // AUDIT: the test above only proves each string appears *somewhere* in
+    // the DOM — it would still pass if the component swapped which span
+    // (`.repo-summary__variable-name` vs `.repo-summary__variable-value`)
+    // each field was rendered into. This test queries the specific slots so
+    // a name/value swap mutant is structurally visible, not just textually.
+    // -------------------------------------------------------------------------
+    it('renders the variable name specifically in the name slot and the value specifically in the value slot (kills a name/value-swap mutant)', () => {
+      const { container } = render(RepositorySummary, {
+        props: {
+          ...baseProps,
+          variables: [{ name: 'service_name', value: 'my-service' }],
+        },
+      });
+      const nameEl = container.querySelector('.repo-summary__variable-name');
+      const valueEl = container.querySelector('.repo-summary__variable-value');
+      expect(nameEl).toHaveTextContent('service_name');
+      expect(valueEl).toHaveTextContent('my-service');
+      expect(nameEl).not.toHaveTextContent('my-service');
+      expect(valueEl).not.toHaveTextContent('service_name');
+    });
+
+    it('does not render a configured-variables list when the prop is omitted', () => {
+      render(RepositorySummary, { props: baseProps });
+      expect(screen.queryByRole('list', { name: 'Configured variables' })).toBeNull();
+    });
+
+    it('does not render a configured-variables list when an empty array is provided', () => {
+      render(RepositorySummary, { props: { ...baseProps, variables: [] } });
+      expect(screen.queryByRole('list', { name: 'Configured variables' })).toBeNull();
+    });
+
+    it('still renders the original template/visibility/type/team chips when new props are also passed (no cross-talk)', () => {
+      render(RepositorySummary, {
+        props: {
+          ...baseProps,
+          typeName: 'library',
+          teamName: 'platform-eng',
+          description: 'A template for Rust libraries.',
+          tags: ['rust'],
+          variables: [{ name: 'service_name', value: 'my-service' }],
+        },
+      });
+      expect(screen.getByText('Template')).toBeInTheDocument();
+      expect(screen.getByText('rust-library')).toBeInTheDocument();
+      expect(screen.getByText('Type')).toBeInTheDocument();
+      expect(screen.getByText('library')).toBeInTheDocument();
+      expect(screen.getByText('Team')).toBeInTheDocument();
+      expect(screen.getByText('platform-eng')).toBeInTheDocument();
+      expect(screen.getByText('Visibility')).toBeInTheDocument();
+    });
+
+    it('does not throw when rendered with only the original props (backward compatibility)', () => {
+      expect(() => render(RepositorySummary, { props: baseProps })).not.toThrow();
+    });
+  });
 });

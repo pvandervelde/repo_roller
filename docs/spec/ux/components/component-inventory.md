@@ -177,8 +177,9 @@ vertically. No header or footer (intentional — full-screen auth gate).
 
 | Prop | Type | Required | Description |
 |---|---|---|---|
-| `name` | `string` | Yes | Template name |
-| `description` | `string` | Yes | Template description (clamped to 2 lines by CSS) |
+| `name` | `string` | Yes | Template name (raw/slug); used as the radio input's `value` and `aria-label` |
+| `displayName` | `string` | Yes | Human-readable display name; rendered in the card's `<h3>` heading (distinct from `name`) |
+| `description` | `string` | Yes | Template description (clamped to 2 lines by CSS; expandable — see Show more/Show less below) |
 | `tags` | `string[]` | No | Tags to display as chips (max 4 displayed) |
 | `repositoryTypeBadge` | `{ typeName: string; policy: 'fixed' \| 'preferable' \| 'optional' } \| null` | No | Repository type badge; null if not applicable |
 | `selected` | `boolean` | Yes | Whether this card is the currently selected template |
@@ -188,12 +189,27 @@ vertically. No header or footer (intentional — full-screen auth gate).
 
 - `select()` — user clicked this card to select it
 
+### Show more / Show less (description expand/collapse)
+
+- A `<button class="template-card__description-toggle">` beneath the description toggles local
+  state (`descriptionExpanded`), independent of `selected`.
+- Button label flips between "Show more" and "Show less"; `aria-expanded` reflects the current
+  state.
+- Expanding adds the `template-card__description--expanded` CSS modifier class, which removes the
+  2-line `-webkit-line-clamp` so the full `description` text is shown.
+- The toggle's click handler calls `event.stopPropagation()` so clicking it never triggers the
+  card's own selection/deselection (the card is a `<label>` wrapping a radio input — without the
+  guard, any click inside it would otherwise toggle selection).
+
 ### States
 
 - **Default**: card with visible content, not selected
 - **Selected**: highlighted border + checkmark icon in top-right corner
 - **Hovered**: subtle lift effect (CSS only, no prop needed)
 - **Loading**: skeleton placeholders; no events
+- **Description collapsed** (default): description clamped to 2 lines; toggle reads "Show more"
+- **Description expanded**: full description shown; toggle reads "Show less"; does not affect
+  `selected`
 
 ### Accessibility
 
@@ -202,6 +218,13 @@ vertically. No header or footer (intentional — full-screen auth gate).
 - `name` of the radio group: `"template-selection"`
 - `value` of the radio input: template name
 - Card label includes template name and "selected" state for screen readers
+- Description toggle button has `aria-expanded` and is independently focusable/keyboard-operable
+
+### Implementation note
+
+Tag chips and the repository-type badge are rendered internally via the shared `TagList` and
+`RepositoryTypeBadge` components (see `docs/catalog.md`) rather than this component's own markup;
+this is an internal refactor and does not change CMP-004's props or observable behaviour.
 
 ---
 
@@ -346,7 +369,12 @@ type RepositoryTypeOption = { name: string; description: string };
 
 ## CMP-009: RepositorySummary
 
-**Used by**: SCR-004 Step 2 (no-variable path) and Step 3; SCR-005
+**Used by**: SCR-004 Step 2 (no-variable path), Step 3 (Variables, when the template has any),
+and the Review step (final step, all paths — this is where the Create action now lives; see
+SCR-004 "Step 4: Review and Create").
+**Not used by**: SCR-005 — `routes/create/success/+page.svelte` renders its own
+success-screen layout directly and does not import this component. (A prior version of this
+entry claimed SCR-005 as a consumer; that was incorrect and has been removed.)
 **Purpose**: Read-only summary of the repository about to be (or just) created.
 
 ### Props
@@ -359,11 +387,22 @@ type RepositoryTypeOption = { name: string; description: string };
 | `typeName` | `string \| null` | No | Repository type, if set |
 | `visibility` | `'private' \| 'public'` | Yes | Resolved visibility |
 | `teamName` | `string \| null` | No | Team name, if set |
+| `description` | `string` | No | Template description; shown only on the Review step, where callers pass the selected template's full description |
+| `tags` | `string[]` | No | Template tags, rendered as chips via the shared `TagList` component; defaults to `[]` (renders nothing) |
+| `variables` | `Array<{ name: string; value: string }>` | No | Every configured template variable and its resolved value (user-entered value, falling back to the variable's default); defaults to `[]`. Previously captured in wizard state but never displayed anywhere — now shown here on the Review step |
 
 ### Rendering
 
 - Displayed as an uneditable summary block: "[org] / [name]" with template, type, visibility chips
 - "name" field shown as a placeholder if empty (e.g., italicised "—")
+- `description`, when provided, is rendered as a plain paragraph beneath the chips
+- `tags`, when provided, are rendered as chips via the shared `TagList` component (uncapped — all
+  tags shown, unlike CMP-004's 4-tag cap)
+- `variables`, when non-empty, are rendered as a `name: value` list beneath the tags, one row per
+  configured variable — this is how the Review step satisfies "show every configured variable's
+  name and chosen value" (previously nowhere in the wizard)
+- All three new props are optional and default to omitted/empty, so existing call sites (Step 2,
+  Step 3) that don't pass them render exactly as before
 
 ---
 
@@ -402,6 +441,100 @@ type RepositoryTypeOption = { name: string; description: string };
 ### Accessibility
 
 - Overlay wrapper has `aria-live="polite"` on the status message
-- Spinner has `role="status"` and `aria-label="Creating repository"`
+- Spinner has `role="status"` and `aria-label="Creating repository"` (rendered via the shared
+  `Spinner` component, CMP-012, with `size="lg"` — see below; CreationOverlay's own markup and
+  accessibility behaviour are unchanged)
 - When visible, the underlying wizard content has `aria-hidden="true"` to prevent screen
   reader navigation into it
+
+---
+
+## CMP-012: Spinner
+
+**Used by**: CMP-011 (CreationOverlay, `size="lg"`); CMP-013 (TemplateDetailsPanel, `size="sm"`)
+**Purpose**: Shared indeterminate loading spinner. Extracted from CreationOverlay's original
+private `.creation-overlay__spinner` markup/CSS so any component needing a loading indicator can
+reuse it instead of re-implementing the spin animation.
+
+### Props
+
+| Prop | Type | Required | Description |
+|---|---|---|---|
+| `size` | `'sm' \| 'md' \| 'lg'` | No | Visual size of the spinner; defaults to `"md"` |
+| `label` | `string` | No | When provided, the spinner self-announces (see Accessibility); when omitted, the spinner is `aria-hidden="true"` |
+
+### States
+
+- **Labelled** (`label` provided): renders with `role="status"` and `aria-label={label}` — the
+  spinner itself is the accessible announcement (e.g. CMP-011's usage: `label="Creating
+  repository"`)
+- **Unlabelled** (`label` omitted): renders `aria-hidden="true"` — the caller is responsible for
+  its own `aria-live`/`role="status"` wrapper and visible text (e.g. CMP-013's loading state,
+  which wraps an unlabelled `size="sm"` spinner in its own `role="status" aria-live="polite"` div
+  alongside the text "Loading template details…")
+
+### Accessibility
+
+- Exactly one of `role="status"` + `aria-label` (when `label` is set) or `aria-hidden="true"`
+  (when it isn't) is applied — never both, to avoid double-announcing the same loading state
+- Purely visual animation; conveys no information on its own beyond "something is loading", so a
+  nearby text message is still expected wherever this component is used without `label`
+
+---
+
+## CMP-013: TemplateDetailsPanel
+
+**Used by**: SCR-004 Step 1 (sidebar shown beside the template grid)
+**Purpose**: Shows full, untruncated details — description, tags, repository-type badge, and
+variables — for whichever template is currently selected in Step 1, so the user can inspect a
+template fully without leaving the grid or losing their place.
+
+### Props
+
+| Prop | Type | Required | Description |
+|---|---|---|---|
+| `templateDetails` | `GetTemplateDetailsResponse \| null` | Yes | Full details response for the selected template; `null` when nothing is selected yet |
+| `loading` | `boolean` | Yes | True while the details fetch for the currently-selected template is in flight |
+| `error` | `string \| null` | No | Error message to show instead of content; defaults to `null` |
+
+### States
+
+- **Empty** (`templateDetails` is `null`, not loading, no error): "Select a template to see its
+  details here." (`role="status"`)
+- **Loading**: shared `Spinner` (CMP-012, `size="sm"`, unlabelled) + "Loading template details…"
+  text, both wrapped in `role="status" aria-live="polite"`
+- **Error**: error message, `role="alert"`
+- **Content**: heading (`displayName`), full description, optional repository-type badge, full
+  tag list, and a list of the template's variables (name, required/optional marker, and —
+  whichever are present — description, default value, pattern)
+
+### Rendering
+
+- Heading: `templateDetails.displayName`, in an `<h2>`
+- Description: full, untruncated (no 2-line clamp, unlike CMP-004's card)
+- Repository-type badge: rendered via the shared `RepositoryTypeBadge` component, only when
+  `templateDetails.repository_type` is present; omitted entirely (no placeholder) when absent.
+  > As of this release, the backend's `TemplateDetailsResponse` never actually populates
+  > `repository_type`, so in production this badge never renders here today — a pre-existing
+  > backend gap, not a defect in this component. Out of scope for this task.
+- Tags: full, uncapped list via the shared `TagList` component (no `max` passed — contrast with
+  CMP-004's 4-tag cap)
+- Variables: each rendered with its name, a Required/Optional marker, and (when present) its
+  description, default value, and pattern
+
+### Layout
+
+- Rendered as an `<aside aria-label="Template details">`, placed beside `TemplateGrid` (CMP-005)
+  in Step 1 only — not used on any other step
+- Two-column layout at viewport widths ≥60rem: grid flexes to fill remaining space, panel is a
+  fixed 20rem-wide column beside it. Below 60rem: single column, panel stacks below the grid
+- Paired with the wizard's Step-1-only width modifier (80rem, vs. 56rem on every other step) — see
+  SCR-004's Layout section
+
+### Accessibility
+
+- Landmark: `<aside aria-label="Template details">`
+- Loading state: `role="status" aria-live="polite"` wrapping the spinner and text (announces once,
+  politely, rather than per-frame)
+- Error state: `role="alert"`
+- Empty state: `role="status"`

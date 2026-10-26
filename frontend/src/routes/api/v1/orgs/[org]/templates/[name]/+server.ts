@@ -5,19 +5,21 @@ import { proxyToBackend } from '$lib/proxy.server';
 
 // Mock data uses the same shape as the real Rust backend:
 //   variables is a Record<name, VariableDefinition> (camelCase fields)
-//   category is a single string, not an array
+//   tags is the full array of template tags (not a single category string)
 const MOCK_TEMPLATE_DETAILS: Record<string, object> = {
   'basic-service': {
     name: 'basic-service',
+    displayName: 'Basic Service',
     description: 'A minimal REST API service with health check and CI/CD pipeline.',
-    category: 'service',
+    tags: ['service', 'rest', 'api'],
     variables: {},
     configuration: {},
   },
   'data-pipeline': {
     name: 'data-pipeline',
+    displayName: 'Data Pipeline',
     description: 'A batch data processing pipeline with scheduling and monitoring.',
-    category: 'data',
+    tags: ['data', 'pipeline', 'batch'],
     variables: {
       project_name: {
         description: 'The name of the data project (used in resource naming).',
@@ -37,8 +39,9 @@ const MOCK_TEMPLATE_DETAILS: Record<string, object> = {
   },
   'frontend-app': {
     name: 'frontend-app',
+    displayName: 'Frontend Application',
     description: 'A modern single-page application with TypeScript and testing setup.',
-    category: 'frontend',
+    tags: ['frontend', 'typescript', 'spa'],
     variables: {
       app_display_name: {
         description: 'Human-readable display name shown in the browser tab and README.',
@@ -49,8 +52,9 @@ const MOCK_TEMPLATE_DETAILS: Record<string, object> = {
   },
   library: {
     name: 'library',
+    displayName: 'Shared Library',
     description: 'A reusable library with semantic versioning and publishing pipeline.',
-    category: 'library',
+    tags: ['library', 'semver'],
     variables: {},
     configuration: {},
   },

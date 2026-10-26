@@ -500,6 +500,119 @@ Add to this whenever a reusable component becomes "the standard way".
   Notes: Only the case-insensitive literals `"true"`/`"1"` enable export; every other value
   (including unset) resolves to disabled.
 
+### Template Listing API Contract (Frontend Usability, #286)
+
+- **`resolve_template_display_name`** — fn — `repo_roller_api::handlers` —
+  Resolves a template's human-readable `display_name`, falling back to the
+  template slug when the configured `template.name` is empty. Shared by
+  `list_templates` and `get_template_details` (extracted during this task's
+  REFACTOR pass — both handlers previously duplicated the identical
+  `if config.template.name.is_empty() { slug } else { config.template.name }`
+  block inline). Use when adding a third endpoint that surfaces a template's
+  display name — call this rather than re-inlining the empty-check.
+  Tags: templates, api, naming
+
+- **`TemplateSummary`/`TemplateDetailsResponse` display_name/tags fields** —
+  struct fields — `repo_roller_api::models::response` — Both response types
+  now carry `name` (slug), `display_name` (human-readable, falls back to slug
+  server-side via `resolve_template_display_name` above), and `tags: Vec<String>`
+  (replacing the old single `category: Option<String>` field, which was always
+  just `tags.first()`). Frontend's `frontend/src/lib/api/types.ts` `Template`/
+  `TemplateDetails` interfaces and `frontend/src/lib/api/client.ts`'s
+  `getTemplateDetails` mirror this shape 1:1, including the same slug-fallback
+  rule for `displayName` as a defensive client-side re-check (not shared code —
+  same concept implemented independently per language, same pattern as
+  `HeaderMapExtractor`/`headersTextMapGetter` under Distributed Tracing above).
+  Use when consuming or extending the templates-list/template-details API —
+  don't resurrect `category`.
+  Tags: templates, api, contract
+
+- **Deferred (cross-scope, not touched by this task)**: `repo_roller_cli`'s
+  `template_cmd.rs` (~line 291) and `org_settings_cmd.rs` (~lines 298, 350)
+  each independently implement the same shape of "fall back to a default when
+  a configured string is empty" (`metadata_repository_name` falling back to
+  `DEFAULT_METADATA_REPOSITORY_NAME`), 3 occurrences total, structurally
+  identical to the `display_name` pattern above but a different concept and a
+  different crate. Not extracted here — doing so would require a shared
+  helper living in a crate both `repo_roller_cli` and `repo_roller_api` depend
+  on (e.g. `repo_roller_core`), which is an architecture decision out of this
+  task's scope. Filed as tech debt — labels `tech-debt,refactor`.
+
+### Frontend UI Components (Create-Wizard UX Follow-up)
+
+- **`Spinner`** — Svelte component — `frontend/src/lib/components/Spinner.svelte` —
+  Shared loading spinner, parameterized by `size` (`'sm' | 'md' | 'lg'`) and an optional
+  `label`. When `label` is given, renders self-announcing (`role="status"
+  aria-label={label}`); when omitted, renders `aria-hidden="true"` for nesting inside a
+  parent-owned `aria-live` region. Extracted from `CreationOverlay.svelte`'s original inline
+  `.creation-overlay__spinner` + `@keyframes spin` (this task's GREEN phase); now also consumed
+  by `TemplateDetailsPanel.svelte` (`size="sm"`, no label, inside its own `role="status"
+  aria-live="polite"` wrapper).
+  Use when: Showing an indeterminate loading state anywhere in the frontend — call this rather
+  than re-inlining a spinner `<div>`/`@keyframes spin` pair.
+  Notes: A third, still-unconsolidated spinner implementation remains at
+  `frontend/src/routes/auth/callback/+page.svelte` (structurally identical to this component's
+  `size="md"` variant) — deferred as cross-scope tech debt, see
+  `.llm/findings/create-wizard-ux-followup.md`.
+  Tags: frontend, svelte, loading, a11y
+
+- **`TagList`** — Svelte component — `frontend/src/lib/components/TagList.svelte` — Shared
+  tag-chip list (`<ul aria-label={ariaLabel}><li>` per tag), with an optional `max` cap and a
+  `topGap` modifier (adds a top margin for block-layout callers that don't already manage
+  spacing via a flex `gap`). Renders nothing when there are no tags (post-cap).
+  Use when: Rendering any list of plain string tags/labels as chips — call this rather than
+  reimplementing the `.template-card__tags`/`.template-card__tag` markup+CSS.
+  Impls/call sites: `TemplateCard.svelte` (`max={4}`, `topGap`, CMP-004's original cap),
+  `TemplateDetailsPanel.svelte` (uncapped, no gap — parent manages spacing via flex `gap`),
+  `RepositorySummary.svelte` (uncapped, no gap — CMP-009's Review-step tags/variables props,
+  this task's GREEN phase).
+  Notes: Extracted (REFACTOR pass) from markup+CSS that had been independently duplicated three
+  times. Deliberately keeps the `template-card__tags`/`template-card__tag` class names (not a
+  neutral `tag-list` name) because `TemplateGrid.test.ts`/`TemplateCard.test.ts` (frozen
+  RED-phase contracts, out of this refactor's scope to edit) assert against those literal
+  strings via `querySelector` — renaming would make `TemplateGrid.test.ts`'s "renders no tags
+  for an empty array" assertion vacuously pass instead of actually verifying absence. Also
+  fixes a latent bug: `TemplateDetailsPanel.svelte` had copy-pasted the `<li
+  class="template-card__tag">` markup without importing `TemplateCard`, which rendered
+  completely unstyled — Svelte scopes a component's `<style>` block to markup that component
+  itself renders, so a class literal borrowed from another component's stylesheet never
+  actually matches. Routing every caller through this shared component (which owns its own
+  `<style>` block) fixes that for all three call sites.
+  Tags: frontend, svelte, chips, dry
+
+- **`RepositoryTypeBadge`** — Svelte component —
+  `frontend/src/lib/components/RepositoryTypeBadge.svelte` — Shared repository-type badge
+  (`data-policy` attribute + visible `typeName` text), with a `topGap` modifier (see `TagList`
+  above for the same spacing rationale). `policy`/`typeName` are typed as plain
+  `string`/`string | null | undefined` (wider than TemplateCard's own
+  `'fixed' | 'preferable' | 'optional'` union) since `TemplateDetailsPanel` feeds it directly
+  from `GetTemplateDetailsResponse`'s looser wire-shaped `RepositoryTypePolicy` type; this is a
+  DOM `data-*` attribute, not a styling switch, so an unrecognised value is harmless.
+  Use when: Rendering the repository-type policy badge — call this rather than reimplementing
+  the `.template-card__type-badge` markup+CSS.
+  Impls/call sites: `TemplateCard.svelte` (`topGap`, CMP-004's original badge),
+  `TemplateDetailsPanel.svelte` (no gap — parent manages spacing via flex `gap`).
+  Notes: Extracted (REFACTOR pass) for the same reasons as `TagList` above — same class-name
+  preservation rationale (`TemplateCard.test.ts`/`TemplateDetailsPanel.test.ts` assert on the
+  literal `.template-card__type-badge` string) and the same previously-unstyled-in-
+  `TemplateDetailsPanel` bug fix.
+  Tags: frontend, svelte, badge, dry
+
+- **`TemplateDetailsPanel`** — Svelte component —
+  `frontend/src/lib/components/TemplateDetailsPanel.svelte` — Step-1 sidebar showing full
+  details (description, tags via `TagList`, type badge via `RepositoryTypeBadge`, variables) for
+  the currently-selected template, across four states (empty/loading/error/content). New
+  component, this task's GREEN phase; its own reusable value was exactly the two patterns above
+  (now factored out into `TagList`/`RepositoryTypeBadge`), so no further abstraction extraction
+  was needed from the panel itself.
+  Notes: Paired with the `create/+page.svelte` wizard's `.wizard--step1` CSS modifier (widens the
+  wizard to 80rem and switches to a two-column flex layout ≥60rem, for this sidebar to sit
+  beside `TemplateGrid`) and the wizard's new final "Review" step (always appended after
+  Settings/Variables; owns the sole "Create Repository" action). Both are single-use,
+  route-local conventions (not extracted as separate reusable abstractions) — recorded here only
+  for discoverability.
+  Tags: frontend, svelte, sidebar, create-wizard
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout

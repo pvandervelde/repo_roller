@@ -4,6 +4,7 @@
   import AppShell from '$lib/components/AppShell.svelte';
   import StepProgress from '$lib/components/StepProgress.svelte';
   import TemplateGrid from '$lib/components/TemplateGrid.svelte';
+  import TemplateDetailsPanel from '$lib/components/TemplateDetailsPanel.svelte';
   import RepositoryNameField from '$lib/components/RepositoryNameField.svelte';
   import RepositoryTypePicker from '$lib/components/RepositoryTypePicker.svelte';
   import RepositorySummary from '$lib/components/RepositorySummary.svelte';
@@ -64,9 +65,18 @@
 
   const hasVariables = $derived((templateDetails?.variables.length ?? 0) > 0);
 
+  // A final "Review" step is always appended; the Create action lives there
+  // exclusively (never on Settings/Variables, which only ever advance).
   const steps = $derived(
-    hasVariables ? ['Choose template', 'Settings', 'Variables'] : ['Choose template', 'Settings'],
+    hasVariables
+      ? ['Choose template', 'Settings', 'Variables', 'Review']
+      : ['Choose template', 'Settings', 'Review'],
   );
+
+  // Step numbers are derived rather than hardcoded so the Review step's
+  // position correctly follows Variables when present, or Settings otherwise.
+  const variablesStepNumber = $derived(hasVariables ? 3 : null);
+  const reviewStepNumber = $derived(steps.length);
 
   const step1NextEnabled = $derived(
     selectedTemplateName !== null &&
@@ -75,7 +85,7 @@
       templateDetailsError === null,
   );
 
-  // Step 2's "next/create" is enabled when name validation is available or check_failed
+  // Step 2's "next" is enabled when name validation is available or check_failed
   // UX-ASSERT-011 (disabled while checking), UX-ASSERT-012 (disabled when taken),
   // UX-ASSERT-028 (enabled when check_failed)
   const step2Actionable = $derived(
@@ -99,11 +109,21 @@
     }),
   );
 
-  // Step 3 Create enabled when all required variables have non-empty values (UX-ASSERT-016)
-  const step3CreateEnabled = $derived(
+  // Step 3's "Next: Review" enabled when all required variables have non-empty
+  // values (UX-ASSERT-016, generalized to gate advancement rather than create)
+  const step3NextEnabled = $derived(
     (templateDetails?.variables ?? []).every(
       (v) => !v.required || (variableValues[v.name] ?? '').trim().length > 0,
     ),
+  );
+
+  // Every configured variable, with its resolved value, for display on Review
+  // (previously never surfaced anywhere in the wizard).
+  const reviewVariables = $derived(
+    (templateDetails?.variables ?? []).map((v) => ({
+      name: v.name,
+      value: variableValues[v.name] ?? v.default ?? '',
+    })),
   );
 
   // ---------------------------------------------------------------------------
@@ -128,12 +148,12 @@
     return 'Enter a valid, available repository name to continue';
   });
 
-  const step3CreateTooltip = $derived.by<string | null>(() => {
-    if (step3CreateEnabled) return null;
+  const step3NextTooltip = $derived.by<string | null>(() => {
+    if (step3NextEnabled) return null;
     return 'Fill in all required template variables to continue';
   });
 
-  // Creation error for the no-variables (direct create) path
+  // Creation error, surfaced on whichever step submitCreate routes back to
   let createError: string | null = $state(null);
   let creatingRepo = $state(false);
   let typesLoadedForStep2 = $state(false);
@@ -151,12 +171,11 @@
   }
 
   // ---------------------------------------------------------------------------
-  // DOM refs for focus management  (UX-ASSERT-024)
+  // DOM ref for focus management (UX-ASSERT-024) — a single ref is sufficient
+  // because exactly one step heading is ever mounted at a time.
   // ---------------------------------------------------------------------------
 
-  let step1Heading: HTMLElement | null = $state(null);
-  let step2Heading: HTMLElement | null = $state(null);
-  let step3Heading: HTMLElement | null = $state(null);
+  let wizardHeading: HTMLElement | null = $state(null);
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -223,8 +242,7 @@
     }
     currentStep += 1;
     await tick();
-    if (currentStep === 2) step2Heading?.focus();
-    else if (currentStep === 3) step3Heading?.focus();
+    wizardHeading?.focus();
   }
 
   async function loadRepositoryTypes() {
@@ -247,6 +265,9 @@
     }
   }
 
+  // Settings step's action always advances — to Variables (if the template
+  // has any) or straight to Review otherwise. The Create action lives on
+  // Review exclusively.
   async function handleStep2Action() {
     if (hasVariables) {
       // Initialise variable values from defaults before advancing (UX-ASSERT-017)
@@ -255,13 +276,15 @@
         initial[v.name] = variableValues[v.name] ?? v.default ?? '';
       }
       variableValues = initial;
-      await advanceStep();
-    } else {
-      await submitCreate();
     }
+    await advanceStep();
   }
 
   async function submitCreate(variables: Record<string, string> = {}) {
+    // Guards against duplicate submissions from rapid repeat clicks on the
+    // Review step's "Create Repository" button (UX-ASSERT-018, security).
+    if (creatingRepo) return;
+
     createError = null;
     creatingRepo = true;
     try {
@@ -287,7 +310,7 @@
           // UX-ASSERT-020: template not found — back to step 1, refresh list
           currentStep = 1;
           await tick();
-          step1Heading?.focus();
+          wizardHeading?.focus();
           await loadTemplates();
           createError = `The template '${selectedTemplateName}' is no longer available. Please choose a different template.`;
           selectedTemplateName = null;
@@ -296,7 +319,7 @@
           // UX-ASSERT-019: name already taken (race condition) — back to step 2
           currentStep = 2;
           await tick();
-          step2Heading?.focus();
+          wizardHeading?.focus();
           nameValidation = { status: 'taken', name: repoName };
           createError = `A repository named '${repoName}' was created while you were filling in this form. Please choose a different name.`;
         }
@@ -315,10 +338,12 @@
   }
 
   async function retreatStep() {
+    // Generic decrement works for every step: Review always sits immediately
+    // after Variables (when present) or Settings (when not), so stepping
+    // back by one always lands on the correct prior step.
     currentStep -= 1;
     await tick();
-    if (currentStep === 1) step1Heading?.focus();
-    else if (currentStep === 2) step2Heading?.focus();
+    wizardHeading?.focus();
   }
 </script>
 
@@ -346,44 +371,55 @@
   userAvatarUrl={data.session?.userAvatarUrl ?? null}
   onsignOut={handleSignOut}
 >
-  <div class="wizard" aria-hidden={creatingRepo ? 'true' : undefined}>
+  <div
+    class="wizard"
+    class:wizard--step1={currentStep === 1}
+    aria-hidden={creatingRepo ? 'true' : undefined}
+  >
     <StepProgress {steps} {currentStep} />
 
     {#if currentStep === 1}
-      <h1 tabindex="-1" bind:this={step1Heading} class="wizard__heading">Choose a template</h1>
+      <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Choose a template</h1>
 
       {#if createError}
         <InlineAlert variant="error" message={createError} />
       {/if}
 
-      <TemplateGrid
-        {templates}
-        {selectedTemplateName}
-        loading={templatesLoading}
-        error={templatesError}
-        ontemplateSelect={handleTemplateSelect}
-        ontemplateDeselect={handleTemplateDeselect}
-        onretry={loadTemplates}
-      />
+      <div class="wizard__step1-layout">
+        <div class="wizard__step1-main">
+          <TemplateGrid
+            {templates}
+            {selectedTemplateName}
+            loading={templatesLoading}
+            error={templatesError}
+            ontemplateSelect={handleTemplateSelect}
+            ontemplateDeselect={handleTemplateDeselect}
+            onretry={loadTemplates}
+          />
 
-      {#if templateDetailsError}
-        <p class="wizard__detail-error" role="alert">{templateDetailsError}</p>
-      {/if}
-
-      <div class="wizard__actions wizard__actions--step1">
-        <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
-          <button
-            type="button"
-            class="wizard__btn-next"
-            disabled={!step1NextEnabled}
-            onclick={advanceStep}
-          >
-            Next: Repository settings →
-          </button>
-        </span>
+          <div class="wizard__actions wizard__actions--step1">
+            <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
+              <button
+                type="button"
+                class="wizard__btn-next"
+                disabled={!step1NextEnabled}
+                onclick={advanceStep}
+              >
+                Next: Repository settings →
+              </button>
+            </span>
+          </div>
+        </div>
+        <div class="wizard__step1-sidebar">
+          <TemplateDetailsPanel
+            {templateDetails}
+            loading={templateDetailsLoading}
+            error={templateDetailsError}
+          />
+        </div>
       </div>
     {:else if currentStep === 2}
-      <h1 tabindex="-1" bind:this={step2Heading} class="wizard__heading">Repository settings</h1>
+      <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Repository settings</h1>
 
       {#if createError}
         <InlineAlert variant="error" message={createError} />
@@ -459,12 +495,12 @@
             disabled={!step2Actionable}
             onclick={handleStep2Action}
           >
-            {hasVariables ? 'Next: Variables →' : 'Create Repository'}
+            {hasVariables ? 'Next: Variables →' : 'Next: Review →'}
           </button>
         </span>
       </div>
-    {:else if currentStep === 3}
-      <h1 tabindex="-1" bind:this={step3Heading} class="wizard__heading">Template variables</h1>
+    {:else if hasVariables && currentStep === variablesStepNumber}
+      <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Template variables</h1>
 
       {#if createError}
         <InlineAlert variant="error" message={createError} />
@@ -496,16 +532,48 @@
 
       <div class="wizard__actions">
         <button type="button" class="wizard__btn-back" onclick={retreatStep}>← Back</button>
-        <span class="wizard__btn-tip" title={step3CreateTooltip ?? undefined}>
+        <span class="wizard__btn-tip" title={step3NextTooltip ?? undefined}>
           <button
             type="button"
-            class="wizard__btn-create"
-            disabled={!step3CreateEnabled}
-            onclick={() => submitCreate(variableValues)}
+            class="wizard__btn-next"
+            disabled={!step3NextEnabled}
+            onclick={advanceStep}
           >
-            Create Repository
+            Next: Review →
           </button>
         </span>
+      </div>
+    {:else if currentStep === reviewStepNumber}
+      <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Review and create</h1>
+
+      {#if createError}
+        <InlineAlert variant="error" message={createError} />
+      {/if}
+
+      <div class="wizard__step2-fields">
+        <RepositorySummary
+          organization={data.organization}
+          repositoryName={repoName}
+          templateName={templateDetails?.displayName ?? selectedTemplateName ?? ''}
+          typeName={selectedTypeName}
+          {visibility}
+          teamName={selectedTeamName}
+          description={templateDetails?.description}
+          tags={templateDetails?.tags ?? []}
+          variables={reviewVariables}
+        />
+      </div>
+
+      <div class="wizard__actions">
+        <button type="button" class="wizard__btn-back" onclick={retreatStep}>← Back</button>
+        <button
+          type="button"
+          class="wizard__btn-create"
+          disabled={creatingRepo}
+          onclick={() => submitCreate(variableValues)}
+        >
+          Create Repository
+        </button>
       </div>
     {/if}
   </div>
@@ -523,6 +591,13 @@
     gap: 1.5rem;
   }
 
+  /* Widened on Step 1 only, to make room for the two-column
+     template-grid/details-sidebar layout below. Settings/Variables/Review
+     stay at the narrow 56rem width. */
+  .wizard--step1 {
+    max-width: 80rem;
+  }
+
   .wizard__heading {
     font-size: 1.5rem;
     font-weight: 700;
@@ -532,6 +607,34 @@
 
   .wizard__heading:focus {
     outline: none;
+  }
+
+  .wizard__step1-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .wizard__step1-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .wizard__step1-sidebar {
+    flex-shrink: 0;
+  }
+
+  /* Two-column layout once there is enough room for a 20rem sidebar
+     alongside the template grid without cramping it. */
+  @media (min-width: 60rem) {
+    .wizard__step1-layout {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+
+    .wizard__step1-sidebar {
+      width: 20rem;
+    }
   }
 
   .wizard__actions {
@@ -587,11 +690,6 @@
 
   .wizard__btn-back:hover {
     background-color: var(--color-surface);
-  }
-
-  .wizard__detail-error {
-    font-size: 0.875rem;
-    color: #b91c1c;
   }
 
   .wizard__step2-fields {

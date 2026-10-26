@@ -609,6 +609,19 @@ pub async fn validate_repository_request(
     Ok(Json(response))
 }
 
+/// Resolve a template's human-readable display name, falling back to the
+/// template slug when the configured `template.name` is unset (empty).
+///
+/// Shared by `list_templates` and `get_template_details` so both endpoints
+/// apply the identical "empty configured name falls back to slug" rule.
+fn resolve_template_display_name(configured_name: &str, slug: &str) -> String {
+    if configured_name.is_empty() {
+        slug.to_string()
+    } else {
+        configured_name.to_string()
+    }
+}
+
 /// GET /api/v1/orgs/:org/templates
 ///
 /// List available templates for an organization.
@@ -648,10 +661,14 @@ pub async fn list_templates(
                     .cloned()
                     .collect();
 
+                let display_name =
+                    resolve_template_display_name(&config.template.name, &template_name);
+
                 templates.push(TemplateSummary {
                     name: template_name.clone(),
+                    display_name,
                     description: config.template.description.clone(),
-                    category: config.template.tags.first().cloned(),
+                    tags: config.template.tags.clone(),
                     variables: variable_names,
                 });
             }
@@ -733,10 +750,13 @@ pub async fn get_template_details(
         "branch_protection": config.branch_protection,
     });
 
+    let display_name = resolve_template_display_name(&config.template.name, &params.template);
+
     let response = TemplateDetailsResponse {
         name: params.template.clone(),
+        display_name,
         description: config.template.description.clone(),
-        category: config.template.tags.first().cloned(),
+        tags: config.template.tags.clone(),
         variables,
         configuration,
     };

@@ -78,26 +78,45 @@ You see this screen when you successfully authenticated with GitHub but do not h
 
 **URL:** `/create`
 
-The main screen. This is a three-step wizard.
+The main screen. This is a three- or four-step wizard: three steps if the template you choose has
+no configurable variables, four if it does. Either way, the wizard always ends on a **Review and
+create** step — that's the only place the final **Create Repository** button appears.
 
-### Step 1 of 3: Choose a template
+### Step 1 of 3 or 4: Choose a template
 
 **What you see:**
 
+- A page that's noticeably wider than the rest of the wizard on large screens — Step 1 alone uses
+  the extra room for a two-column layout (grid on the left, details panel on the right).
 - A grid of template cards, each showing:
-  - Template name
-  - Short description
-  - Tags (e.g. `rust`, `microservice`)
-- A search field to filter by name or tag
+  - Template name (the human-readable display name configured by the template author; falls
+    back to the repository slug if the template doesn't set one)
+  - Description, clamped to two lines with a **Show more** link beneath it. Clicking **Show
+    more** expands the card to show the full description in place (the card's selection state
+    is unaffected); clicking again (**Show less**) collapses it back to two lines.
+  - Up to four of the template's tags (e.g. `rust`, `microservice`)
+- A search field to filter by name, display name, description, or tag (case-insensitive,
+  partial match)
+- A **template details panel** to the right of the grid (it moves below the grid instead, on
+  narrower screens). This panel automatically shows the full, uncapped details — complete
+  description, every tag, the repository type badge (when the template has one), and the full
+  list of variables the template defines — for whichever card you currently have selected. Before
+  you select anything it just says "Select a template to see its details here."; while the
+  details for your selection are loading, it shows a small spinner and "Loading template
+  details…".
 
 **What you do:**
 
-1. Browse or search for the template you want.
-2. Click a card to select it (the card highlights with a border).
-3. Optionally, click the info icon on a card to see the full description, variable list, and what the template includes.
+1. Browse or search for the template you want (searching for a tag such as `rust` narrows the
+   grid to templates that have that tag).
+2. Click a card to select it (the card highlights with a border, and the details panel on the
+   right updates automatically to show that template's full information). Clicking **Show
+   more**/**Show less** does not change which card is selected.
+3. Use the details panel to review the template's full description and variable list before
+   committing to it, without needing to advance past this step.
 4. Click **Next** when you have selected a template.
 
-### Step 2 of 3: Repository details
+### Step 2 of 3 or 4: Repository details
 
 **What you see:**
 
@@ -113,7 +132,11 @@ The main screen. This is a three-step wizard.
 3. Set visibility if the field is editable.
 4. Click **Next** to proceed.
 
-### Step 3 of 3: Variables
+### Step 3 of 4: Variables
+
+This step only appears if the template you chose declares at least one variable; otherwise the
+wizard goes straight from Repository details to Review and create (making that step 3 of 3
+instead).
 
 **What you see:**
 
@@ -124,14 +147,38 @@ The main screen. This is a three-step wizard.
   - A placeholder showing an example value
   - A `*` indicator for required fields
   - Inline validation messages
-- A summary panel on the right showing the repository that will be created
+- A summary panel showing the repository that will be created so far (name, template, type,
+  visibility)
 
 **What you do:**
 
 1. Fill in all required fields (marked with `*`).
 2. Optionally fill in optional fields (defaults are shown as placeholders).
-3. Review the summary panel to confirm the repository name, template, and variable values.
-4. Click **Create Repository**.
+3. Click **Next: Review** to continue — this step no longer has its own **Create Repository**
+   button; Create has moved to the final Review step, where you'll see every value you just
+   entered listed back to you before you commit.
+
+### Step 3 of 3 (no variables) or 4 of 4 (with variables): Review and create
+
+The wizard's final step, always. This is new: previously, there was nowhere in the wizard that
+showed you every variable value you had entered before you clicked Create — they were used, but
+never displayed back to you. Now you can check everything in one place first.
+
+**What you see:**
+
+- `[your org] / [repository name]`
+- Chips for the selected template, repository type, and visibility
+- The template's full description and tags (if the template has any)
+- One row per configured variable, showing its name and the value you entered (or its default, if
+  you left it unchanged) — only shown if the template has variables
+
+**What you do:**
+
+1. Review everything listed. If anything is wrong, click **← Back** to return to the previous
+   step — all of your entries are preserved, so you don't need to re-enter anything.
+2. Click **Create Repository** when you're satisfied. This button only appears here; clicking it
+   twice in quick succession is safe — the second click is ignored while the first request is
+   still in flight.
 
 ---
 
