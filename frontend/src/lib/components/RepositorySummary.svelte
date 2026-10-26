@@ -8,6 +8,11 @@
    * Spec: docs/spec/ux/components/component-inventory.md — CMP-009
    */
 
+  interface ConfiguredVariable {
+    name: string;
+    value: string;
+  }
+
   interface Props {
     organization: string;
     repositoryName: string;
@@ -15,6 +20,9 @@
     typeName?: string | null;
     visibility: 'private' | 'public';
     teamName?: string | null;
+    description?: string;
+    tags?: string[];
+    variables?: ConfiguredVariable[];
   }
 
   let {
@@ -24,6 +32,9 @@
     typeName = null,
     visibility,
     teamName = null,
+    description,
+    tags = [],
+    variables = [],
   }: Props = $props();
 
   const displayName = $derived(repositoryName || '—');
@@ -60,6 +71,29 @@
       </li>
     {/if}
   </ul>
+
+  {#if description}
+    <p class="repo-summary__description">{description}</p>
+  {/if}
+
+  {#if tags.length > 0}
+    <ul class="repo-summary__tags" aria-label="Template tags">
+      {#each tags as tag (tag)}
+        <li class="repo-summary__tag">{tag}</li>
+      {/each}
+    </ul>
+  {/if}
+
+  {#if variables.length > 0}
+    <ul class="repo-summary__variables" aria-label="Configured variables">
+      {#each variables as variable (variable.name)}
+        <li class="repo-summary__variable">
+          <span class="repo-summary__variable-name">{variable.name}</span>
+          <span class="repo-summary__variable-value">{variable.value}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </div>
 
 <style>
@@ -118,6 +152,56 @@
   }
 
   .repo-summary__chip-value {
+    color: var(--color-text);
+    font-weight: 500;
+  }
+
+  .repo-summary__description {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  .repo-summary__tags {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .repo-summary__tag {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 9999px;
+    color: var(--color-text-muted);
+  }
+
+  .repo-summary__variables {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .repo-summary__variable {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .repo-summary__variable-name {
+    font-family: monospace;
+    color: var(--color-text-muted);
+  }
+
+  .repo-summary__variable-value {
     color: var(--color-text);
     font-weight: 500;
   }
