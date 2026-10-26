@@ -74,21 +74,28 @@
     {/if}
   </ul>
 
-  {#if description}
-    <p class="repo-summary__description">{description}</p>
+  {#if description || tags.length > 0}
+    <div class="repo-summary__section">
+      <h3 class="repo-summary__section-title">Template details</h3>
+      {#if description}
+        <p class="repo-summary__description">{description}</p>
+      {/if}
+      <TagList {tags} ariaLabel="Template tags" />
+    </div>
   {/if}
 
-  <TagList {tags} ariaLabel="Template tags" />
-
   {#if variables.length > 0}
-    <ul class="repo-summary__variables" aria-label="Configured variables">
-      {#each variables as variable (variable.name)}
-        <li class="repo-summary__variable">
-          <span class="repo-summary__variable-name">{variable.name}</span>
-          <span class="repo-summary__variable-value">{variable.value}</span>
-        </li>
-      {/each}
-    </ul>
+    <div class="repo-summary__section">
+      <h3 class="repo-summary__section-title">Variables</h3>
+      <ul class="repo-summary__variables" aria-label="Configured variables">
+        {#each variables as variable (variable.name)}
+          <li class="repo-summary__variable">
+            <span class="repo-summary__variable-name">{variable.name}</span>
+            <span class="repo-summary__variable-value">{variable.value}</span>
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/if}
 </div>
 
@@ -150,6 +157,24 @@
   .repo-summary__chip-value {
     color: var(--color-text);
     font-weight: 500;
+  }
+
+  .repo-summary__section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    margin-top: 0.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .repo-summary__section-title {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-muted);
   }
 
   .repo-summary__description {
