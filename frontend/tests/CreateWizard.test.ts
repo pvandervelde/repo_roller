@@ -170,7 +170,9 @@ describe('Create wizard (SCR-004)', () => {
     );
   });
 
-  it('shows StepProgress with 2 steps when template has no variables', async () => {
+  it('shows StepProgress with 3 steps (incl. Review) when template has no variables', async () => {
+    // Was 2 steps pre-Review (ask #5): ['Choose template', 'Settings'].
+    // Now: ['Choose template', 'Settings', 'Review'].
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
@@ -185,11 +187,13 @@ describe('Create wizard (SCR-004)', () => {
     await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
 
-    // 2-step: aria-label should say "of 2"
-    expect(screen.getByRole('group', { name: /step 1 of 2/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /step 1 of 3/i })).toBeInTheDocument();
+    expect(screen.getByText('Review')).toBeInTheDocument();
   });
 
-  it('shows StepProgress with 3 steps when template has variables', async () => {
+  it('shows StepProgress with 4 steps (incl. Review) when template has variables', async () => {
+    // Was 3 steps pre-Review (ask #5): ['Choose template', 'Settings', 'Variables'].
+    // Now: ['Choose template', 'Settings', 'Variables', 'Review'].
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
@@ -204,8 +208,8 @@ describe('Create wizard (SCR-004)', () => {
     await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
 
-    // 3-step: aria-label should say "of 3"
-    expect(screen.getByRole('group', { name: /step 1 of 3/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /step 1 of 4/i })).toBeInTheDocument();
+    expect(screen.getByText('Review')).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -329,7 +333,11 @@ describe('Create wizard (SCR-004)', () => {
     expect(screen.getByRole('textbox', { name: /owner team/i })).toHaveValue('platform');
   });
 
-  it('disables Create button when a required variable is empty (UX-ASSERT-016)', async () => {
+  it('disables the "Next: Review" button on step 3 when a required variable is empty (UX-ASSERT-016, generalized)', async () => {
+    // Pre-Review, this asserted a "Create Repository" button directly on
+    // step 3. Ask #5 moves the submit action to the new Review step, so
+    // step 3's action button is now "Next: Review →" — the same
+    // required-variable gating logic must still apply to it.
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
@@ -355,11 +363,12 @@ describe('Create wizard (SCR-004)', () => {
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
     );
 
-    // Required field is empty → Create button disabled
-    expect(screen.getByRole('button', { name: /create repository/i })).toBeDisabled();
+    // Required field is empty → "Next: Review" disabled; no "Create Repository" button here anymore.
+    expect(screen.getByRole('button', { name: /next: review/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /create repository/i })).toBeNull();
   });
 
-  it('enables Create button once all required variables are filled (UX-ASSERT-016)', async () => {
+  it('enables the "Next: Review" button on step 3 once all required variables are filled (UX-ASSERT-016, generalized)', async () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'python-service',
@@ -390,7 +399,7 @@ describe('Create wizard (SCR-004)', () => {
     await fireEvent.input(input, { target: { value: 'my-service' } });
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /create repository/i })).not.toBeDisabled(),
+      expect(screen.getByRole('button', { name: /next: review/i })).not.toBeDisabled(),
     );
   });
 
@@ -425,11 +434,31 @@ describe('Create wizard (SCR-004)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Creation overlay (CMP-011) and error routing (UX-ASSERT-018–021)
+  // RED-phase spec-gap notes (Tester → Coder) — Review step (ask #5):
+  //
+  // The Interface Contract fixes the `steps` array content and that "Create
+  // Repository" moves to the final Review step, but not the Review step's
+  // <h1> text. These tests assume the Review heading is exactly
+  // "Review and create" — chosen to be unambiguous and non-overlapping with
+  // the existing "Repository settings" / "Template variables" headings. The
+  // Coder may pick different copy as long as the heading-text assertions
+  // below are updated to match (same latitude granted to the #286 RED phase
+  // for its documented spec gaps).
+  //
+  // The overlay/error-routing tests below were previously written against a
+  // "Create Repository" button that lived directly on Step 2 (no-variables
+  // case). Ask #5 moves that action to the new Review step only, so these
+  // tests are adapted — per the task's explicit instruction that
+  // UX-ASSERT-018/019/020/021 "must still hold ... now always Review" — to
+  // navigate through Review before clicking Create. This is a deliberate
+  // behavioural generalization, not a weakening: every original failure
+  // mode (overlay visibility, name-taken routing, template-not-found
+  // routing, permission/network/server inline errors) is still exercised,
+  // just from its new, correct location.
   // -------------------------------------------------------------------------
 
-  /** Helper: advance to Step 2 with a no-variable template and mock createRepository. */
-  async function advanceToStep2NoVars() {
+  /** Helper: advance all the way to the Review step with a no-variable template. */
+  async function advanceToReviewNoVars() {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
@@ -450,48 +479,301 @@ describe('Create wizard (SCR-004)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
     );
+
+    // Step 2 is now the last step before Review (no variables) → "Next: Review →".
+    // Matches the pre-existing convention in this suite (see the original
+    // "Create Repository" click below, pre-#5): the repository name field is
+    // deliberately left empty here (name-field behaviour is covered by
+    // RepositoryNameField.test.ts), so this click is issued directly without
+    // waiting on the button's disabled state.
+    await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
   }
 
-  it('shows overlay while creation is in flight (UX-ASSERT-018)', async () => {
-    // createRepository never resolves during this test
+  it('Settings step shows "Next: Review →" instead of "Create Repository" when the template has no variables', async () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     vi.mocked(getTemplateDetails).mockResolvedValue({
       name: 'rust-library',
       displayName: 'Rust Library',
-      description: 'Template',
+      description: 'A Rust library template',
       tags: [],
       variables: [],
     });
-    const { createRepository } = await import('../src/lib/api/client');
-    vi.mocked(createRepository).mockReturnValue(new Promise(() => {})); // never resolves
-
     render(CreatePage, { props: makeProps() });
 
     await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
     await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
     await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
-    );
     await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
     );
 
-    // Click "Create Repository" — overlay should appear
+    expect(screen.getByRole('button', { name: /next: review/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create repository/i })).toBeNull();
+  });
+
+  it('Settings step still shows "Next: Variables →" (unchanged) when the template has variables', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      displayName: 'Python Service',
+      description: 'A Python service template',
+      tags: [],
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+
+    expect(screen.getByRole('button', { name: /next: variables/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /next: review/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /create repository/i })).toBeNull();
+  });
+
+  it('Variables step shows "Next: Review →" instead of "Create Repository" when the template has variables', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      displayName: 'Python Service',
+      description: 'Python service',
+      tags: [],
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    expect(screen.getByRole('button', { name: /next: review/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create repository/i })).toBeNull();
+  });
+
+  it('reaches the Review step and finds "Create Repository" only there (no-variables flow)', async () => {
+    await advanceToReviewNoVars();
+    expect(screen.getByRole('button', { name: /create repository/i })).toBeInTheDocument();
+  });
+
+  it('reaches the Review step and finds "Create Repository" only there (with-variables flow)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      displayName: 'Python Service',
+      description: 'Python service',
+      tags: [],
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+    const input = screen.getByRole('textbox', { name: /service name/i });
+    await fireEvent.input(input, { target: { value: 'my-service' } });
+    const nextReview = screen.getByRole('button', { name: /next: review/i });
+    await waitFor(() => expect(nextReview).not.toBeDisabled());
+    await fireEvent.click(nextReview);
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
+    expect(screen.getByRole('button', { name: /create repository/i })).toBeInTheDocument();
+  });
+
+  it('shows the configured repository name and selected template displayName on the Review step', async () => {
+    await advanceToReviewNoVars();
+    expect(screen.getByRole('generic', { name: /repository summary/i })).toBeInTheDocument();
+    expect(screen.getByText('Rust Library')).toBeInTheDocument();
+  });
+
+  it('shows every configured variable name and chosen value on the Review step (new behaviour — previously never displayed)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      displayName: 'Python Service',
+      description: 'Python service',
+      tags: [],
+      variables: [
+        { name: 'service_name', required: true },
+        { name: 'owner_team', required: false, default: 'platform' },
+      ],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    const input = screen.getByRole('textbox', { name: /service name/i });
+    await fireEvent.input(input, { target: { value: 'checkout-api' } });
+
+    const nextReview = screen.getByRole('button', { name: /next: review/i });
+    await waitFor(() => expect(nextReview).not.toBeDisabled());
+    await fireEvent.click(nextReview);
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
+
+    // The explicitly-entered required value
+    expect(screen.getByText('checkout-api')).toBeInTheDocument();
+    // The pre-filled optional default value (UX-ASSERT-017, surfaced on Review)
+    expect(screen.getByText('platform')).toBeInTheDocument();
+    // Both variable names
+    expect(screen.getByText('service_name')).toBeInTheDocument();
+    expect(screen.getByText('owner_team')).toBeInTheDocument();
+  });
+
+  it('moves focus to the Review step heading when advancing (UX-ASSERT-024, generalized)', async () => {
+    await advanceToReviewNoVars();
+    await waitFor(() => {
+      const h1 = screen.getByRole('heading', { level: 1 });
+      expect(h1).toHaveTextContent('Review and create');
+      expect(document.activeElement).toBe(h1);
+    });
+  });
+
+  it('retreatStep from Review (no variables) returns to Settings and preserves the repository name (UX-ASSERT-014, generalized)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'rust-library',
+      displayName: 'Rust Library',
+      description: 'A Rust library template',
+      tags: [],
+      variables: [],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /repository name/i });
+    await fireEvent.input(nameInput, { target: { value: 'my-rust-lib' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
+
+    await fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    expect(screen.getByRole('textbox', { name: /repository name/i })).toHaveValue('my-rust-lib');
+  });
+
+  it('retreatStep from Review (with variables) returns to the Variables step and preserves entered values', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'python-service',
+      displayName: 'Python Service',
+      description: 'Python service',
+      tags: [],
+      variables: [{ name: 'service_name', required: true }],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'python-service' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'python-service' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: variables/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+
+    const input = screen.getByRole('textbox', { name: /service name/i });
+    await fireEvent.input(input, { target: { value: 'checkout-api' } });
+    const nextReview = screen.getByRole('button', { name: /next: review/i });
+    await waitFor(() => expect(nextReview).not.toBeDisabled());
+    await fireEvent.click(nextReview);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
+
+    // Back from Review must land on Variables (the step immediately before
+    // Review in this flow), not Settings.
+    await fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Template variables'),
+    );
+    expect(screen.getByRole('textbox', { name: /service name/i })).toHaveValue('checkout-api');
+  });
+
+  it('shows overlay while creation is in flight, triggered from the Review step (UX-ASSERT-018)', async () => {
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockReturnValue(new Promise(() => {})); // never resolves
+
+    await advanceToReviewNoVars();
+
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
     await waitFor(() =>
       expect(screen.getByRole('dialog', { name: /creating repository/i })).toBeInTheDocument(),
     );
   });
 
-  it('returns to step 2 with error on name-taken race condition (UX-ASSERT-019)', async () => {
+  it('prevents a second createRepository call when "Create Repository" is clicked twice in quick succession on Review (UX-ASSERT-018, security)', async () => {
+    const { createRepository } = await import('../src/lib/api/client');
+    vi.mocked(createRepository).mockReturnValue(new Promise(() => {})); // never resolves
+
+    await advanceToReviewNoVars();
+
+    const createButton = screen.getByRole('button', { name: /create repository/i });
+    await fireEvent.click(createButton);
+    await fireEvent.click(createButton);
+    await fireEvent.click(createButton);
+
+    expect(vi.mocked(createRepository)).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns to Settings with error on name-taken race condition, triggered from Review (UX-ASSERT-019)', async () => {
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiConflictError(422, { code: 'NameTaken', message: 'Name already taken' }),
     );
 
-    await advanceToStep2NoVars();
+    await advanceToReviewNoVars();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
@@ -502,7 +784,7 @@ describe('Create wizard (SCR-004)', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/was created while you were filling/i);
   });
 
-  it('returns to step 1 with error on template-not-found (UX-ASSERT-020)', async () => {
+  it('returns to step 1 with error on template-not-found, triggered from Review (UX-ASSERT-020)', async () => {
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiConflictError(422, {
@@ -511,7 +793,7 @@ describe('Create wizard (SCR-004)', () => {
       }),
     );
 
-    await advanceToStep2NoVars();
+    await advanceToReviewNoVars();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
@@ -522,47 +804,171 @@ describe('Create wizard (SCR-004)', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/no longer available/i);
   });
 
-  it('shows permission error inline on 403 (UX-ASSERT-021)', async () => {
+  it('shows permission error inline on 403 without losing Review-step form data (UX-ASSERT-021)', async () => {
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiAuthError(403, { code: 'Forbidden', message: 'Forbidden' }),
     );
 
-    await advanceToStep2NoVars();
+    await advanceToReviewNoVars();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toMatch(/don't have permission/i);
-    // Still on step 2
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings');
+    // Still on Review — form data (template/name selections) not lost
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create');
+    expect(screen.getByText('Rust Library')).toBeInTheDocument();
   });
 
-  it('shows network error inline without losing step (UX-ASSERT-021)', async () => {
+  it('shows network error inline without losing the Review step (UX-ASSERT-021)', async () => {
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(new ApiNetworkError(new Error('offline')));
 
-    await advanceToStep2NoVars();
+    await advanceToReviewNoVars();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toMatch(/could not reach the server/i);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create');
   });
 
-  it('shows server error inline on 5xx (UX-ASSERT-021)', async () => {
+  it('shows server error inline on 5xx without losing the Review step (UX-ASSERT-021)', async () => {
     const { createRepository } = await import('../src/lib/api/client');
     vi.mocked(createRepository).mockRejectedValue(
       new ApiServerError(500, { code: 'InternalError', message: 'Internal server error' }),
     );
 
-    await advanceToStep2NoVars();
+    await advanceToReviewNoVars();
 
     await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toMatch(/GitHub is temporarily unavailable/i);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create');
+  });
+
+  // -------------------------------------------------------------------------
+  // Template details sidebar (ask #3) — new behaviour, no UX-ASSERT-NNN yet.
+  //
+  // RED-phase spec-gap note: the sidebar's landmark is assumed to be
+  // role="complementary" with accessible name "Template details" (an
+  // <aside aria-label="Template details">), rendered inside Step 1. The
+  // Coder may choose a different landmark/name as long as these assertions
+  // are updated accordingly.
+  // -------------------------------------------------------------------------
+
+  it('does not show any template detail content on Step 1 before a template is selected', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    render(CreatePage, { props: makeProps() });
+    await waitFor(() => expect(listTemplates).toHaveBeenCalled());
+
+    expect(screen.queryByText('A Rust library template')).toBeNull();
+    expect(screen.queryByText('Loading template details...')).toBeNull();
+  });
+
+  it('shows the template details sidebar content once a template is selected on Step 1', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'rust-library',
+      displayName: 'Rust Library',
+      description: 'A Rust library template',
+      tags: ['rust', 'library'],
+      variables: [],
+    });
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+
+    // Still on step 1 — the grid's heading hasn't changed — but the sidebar
+    // now shows the fetched details.
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Choose a template');
+    await waitFor(() => expect(screen.getByText('A Rust library template')).toBeInTheDocument());
+  });
+
+  it('shows a visible loading indicator in the sidebar while template details are being fetched', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    let resolveDetails!: (value: {
+      name: string;
+      displayName: string;
+      description: string;
+      tags: string[];
+      variables: never[];
+    }) => void;
+    vi.mocked(getTemplateDetails).mockReturnValue(
+      new Promise((resolve) => {
+        resolveDetails = resolve;
+      }),
+    );
+    render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Loading template details...')).toBeInTheDocument(),
+    );
+
+    resolveDetails({
+      name: 'rust-library',
+      displayName: 'Rust Library',
+      description: 'A Rust library template',
+      tags: [],
+      variables: [],
+    });
+    await waitFor(() =>
+      expect(screen.queryByText('Loading template details...')).toBeNull(),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Wider layout (ask #2) — new behaviour, no UX-ASSERT-NNN yet.
+  //
+  // RED-phase spec-gap note: no existing width-modifier class exists in the
+  // codebase. These tests assume `+page.svelte` applies a `wizard--step1`
+  // BEM modifier class to the `.wizard` element while `currentStep === 1`,
+  // and omits it on every later step. Exact rem values for the widened
+  // `.app-shell__main` max-width (90–100rem per the Interface Contract) are
+  // a pure CSS change not practically assertable via computed styles in
+  // this component-test setup (no existing precedent for CSS-value
+  // assertions in this codebase — see AppShell.test.ts) and are therefore
+  // not tested here; the Coder should implement them to match the Interface
+  // Contract's documented range. The structural modifier-class assertions
+  // below ARE testable and must hold.
+  // -------------------------------------------------------------------------
+
+  it('applies a "wizard--step1" width modifier class on Step 1', () => {
+    const { container } = render(CreatePage, { props: makeProps() });
+    expect(container.querySelector('.wizard.wizard--step1')).toBeTruthy();
+  });
+
+  it('does not apply the "wizard--step1" width modifier class on Settings (no-variables flow)', async () => {
+    vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+    vi.mocked(getTemplateDetails).mockResolvedValue({
+      name: 'rust-library',
+      displayName: 'Rust Library',
+      description: 'A Rust library template',
+      tags: [],
+      variables: [],
+    });
+    const { container } = render(CreatePage, { props: makeProps() });
+
+    await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+    await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+
+    expect(container.querySelector('.wizard.wizard--step1')).toBeNull();
+  });
+
+  it('does not apply the "wizard--step1" width modifier class on the Review step', async () => {
+    await advanceToReviewNoVars();
+    expect(document.querySelector('.wizard.wizard--step1')).toBeNull();
   });
 });
