@@ -11,51 +11,72 @@
 
 ### AppShell + Step 1: Choose a Template
 
-```
-+==============================================================+
-|  [ Logo ]  [App Name]                   [ @username v ]      |
-+==============================================================+
-|                                                              |
-|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  |
-|   ●                             ○                   ○        |
-|                                                              |
-|  Choose a template                                           |
-|                                                              |
-|  +----------------------------------------------------------+|
-|  | Search templates...                                      ||
-|  +----------------------------------------------------------+|
-|                                                              |
-|  +-------------------------+  +-------------------------+   |
-|  |  O  rust-library        |  |  O  python-service      |   |
-|  |  Rust library with      |  |  Python microservice    |   |
-|  |  CI/CD and testing      |  |  with FastAPI           |   |
-|  |  [rust] [library]       |  |  [python] [service]     |   |
-|  |  type: library          |  |  type: service          |   |
-|  +-------------------------+  +-------------------------+   |
-|                                                              |
-|  +-------------------------+  +-------------------------+   |
-|  |  O  github-action       |  |  O  docs-site           |   |
-|  |  GitHub Action          |  |  Documentation site     |   |
-|  |  template               |  |  with MkDocs            |   |
-|  |  [actions] [ci]         |  |  [docs] [mkdocs]        |   |
-|  +-------------------------+  +-------------------------+   |
-|                                                              |
-|                              [ Next: Repository settings → ] |
-|                                                              |
-+==============================================================+
-```
-
-Selected state (rust-library chosen, details loaded):
+Step 1 renders in a widened, two-column layout: the template grid on the left, and a
+`TemplateDetailsPanel` sidebar on the right showing full details for whichever card is currently
+selected. Below a 60rem viewport width the sidebar stacks beneath the grid instead of beside it.
+Nothing is selected yet in this first wireframe, so the sidebar shows its empty state:
 
 ```
-|  +-------------------------+  +-------------------------+   |
-|  |  ✓  rust-library        |  |  O  python-service      |   |
-|  |  (highlighted border,   |  |                         |   |
-|  |   checkmark top-right)  |  |                         |   |
-|  +-------------------------+  +-------------------------+   |
-|                                                              |
-|                              [ Next: Repository settings → ] |  <- enabled
++======================================================================================+
+|  [ Logo ]  [App Name]                                            [ @username v ]      |
++======================================================================================+
+|                                                                                      |
+|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  ---  (4) Review         |
+|   ●                             ○                   ○                  ○             |
+|                                                                                      |
+|  Choose a template                                                                   |
+|                                                                                      |
+|  +----------------------------------------------+  +------------------------------+  |
+|  | Search templates...                           |  | Template details            |  |
+|  +----------------------------------------------+  |                              |  |
+|                                                      |  Select a template to see    |  |
+|  +-------------------------+ +-------------------+  |  its details here.           |  |
+|  |  O  rust-library        | |  O  python-service|  |                              |  |
+|  |  Rust library with      | |  Python microserv.|  |                              |  |
+|  |  CI/CD and testing      | |  with FastAPI     |  |                              |  |
+|  |  [Show more]             | |  [Show more]      |  |                              |  |
+|  |  [rust] [library]       | |  [python] [service]| |                              |  |
+|  |  type: library          | |  type: service    |  |                              |  |
+|  +-------------------------+ +-------------------+  |                              |  |
+|                                                      +------------------------------+  |
+|  +-------------------------+ +-------------------+                                    |
+|  |  O  github-action       | |  O  docs-site     |                                    |
+|  |  GitHub Action          | |  Documentation site|                                   |
+|  |  template               | |  with MkDocs      |                                    |
+|  |  [actions] [ci]         | |  [docs] [mkdocs]  |                                    |
+|  +-------------------------+ +-------------------+                                    |
+|                                                                                      |
+|                                              [ Next: Repository settings → ]          |
+|                                                                                      |
++======================================================================================+
 ```
+
+Selected state (rust-library chosen, details loaded — sidebar now shows the full,
+untruncated description, all tags, the type badge, and the template's variables):
+
+```
+|  +-------------------------+ +-------------------+  +------------------------------+  |
+|  |  ✓  rust-library        | |  O  python-service|  | rust-library                 |  |
+|  |  (highlighted border,   | |                   |  |                              |  |
+|  |   checkmark top-right)  | |                   |  | Rust library with CI/CD,     |  |
+|  +-------------------------+ +-------------------+  | testing, and release         |  |
+|                                                      | automation configured.      |  |
+|                                                      |                              |  |
+|                                                      | type: library                |  |
+|                                                      | [rust] [library] [ci] [cd]   |  |
+|                                                      |                              |  |
+|                                                      | Variables                    |  |
+|                                                      |  service_name  Required      |  |
+|                                                      |  author        Optional      |  |
+|                                                      +------------------------------+  |
+|                                                                                      |
+|                                              [ Next: Repository settings → ]          |  <- enabled
+```
+
+> Note: the type badge in the sidebar is shown only when the template details response includes
+> a `repository_type`. As of this release the backend's `TemplateDetailsResponse` never actually
+> populates that field, so this badge does not currently render in production — a pre-existing
+> backend gap, out of scope for this change.
 
 ---
 
@@ -66,8 +87,8 @@ Selected state (rust-library chosen, details loaded):
 |  [ Logo ]  [App Name]                   [ @username v ]      |
 +==============================================================+
 |                                                              |
-|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  |
-|   ✓                             ●                   ○        |
+|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  ---  (4) Review            |
+|   ✓                             ●                   ○                  ○                 |
 |                                                              |
 |  Repository settings                                         |
 |                                                              |
@@ -95,17 +116,21 @@ Selected state (rust-library chosen, details loaded):
 +==============================================================+
 ```
 
+Note: Settings now always advances (it never creates directly) — the button reads "Next:
+Variables →" when the template has variables, or "Next: Review →" otherwise (see the no-variables
+wireframe below). The Create action lives exclusively on the new Review step.
+
 ---
 
-### Step 2: Repository Settings (template has NO variables — shows "Create" button + summary)
+### Step 2: Repository Settings (template has NO variables — shows "Next: Review" button + summary)
 
 ```
 +==============================================================+
 |  [ Logo ]  [App Name]                   [ @username v ]      |
 +==============================================================+
 |                                                              |
-|  (1) Choose template  ---  (2) Settings                      |
-|   ✓                             ●                            |
+|  (1) Choose template  ---  (2) Settings  ---  (3) Review     |
+|   ✓                             ●                   ○        |
 |                                                              |
 |  Repository settings                                         |
 |                                                              |
@@ -125,10 +150,14 @@ Selected state (rust-library chosen, details loaded):
 |  | myorg / my-docs-site   Template: docs-site   [private]  ||
 |  +----------------------------------------------------------+|
 |                                                              |
-|  [ ← Back ]                          [ Create Repository ]  |
+|  [ ← Back ]                           [ Next: Review → ]    |
 |                                                              |
 +==============================================================+
 ```
+
+Note: when the template has no variables, the wizard is 3 steps total (Choose template, Settings,
+Review) — Variables is skipped entirely. Settings' action button now always reads "Next: Review
+→"; it no longer creates the repository directly (see Step 3/4: Review and Create, below).
 
 ---
 
@@ -139,8 +168,8 @@ Selected state (rust-library chosen, details loaded):
 |  [ Logo ]  [App Name]                   [ @username v ]      |
 +==============================================================+
 |                                                              |
-|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  |
-|   ✓                             ✓                   ●        |
+|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  ---  (4) Review            |
+|   ✓                             ✓                   ●                  ○                 |
 |                                                              |
 |  Template variables                                          |
 |                                                              |
@@ -166,10 +195,51 @@ Selected state (rust-library chosen, details loaded):
 |  | [library] [private]                                      ||
 |  +----------------------------------------------------------+|
 |                                                              |
+|  [ ← Back ]                          [ Next: Review → ]     |
+|                                                              |
++==============================================================+
+```
+
+Note: Variables' action button now reads "Next: Review →" (not "Create Repository" — Create has
+moved to the new Review step, below). The inline summary shown here is the same `RepositorySummary`
+component used on the Review step, but without the `description`/`tags`/`variables` props, since
+those are only meaningful once the user is reviewing the final configuration.
+
+---
+
+### Step 4 (or Step 3, no-variables path): Review and Create
+
+```
++==============================================================+
+|  [ Logo ]  [App Name]                   [ @username v ]      |
++==============================================================+
+|                                                              |
+|  (1) Choose template  ---  (2) Settings  ---  (3) Variables  ---  (4) Review            |
+|   ✓                             ✓                   ✓                  ●                 |
+|                                                              |
+|  Review and create                                            |
+|                                                              |
+|  +----------------------------------------------------------+|
+|  | myorg / my-new-service                                   ||
+|  | Template: Rust Library   [library]   [private]           ||
+|  |                                                            ||
+|  | Rust library with CI/CD and testing configured.           ||
+|  | [rust] [library] [ci] [cd]                                 ||
+|  |                                                            ||
+|  | service_name       my-new-service                        ||
+|  | author              Platform Team                        ||
+|  | description         (empty)                               ||
+|  +----------------------------------------------------------+|
+|                                                              |
 |  [ ← Back ]                          [ Create Repository ]  |
 |                                                              |
 +==============================================================+
 ```
+
+Note: this wireframe shows the variables-present path (Step 4 of 4). When the template has no
+variables, this is Step 3 of 3 instead, and the variables list in the summary is simply empty
+(the `variables` list section renders nothing — see CMP-009). In both cases Review is always the
+final step, and "Create Repository" appears exclusively here.
 
 ---
 
@@ -207,6 +277,7 @@ The primary screen of the application. A stepped wizard that collects:
 1. Template selection
 2. Repository settings (name, type, team, visibility)
 3. Template variable values (conditional — only shown when the template defines variables)
+4. A final review of everything collected so far, before the repository is actually created
 
 Then submits the creation request and shows a loading overlay while the API call completes.
 
@@ -215,24 +286,47 @@ Then submits the creation request and shows a loading overlay while the API call
 ## Layout
 
 - Full-page authenticated layout: AppShell (header with logo + UserBadge) above the wizard area
-- Wizard area: centred, single column, max-width ~700px
-- Step progress indicator at the top of the wizard (e.g., "Step 1 of 3")
+- Wizard area: centred, single column on every step **except** Step 1
+  - **Step 1 only**: widened to a two-column layout, max-width **80rem**, to make room for the
+    `TemplateDetailsPanel` sidebar beside the template grid (see Step 1, below)
+  - **Settings / Variables / Review**: max-width **56rem** (unchanged from before this round of
+    changes)
+  - The page shell itself (`AppShell`'s `.app-shell__main`) was also widened, from 72rem to
+    **96rem**, so the wizard's own 80rem Step-1 width has room to breathe within it
+- Step progress indicator at the top of the wizard (e.g., "Step 1 of 3" or "Step 1 of 4" —
+  the total is 4 when the selected template has variables, 3 when it doesn't; see Global Wizard
+  Behaviour)
 - Step content below the indicator
-- Back / Next / Create buttons at the bottom of each step
+- Back / Next / Create buttons at the bottom of each step — **Create** appears only on the final
+  Review step; every other step's primary button is a **Next** button that only ever advances
 
 ---
 
 ## Global Wizard Behaviour
 
 - **Step state is held in component memory** (not in the URL). The route stays `/create` throughout.
+- **Step count is 3 or 4**, never fixed: `['Choose template', 'Settings', 'Review']` when the
+  selected template has no variables, or `['Choose template', 'Settings', 'Variables', 'Review']`
+  when it does. A final **Review** step is *always* appended, regardless of which of the two step
+  lists is in effect.
+- **Create lives exclusively on the Review step.** Settings and Variables never create the
+  repository directly — their primary button always reads "Next: … →" and only ever advances to
+  the next step. This is a change from the previous behaviour, where "Create Repository" could
+  appear on Settings (no-variables path) or Variables (has-variables path).
 - **Back navigation within the wizard** is handled by the wizard's own Back button — not the browser
-  back button. Browser back navigates away from `/create` entirely.
+  back button. Browser back navigates away from `/create` entirely. Back is a simple one-step
+  decrement at every step, including from Review (which always lands back on Variables when
+  present, or Settings when not).
 - **Unsaved-data guard**: if the user has selected a template (or entered any data) and
   attempts to close the tab or navigate away via browser controls, the browser's native leave
   confirmation dialog is shown.
 - **The guard is removed** once the creation overlay activates (to avoid interfering with the
   redirect to `/create/success`) and once the user successfully completes creation.
-- Returning to a previous step preserves all previously entered values in later steps.
+- Returning to a previous step preserves all previously entered values in later steps — this now
+  includes the Review step, whose summary (template description, tags, and every configured
+  variable's name/value) is always derived live from current wizard state, never stale.
+- A duplicate-submission guard (`creatingRepo`) prevents the Create action from firing twice in a
+  row (e.g. a rapid double-click), now that Create is reachable from exactly one place.
 
 ---
 
@@ -250,10 +344,19 @@ is ready without delay.
 - Optional search/filter bar (filters the displayed cards client-side, no API call)
 - Template card grid (2 columns desktop, 1 column mobile)
 - Each template card shows:
-  - Template name (bold)
-  - Description (clamped to 2 lines)
+  - Template display name (bold)
+  - Description (clamped to 2 lines, with a "Show more"/"Show less" toggle to expand/collapse it
+    in place — does not affect card selection)
   - Tags (small chips, max 4 shown)
   - Repository type badge (if the template has a fixed or preferable type)
+- **Sidebar** (`TemplateDetailsPanel`, CMP-013): shown to the right of the grid (≥60rem viewport
+  width) or stacked below it (narrower viewports). Shows the full, untruncated details — display
+  name, complete description, all tags (uncapped), the repository type badge if present, and the
+  full variable list — for whichever card is currently selected. Shows its own loading state
+  (spinner + "Loading template details…") while the per-card details fetch is in flight, and its
+  own empty state ("Select a template to see its details here.") when nothing is selected yet.
+  This is new in this round of changes — previously, the only way to see a template's full
+  description/variables was Step 3 itself.
 - "Next: Repository settings →" button at the bottom: **disabled** until a card is selected
 
 ### States
@@ -323,7 +426,9 @@ populated with defaults from the template or org configuration.
 
 - Heading: "Repository settings"
 - Fields in order (see below)
-- If the selected template has **no variables**: inline summary section at the bottom + "Create Repository" primary button
+- If the selected template has **no variables**: inline summary section at the bottom + "Next:
+  Review →" primary button (this step no longer creates the repository directly — see Step 3/4:
+  Review and Create)
 - If the selected template **has variables**: "Next: Variables →" button at the bottom
 - "← Back" secondary button at the bottom
 
@@ -392,14 +497,16 @@ initial release (assume org-enforced visibility).
 
 ### Inline Summary (when template has no variables)
 
-Displayed below the fields before the Create button:
+Displayed below the fields before the Next button:
 
 ```
 You are about to create:
 [org name] / [repository name]    Template: [template name]    [Type badge]    [Visibility badge]
 ```
 
-All parts update live as the user fills in the form.
+All parts update live as the user fills in the form. (This summary uses the same
+`RepositorySummary` component, CMP-009, as the Review step — but without the `description`,
+`tags`, or `variables` props, since Review is where those are shown.)
 
 ### Interactions
 
@@ -412,21 +519,25 @@ All parts update live as the user fills in the form.
 | Team dropdown | Change | Selected team updates |
 | Visibility radio | Change | Visibility updates; summary updates |
 | "← Back" button | Click | Return to Step 1; previously selected template card still selected |
-| "Next: Variables" button | Click | Transition to Step 3; button visible only when template has variables |
-| "Create Repository" button | Click | Validation check → if all valid, show creation overlay and submit |
+| "Next: Variables →" button | Click | Transition to Step 3 (Variables); shown only when the template has variables |
+| "Next: Review →" button | Click | Transition to the Review step; shown only when the template has no variables |
 
-### Next / Create button activation rules
+### Next button activation rules
 
-The Next / Create button is **enabled** when:
+The Next button ("Next: Variables →" or "Next: Review →", depending on whether the template has
+variables) is **enabled** when:
 
 - Repository name field: format is valid AND uniqueness check result is "Available" (or "check failed" warning state)
 
-The Next / Create button is **disabled** when:
+The Next button is **disabled** when:
 
 - Repository name is empty
 - Repository name format is invalid
 - Uniqueness check is in progress
 - Uniqueness check returned "already taken"
+
+> This step never creates the repository directly, regardless of whether the template has
+> variables — Create lives exclusively on the Review step (Step 3 or Step 4; see below).
 
 ---
 
@@ -443,7 +554,8 @@ content. Only shown when the selected template defines at least one variable.
 - Variable fields in order: required variables first, then optional
 - Required variables marked with an asterisk (*) in the label
 - Inline summary section at the bottom (same as Step 2's summary when no variables)
-- "Create Repository" primary button at the bottom
+- "Next: Review →" primary button at the bottom (this step no longer creates the repository
+  directly — see Step 4: Review and Create, below)
 - "← Back" secondary button at the bottom
 
 ### Variable Field Rendering
@@ -468,24 +580,74 @@ You are about to create:
 
 ### States
 
-- **Incomplete** (some required variables empty): Create button disabled
-- **Complete** (all required variables have values): Create button enabled
-- **Submitting** (Create clicked): creation overlay shown; wizard hidden behind overlay
+- **Incomplete** (some required variables empty): Next button disabled
+- **Complete** (all required variables have values): Next button enabled
 
 ### Interactions
 
 | Element | Action | Outcome |
 |---|---|---|
-| Variable field | Type | Value captured; Create button re-evaluates enabled state |
+| Variable field | Type | Value captured; Next button re-evaluates enabled state |
 | "← Back" button | Click | Return to Step 2; all Step 2 field values preserved |
-| "Create Repository" button | Click | All required fields validated → creation overlay shows → POST to API |
+| "Next: Review →" button | Click | Transition to the Review step; all variable values carried forward |
 
-### Create button activation rules
+### Next button activation rules
 
-The Create button is **enabled** when:
+The "Next: Review →" button is **enabled** when:
 
 - All `required: true` variables have a non-empty value
 - (Step 2 conditions still met — validated before proceeding to Step 3)
+
+---
+
+## Step 3 or 4: Review and Create
+
+> This is Step 3 of 3 when the selected template has no variables (Variables is skipped), or
+> Step 4 of 4 when it does. It is always the wizard's final step.
+
+### Purpose
+
+Let the user review everything that has been configured so far — org/repo name, template, type,
+visibility, team, and (when the template has variables) every variable's resolved value — in one
+place before committing to repository creation. Create the repository once confirmed.
+
+This step closes a gap in the previous design: configured variable values were captured in
+wizard state as soon as the user typed them, but were never shown anywhere before creation — not
+even on the step where Create was clicked. Review now surfaces them.
+
+### Layout
+
+- Heading: "Review and create"
+- A single `RepositorySummary` (CMP-009) block showing, in order:
+  - `[org] / [repository name]`
+  - Template (display name), repository type, and visibility chips
+  - The template's full description (when available)
+  - The template's full tag list (when any)
+  - Every configured variable, as a `name: value` row — this list is empty (and the whole
+    section renders nothing) when the template has no variables
+- "← Back" secondary button at the bottom
+- "Create Repository" primary button at the bottom — **this is the only place in the wizard the
+  Create action appears**
+
+### States
+
+- **Ready**: Create button enabled
+- **Submitting** (Create clicked): `creatingRepo` is set; Create button disabled for the
+  duration (prevents duplicate submissions from a rapid double-click); creation overlay shown;
+  wizard content hidden behind it (`aria-hidden="true"`, not removed from the DOM)
+
+### Interactions
+
+| Element | Action | Outcome |
+|---|---|---|
+| "← Back" button | Click | Return to the previous step (Variables, if the template has any; otherwise Settings); all previously entered values preserved |
+| "Create Repository" button | Click | Submits `POST /api/v1/repositories` with all collected data; shows the creation overlay; ignored if a submission is already in flight |
+
+### Create button activation rules
+
+The Create button is **disabled** only while a creation request is already in flight
+(`creatingRepo`); otherwise it is always enabled on this step, since every required value from
+earlier steps was already validated before the user could advance this far.
 
 ---
 
@@ -516,17 +678,19 @@ Displayed over the entire wizard while `POST /api/v1/repositories` is in flight.
 
 ## Creation Error States
 
-All creation errors are shown as an `InlineAlert` component with `variant="error"` above the
-Create button (Step 2 or Step 3 depending on where creation was triggered). The creation overlay
-is dismissed before the error appears.
+Create is now only ever triggered from the Review step, so every creation error is first raised
+there. All creation errors are shown as an `InlineAlert` component with `variant="error"`. For the
+two recoverable conflict cases, the user is then automatically moved back to the step that needs
+correcting (Settings or Step 1) and the alert is shown there instead; for the remaining cases the
+alert stays on the Review step. The creation overlay is dismissed before any error appears.
 
 | API Error | Recovery UX |
 |---|---|
-| 422 — name already taken (race condition) | User returned to Step 2; name field shows taken error; InlineAlert: "A repository named '[name]' was created while you were filling in this form. Please choose a different name." |
+| 422 — name already taken (race condition) | User returned to Settings (Step 2); name field shows taken error; InlineAlert: "A repository named '[name]' was created while you were filling in this form. Please choose a different name." |
 | 422 — template not found | User returned to Step 1; template grid reloaded; InlineAlert: "The template '[name]' is no longer available. Please choose a different template." |
-| 403 — permission denied | InlineAlert in current step: "You don't have permission to create repositories in this organization. Contact your administrator." |
-| 5xx — GitHub API error | InlineAlert in current step: "GitHub is temporarily unavailable. Your repository was not created. Please try again." |
-| Network error (no response) | InlineAlert in current step: "Could not reach the server. Check your connection and try again." |
+| 403 — permission denied | InlineAlert on the Review step: "You don't have permission to create repositories in this organization. Contact your administrator." |
+| 5xx — GitHub API error | InlineAlert on the Review step: "GitHub is temporarily unavailable. Your repository was not created. Please try again." |
+| Network error (no response) | InlineAlert on the Review step: "Could not reach the server. Check your connection and try again." |
 
 ---
 
@@ -557,9 +721,13 @@ is dismissed before the error appears.
 | Fetch template details | When user selects a template card | `GET /api/v1/orgs/{org}/templates/{template}` |
 | Fetch repository types | On step 2 entry (first time only) | `GET /api/v1/orgs/{org}/types` |
 | Validate name uniqueness | On blur of name field (if format valid) | `POST /api/v1/repositories/validate-name` |
-| Create repository | On "Create Repository" click | `POST /api/v1/repositories` |
+| Create repository | On "Create Repository" click (Review step — the only step where this button appears; previously this could be Step 2 or Step 3 depending on whether the template had variables) | `POST /api/v1/repositories` |
 
 ### Inputs collected (final POST body)
+
+The POST body itself is unchanged by this round of changes — only the step from which it is sent
+(always Review, now) and the fact that every variable value is also visible to the user on that
+same step before they click Create.
 
 ```json
 {
