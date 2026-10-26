@@ -8,6 +8,8 @@
    * Spec: docs/spec/ux/components/component-inventory.md — CMP-009
    */
 
+  import TagList from './TagList.svelte';
+
   interface ConfiguredVariable {
     name: string;
     value: string;
@@ -76,13 +78,7 @@
     <p class="repo-summary__description">{description}</p>
   {/if}
 
-  {#if tags.length > 0}
-    <ul class="repo-summary__tags" aria-label="Template tags">
-      {#each tags as tag (tag)}
-        <li class="repo-summary__tag">{tag}</li>
-      {/each}
-    </ul>
-  {/if}
+  <TagList {tags} ariaLabel="Template tags" />
 
   {#if variables.length > 0}
     <ul class="repo-summary__variables" aria-label="Configured variables">
@@ -162,23 +158,9 @@
     margin: 0;
   }
 
-  .repo-summary__tags {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-  }
-
-  .repo-summary__tag {
-    font-size: 0.75rem;
-    padding: 0.125rem 0.5rem;
-    background-color: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 9999px;
-    color: var(--color-text-muted);
-  }
+  /* Tags are now rendered by the shared TagList component (see import
+     above) — extracted during this task's REFACTOR pass to remove this
+     component's duplication of TemplateCard's identical chip CSS. */
 
   .repo-summary__variables {
     list-style: none;

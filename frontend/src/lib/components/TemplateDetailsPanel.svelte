@@ -3,15 +3,18 @@
    * TemplateDetailsPanel
    *
    * Step-1 sidebar showing full details (description, tags, repository-type
-   * badge, variables) for the currently-selected template. Reuses
-   * TemplateCard's tag-list (uncapped here) and type-badge markup
-   * conventions per the Catalog Slice.
+   * badge, variables) for the currently-selected template. Reuses the
+   * shared `TagList` (uncapped here) and `RepositoryTypeBadge` components —
+   * see those files' doc comments for the TemplateCard-originated
+   * convention they share.
    *
    * Spec: docs/spec/ux/components/component-inventory.md (new component —
    * create-wizard sidebar/review follow-up task).
    */
 
   import Spinner from './Spinner.svelte';
+  import TagList from './TagList.svelte';
+  import TypeBadge from './RepositoryTypeBadge.svelte';
   import type { GetTemplateDetailsResponse } from '$lib/api/types';
 
   interface Props {
@@ -36,18 +39,13 @@
     <p class="template-details-panel__description">{templateDetails.description}</p>
 
     {#if templateDetails.repository_type}
-      <span class="template-card__type-badge" data-policy={templateDetails.repository_type.policy}>
-        {templateDetails.repository_type.type_name}
-      </span>
+      <TypeBadge
+        typeName={templateDetails.repository_type.type_name}
+        policy={templateDetails.repository_type.policy}
+      />
     {/if}
 
-    {#if templateDetails.tags.length > 0}
-      <ul class="template-details-panel__tags" aria-label="Tags">
-        {#each templateDetails.tags as tag (tag)}
-          <li class="template-card__tag">{tag}</li>
-        {/each}
-      </ul>
-    {/if}
+    <TagList tags={templateDetails.tags} ariaLabel="Tags" />
 
     {#if templateDetails.variables.length > 0}
       <ul class="template-details-panel__variables" aria-label="Template variables">
@@ -121,14 +119,12 @@
     margin: 0;
   }
 
-  .template-details-panel__tags {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-  }
+  /* Tags and the type badge are now rendered by the shared TagList/
+     RepositoryTypeBadge components (see imports above) — extracted during
+     this task's REFACTOR pass. Previously this component copy-pasted
+     TemplateCard's `.template-card__tag` class literal into its own markup
+     without importing TemplateCard, which rendered unstyled (Svelte scopes
+     a component's CSS to markup that component itself renders). */
 
   .template-details-panel__variables {
     list-style: none;
