@@ -678,11 +678,13 @@ impl OrganizationSettingsManager {
         match matches.len() {
             0 => Ok(None),
             1 => Ok(matches.into_iter().next()),
-            _ => Err(crate::errors::ConfigurationError::AmbiguousTemplateDesignation {
-                org: org.to_string(),
-                designation: format!("{designation:?}"),
-                templates: matches,
-            }),
+            _ => Err(
+                crate::errors::ConfigurationError::AmbiguousTemplateDesignation {
+                    org: org.to_string(),
+                    designation: format!("{designation:?}"),
+                    templates: matches,
+                },
+            ),
         }
     }
 }

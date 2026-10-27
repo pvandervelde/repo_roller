@@ -978,12 +978,12 @@ pub fn mirror_push(
                 reason: e.to_string(),
             })?;
     }
-    let mut remote = repo
-        .remote("push-target", repo_url.as_str())
-        .map_err(|e| SystemError::GitOperation {
-            operation: "add push-target remote".to_string(),
-            reason: e.to_string(),
-        })?;
+    let mut remote =
+        repo.remote("push-target", repo_url.as_str())
+            .map_err(|e| SystemError::GitOperation {
+                operation: "add push-target remote".to_string(),
+                reason: e.to_string(),
+            })?;
 
     let mut push_options = git2::PushOptions::new();
     push_options.remote_callbacks(installation_token_credential_callbacks(access_token));
@@ -1074,13 +1074,14 @@ pub fn create_snapshot_branch(
             operation: format!("find base branch '{base_branch}'"),
             reason: e.to_string(),
         })?;
-    let base_commit = base_branch_ref
-        .get()
-        .peel_to_commit()
-        .map_err(|e| SystemError::GitOperation {
-            operation: "peel base branch to commit".to_string(),
-            reason: e.to_string(),
-        })?;
+    let base_commit =
+        base_branch_ref
+            .get()
+            .peel_to_commit()
+            .map_err(|e| SystemError::GitOperation {
+                operation: "peel base branch to commit".to_string(),
+                reason: e.to_string(),
+            })?;
 
     repo.branch(branch_name, &base_commit, false)
         .map_err(|e| SystemError::GitOperation {
@@ -1089,12 +1090,12 @@ pub fn create_snapshot_branch(
         })?;
 
     let branch_ref_name = format!("refs/heads/{branch_name}");
-    let branch_obj = repo
-        .revparse_single(&branch_ref_name)
-        .map_err(|e| SystemError::GitOperation {
-            operation: format!("resolve branch '{branch_name}'"),
-            reason: e.to_string(),
-        })?;
+    let branch_obj =
+        repo.revparse_single(&branch_ref_name)
+            .map_err(|e| SystemError::GitOperation {
+                operation: format!("resolve branch '{branch_name}'"),
+                reason: e.to_string(),
+            })?;
     repo.checkout_tree(&branch_obj, None)
         .map_err(|e| SystemError::GitOperation {
             operation: format!("checkout branch '{branch_name}'"),
@@ -1109,10 +1110,12 @@ pub fn create_snapshot_branch(
     replace_working_tree_contents(local_repo_path.path(), source_files_path)?;
 
     let tree_oid = prepare_index_and_tree(&repo, true)?;
-    let tree = repo.find_tree(tree_oid).map_err(|e| SystemError::GitOperation {
-        operation: "find snapshot tree".to_string(),
-        reason: e.to_string(),
-    })?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| SystemError::GitOperation {
+            operation: "find snapshot tree".to_string(),
+            reason: e.to_string(),
+        })?;
     let signature = Signature::now("RepoRoller", "repo-roller@example.com").map_err(|e| {
         SystemError::GitOperation {
             operation: "create signature".to_string(),

@@ -1373,16 +1373,23 @@ fn validate_creation_mode_capability(
     let enabled = match capability {
         "fork" => resolved_capability_flag(&merged_config.creation_capabilities.fork_enabled),
         "source_history_mirror" => resolved_capability_flag(
-            &merged_config.creation_capabilities.source_history_mirror_enabled,
+            &merged_config
+                .creation_capabilities
+                .source_history_mirror_enabled,
         ),
         "source_only_mirror" => resolved_capability_flag(
-            &merged_config.creation_capabilities.source_only_mirror_enabled,
+            &merged_config
+                .creation_capabilities
+                .source_only_mirror_enabled,
         ),
         _ => false,
     };
 
     if !enabled {
-        warn!(capability = capability, "Creation mode capability is disabled");
+        warn!(
+            capability = capability,
+            "Creation mode capability is disabled"
+        );
         return Err(RepoRollerError::Configuration(
             ConfigurationError::CapabilityDisabled {
                 capability: capability.to_string(),
