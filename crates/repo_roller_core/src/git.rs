@@ -856,6 +856,356 @@ pub fn push_to_origin(
     }
 }
 
+/// Builds installation-token-authenticated remote callbacks for a git2
+/// fetch/push operation, mirroring the credential strategy already used by
+/// [`push_to_origin`] (GitHub App installation token as the password,
+/// `x-access-token` as the username).
+fn installation_token_credential_callbacks(access_token: &str) -> git2::RemoteCallbacks<'static> {
+    let mut callbacks = git2::RemoteCallbacks::new();
+    let token = access_token.to_string();
+    callbacks.credentials(move |_url, _username_from_url, allowed_types| {
+        if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            git2::Cred::userpass_plaintext("x-access-token", &token)
+        } else {
+            Err(git2::Error::from_str(
+                "No supported credential types for GitHub authentication",
+            ))
+        }
+    });
+    callbacks
+}
+
+/// Mirror-clones `source_url` (full history, all refs) into a new temporary
+/// directory using installation-token authentication — analogous to
+/// `git clone --mirror`.
+///
+/// Returns the temp directory containing the bare mirror and the name of the
+/// source's default branch (read from the mirrored repository's HEAD), so
+/// that the caller can set the new repository's default branch to match
+/// `source`'s, per
+/// docs/spec/interfaces/fork-mirror-operations.md §6.
+///
+/// # Errors
+///
+/// Returns `SystemError::GitOperation` if the clone or the follow-up
+/// all-refs fetch fails (e.g. authentication failure, source not found).
+pub fn mirror_clone(
+    source_url: url::Url,
+    access_token: &str,
+) -> Result<(TempDir, String), SystemError> {
+    info!("Mirror-cloning source repository: {}", source_url);
+
+    let temp_dir = TempDir::new().map_err(|e| SystemError::FileSystem {
+        operation: "create temp dir for mirror clone".to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(installation_token_credential_callbacks(access_token));
+
+    let repo = git2::build::RepoBuilder::new()
+        .bare(true)
+        .fetch_options(fetch_options)
+        .clone(source_url.as_str(), temp_dir.path())
+        .map_err(|e| {
+            error!("Failed to mirror-clone source repository: {}", e);
+            SystemError::GitOperation {
+                operation: "mirror-clone source repository".to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+
+    // `RepoBuilder::clone` fetches via the default branches/tags refspec; a
+    // true mirror also needs every other ref. Re-fetch with the broader
+    // mirror refspec to capture anything the default clone missed.
+    let mut mirror_fetch_options = git2::FetchOptions::new();
+    mirror_fetch_options.remote_callbacks(installation_token_credential_callbacks(access_token));
+
+    let mut remote = repo
+        .find_remote("origin")
+        .map_err(|e| SystemError::GitOperation {
+            operation: "find origin remote after mirror-clone".to_string(),
+            reason: e.to_string(),
+        })?;
+    remote
+        .fetch(&["+refs/*:refs/*"], Some(&mut mirror_fetch_options), None)
+        .map_err(|e| {
+            error!("Failed to fetch all refs for mirror: {}", e);
+            SystemError::GitOperation {
+                operation: "fetch all refs for mirror".to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+
+    let default_branch = repo
+        .head()
+        .ok()
+        .and_then(|head| head.shorthand().ok().map(str::to_string))
+        .unwrap_or_else(|| "main".to_string());
+
+    info!(
+        "Mirror-clone complete; source default branch: {}",
+        default_branch
+    );
+
+    Ok((temp_dir, default_branch))
+}
+
+/// Mirror-pushes the bare mirror clone at `local_repo_path` (produced by
+/// [`mirror_clone`]) to `repo_url`, replicating every ref — analogous to
+/// `git push --mirror`.
+///
+/// # Errors
+///
+/// Returns `SystemError::GitOperation` if the repository cannot be opened,
+/// the push-target remote cannot be configured, or the push itself fails.
+pub fn mirror_push(
+    local_repo_path: &TempDir,
+    repo_url: url::Url,
+    access_token: &str,
+) -> Result<(), SystemError> {
+    info!("Mirror-pushing to: {}", repo_url);
+
+    let repo = Repository::open(local_repo_path.path()).map_err(|e| SystemError::GitOperation {
+        operation: "open mirror repository".to_string(),
+        reason: e.to_string(),
+    })?;
+
+    if repo.find_remote("push-target").is_ok() {
+        repo.remote_delete("push-target")
+            .map_err(|e| SystemError::GitOperation {
+                operation: "delete existing push-target remote".to_string(),
+                reason: e.to_string(),
+            })?;
+    }
+    let mut remote = repo
+        .remote("push-target", repo_url.as_str())
+        .map_err(|e| SystemError::GitOperation {
+            operation: "add push-target remote".to_string(),
+            reason: e.to_string(),
+        })?;
+
+    let mut push_options = git2::PushOptions::new();
+    push_options.remote_callbacks(installation_token_credential_callbacks(access_token));
+
+    remote
+        .push(&["+refs/*:refs/*"], Some(&mut push_options))
+        .map_err(|e| {
+            error!("Mirror push failed: {}", e);
+            SystemError::GitOperation {
+                operation: "mirror push to target repository".to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+
+    info!("Mirror-push complete");
+    Ok(())
+}
+
+/// Shallow-clones `source_url`'s default branch (depth 1, no history) into a
+/// new temporary directory, for extracting its current working-tree file
+/// contents.
+///
+/// Used by the source-only mirror flow, which needs only `source`'s current
+/// files, never its history (see
+/// docs/spec/interfaces/fork-mirror-operations.md §6).
+///
+/// # Errors
+///
+/// Returns `SystemError::GitOperation` if the clone fails (e.g.
+/// authentication failure, source not found).
+pub fn shallow_clone_working_tree(
+    source_url: url::Url,
+    access_token: &str,
+) -> Result<TempDir, SystemError> {
+    info!("Shallow-cloning source repository contents: {}", source_url);
+
+    let temp_dir = TempDir::new().map_err(|e| SystemError::FileSystem {
+        operation: "create temp dir for shallow clone".to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(installation_token_credential_callbacks(access_token));
+    fetch_options.depth(1);
+
+    git2::build::RepoBuilder::new()
+        .fetch_options(fetch_options)
+        .clone(source_url.as_str(), temp_dir.path())
+        .map_err(|e| {
+            error!("Failed to shallow-clone source repository: {}", e);
+            SystemError::GitOperation {
+                operation: "shallow-clone source repository".to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+
+    Ok(temp_dir)
+}
+
+/// Creates `branch_name` off `base_branch`'s current commit in the
+/// already-initialized local repository at `local_repo_path`, replaces the
+/// working tree with a snapshot of `source_files_path`'s current contents
+/// (no history — a plain tree snapshot, not a merge or cherry-pick), and
+/// commits the result as a single child commit of `base_branch`.
+///
+/// Does not push; callers push `branch_name` separately via
+/// [`push_to_origin`].
+///
+/// # Errors
+///
+/// Returns `SystemError::GitOperation` or `SystemError::FileSystem` if any
+/// git or filesystem operation fails.
+pub fn create_snapshot_branch(
+    local_repo_path: &TempDir,
+    base_branch: &str,
+    branch_name: &str,
+    source_files_path: &std::path::Path,
+    commit_message: &str,
+) -> Result<(), SystemError> {
+    let repo = Repository::open(local_repo_path.path()).map_err(|e| SystemError::GitOperation {
+        operation: "open repository for snapshot branch".to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let base_branch_ref = repo
+        .find_branch(base_branch, git2::BranchType::Local)
+        .map_err(|e| SystemError::GitOperation {
+            operation: format!("find base branch '{base_branch}'"),
+            reason: e.to_string(),
+        })?;
+    let base_commit = base_branch_ref
+        .get()
+        .peel_to_commit()
+        .map_err(|e| SystemError::GitOperation {
+            operation: "peel base branch to commit".to_string(),
+            reason: e.to_string(),
+        })?;
+
+    repo.branch(branch_name, &base_commit, false)
+        .map_err(|e| SystemError::GitOperation {
+            operation: format!("create branch '{branch_name}'"),
+            reason: e.to_string(),
+        })?;
+
+    let branch_ref_name = format!("refs/heads/{branch_name}");
+    let branch_obj = repo
+        .revparse_single(&branch_ref_name)
+        .map_err(|e| SystemError::GitOperation {
+            operation: format!("resolve branch '{branch_name}'"),
+            reason: e.to_string(),
+        })?;
+    repo.checkout_tree(&branch_obj, None)
+        .map_err(|e| SystemError::GitOperation {
+            operation: format!("checkout branch '{branch_name}'"),
+            reason: e.to_string(),
+        })?;
+    repo.set_head(&branch_ref_name)
+        .map_err(|e| SystemError::GitOperation {
+            operation: format!("set HEAD to branch '{branch_name}'"),
+            reason: e.to_string(),
+        })?;
+
+    replace_working_tree_contents(local_repo_path.path(), source_files_path)?;
+
+    let tree_oid = prepare_index_and_tree(&repo, true)?;
+    let tree = repo.find_tree(tree_oid).map_err(|e| SystemError::GitOperation {
+        operation: "find snapshot tree".to_string(),
+        reason: e.to_string(),
+    })?;
+    let signature = Signature::now("RepoRoller", "repo-roller@example.com").map_err(|e| {
+        SystemError::GitOperation {
+            operation: "create signature".to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+    let commit_oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            commit_message,
+            &tree,
+            &[&base_commit],
+        )
+        .map_err(|e| SystemError::GitOperation {
+            operation: "create snapshot commit".to_string(),
+            reason: e.to_string(),
+        })?;
+
+    debug!("Snapshot commit created with OID: {}", commit_oid);
+    Ok(())
+}
+
+/// Replaces `dest`'s tracked working-tree contents with `source`'s current
+/// contents (excluding `.git`): deletes entries present in `dest` but not
+/// managed by `.git`, then copies everything from `source`.
+fn replace_working_tree_contents(
+    dest: &std::path::Path,
+    source: &std::path::Path,
+) -> Result<(), SystemError> {
+    for entry in std::fs::read_dir(dest).map_err(|e| SystemError::FileSystem {
+        operation: "read destination directory".to_string(),
+        reason: e.to_string(),
+    })? {
+        let entry = entry.map_err(|e| SystemError::FileSystem {
+            operation: "read destination directory entry".to_string(),
+            reason: e.to_string(),
+        })?;
+        if entry.file_name() == ".git" {
+            continue;
+        }
+        let path = entry.path();
+        let removal = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        removal.map_err(|e| SystemError::FileSystem {
+            operation: format!("remove existing entry {:?}", path),
+            reason: e.to_string(),
+        })?;
+    }
+
+    copy_dir_contents(source, dest)
+}
+
+/// Recursively copies all entries from `source` into `dest`, skipping
+/// `.git` directories.
+fn copy_dir_contents(source: &std::path::Path, dest: &std::path::Path) -> Result<(), SystemError> {
+    for entry in std::fs::read_dir(source).map_err(|e| SystemError::FileSystem {
+        operation: "read source directory".to_string(),
+        reason: e.to_string(),
+    })? {
+        let entry = entry.map_err(|e| SystemError::FileSystem {
+            operation: "read source directory entry".to_string(),
+            reason: e.to_string(),
+        })?;
+        if entry.file_name() == ".git" {
+            continue;
+        }
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        let file_type = entry.file_type().map_err(|e| SystemError::FileSystem {
+            operation: "read source entry type".to_string(),
+            reason: e.to_string(),
+        })?;
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&dest_path).map_err(|e| SystemError::FileSystem {
+                operation: format!("create directory {:?}", dest_path),
+                reason: e.to_string(),
+            })?;
+            copy_dir_contents(&src_path, &dest_path)?;
+        } else {
+            std::fs::copy(&src_path, &dest_path).map_err(|e| SystemError::FileSystem {
+                operation: format!("copy file to {:?}", dest_path),
+                reason: e.to_string(),
+            })?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "git_tests.rs"]
 mod tests;

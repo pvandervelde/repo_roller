@@ -526,7 +526,16 @@ async fn resolve_repository_visibility(
 }
 
 /// Generates the local repository content by selecting a [`ContentProvider`]
-/// based on `request.content_strategy` and calling `provide_content`.
+/// based on `content_strategy` and calling `provide_content`.
+///
+/// Takes `content_strategy` as an explicit parameter (rather than always
+/// reading `request.content_strategy`) so that `CreationMode::Mirror {
+/// preserve_history: false }` can drive content generation from an
+/// internally-derived strategy (Template-if-designated-else-Empty, per
+/// docs/spec/interfaces/fork-mirror-operations.md §6) without requiring a
+/// `ContentStrategy::Template`/`Empty` value to be threaded through the
+/// `RepositoryCreationRequest` itself (which, for Fork/Mirror modes, does
+/// not describe how the *new* repository's first commit is produced).
 ///
 /// Returns the temporary directory path containing the generated content.
 ///
@@ -535,6 +544,7 @@ async fn resolve_repository_visibility(
 /// Propagates errors from the content provider.
 async fn generate_repository_content(
     request: &RepositoryCreationRequest,
+    content_strategy: &ContentStrategy,
     template: Option<&config_manager::TemplateConfig>,
     merged_config: &config_manager::MergedConfiguration,
     template_fetcher: &template_engine::GitHubTemplateFetcher,
@@ -545,7 +555,7 @@ async fn generate_repository_content(
         .map(|t| format!("{}/{}", request.owner.as_ref(), t.as_ref()))
         .unwrap_or_default();
 
-    let content_provider: Box<dyn crate::ContentProvider> = match request.content_strategy {
+    let content_provider: Box<dyn crate::ContentProvider> = match content_strategy {
         crate::ContentStrategy::Template => {
             Box::new(crate::TemplateBasedContentProvider::new(template_fetcher))
         }
@@ -555,8 +565,8 @@ async fn generate_repository_content(
             include_gitignore,
         } => Box::new(crate::CustomInitContentProvider::new(
             crate::CustomInitOptions {
-                include_readme,
-                include_gitignore,
+                include_readme: *include_readme,
+                include_gitignore: *include_gitignore,
             },
         )),
     };
@@ -955,7 +965,7 @@ fn spawn_event_notification(
 /// Returns the default branch name used.
 async fn initialize_git_repository(
     local_repo_path: &TempDir,
-    installation_repo_client: &GitHubClient,
+    installation_repo_client: &dyn RepositoryClient,
     organization: &str,
     allow_empty_commit: bool,
 ) -> RepoRollerResult<String> {
@@ -1011,7 +1021,7 @@ async fn initialize_git_repository(
 async fn create_github_repository(
     request: &RepositoryCreationRequest,
     merged_config: &config_manager::MergedConfiguration,
-    installation_repo_client: &GitHubClient,
+    installation_repo_client: &dyn RepositoryClient,
     visibility: visibility::RepositoryVisibility,
 ) -> RepoRollerResult<github_client::Repository> {
     let payload = RepositoryCreatePayload {
@@ -1239,10 +1249,205 @@ async fn create_repository_inner(
         .validate(request.name.as_str(), &merged_config.naming_rules)
         .map_err(RepoRollerError::Validation)?;
 
+    // Step 4c: Fork/mirror capability + designation gate (RCF-005/RCF-006).
+    // Must run before any repository-mutating GitHub API call. Configuration
+    // resolution (steps 3–4) and naming validation (step 4b) are not
+    // mutating calls, so this is the earliest point at which the gate can
+    // run with the information it needs.
+    validate_creation_mode_capability(&request, &merged_config, template.as_ref())?;
+
+    // Steps 5+: Dispatch repository creation based on `request.creation_mode`.
+    let result = match request.creation_mode.clone() {
+        CreationMode::Standard => {
+            create_standard_repository(
+                &request,
+                template.as_ref(),
+                &merged_config,
+                &clients,
+                visibility_policy_provider,
+                environment_detector,
+                &event_context.created_by,
+            )
+            .await?
+        }
+        CreationMode::Fork { source } => {
+            create_fork_repository(
+                &request,
+                &source,
+                template.as_ref(),
+                &merged_config,
+                &clients,
+                &event_context.created_by,
+            )
+            .await?
+        }
+        CreationMode::Mirror {
+            source,
+            preserve_history: true,
+        } => {
+            create_history_mirror_repository(
+                &request,
+                &source,
+                template.as_ref(),
+                &merged_config,
+                &clients,
+                visibility_policy_provider,
+                environment_detector,
+                &event_context.created_by,
+            )
+            .await?
+        }
+        CreationMode::Mirror {
+            source,
+            preserve_history: false,
+        } => {
+            create_source_only_mirror_repository(
+                &request,
+                &source,
+                template.as_ref(),
+                &merged_config,
+                &clients,
+                visibility_policy_provider,
+                environment_detector,
+                &event_context.created_by,
+            )
+            .await?
+        }
+    };
+
+    info!("Repository creation completed successfully");
+
+    // Step 13: Fire-and-forget event notification.
+    spawn_event_notification(&result, request, merged_config, event_context);
+
+    Ok(result)
+}
+
+/// Resolves a fork/mirror capability flag, defaulting to `false`
+/// (fail-closed) when unset at every configuration level.
+///
+/// See docs/spec/interfaces/fork-mirror-operations.md §2: "treat a fully-`None`
+/// `CreationCapabilitiesSettings` at Global level as 'disabled'".
+fn resolved_capability_flag(flag: &Option<config_manager::OverridableValue<bool>>) -> bool {
+    flag.as_ref().map(|v| *v.get()).unwrap_or(false)
+}
+
+/// Resolves the fork/mirror capability flag for `request.creation_mode` and,
+/// when a template is explicitly set, validates that its `designation`
+/// matches the designation expected for the mode.
+///
+/// Returns immediately (`Ok(())`) for `CreationMode::Standard`, which has no
+/// capability or designation requirements.
+///
+/// # Errors
+///
+/// - `RepoRollerError::Configuration(ConfigurationError::CapabilityDisabled)`
+///   when the resolved capability flag is not explicitly enabled.
+/// - `RepoRollerError::Configuration(ConfigurationError::TemplateNotDesignated)`
+///   when `request.template` is `Some` but its designation does not match
+///   the one expected for `request.creation_mode`.
+fn validate_creation_mode_capability(
+    request: &RepositoryCreationRequest,
+    merged_config: &config_manager::MergedConfiguration,
+    template: Option<&config_manager::TemplateConfig>,
+) -> RepoRollerResult<()> {
+    let (capability, expected_designation) = match &request.creation_mode {
+        CreationMode::Standard => return Ok(()),
+        CreationMode::Fork { .. } => ("fork", config_manager::TemplateDesignation::Fork),
+        CreationMode::Mirror {
+            preserve_history: true,
+            ..
+        } => (
+            "source_history_mirror",
+            config_manager::TemplateDesignation::SourceHistoryMirror,
+        ),
+        CreationMode::Mirror {
+            preserve_history: false,
+            ..
+        } => (
+            "source_only_mirror",
+            config_manager::TemplateDesignation::SourceOnlyMirror,
+        ),
+    };
+
+    let enabled = match capability {
+        "fork" => resolved_capability_flag(&merged_config.creation_capabilities.fork_enabled),
+        "source_history_mirror" => resolved_capability_flag(
+            &merged_config.creation_capabilities.source_history_mirror_enabled,
+        ),
+        "source_only_mirror" => resolved_capability_flag(
+            &merged_config.creation_capabilities.source_only_mirror_enabled,
+        ),
+        _ => false,
+    };
+
+    if !enabled {
+        warn!(capability = capability, "Creation mode capability is disabled");
+        return Err(RepoRollerError::Configuration(
+            ConfigurationError::CapabilityDisabled {
+                capability: capability.to_string(),
+            },
+        ));
+    }
+
+    if let Some(template_config) = template {
+        if template_config.designation != Some(expected_designation) {
+            let template_name = request
+                .template
+                .as_ref()
+                .map(|t| t.to_string())
+                .unwrap_or_default();
+            warn!(
+                template = template_name.as_str(),
+                expected = ?expected_designation,
+                actual = ?template_config.designation,
+                "Template is not designated for the requested creation mode"
+            );
+            return Err(RepoRollerError::Configuration(
+                ConfigurationError::TemplateNotDesignated {
+                    template: template_name,
+                    expected_designation: format!("{expected_designation:?}"),
+                    actual_designation: template_config.designation.map(|d| format!("{d:?}")),
+                },
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Builds the `https://github.com/{owner}/{name}.git` clone URL for a
+/// [`SourceRepositoryReference`].
+///
+/// # Panics
+///
+/// Never panics in practice: `owner`/`name` are already-validated
+/// [`OrganizationName`]/[`RepositoryName`] branded types, whose character
+/// sets cannot produce an unparseable URL.
+fn build_github_https_url(owner: &str, name: &str) -> url::Url {
+    url::Url::parse(&format!("https://github.com/{owner}/{name}.git"))
+        .expect("validated owner/name cannot produce an unparseable URL")
+}
+
+/// Runs the Standard repository creation pipeline (pre-existing behavior,
+/// extracted unchanged from `create_repository_inner`): resolve visibility,
+/// generate content via `request.content_strategy`, initialize and commit
+/// the local git repository, create the GitHub repository, push content,
+/// and apply post-creation settings/permissions.
+#[allow(clippy::too_many_arguments)]
+async fn create_standard_repository(
+    request: &RepositoryCreationRequest,
+    template: Option<&config_manager::TemplateConfig>,
+    merged_config: &config_manager::MergedConfiguration,
+    clients: &CreationClients,
+    visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
+    environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
+    requestor: &str,
+) -> RepoRollerResult<RepositoryCreationResult> {
     // Step 5: Resolve repository visibility.
     let visibility_decision = resolve_repository_visibility(
-        &request,
-        template.as_ref(),
+        request,
+        template,
         visibility_policy_provider,
         environment_detector,
     )
@@ -1250,9 +1455,10 @@ async fn create_repository_inner(
 
     // Step 6: Generate local repository content.
     let local_repo_path = generate_repository_content(
-        &request,
-        template.as_ref(),
-        &merged_config,
+        request,
+        &request.content_strategy,
+        template,
+        merged_config,
         &clients.template_fetcher,
     )
     .instrument(tracing::info_span!(observability::SPAN_TEMPLATE_PROCESSING))
@@ -1270,8 +1476,8 @@ async fn create_repository_inner(
 
     // Step 8: Create the repository on GitHub.
     let repo = create_github_repository(
-        &request,
-        &merged_config,
+        request,
+        merged_config,
         &clients.installation_repo_client,
         visibility_decision.visibility,
     )
@@ -1294,25 +1500,296 @@ async fn create_repository_inner(
     // Steps 10–11: Apply merged configuration and repository permissions.
     apply_post_creation_settings(
         &clients.installation_repo_client,
-        &request,
-        &merged_config,
-        template.as_ref(),
-        &event_context.created_by,
+        request,
+        merged_config,
+        template,
+        requestor,
     )
     .await?;
 
-    info!("Repository creation completed successfully");
-
-    // Step 12: Build the result.
-    let result = RepositoryCreationResult {
+    Ok(RepositoryCreationResult {
         repository_url: repo.url().to_string(),
         repository_id: repo.node_id().to_string(),
         created_at: Timestamp::now(),
-        default_branch: default_branch.clone(),
+        default_branch,
+    })
+}
+
+/// Creates a GitHub fork of `source`, then applies resolved settings
+/// (branch protection, topics, visibility, etc. — the same step
+/// [`create_standard_repository`] performs) from the merged configuration.
+///
+/// Bypasses `ContentStrategy`/`ContentProvider` entirely: GitHub performs
+/// the fork (content + history), so no files are copied from a designated
+/// fork template — only its settings (if any) are applied, via
+/// `merged_config`, which already reflects the template's settings when one
+/// was validated by [`validate_creation_mode_capability`].
+async fn create_fork_repository(
+    request: &RepositoryCreationRequest,
+    source: &SourceRepositoryReference,
+    template: Option<&config_manager::TemplateConfig>,
+    merged_config: &config_manager::MergedConfiguration,
+    clients: &CreationClients,
+    requestor: &str,
+) -> RepoRollerResult<RepositoryCreationResult> {
+    info!(
+        "Creating GitHub fork of {}/{} into {}",
+        source.owner, source.name, request.owner
+    );
+
+    let repo = clients
+        .installation_repo_client
+        .create_fork(
+            source.owner.as_ref(),
+            source.name.as_ref(),
+            Some(request.owner.as_ref()),
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to create fork: {}", e);
+            RepoRollerError::GitHub(GitHubError::NetworkError {
+                reason: format!("Failed to create fork: {}", e),
+            })
+        })?;
+
+    apply_post_creation_settings(
+        &clients.installation_repo_client,
+        request,
+        merged_config,
+        template,
+        requestor,
+    )
+    .await?;
+
+    // GitHub forks inherit the source's default branch; approximate it via
+    // the same organization-default-branch lookup `create_standard_repository`
+    // uses for new repositories, since `Repository` does not expose the
+    // fork's actual default branch.
+    let default_branch = clients
+        .installation_repo_client
+        .get_organization_default_branch(request.owner.as_ref())
+        .await
+        .unwrap_or_else(|_| "main".to_string());
+
+    Ok(RepositoryCreationResult {
+        repository_url: repo.url().to_string(),
+        repository_id: repo.node_id().to_string(),
+        created_at: Timestamp::now(),
+        default_branch,
+    })
+}
+
+/// Creates an independent (non-fork) repository containing the full commit
+/// history of `source`, mirrored to `source`'s default branch HEAD.
+#[allow(clippy::too_many_arguments)]
+async fn create_history_mirror_repository(
+    request: &RepositoryCreationRequest,
+    source: &SourceRepositoryReference,
+    template: Option<&config_manager::TemplateConfig>,
+    merged_config: &config_manager::MergedConfiguration,
+    clients: &CreationClients,
+    visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
+    environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
+    requestor: &str,
+) -> RepoRollerResult<RepositoryCreationResult> {
+    info!(
+        "Creating source+history mirror of {}/{} as {}/{}",
+        source.owner, source.name, request.owner, request.name
+    );
+
+    let visibility_decision = resolve_repository_visibility(
+        request,
+        template,
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await?;
+
+    let repo = create_github_repository(
+        request,
+        merged_config,
+        &clients.installation_repo_client,
+        visibility_decision.visibility,
+    )
+    .await?;
+
+    let source_url = build_github_https_url(source.owner.as_ref(), source.name.as_ref());
+    let (mirror_dir, source_default_branch) =
+        git::mirror_clone(source_url, &clients.installation_token).map_err(|e| {
+            error!("Failed to mirror-clone source repository: {}", e);
+            RepoRollerError::System(e)
+        })?;
+
+    git::mirror_push(&mirror_dir, repo.url(), &clients.installation_token).map_err(|e| {
+        error!("Failed to mirror-push to new repository: {}", e);
+        RepoRollerError::System(e)
+    })?;
+
+    apply_post_creation_settings(
+        &clients.installation_repo_client,
+        request,
+        merged_config,
+        template,
+        requestor,
+    )
+    .await?;
+
+    Ok(RepositoryCreationResult {
+        repository_url: repo.url().to_string(),
+        repository_id: repo.node_id().to_string(),
+        created_at: Timestamp::now(),
+        default_branch: source_default_branch,
+    })
+}
+
+/// Creates an independent (non-fork) repository containing only `source`'s
+/// current file contents (no history), delivered via a pull request for
+/// review.
+#[allow(clippy::too_many_arguments)]
+async fn create_source_only_mirror_repository(
+    request: &RepositoryCreationRequest,
+    source: &SourceRepositoryReference,
+    template: Option<&config_manager::TemplateConfig>,
+    merged_config: &config_manager::MergedConfiguration,
+    clients: &CreationClients,
+    visibility_policy_provider: std::sync::Arc<dyn visibility::VisibilityPolicyProvider>,
+    environment_detector: std::sync::Arc<dyn visibility::GitHubEnvironmentDetector>,
+    requestor: &str,
+) -> RepoRollerResult<RepositoryCreationResult> {
+    info!(
+        "Creating source-only mirror of {}/{} as {}/{}",
+        source.owner, source.name, request.owner, request.name
+    );
+
+    let visibility_decision = resolve_repository_visibility(
+        request,
+        template,
+        visibility_policy_provider,
+        environment_detector,
+    )
+    .await?;
+
+    // First commit: the designated template's content when configured,
+    // otherwise an empty initial commit.
+    let content_strategy = if template.is_some() {
+        ContentStrategy::Template
+    } else {
+        ContentStrategy::Empty
     };
+    let local_repo_path = generate_repository_content(
+        request,
+        &content_strategy,
+        template,
+        merged_config,
+        &clients.template_fetcher,
+    )
+    .instrument(tracing::info_span!(observability::SPAN_TEMPLATE_PROCESSING))
+    .await?;
 
-    // Step 13: Fire-and-forget event notification.
-    spawn_event_notification(&result, request, merged_config, event_context);
+    let allow_empty_commit = matches!(content_strategy, ContentStrategy::Empty);
+    let default_branch = initialize_git_repository(
+        &local_repo_path,
+        &clients.installation_repo_client,
+        request.owner.as_ref(),
+        allow_empty_commit,
+    )
+    .await?;
 
-    Ok(result)
+    let repo = create_github_repository(
+        request,
+        merged_config,
+        &clients.installation_repo_client,
+        visibility_decision.visibility,
+    )
+    .await?;
+
+    push_repository_to_github_with_retry(
+        &local_repo_path,
+        repo.url(),
+        &default_branch,
+        &clients.installation_token,
+    )
+    .await?;
+
+    // Review branch: a plain tree snapshot of source's current contents
+    // (no history), committed as a single child of the default branch.
+    let source_url = build_github_https_url(source.owner.as_ref(), source.name.as_ref());
+    let source_snapshot_dir =
+        git::shallow_clone_working_tree(source_url, &clients.installation_token)
+            .map_err(RepoRollerError::System)?;
+
+    let mirror_branch = format!("mirror/{}-{}", source.owner.as_str(), source.name.as_str());
+    git::create_snapshot_branch(
+        &local_repo_path,
+        &default_branch,
+        &mirror_branch,
+        source_snapshot_dir.path(),
+        &format!("Mirror contents of {}/{}", source.owner, source.name),
+    )
+    .map_err(RepoRollerError::System)?;
+
+    push_repository_to_github_with_retry(
+        &local_repo_path,
+        repo.url(),
+        &mirror_branch,
+        &clients.installation_token,
+    )
+    .await?;
+
+    apply_post_creation_settings(
+        &clients.installation_repo_client,
+        request,
+        merged_config,
+        template,
+        requestor,
+    )
+    .await?;
+
+    // Open the review PR ready for review (not a draft). `draft: false` on
+    // create is normally sufficient; the explicit ready-for-review call is
+    // defensive for APIs/configurations that default PRs to draft.
+    let payload = github_client::PullRequestCreatePayload {
+        title: format!("Mirror contents of {}/{}", source.owner, source.name),
+        head: mirror_branch,
+        base: default_branch.clone(),
+        body: Some(format!(
+            "Mirrors the current file contents of {}/{} (no history).",
+            source.owner, source.name
+        )),
+        draft: false,
+    };
+    let pull_request = clients
+        .installation_repo_client
+        .create_pull_request(request.owner.as_ref(), request.name.as_ref(), &payload)
+        .await
+        .map_err(|e| {
+            error!("Failed to open mirror review pull request: {}", e);
+            RepoRollerError::GitHub(GitHubError::NetworkError {
+                reason: format!("Failed to open pull request: {}", e),
+            })
+        })?;
+
+    if pull_request.draft {
+        clients
+            .installation_repo_client
+            .mark_pull_request_ready_for_review(
+                request.owner.as_ref(),
+                request.name.as_ref(),
+                pull_request.number,
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to mark pull request ready for review: {}", e);
+                RepoRollerError::GitHub(GitHubError::NetworkError {
+                    reason: format!("Failed to mark pull request ready for review: {}", e),
+                })
+            })?;
+    }
+
+    Ok(RepositoryCreationResult {
+        repository_url: repo.url().to_string(),
+        repository_id: repo.node_id().to_string(),
+        created_at: Timestamp::now(),
+        default_branch,
+    })
 }

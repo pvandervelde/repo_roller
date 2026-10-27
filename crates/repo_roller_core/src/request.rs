@@ -84,10 +84,11 @@ pub enum ContentStrategy {
 /// `Mirror`.
 ///
 /// See `docs/spec/interfaces/fork-mirror-operations.md` §4.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CreationMode {
     /// Existing behavior: create (org/user) repo, then run `content_strategy`.
+    #[default]
     Standard,
 
     /// Create a GitHub fork of `source`. Bypasses `content_strategy` and
@@ -106,12 +107,6 @@ pub enum CreationMode {
         /// `false`: source-only mirror, delivered via PR, no history.
         preserve_history: bool,
     },
-}
-
-impl Default for CreationMode {
-    fn default() -> Self {
-        Self::Standard
-    }
 }
 
 /// Request for creating a new repository with validated types.
