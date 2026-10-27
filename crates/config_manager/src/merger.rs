@@ -49,6 +49,8 @@
 //!     teams: None,
 //!     collaborators: None,
 //!     naming_rules: None,
+//!     designation: None,
+//!     creation_capabilities: None,
 //! };
 //!
 //! // Merge configurations with precedence rules
@@ -69,9 +71,9 @@ use crate::{
     merged_config::{ConfigurationSource, MergedConfiguration},
     repository_type_config::RepositoryTypeConfig,
     settings::{
-        BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
-        NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig, RepositorySettings,
-        RulesetConfig, WebhookConfig,
+        BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty, EnvironmentConfig,
+        GitHubAppConfig, NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig,
+        RepositorySettings, RulesetConfig, WebhookConfig,
     },
     team_config::TeamConfig,
     template_config::TemplateConfig as NewTemplateConfig,
@@ -120,6 +122,8 @@ use crate::{
 ///     teams: None,
 ///     collaborators: None,
 ///     naming_rules: None,
+///     designation: None,
+///     creation_capabilities: None,
 /// };
 ///
 /// // Merge with all configuration levels
@@ -206,6 +210,8 @@ impl ConfigurationMerger {
     ///     teams: None,
     ///     collaborators: None,
     ///     naming_rules: None,
+    ///     designation: None,
+    ///     creation_capabilities: None,
     /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
@@ -345,6 +351,14 @@ impl ConfigurationMerger {
                 ConfigurationSource::Global,
             ));
         }
+        if let Some(capabilities) = &global.creation_capabilities {
+            merged.creation_capabilities = capabilities.clone();
+            self.track_creation_capabilities_sources(
+                &merged.creation_capabilities,
+                source_updates,
+                ConfigurationSource::Global,
+            );
+        }
     }
 
     /// Applies repository type-specific overrides.
@@ -458,6 +472,23 @@ impl ConfigurationMerger {
                 ConfigurationSource::RepositoryType,
             ));
         }
+        if let Some(override_caps) = &repo_type.creation_capabilities {
+            if let Some(base_caps) = &global.creation_capabilities {
+                source_updates.extend(self.merge_creation_capabilities_settings(
+                    &mut merged.creation_capabilities,
+                    override_caps,
+                    base_caps,
+                    ConfigurationSource::RepositoryType,
+                )?);
+            } else {
+                merged.creation_capabilities = override_caps.clone();
+                self.track_creation_capabilities_sources(
+                    &merged.creation_capabilities,
+                    source_updates,
+                    ConfigurationSource::RepositoryType,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -488,6 +519,11 @@ impl ConfigurationMerger {
             .and_then(|rt| rt.branch_protection.as_ref())
             .or(global.branch_protection.as_ref())
             .unwrap_or(&default_bp);
+        let default_caps = CreationCapabilitiesSettings::default();
+        let base_caps = repository_type
+            .and_then(|rt| rt.creation_capabilities.as_ref())
+            .or(global.creation_capabilities.as_ref())
+            .unwrap_or(&default_caps);
 
         // Merge settings with override validation
         if let Some(override_repo) = &team.repository {
@@ -565,6 +601,14 @@ impl ConfigurationMerger {
                 ConfigurationSource::Team,
             ));
         }
+        if let Some(override_caps) = &team.creation_capabilities {
+            source_updates.extend(self.merge_creation_capabilities_settings(
+                &mut merged.creation_capabilities,
+                override_caps,
+                base_caps,
+                ConfigurationSource::Team,
+            )?);
+        }
 
         Ok(())
     }
@@ -599,6 +643,12 @@ impl ConfigurationMerger {
             .or(repository_type.and_then(|rt| rt.branch_protection.as_ref()))
             .or(global.branch_protection.as_ref())
             .unwrap_or(&default_bp);
+        let default_caps = CreationCapabilitiesSettings::default();
+        let base_caps = team
+            .and_then(|t| t.creation_capabilities.as_ref())
+            .or(repository_type.and_then(|rt| rt.creation_capabilities.as_ref()))
+            .or(global.creation_capabilities.as_ref())
+            .unwrap_or(&default_caps);
 
         // Merge settings with override validation
         if let Some(override_repo) = &template.repository {
@@ -668,6 +718,14 @@ impl ConfigurationMerger {
                 naming_rules,
                 ConfigurationSource::Template,
             ));
+        }
+        if let Some(override_caps) = &template.creation_capabilities {
+            source_updates.extend(self.merge_creation_capabilities_settings(
+                &mut merged.creation_capabilities,
+                override_caps,
+                base_caps,
+                ConfigurationSource::Template,
+            )?);
         }
 
         Ok(())
@@ -972,6 +1030,73 @@ impl ConfigurationMerger {
         Ok(source_updates)
     }
 
+    /// Merges fork/mirror creation-capability settings with override policy
+    /// validation.
+    ///
+    /// Mirrors [`Self::merge_repository_settings`]'s field-by-field
+    /// precedence-and-override-enforcement pattern (CRA-001/CRA-002): each
+    /// of the three capability fields is merged independently, so an
+    /// override touching only one field never perturbs the others.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::OverrideNotPermitted` if attempting to
+    /// override a capability flag that prohibits overrides with a different
+    /// value.
+    fn merge_creation_capabilities_settings(
+        &self,
+        target: &mut CreationCapabilitiesSettings,
+        override_settings: &CreationCapabilitiesSettings,
+        base_settings: &CreationCapabilitiesSettings,
+        source: ConfigurationSource,
+    ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
+        let mut source_updates = Vec::new();
+
+        if let Some(override_value) = &override_settings.fork_enabled {
+            if let Some(base_value) = &base_settings.fork_enabled {
+                self.validate_override(
+                    "creation_capabilities.fork_enabled",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.fork_enabled = Some(override_value.clone());
+            source_updates.push(("creation_capabilities.fork_enabled".to_string(), source));
+        }
+
+        if let Some(override_value) = &override_settings.source_history_mirror_enabled {
+            if let Some(base_value) = &base_settings.source_history_mirror_enabled {
+                self.validate_override(
+                    "creation_capabilities.source_history_mirror_enabled",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.source_history_mirror_enabled = Some(override_value.clone());
+            source_updates.push((
+                "creation_capabilities.source_history_mirror_enabled".to_string(),
+                source,
+            ));
+        }
+
+        if let Some(override_value) = &override_settings.source_only_mirror_enabled {
+            if let Some(base_value) = &base_settings.source_only_mirror_enabled {
+                self.validate_override(
+                    "creation_capabilities.source_only_mirror_enabled",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.source_only_mirror_enabled = Some(override_value.clone());
+            source_updates.push((
+                "creation_capabilities.source_only_mirror_enabled".to_string(),
+                source,
+            ));
+        }
+
+        Ok(source_updates)
+    }
+
     /// Merges webhook collections additively.
     ///
     /// All webhooks from all sources are combined.
@@ -1229,6 +1354,30 @@ impl ConfigurationMerger {
         }
         if settings.restrict_pushes.is_some() {
             source_updates.push(("branch_protection.restrict_pushes".to_string(), source));
+        }
+    }
+
+    /// Tracks source for all non-None creation-capability fields.
+    fn track_creation_capabilities_sources(
+        &self,
+        settings: &CreationCapabilitiesSettings,
+        source_updates: &mut Vec<(String, ConfigurationSource)>,
+        source: ConfigurationSource,
+    ) {
+        if settings.fork_enabled.is_some() {
+            source_updates.push(("creation_capabilities.fork_enabled".to_string(), source));
+        }
+        if settings.source_history_mirror_enabled.is_some() {
+            source_updates.push((
+                "creation_capabilities.source_history_mirror_enabled".to_string(),
+                source,
+            ));
+        }
+        if settings.source_only_mirror_enabled.is_some() {
+            source_updates.push((
+                "creation_capabilities.source_only_mirror_enabled".to_string(),
+                source,
+            ));
         }
     }
 

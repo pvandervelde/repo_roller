@@ -71,6 +71,7 @@ fn config_with(
         collaborators: None,
         naming_rules: None,
         designation,
+        creation_capabilities: None,
     }
 }
 

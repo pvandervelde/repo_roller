@@ -359,6 +359,8 @@ impl OrganizationSettingsManager {
                 teams: None,
                 collaborators: None,
                 naming_rules: None,
+                designation: None,
+                creation_capabilities: None,
             }
         } else {
             match self
@@ -632,6 +634,56 @@ impl OrganizationSettingsManager {
         );
 
         Ok(merged)
+    }
+
+    /// Finds the single template designated for `designation`, if any,
+    /// within `org`.
+    ///
+    /// Enumerates all templates in `org`, loads each one's configuration
+    /// (via the cached `TemplateLoader`), and returns the bare template name
+    /// of the template whose `designation` matches, if exactly one does.
+    ///
+    /// Returns the bare template name rather than a new branded type:
+    /// `config_manager` has no `TemplateName` type of its own (introducing
+    /// one here would duplicate `repo_roller_core::TemplateName`, and
+    /// `config_manager` cannot depend on `repo_roller_core` without creating
+    /// a circular dependency). This follows the existing convention used by
+    /// `ConfigurationContext::template()`, which already treats template
+    /// identity as a plain string.
+    ///
+    /// # Errors
+    ///
+    /// - `ConfigurationError::AmbiguousTemplateDesignation` if more than one
+    ///   template in `org` declares the same `designation`.
+    /// - Propagates errors from listing or loading templates.
+    #[instrument(skip(self), fields(org = %github_client::span_attributes::sanitize_span_attribute_value(org)))]
+    pub async fn find_designated_template(
+        &self,
+        org: &str,
+        designation: crate::template_config::TemplateDesignation,
+    ) -> ConfigurationResult<Option<String>> {
+        let template_names = self.metadata_provider.list_templates(org).await?;
+
+        let mut matches: Vec<String> = Vec::new();
+        for template_name in template_names {
+            let config = self
+                .template_loader
+                .load_template_configuration(org, &template_name)
+                .await?;
+            if config.designation == Some(designation) {
+                matches.push(template_name);
+            }
+        }
+
+        match matches.len() {
+            0 => Ok(None),
+            1 => Ok(matches.into_iter().next()),
+            _ => Err(crate::errors::ConfigurationError::AmbiguousTemplateDesignation {
+                org: org.to_string(),
+                designation: format!("{designation:?}"),
+                templates: matches,
+            }),
+        }
     }
 }
 

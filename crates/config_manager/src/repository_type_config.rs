@@ -184,6 +184,13 @@ pub struct RepositoryTypeConfig {
     /// ```
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
+
+    /// Fork/mirror capability toggles contributed at the repository-type
+    /// level (optional).
+    ///
+    /// See `docs/spec/interfaces/fork-mirror-operations.md` §2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_capabilities: Option<crate::settings::CreationCapabilitiesSettings>,
 }
 
 #[cfg(test)]

@@ -44,6 +44,7 @@ fn template_with_designation(designation: Option<TemplateDesignation>) -> Templa
         collaborators: None,
         naming_rules: None,
         designation,
+        creation_capabilities: None,
     }
 }
 
