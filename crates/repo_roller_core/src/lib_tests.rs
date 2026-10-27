@@ -425,6 +425,51 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         // Not implemented in test mock - return Ok
         Ok(())
     }
+
+    async fn create_fork(
+        &self,
+        _source_owner: &str,
+        source_repo: &str,
+        target_owner: Option<&str>,
+    ) -> Result<github_client::Repository, GitHubError> {
+        // Not exercised by the existing create_repository test suite - return a
+        // minimal success value so the mock satisfies the widened trait.
+        let owner = target_owner.unwrap_or("mock-owner");
+        Ok(github_client::Repository::new(
+            source_repo.to_string(),
+            format!("{owner}/{source_repo}"),
+            "MOCK_NODE_ID".to_string(),
+            false,
+        ))
+    }
+
+    async fn create_pull_request(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        payload: &github_client::PullRequestCreatePayload,
+    ) -> Result<github_client::PullRequest, GitHubError> {
+        Ok(github_client::PullRequest {
+            number: 1,
+            html_url: String::new(),
+            draft: payload.draft,
+            state: "open".to_string(),
+        })
+    }
+
+    async fn mark_pull_request_ready_for_review(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        pr_number: u64,
+    ) -> Result<github_client::PullRequest, GitHubError> {
+        Ok(github_client::PullRequest {
+            number: pr_number,
+            html_url: String::new(),
+            draft: false,
+            state: "open".to_string(),
+        })
+    }
 }
 
 /// Configuration for mock repository client behavior

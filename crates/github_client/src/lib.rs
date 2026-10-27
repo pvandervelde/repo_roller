@@ -3,6 +3,10 @@
 //! This crate provides a client for making authenticated requests to GitHub,
 //! authenticating as a GitHub App using its ID and private key.
 
+// Raised for the large `serde_json::json!` fixtures in lib_tests.rs (full
+// GitHub pull-request API response bodies).
+#![recursion_limit = "256"]
+
 use async_trait::async_trait;
 use base64::Engine;
 use octocrab::{Octocrab, Result as OctocrabResult};
@@ -22,6 +26,7 @@ pub mod environment;
 pub mod environment_detector;
 pub mod installation;
 pub mod label;
+pub mod pull_request;
 pub mod repository;
 pub mod ruleset;
 pub mod team;
@@ -40,6 +45,7 @@ pub use environment::{GitHubEnvironmentDetector, PlanLimitations};
 pub use environment_detector::GitHubApiEnvironmentDetector;
 pub use installation::{Account, Installation};
 pub use label::Label;
+pub use pull_request::{PullRequest, PullRequestCreatePayload};
 pub use repository::{Organization, Repository};
 pub use ruleset::{
     BypassActor, BypassActorType, BypassMode, MergeMethod, PullRequestParameters, RefNameCondition,
@@ -2803,6 +2809,112 @@ impl RepositoryClient for GitHubClient {
             }
         }
     }
+
+    async fn create_fork(
+        &self,
+        source_owner: &str,
+        source_repo: &str,
+        target_owner: Option<&str>,
+    ) -> Result<Repository, Error> {
+        #[derive(Serialize)]
+        struct ForkPayload<'a> {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            organization: Option<&'a str>,
+        }
+
+        info!(
+            source_owner = source_owner,
+            source_repo = source_repo,
+            target_owner = target_owner,
+            "Creating fork"
+        );
+
+        let path = format!("/repos/{source_owner}/{source_repo}/forks");
+        let payload = ForkPayload {
+            organization: target_owner,
+        };
+        // Deserialize directly into our own `Repository` type (not
+        // `octocrab::models::Repository`): the fork API's `owner` object may
+        // omit profile URL fields that octocrab's richer `Author` model
+        // requires, and `Repository` doesn't need the `owner` field at all.
+        let response: OctocrabResult<Repository> = self.client.post(path, Some(&payload)).await;
+        match response {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                log_octocrab_error("Failed to create fork", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn create_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &PullRequestCreatePayload,
+    ) -> Result<PullRequest, Error> {
+        #[derive(Serialize)]
+        struct CreatePullRequestBody<'a> {
+            title: &'a str,
+            head: &'a str,
+            base: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            body: Option<&'a str>,
+            draft: bool,
+        }
+
+        info!(owner = owner, repo = repo, "Creating pull request");
+
+        let path = format!("/repos/{owner}/{repo}/pulls");
+        let body = CreatePullRequestBody {
+            title: &payload.title,
+            head: &payload.head,
+            base: &payload.base,
+            body: payload.body.as_deref(),
+            draft: payload.draft,
+        };
+        // See create_fork's comment: deserialize directly into our own
+        // `PullRequest` type rather than `octocrab::models::pulls::PullRequest`,
+        // which requires full `Author` objects for head/base users.
+        let response: OctocrabResult<PullRequest> = self.client.post(path, Some(&body)).await;
+        match response {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                log_octocrab_error("Failed to create pull request", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
+
+    async fn mark_pull_request_ready_for_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        pr_number: u64,
+    ) -> Result<PullRequest, Error> {
+        #[derive(Serialize)]
+        struct ReadyForReviewBody {
+            draft: bool,
+        }
+
+        info!(
+            owner = owner,
+            repo = repo,
+            pr_number = pr_number,
+            "Marking pull request ready for review"
+        );
+
+        let path = format!("/repos/{owner}/{repo}/pulls/{pr_number}");
+        let body = ReadyForReviewBody { draft: false };
+        let response: OctocrabResult<PullRequest> = self.client.patch(path, Some(&body)).await;
+        match response {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                log_octocrab_error("Failed to mark pull request ready for review", e);
+                Err(Error::InvalidResponse)
+            }
+        }
+    }
 }
 
 /// Payload structure for creating a new repository via the GitHub REST API.
@@ -3481,6 +3593,48 @@ pub trait RepositoryClient: Send + Sync {
     ///
     /// DELETE /repos/{owner}/{repo}/labels/{name}
     async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<(), Error>;
+
+    /// Creates a fork of `source_repo` owned by `source_owner`, optionally into
+    /// `target_owner` (organization fork) or the authenticated identity's own
+    /// account when `target_owner` is `None`.
+    ///
+    /// # Errors
+    /// - The source repository doesn't exist or is not accessible
+    /// - A repository with the fork's resulting name already exists at the
+    ///   target owner
+    /// - The GitHub API request fails
+    async fn create_fork(
+        &self,
+        source_owner: &str,
+        source_repo: &str,
+        target_owner: Option<&str>,
+    ) -> Result<Repository, Error>;
+
+    /// Opens a pull request.
+    ///
+    /// # Errors
+    /// - Either branch does not exist
+    /// - A pull request between these branches already exists
+    /// - The GitHub API request fails
+    async fn create_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &PullRequestCreatePayload,
+    ) -> Result<PullRequest, Error>;
+
+    /// Transitions a draft pull request to ready-for-review. No-op (returns the
+    /// current state) if the PR is already not a draft.
+    ///
+    /// # Errors
+    /// - The pull request does not exist
+    /// - The GitHub API request fails
+    async fn mark_pull_request_ready_for_review(
+        &self,
+        owner: &str,
+        repo: &str,
+        pr_number: u64,
+    ) -> Result<PullRequest, Error>;
 }
 
 /// Settings that can be updated for an existing repository.
