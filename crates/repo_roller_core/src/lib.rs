@@ -227,9 +227,9 @@ pub mod visibility;
 // Re-export commonly used types
 pub use authentication::{SessionId, UserId};
 pub use github::{GitHubToken, InstallationId};
-pub use repository::{OrganizationName, RepositoryName};
+pub use repository::{OrganizationName, RepositoryName, SourceRepositoryReference};
 pub use request::{
-    ContentStrategy, RepositoryCreationRequest, RepositoryCreationRequestBuilder,
+    ContentStrategy, CreationMode, RepositoryCreationRequest, RepositoryCreationRequestBuilder,
     RepositoryCreationResult,
 };
 pub use template::TemplateName;

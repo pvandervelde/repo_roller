@@ -171,6 +171,8 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     }
 }
 
@@ -230,6 +232,8 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     }
 }
 

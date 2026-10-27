@@ -600,6 +600,8 @@ async fn test_create_repository_type_conversion() {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     };
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);
