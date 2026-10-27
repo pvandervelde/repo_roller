@@ -195,6 +195,22 @@ pub(crate) fn prepare_index_and_tree(
     Ok(tree_oid)
 }
 
+/// Builds the standard RepoRoller author/committer signature used for every
+/// commit RepoRoller creates on a caller's behalf (initial commits, mirror
+/// snapshot commits).
+///
+/// In a real implementation, this would use actual user information instead
+/// of a fixed identity.
+fn repo_roller_signature() -> Result<Signature<'static>, SystemError> {
+    Signature::now("RepoRoller", "repo-roller@example.com").map_err(|e| {
+        error!("Failed to create signature: {}", e);
+        SystemError::GitOperation {
+            operation: "create signature".to_string(),
+            reason: e.to_string(),
+        }
+    })
+}
+
 /// Create an initial commit with the given tree and message.
 ///
 /// This function creates the first commit in a Git repository using the provided tree.
@@ -253,13 +269,7 @@ pub(crate) fn create_initial_commit(
 
     // Create signature for both author and committer
     // In a real implementation, this would use actual user information
-    let signature = Signature::now("RepoRoller", "repo-roller@example.com").map_err(|e| {
-        error!("Failed to create signature: {}", e);
-        SystemError::GitOperation {
-            operation: "create signature".to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    let signature = repo_roller_signature()?;
 
     debug!("Git signature created for RepoRoller");
 
@@ -714,70 +724,9 @@ pub fn push_to_origin(
     info!("Remote 'origin' added successfully");
 
     // Set up authentication callbacks with the GitHub App installation token
-    let mut callbacks = git2::RemoteCallbacks::new();
-    let token = access_token.to_string(); // Clone for move into closure
-
-    // Enhanced credential callback with detailed logging
-    callbacks.credentials(move |url, username_from_url, allowed_types| {
-        info!(
-            "Git credential callback triggered - URL: {}, username: {:?}, allowed types: {:?}",
-            url, username_from_url, allowed_types
-        );
-
-        debug!("Credential types breakdown:");
-        debug!(
-            "  USER_PASS_PLAINTEXT: {}",
-            allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT)
-        );
-        debug!(
-            "  SSH_KEY: {}",
-            allowed_types.contains(git2::CredentialType::SSH_KEY)
-        );
-        debug!(
-            "  SSH_CUSTOM: {}",
-            allowed_types.contains(git2::CredentialType::SSH_CUSTOM)
-        );
-        debug!(
-            "  DEFAULT: {}",
-            allowed_types.contains(git2::CredentialType::DEFAULT)
-        );
-        debug!(
-            "  SSH_INTERACTIVE: {}",
-            allowed_types.contains(git2::CredentialType::SSH_INTERACTIVE)
-        );
-        debug!(
-            "  USERNAME: {}",
-            allowed_types.contains(git2::CredentialType::USERNAME)
-        );
-        debug!(
-            "  SSH_MEMORY: {}",
-            allowed_types.contains(git2::CredentialType::SSH_MEMORY)
-        );
-
-        if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            info!("Using USER_PASS_PLAINTEXT credentials with 'x-access-token' username");
-            debug!("Using authentication token ({} characters)", token.len());
-
-            match git2::Cred::userpass_plaintext("x-access-token", &token) {
-                Ok(cred) => {
-                    info!("Successfully created git2 credentials");
-                    Ok(cred)
-                }
-                Err(e) => {
-                    error!("Failed to create git2 credentials: {}", e);
-                    Err(e)
-                }
-            }
-        } else {
-            error!(
-                "No supported credential types available. Allowed types: {:?}",
-                allowed_types
-            );
-            Err(git2::Error::from_str(
-                "No supported credential types for GitHub authentication",
-            ))
-        }
-    });
+    // (shared with mirror_clone/mirror_push/shallow_clone_working_tree via
+    // `installation_token_credential_callbacks`).
+    let mut callbacks = installation_token_credential_callbacks(access_token);
 
     // Add progress callback for detailed push progress
     callbacks.pack_progress(|stage, current, total| {
@@ -862,11 +811,64 @@ pub fn push_to_origin(
 /// `x-access-token` as the username).
 fn installation_token_credential_callbacks(access_token: &str) -> git2::RemoteCallbacks<'static> {
     let mut callbacks = git2::RemoteCallbacks::new();
-    let token = access_token.to_string();
-    callbacks.credentials(move |_url, _username_from_url, allowed_types| {
+    let token = access_token.to_string(); // Clone for move into closure
+
+    // Enhanced credential callback with detailed logging
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        info!(
+            "Git credential callback triggered - URL: {}, username: {:?}, allowed types: {:?}",
+            url, username_from_url, allowed_types
+        );
+
+        debug!("Credential types breakdown:");
+        debug!(
+            "  USER_PASS_PLAINTEXT: {}",
+            allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT)
+        );
+        debug!(
+            "  SSH_KEY: {}",
+            allowed_types.contains(git2::CredentialType::SSH_KEY)
+        );
+        debug!(
+            "  SSH_CUSTOM: {}",
+            allowed_types.contains(git2::CredentialType::SSH_CUSTOM)
+        );
+        debug!(
+            "  DEFAULT: {}",
+            allowed_types.contains(git2::CredentialType::DEFAULT)
+        );
+        debug!(
+            "  SSH_INTERACTIVE: {}",
+            allowed_types.contains(git2::CredentialType::SSH_INTERACTIVE)
+        );
+        debug!(
+            "  USERNAME: {}",
+            allowed_types.contains(git2::CredentialType::USERNAME)
+        );
+        debug!(
+            "  SSH_MEMORY: {}",
+            allowed_types.contains(git2::CredentialType::SSH_MEMORY)
+        );
+
         if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            git2::Cred::userpass_plaintext("x-access-token", &token)
+            info!("Using USER_PASS_PLAINTEXT credentials with 'x-access-token' username");
+            debug!("Using authentication token ({} characters)", token.len());
+
+            match git2::Cred::userpass_plaintext("x-access-token", &token) {
+                Ok(cred) => {
+                    info!("Successfully created git2 credentials");
+                    Ok(cred)
+                }
+                Err(e) => {
+                    error!("Failed to create git2 credentials: {}", e);
+                    Err(e)
+                }
+            }
         } else {
+            error!(
+                "No supported credential types available. Allowed types: {:?}",
+                allowed_types
+            );
             Err(git2::Error::from_str(
                 "No supported credential types for GitHub authentication",
             ))
@@ -1116,12 +1118,7 @@ pub fn create_snapshot_branch(
             operation: "find snapshot tree".to_string(),
             reason: e.to_string(),
         })?;
-    let signature = Signature::now("RepoRoller", "repo-roller@example.com").map_err(|e| {
-        SystemError::GitOperation {
-            operation: "create signature".to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    let signature = repo_roller_signature()?;
     let commit_oid = repo
         .commit(
             Some("HEAD"),

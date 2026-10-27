@@ -1054,6 +1054,25 @@ async fn create_github_repository(
     Ok(repo)
 }
 
+/// Builds a [`RepositoryCreationResult`] from a freshly created/forked
+/// GitHub `repo`, stamping `created_at` with the current time.
+///
+/// Shared by every `CreationMode` arm (`create_standard_repository`,
+/// `create_fork_repository`, `create_history_mirror_repository`,
+/// `create_source_only_mirror_repository`), which otherwise each repeat this
+/// exact construction, differing only in how `default_branch` was derived.
+fn build_creation_result(
+    repo: &github_client::Repository,
+    default_branch: String,
+) -> RepositoryCreationResult {
+    RepositoryCreationResult {
+        repository_url: repo.url().to_string(),
+        repository_id: repo.node_id().to_string(),
+        created_at: Timestamp::now(),
+        default_branch,
+    }
+}
+
 /// Create a new repository with type-safe API and organization settings integration.
 ///
 /// This is the main repository creation orchestration function that coordinates:
@@ -1514,12 +1533,7 @@ async fn create_standard_repository(
     )
     .await?;
 
-    Ok(RepositoryCreationResult {
-        repository_url: repo.url().to_string(),
-        repository_id: repo.node_id().to_string(),
-        created_at: Timestamp::now(),
-        default_branch,
-    })
+    Ok(build_creation_result(&repo, default_branch))
 }
 
 /// Creates a GitHub fork of `source`, then applies resolved settings
@@ -1578,12 +1592,7 @@ async fn create_fork_repository(
         .await
         .unwrap_or_else(|_| "main".to_string());
 
-    Ok(RepositoryCreationResult {
-        repository_url: repo.url().to_string(),
-        repository_id: repo.node_id().to_string(),
-        created_at: Timestamp::now(),
-        default_branch,
-    })
+    Ok(build_creation_result(&repo, default_branch))
 }
 
 /// Creates an independent (non-fork) repository containing the full commit
@@ -1641,12 +1650,7 @@ async fn create_history_mirror_repository(
     )
     .await?;
 
-    Ok(RepositoryCreationResult {
-        repository_url: repo.url().to_string(),
-        repository_id: repo.node_id().to_string(),
-        created_at: Timestamp::now(),
-        default_branch: source_default_branch,
-    })
+    Ok(build_creation_result(&repo, source_default_branch))
 }
 
 /// Creates an independent (non-fork) repository containing only `source`'s
@@ -1793,10 +1797,5 @@ async fn create_source_only_mirror_repository(
             })?;
     }
 
-    Ok(RepositoryCreationResult {
-        repository_url: repo.url().to_string(),
-        repository_id: repo.node_id().to_string(),
-        created_at: Timestamp::now(),
-        default_branch,
-    })
+    Ok(build_creation_result(&repo, default_branch))
 }

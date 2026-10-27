@@ -1052,49 +1052,61 @@ impl ConfigurationMerger {
     ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
         let mut source_updates = Vec::new();
 
-        if let Some(override_value) = &override_settings.fork_enabled {
-            if let Some(base_value) = &base_settings.fork_enabled {
-                self.validate_override(
-                    "creation_capabilities.fork_enabled",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.fork_enabled = Some(override_value.clone());
-            source_updates.push(("creation_capabilities.fork_enabled".to_string(), source));
-        }
+        self.merge_capability_field(
+            "creation_capabilities.fork_enabled",
+            &mut target.fork_enabled,
+            &override_settings.fork_enabled,
+            &base_settings.fork_enabled,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.source_history_mirror_enabled {
-            if let Some(base_value) = &base_settings.source_history_mirror_enabled {
-                self.validate_override(
-                    "creation_capabilities.source_history_mirror_enabled",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.source_history_mirror_enabled = Some(override_value.clone());
-            source_updates.push((
-                "creation_capabilities.source_history_mirror_enabled".to_string(),
-                source,
-            ));
-        }
+        self.merge_capability_field(
+            "creation_capabilities.source_history_mirror_enabled",
+            &mut target.source_history_mirror_enabled,
+            &override_settings.source_history_mirror_enabled,
+            &base_settings.source_history_mirror_enabled,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.source_only_mirror_enabled {
-            if let Some(base_value) = &base_settings.source_only_mirror_enabled {
-                self.validate_override(
-                    "creation_capabilities.source_only_mirror_enabled",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.source_only_mirror_enabled = Some(override_value.clone());
-            source_updates.push((
-                "creation_capabilities.source_only_mirror_enabled".to_string(),
-                source,
-            ));
-        }
+        self.merge_capability_field(
+            "creation_capabilities.source_only_mirror_enabled",
+            &mut target.source_only_mirror_enabled,
+            &override_settings.source_only_mirror_enabled,
+            &base_settings.source_only_mirror_enabled,
+            source,
+            &mut source_updates,
+        )?;
 
         Ok(source_updates)
+    }
+
+    /// Merges a single fork/mirror capability field with override-policy
+    /// validation and source tracking.
+    ///
+    /// Factored out of [`Self::merge_creation_capabilities_settings`], whose
+    /// three capability fields (`fork_enabled`, `source_history_mirror_enabled`,
+    /// `source_only_mirror_enabled`) otherwise repeat this exact
+    /// validate-then-assign-then-track shape.
+    #[allow(clippy::too_many_arguments)]
+    fn merge_capability_field(
+        &self,
+        field_path: &str,
+        target: &mut Option<OverridableValue<bool>>,
+        override_value: &Option<OverridableValue<bool>>,
+        base_value: &Option<OverridableValue<bool>>,
+        source: ConfigurationSource,
+        source_updates: &mut Vec<(String, ConfigurationSource)>,
+    ) -> ConfigurationResult<()> {
+        if let Some(override_value) = override_value {
+            if let Some(base_value) = base_value {
+                self.validate_override(field_path, base_value, &override_value.value)?;
+            }
+            *target = Some(override_value.clone());
+            source_updates.push((field_path.to_string(), source));
+        }
+        Ok(())
     }
 
     /// Merges webhook collections additively.

@@ -106,6 +106,145 @@ Add to this whenever a reusable component becomes "the standard way".
   Use when: Loading any configuration (defaults, policies, template settings)
   Notes: Cached with 5-minute TTL, see ADR-002
 
+### Fork & Mirror Creation (#255)
+
+- **`config_manager::TemplateDesignation`** — special role a template
+  self-declares beyond ordinary template-based creation (`Fork`,
+  `SourceHistoryMirror`, `SourceOnlyMirror`)
+  Location: `config_manager/src/template_config.rs`
+  Use when: A template's settings (not files) should apply automatically to
+  forks or mirrors; see `TemplateConfig::designation` (`Option<TemplateDesignation>`)
+  Notes: At most one template per org may declare a given designation —
+  enforced by `find_designated_template` below, not at template-load time. A
+  template MUST NOT combine `designation` with a `Fixed` `repository_type`
+  policy (validated at template-load time). See
+  `docs/spec/interfaces/fork-mirror-operations.md` §1.
+
+- **`OrganizationSettingsManager::find_designated_template(org, designation)`**
+  — finds the single template (if any) in `org` declaring `designation`
+  Location: `config_manager/src/organization_settings_manager.rs`
+  Returns: `Ok(None)` for zero matches, `Ok(Some(name))` for one,
+  `Err(ConfigurationError::AmbiguousTemplateDesignation)` for two or more
+  Use when: Resolving the fork/mirror settings-only template for a
+  `CreationMode::Fork`/`Mirror` request before calling `TemplateLoader`
+  Notes: Result shares the 5-minute `template_configurations` cache TTL.
+
+- **`config_manager::settings::CreationCapabilitiesSettings`** — independent
+  enable/disable toggles for fork creation and the two mirror modes
+  (`fork_enabled`, `source_history_mirror_enabled`, `source_only_mirror_enabled`),
+  each an `Option<OverridableValue<bool>>`
+  Location: `config_manager/src/settings/creation_capabilities.rs`
+  Carried on: `GlobalDefaults`, `RepositoryTypeConfig`, `TeamConfig`,
+  `TemplateConfig` (same four structs that carry `repository`/
+  `pull_requests`/`branch_protection`), merged into
+  `MergedConfiguration::creation_capabilities`
+  Use when: Gating any new fork/mirror-like capability behind an
+  administrator-controlled, overridable toggle with Global → RepositoryType →
+  Team → Template precedence
+  Notes: **Fail-closed default** — a fully-`None` value at every level means
+  **disabled**, not enabled (unlike most other `Option<OverridableValue<_>>`
+  settings in this codebase, which tend to default permissively). Resolve
+  with `flag.as_ref().map(|v| *v.get()).unwrap_or(false)` — never
+  `unwrap_or(true)`. See `docs/spec/interfaces/fork-mirror-operations.md` §2.
+
+- **`ConfigurationMerger::merge_creation_capabilities_settings` /
+  `merge_capability_field`** — field-by-field scalar merge with override-policy
+  validation and source tracking for `CreationCapabilitiesSettings`
+  Location: `config_manager/src/merger.rs`
+  Pattern: Mirrors `merge_repository_settings`'s per-field
+  validate-then-assign-then-track shape (CRA-001/CRA-002), but factors the
+  per-field body into a private `merge_capability_field` helper (REFACTOR
+  pass) since `CreationCapabilitiesSettings` has 3 fields of the same
+  `Option<OverridableValue<bool>>` shape — call this helper rather than
+  re-inlining the validate/assign/track block if a fourth capability flag is
+  ever added. Note: `merge_repository_settings` and its ~20 pre-existing
+  sibling functions (`merge_pull_request_settings`, etc.) still inline this
+  shape per-field; they were not touched by this extraction (out of scope —
+  see `.llm/findings/fork-mirror-operations.md` for the cross-cutting
+  observation).
+
+- **`repo_roller_core::CreationMode`** — orthogonal-to-`ContentStrategy` enum
+  governing how the GitHub repository itself comes into existence
+  (`Standard`, `Fork { source }`, `Mirror { source, preserve_history }`)
+  Location: `repo_roller_core/src/request.rs`
+  Use when: A `RepositoryCreationRequest` needs anything other than the
+  create-then-run-content-strategy path. Set via
+  `RepositoryCreationRequestBuilder::creation_mode(mode)`.
+  Notes: `content_strategy` must stay at its default when `creation_mode` is
+  `Fork`/`Mirror` — builder-time panic otherwise. See
+  `docs/spec/interfaces/fork-mirror-operations.md` §4.
+
+- **`repo_roller_core::SourceRepositoryReference`** — identifies a repository
+  to fork/mirror from, which may be outside the managed organization
+  Location: `repo_roller_core/src/repository.rs`
+  Pattern: `{ owner: OrganizationName, name: RepositoryName }` — no new
+  validation rules, delegates entirely to those two branded types
+  Use when: Referencing an upstream/source repository in `CreationMode::Fork`/
+  `Mirror`
+
+- **`repo_roller_core::create_repository_inner` dispatch on `CreationMode`**
+  — four extracted orchestration functions, one per `CreationMode` arm:
+  `create_standard_repository`, `create_fork_repository`,
+  `create_history_mirror_repository`, `create_source_only_mirror_repository`
+  Location: `repo_roller_core/src/lib.rs`
+  Pattern: `validate_creation_mode_capability` (capability + designation gate,
+  RCF-005/RCF-006) runs once, before the dispatch, for every non-`Standard`
+  mode — before any GitHub-mutating call. Each arm ends by building its
+  `RepositoryCreationResult` via the shared `build_creation_result(&repo,
+  default_branch)` helper (REFACTOR pass — the four arms previously repeated
+  the same four-field struct literal verbatim).
+  Use when: Adding a fifth `CreationMode` variant — add a new dispatch arm
+  calling a new `create_*_repository` function, and reuse
+  `build_creation_result`/`build_github_https_url` rather than re-inlining
+  their logic.
+  Notes: `initialize_git_repository` and `create_github_repository` take
+  `&dyn RepositoryClient` (widened from `&GitHubClient` for unit-test
+  mockability); `apply_post_creation_settings` /
+  `apply_repository_configuration` were deliberately **not** widened — see
+  `.llm/findings/fork-mirror-operations.md` item 1 for why and the follow-up
+  options.
+
+- **`github_client::RepositoryClient::create_fork` / `create_pull_request` /
+  `mark_pull_request_ready_for_review`** — fork creation, PR creation, and
+  draft→ready-for-review transition
+  Location: `github_client/src/lib.rs` (trait + `GitHubClient` impl),
+  payload/response types in `github_client/src/pull_request.rs`
+  Key exports: `PullRequestCreatePayload` (`title`, `head`, `base`, `body`,
+  `draft` — `draft: false` by default), `PullRequest` (`number`, `html_url`,
+  `draft`, `state`)
+  Notes: Deserializes directly into RepoRoller's own `Repository`/
+  `PullRequest` types rather than `octocrab::models::*`, since the fork/PR
+  REST responses' nested `owner`/`head`/`base` author objects don't
+  reliably satisfy octocrab's richer `Author` model. Reuses the pre-existing
+  `log_octocrab_error` helper and its `match response { Ok(r) => ...,
+  Err(e) => {...} }` mapping idiom — already used 50+ times in this file —
+  do not introduce a new error-mapping pattern for future `RepositoryClient`
+  methods.
+
+- **`repo_roller_core::git::mirror_clone` / `mirror_push` /
+  `shallow_clone_working_tree` / `create_snapshot_branch`** — local-git
+  primitives for the two mirror modes (no GitHub API calls)
+  Location: `repo_roller_core/src/git.rs`
+  Key exports: `mirror_clone(source_url, token) -> (TempDir, default_branch)`
+  (bare `--mirror`-equivalent clone + all-refs fetch), `mirror_push(dir,
+  repo_url, token)` (`--mirror`-equivalent push), `shallow_clone_working_tree`
+  (depth-1 clone for current-contents-only mirrors), `create_snapshot_branch`
+  (branches off a base branch, replaces the working tree with another
+  repository's current contents, commits as a single child — no
+  merge/cherry-pick)
+  Notes: All four share `installation_token_credential_callbacks(token)` —
+  the same `x-access-token` installation-token credential strategy
+  `push_to_origin` uses. `push_to_origin` itself was refactored (REFACTOR
+  pass) to call this shared helper instead of its own independent inline
+  credential closure, consolidating what had become two parallel
+  implementations of the same authentication logic into one. `prepare_index_and_tree`,
+  `create_initial_commit`, and the new `create_snapshot_branch` share tree/commit
+  plumbing; the author/committer identity itself is centralized in
+  `repo_roller_signature()` (REFACTOR pass — previously duplicated verbatim
+  between `create_initial_commit` and `create_snapshot_branch`). Use
+  `repo_roller_signature()` for any future RepoRoller-authored commit rather
+  than re-inlining `Signature::now("RepoRoller", "repo-roller@example.com")`.
+
 ### Caching
 
 - **Policy cache** — In-memory cache with TTL
