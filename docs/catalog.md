@@ -245,6 +245,23 @@ Add to this whenever a reusable component becomes "the standard way".
   `repo_roller_signature()` for any future RepoRoller-authored commit rather
   than re-inlining `Signature::now("RepoRoller", "repo-roller@example.com")`.
 
+- **`repo_roller_core::git::copy_dir_contents`'s symlink guard** —
+  security-remediation fix (CRITICAL finding) for arbitrary file disclosure
+  via symlink dereference during the source-only mirror's working-tree-copy
+  step
+  Location: `repo_roller_core/src/git.rs`, called from
+  `replace_working_tree_contents` ← `create_snapshot_branch`
+  Pattern: Checks `entry.file_type()?.is_symlink()` for every directory entry
+  (recursively) and `continue`s past it — neither dereferencing it (the
+  `std::fs::copy` default behavior, which would copy a symlink *target's*
+  bytes even when the target lives outside the cloned source tree) nor
+  recreating it as a symlink in the destination. Regular sibling files/dirs
+  are still copied normally when a symlink is skipped. Use this
+  `is_symlink()`-check-then-skip pattern for any future recursive
+  tree-copy/tree-walk helper that reads attacker-influenced (cloned source
+  repository) content into a location that gets committed/pushed/exposed.
+  See `docs/spec/interfaces/fork-mirror-operations.md` §7.
+
 ### Caching
 
 - **Policy cache** — In-memory cache with TTL

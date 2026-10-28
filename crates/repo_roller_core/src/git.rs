@@ -1172,6 +1172,17 @@ fn replace_working_tree_contents(
 
 /// Recursively copies all entries from `source` into `dest`, skipping
 /// `.git` directories.
+///
+/// ## Security: symlink entries are never dereferenced
+///
+/// `std::fs::copy` follows symlinks when reading their source, so a symlink
+/// in `source` pointing at an arbitrary path on the host (e.g. a secrets
+/// file outside the cloned repository) would otherwise have that target's
+/// *content* copied into `dest` and ultimately committed/pushed. To prevent
+/// this arbitrary file disclosure, every entry whose `file_type().is_symlink()`
+/// is true is skipped entirely (neither copied nor recreated as a symlink) —
+/// regular sibling entries are still copied normally. See
+/// docs/spec/interfaces/fork-mirror-operations.md §7.
 fn copy_dir_contents(source: &std::path::Path, dest: &std::path::Path) -> Result<(), SystemError> {
     for entry in std::fs::read_dir(source).map_err(|e| SystemError::FileSystem {
         operation: "read source directory".to_string(),
@@ -1190,6 +1201,14 @@ fn copy_dir_contents(source: &std::path::Path, dest: &std::path::Path) -> Result
             operation: "read source entry type".to_string(),
             reason: e.to_string(),
         })?;
+        if file_type.is_symlink() {
+            warn!(
+                "Skipping symlink entry {:?} during working-tree copy to prevent \
+                 dereferencing content from outside the source tree",
+                src_path
+            );
+            continue;
+        }
         if file_type.is_dir() {
             std::fs::create_dir_all(&dest_path).map_err(|e| SystemError::FileSystem {
                 operation: format!("create directory {:?}", dest_path),
