@@ -1543,10 +1543,15 @@ fn test_validate_creation_mode_capability_allows_source_only_mirror_when_owner_a
 /// `creation_capabilities` is.
 #[test]
 fn test_validate_creation_mode_capability_standard_mode_bypasses_allow_list_entirely() {
+    // `.content_strategy(Empty)` sidesteps the pre-existing, unrelated builder
+    // rule that `ContentStrategy::Template` (the default) requires a template
+    // to be set — irrelevant to what this test exercises (the fork/mirror
+    // gate bypass for `CreationMode::Standard`).
     let request = RepositoryCreationRequestBuilder::new(
         RepositoryName::new("new-repo").unwrap(),
         OrganizationName::new("test-org").unwrap(),
     )
+    .content_strategy(ContentStrategy::Empty)
     .build();
     let merged = config_manager::MergedConfiguration::new(); // all-None capabilities
 

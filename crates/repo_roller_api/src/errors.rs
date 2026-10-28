@@ -578,6 +578,14 @@ fn convert_configuration_error(
             "CapabilityDisabled",
             format!("Capability '{}' is disabled by configuration", capability),
         ),
+        ConfigurationError::SourceOwnerNotAllowed { owner, capability } => (
+            StatusCode::FORBIDDEN,
+            "SourceOwnerNotAllowed",
+            format!(
+                "Source owner '{}' is not in the configured allow-list for '{}'",
+                owner, capability
+            ),
+        ),
     };
 
     (

@@ -132,7 +132,12 @@ Add to this whenever a reusable component becomes "the standard way".
 - **`config_manager::settings::CreationCapabilitiesSettings`** — independent
   enable/disable toggles for fork creation and the two mirror modes
   (`fork_enabled`, `source_history_mirror_enabled`, `source_only_mirror_enabled`),
-  each an `Option<OverridableValue<bool>>`
+  each an `Option<OverridableValue<bool>>`, plus `allowed_source_owners:
+  Option<OverridableValue<Vec<String>>>` (security-remediation addition,
+  RCF-005 extension) — a case-insensitive allow-list of source owners
+  permitted for fork/mirror requests, merged through the *same* precedence as
+  the `*_enabled` flags (replaced wholesale by the highest-precedence level
+  that sets it, never unioned across levels)
   Location: `config_manager/src/settings/creation_capabilities.rs`
   Carried on: `GlobalDefaults`, `RepositoryTypeConfig`, `TeamConfig`,
   `TemplateConfig` (same four structs that carry `repository`/
@@ -145,23 +150,55 @@ Add to this whenever a reusable component becomes "the standard way".
   **disabled**, not enabled (unlike most other `Option<OverridableValue<_>>`
   settings in this codebase, which tend to default permissively). Resolve
   with `flag.as_ref().map(|v| *v.get()).unwrap_or(false)` — never
-  `unwrap_or(true)`. See `docs/spec/interfaces/fork-mirror-operations.md` §2.
+  `unwrap_or(true)`. `allowed_source_owners` is independently fail-closed:
+  unset *or* explicitly empty both deny every source owner. See
+  `docs/spec/interfaces/fork-mirror-operations.md` §2.
 
 - **`ConfigurationMerger::merge_creation_capabilities_settings` /
-  `merge_capability_field`** — field-by-field scalar merge with override-policy
-  validation and source tracking for `CreationCapabilitiesSettings`
+  `merge_capability_field` / `merge_allowed_source_owners_field`** —
+  field-by-field merge with override-policy validation and source tracking
+  for `CreationCapabilitiesSettings`
   Location: `config_manager/src/merger.rs`
   Pattern: Mirrors `merge_repository_settings`'s per-field
   validate-then-assign-then-track shape (CRA-001/CRA-002), but factors the
-  per-field body into a private `merge_capability_field` helper (REFACTOR
-  pass) since `CreationCapabilitiesSettings` has 3 fields of the same
-  `Option<OverridableValue<bool>>` shape — call this helper rather than
-  re-inlining the validate/assign/track block if a fourth capability flag is
-  ever added. Note: `merge_repository_settings` and its ~20 pre-existing
-  sibling functions (`merge_pull_request_settings`, etc.) still inline this
-  shape per-field; they were not touched by this extraction (out of scope —
-  see `.llm/findings/fork-mirror-operations.md` for the cross-cutting
+  per-field body into private helpers (REFACTOR pass) since
+  `CreationCapabilitiesSettings` has 3 fields of the same
+  `Option<OverridableValue<bool>>` shape (`merge_capability_field`) plus one
+  `Option<OverridableValue<Vec<String>>>` field (`merge_allowed_source_owners_field`,
+  added for the `allowed_source_owners` security fix — kept separate from
+  `merge_capability_field` because its value type isn't `bool`, and its
+  override-rejection path uses `ConfigurationMerger::validate_override_no_display`
+  instead of `validate_override`, since `Vec<String>` has no `Display` impl).
+  Call these helpers rather than re-inlining the validate/assign/track block
+  if a new capability/allow-list-shaped field is ever added. Note:
+  `merge_repository_settings` and its ~20 pre-existing sibling functions
+  (`merge_pull_request_settings`, etc.) still inline this shape per-field;
+  they were not touched by this extraction (out of scope — see
+  `.llm/findings/fork-mirror-operations.md` for the cross-cutting
   observation).
+
+- **`ConfigurationMerger::validate_override_no_display<T: PartialEq>`** —
+  override-policy equality check for `OverridableValue<T>` fields whose `T`
+  does not implement `Display` (e.g. `Vec<String>`)
+  Location: `config_manager/src/merger.rs`
+  Pattern: Identical rejection logic to `validate_override<T: PartialEq +
+  Display>`, but the `OverrideNotPermitted` error message omits the
+  offending value (can't format it) and names only `field_path`
+  Use when: Adding a new non-`bool`, non-`Display` overridable settings field
+  that needs the same fixed-policy override enforcement as the existing
+  scalar fields
+
+- **`config_manager::OverridableValue<T>`'s `Deserialize` `visit_seq`** —
+  parses the simple TOML/JSON array form (e.g. `allowed_source_owners = ["a",
+  "b"]`) into `OverridableValue<T>` for sequence-typed `T` (e.g.
+  `Vec<String>`), auto-wrapping with `override_allowed: true`
+  Location: `config_manager/src/overridable.rs`
+  Pattern: Delegates to `T::deserialize` via
+  `serde::de::value::SeqAccessDeserializer`, mirroring the existing
+  scalar-visitor (`visit_bool`/`visit_str`/etc.) simple-format convention.
+  This was the missing case for any future `OverridableValue<Vec<_>>` or
+  `OverridableValue<[T; N]>` field — the visitor previously only handled
+  scalar/map shapes.
 
 - **`repo_roller_core::CreationMode`** — orthogonal-to-`ContentStrategy` enum
   governing how the GitHub repository itself comes into existence

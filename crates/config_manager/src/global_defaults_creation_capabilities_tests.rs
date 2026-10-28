@@ -19,6 +19,7 @@ fn test_global_defaults_creation_capabilities_roundtrips_through_json() {
             fork_enabled: Some(OverridableValue::fixed(true)),
             source_history_mirror_enabled: Some(OverridableValue::fixed(false)),
             source_only_mirror_enabled: Some(OverridableValue::fixed(false)),
+            allowed_source_owners: None,
         }),
         ..Default::default()
     };

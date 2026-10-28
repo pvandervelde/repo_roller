@@ -129,6 +129,20 @@ pub enum ConfigurationError {
         /// `"source_only_mirror"`.
         capability: String,
     },
+
+    /// `source.owner` of a fork/mirror request is not present
+    /// (case-insensitively) in the merged `allowed_source_owners` allow-list
+    /// for the requested capability. An unset or empty allow-list rejects
+    /// every source owner (fail-closed default) — see
+    /// `docs/spec/interfaces/fork-mirror-operations.md` §2.
+    #[error("Source owner '{owner}' is not in the configured allow-list for '{capability}'")]
+    SourceOwnerNotAllowed {
+        /// The rejected source owner.
+        owner: String,
+        /// The capability being requested: `"fork"`, `"source_history_mirror"`,
+        /// or `"source_only_mirror"`.
+        capability: String,
+    },
 }
 
 /// Result type alias for configuration operations.

@@ -27,6 +27,20 @@ pub struct CreationCapabilitiesSettings {
 
     /// Enable source-only mirror creation.
     pub source_only_mirror_enabled: Option<OverridableValue<bool>>,
+
+    /// Allow-list of source owners (GitHub org/user account names,
+    /// case-insensitive) permitted as `SourceRepositoryReference.owner` for
+    /// fork/mirror requests. Merged through the same precedence as the
+    /// `*_enabled` flags above (highest-precedence level that sets this
+    /// wins, subject to `override_allowed`) — it is NOT additive across
+    /// levels.
+    ///
+    /// **Security-critical default**: `None`/empty means no source owner is
+    /// permitted, even when a capability above is `true`. An administrator
+    /// must explicitly enumerate allowed source owners before fork/mirror
+    /// becomes usable. See `docs/spec/interfaces/fork-mirror-operations.md`
+    /// §2.
+    pub allowed_source_owners: Option<OverridableValue<Vec<String>>>,
 }
 
 #[cfg(test)]

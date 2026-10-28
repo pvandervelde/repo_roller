@@ -330,6 +330,22 @@ where
                     override_allowed: true,
                 })
             }
+
+            // Handle simple format: a plain sequence (e.g. TOML array), for
+            // `T`s like `Vec<String>` (`allowed_source_owners = ["a", "b"]`).
+            // This delegates to T's `Deserialize` impl by replaying the
+            // sequence through `SeqAccessDeserializer`, mirroring the scalar
+            // visitors above.
+            fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let value = T::deserialize(de::value::SeqAccessDeserializer::new(seq))?;
+                Ok(OverridableValue {
+                    value,
+                    override_allowed: true,
+                })
+            }
         }
 
         deserializer.deserialize_any(OverridableValueVisitor {

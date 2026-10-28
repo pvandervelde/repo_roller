@@ -1079,6 +1079,14 @@ impl ConfigurationMerger {
             &mut source_updates,
         )?;
 
+        self.merge_allowed_source_owners_field(
+            &mut target.allowed_source_owners,
+            &override_settings.allowed_source_owners,
+            &base_settings.allowed_source_owners,
+            source,
+            &mut source_updates,
+        )?;
+
         Ok(source_updates)
     }
 
@@ -1105,6 +1113,35 @@ impl ConfigurationMerger {
             }
             *target = Some(override_value.clone());
             source_updates.push((field_path.to_string(), source));
+        }
+        Ok(())
+    }
+
+    /// Merges the `allowed_source_owners` field with override-policy
+    /// validation and source tracking.
+    ///
+    /// Mirrors [`Self::merge_capability_field`]'s shape, but for
+    /// `OverridableValue<Vec<String>>`: the allow-list is replaced wholesale
+    /// by the highest-precedence level that sets it (NOT unioned across
+    /// levels — see `docs/spec/interfaces/fork-mirror-operations.md` §2).
+    /// Kept as a separate method (rather than reusing
+    /// [`Self::merge_capability_field`]) because its value type is
+    /// `Vec<String>`, not `bool`.
+    fn merge_allowed_source_owners_field(
+        &self,
+        target: &mut Option<OverridableValue<Vec<String>>>,
+        override_value: &Option<OverridableValue<Vec<String>>>,
+        base_value: &Option<OverridableValue<Vec<String>>>,
+        source: ConfigurationSource,
+        source_updates: &mut Vec<(String, ConfigurationSource)>,
+    ) -> ConfigurationResult<()> {
+        const FIELD_PATH: &str = "creation_capabilities.allowed_source_owners";
+        if let Some(override_value) = override_value {
+            if let Some(base_value) = base_value {
+                self.validate_override_no_display(FIELD_PATH, base_value, &override_value.value)?;
+            }
+            *target = Some(override_value.clone());
+            source_updates.push((FIELD_PATH.to_string(), source));
         }
         Ok(())
     }
@@ -1267,6 +1304,35 @@ impl ConfigurationMerger {
         Ok(())
     }
 
+    /// Validates that an override is allowed, for value types that do not
+    /// implement `Display` (e.g. `Vec<String>`).
+    ///
+    /// Mirrors [`Self::validate_override`]'s equality-based rejection logic
+    /// exactly, but omits the offending value itself from the error message
+    /// (relying only on `field_path`) since it cannot be formatted directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::OverrideNotPermitted` if the base value
+    /// prohibits overrides and the override value differs from the base.
+    fn validate_override_no_display<T: PartialEq>(
+        &self,
+        field_path: &str,
+        base_value: &OverridableValue<T>,
+        override_value: &T,
+    ) -> ConfigurationResult<()> {
+        if !base_value.override_allowed && &base_value.value != override_value {
+            return Err(ConfigurationError::OverrideNotPermitted {
+                setting: field_path.to_string(),
+                reason: format!(
+                    "Cannot override '{}' - override not allowed by policy",
+                    field_path
+                ),
+            });
+        }
+        Ok(())
+    }
+
     /// Tracks source for all non-None repository settings fields.
     fn track_repository_settings_sources(
         &self,
@@ -1388,6 +1454,12 @@ impl ConfigurationMerger {
         if settings.source_only_mirror_enabled.is_some() {
             source_updates.push((
                 "creation_capabilities.source_only_mirror_enabled".to_string(),
+                source,
+            ));
+        }
+        if settings.allowed_source_owners.is_some() {
+            source_updates.push((
+                "creation_capabilities.allowed_source_owners".to_string(),
                 source,
             ));
         }

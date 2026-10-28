@@ -1351,17 +1351,26 @@ fn resolved_capability_flag(flag: &Option<config_manager::OverridableValue<bool>
     flag.as_ref().map(|v| *v.get()).unwrap_or(false)
 }
 
-/// Resolves the fork/mirror capability flag for `request.creation_mode` and,
-/// when a template is explicitly set, validates that its `designation`
-/// matches the designation expected for the mode.
+/// Resolves the fork/mirror capability flag for `request.creation_mode`,
+/// validates `source.owner` against the merged `allowed_source_owners`
+/// allow-list, and, when a template is explicitly set, validates that its
+/// `designation` matches the designation expected for the mode.
 ///
 /// Returns immediately (`Ok(())`) for `CreationMode::Standard`, which has no
-/// capability or designation requirements.
+/// capability, allow-list, or designation requirements.
+///
+/// Check order (per `docs/spec/interfaces/fork-mirror-operations.md` §2):
+/// capability-enabled, then source-owner allow-list, then template
+/// designation — each runs strictly before any GitHub API call.
 ///
 /// # Errors
 ///
 /// - `RepoRollerError::Configuration(ConfigurationError::CapabilityDisabled)`
 ///   when the resolved capability flag is not explicitly enabled.
+/// - `RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed)`
+///   when `source.owner` does not case-insensitively match an entry in the
+///   merged `allowed_source_owners` list (an unset or empty list rejects
+///   every owner — fail-closed default).
 /// - `RepoRollerError::Configuration(ConfigurationError::TemplateNotDesignated)`
 ///   when `request.template` is `Some` but its designation does not match
 ///   the one expected for `request.creation_mode`.
@@ -1370,22 +1379,28 @@ fn validate_creation_mode_capability(
     merged_config: &config_manager::MergedConfiguration,
     template: Option<&config_manager::TemplateConfig>,
 ) -> RepoRollerResult<()> {
-    let (capability, expected_designation) = match &request.creation_mode {
+    let (capability, expected_designation, source_owner) = match &request.creation_mode {
         CreationMode::Standard => return Ok(()),
-        CreationMode::Fork { .. } => ("fork", config_manager::TemplateDesignation::Fork),
+        CreationMode::Fork { source } => (
+            "fork",
+            config_manager::TemplateDesignation::Fork,
+            source.owner.as_str(),
+        ),
         CreationMode::Mirror {
+            source,
             preserve_history: true,
-            ..
         } => (
             "source_history_mirror",
             config_manager::TemplateDesignation::SourceHistoryMirror,
+            source.owner.as_str(),
         ),
         CreationMode::Mirror {
+            source,
             preserve_history: false,
-            ..
         } => (
             "source_only_mirror",
             config_manager::TemplateDesignation::SourceOnlyMirror,
+            source.owner.as_str(),
         ),
     };
 
@@ -1411,6 +1426,32 @@ fn validate_creation_mode_capability(
         );
         return Err(RepoRollerError::Configuration(
             ConfigurationError::CapabilityDisabled {
+                capability: capability.to_string(),
+            },
+        ));
+    }
+
+    let owner_allowed = merged_config
+        .creation_capabilities
+        .allowed_source_owners
+        .as_ref()
+        .map(|allow_list| {
+            allow_list
+                .get()
+                .iter()
+                .any(|allowed| allowed.eq_ignore_ascii_case(source_owner))
+        })
+        .unwrap_or(false);
+
+    if !owner_allowed {
+        warn!(
+            capability = capability,
+            owner = source_owner,
+            "Source owner is not in the configured allow-list for this capability"
+        );
+        return Err(RepoRollerError::Configuration(
+            ConfigurationError::SourceOwnerNotAllowed {
+                owner: source_owner.to_string(),
                 capability: capability.to_string(),
             },
         ));
