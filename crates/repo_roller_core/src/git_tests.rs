@@ -286,3 +286,263 @@ fn test_multiple_files_and_directories() {
     assert!(tree.get_name("src").is_some());
     assert!(tree.get_name("tests").is_some());
 }
+
+// ============================================================================
+// Symlink-safety regression tests for `copy_dir_contents` /
+// `replace_working_tree_contents` (CRITICAL finding: symlink dereference /
+// arbitrary file disclosure — see docs/spec/interfaces/fork-mirror-operations.md
+// §7, "Source-only mirror's working-tree copy (`copy_dir_contents`) rejects
+// or skips symlink entries rather than dereferencing them").
+//
+// `std::fs::copy` follows symlinks when reading, so a symlink in a cloned
+// source repository's working tree that points at an arbitrary absolute
+// path on the RepoRoller host (e.g. a secrets file) would have that
+// target's *content* copied into the new repository and committed/pushed/
+// opened in a PR, unless `copy_dir_contents` special-cases symlink entries.
+//
+// Symlink creation requires elevated privileges on Windows by default; this
+// workspace's CI (`.github/workflows/pr.yml`) runs exclusively on
+// `ubuntu-latest`, so these tests are unix-only.
+// ============================================================================
+
+#[cfg(unix)]
+const SYMLINK_SECRET_CONTENT: &str = "TOP-SECRET-HOST-FILE-CONTENT-THAT-MUST-NEVER-BE-COPIED";
+
+/// Recursively checks whether any regular file under `dir` contains `needle`.
+///
+/// Uses `DirEntry::file_type()`, which reports symlink-ness without
+/// dereferencing (unlike `Path::is_file()`), so a destination that merely
+/// re-creates a symlink (rather than copying its target's bytes) is
+/// correctly treated as non-disclosing by this helper — the property under
+/// test is content disclosure, not symlink presence.
+#[cfg(unix)]
+fn directory_contains_content(dir: &std::path::Path, needle: &str) -> bool {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if file_type.is_dir() {
+            if directory_contains_content(&path, needle) {
+                return true;
+            }
+        } else if file_type.is_file() {
+            if let Ok(contents) = fs::read(&path) {
+                if contents
+                    .windows(needle.len())
+                    .any(|window| window == needle.as_bytes())
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+#[cfg(unix)]
+#[test]
+fn test_copy_dir_contents_does_not_disclose_symlink_target_content() {
+    use std::os::unix::fs::symlink;
+
+    // Secret file outside both the source and destination trees.
+    let secret_dir = TempDir::new().unwrap();
+    let secret_path = secret_dir.path().join("secret.txt");
+    fs::write(&secret_path, SYMLINK_SECRET_CONTENT).unwrap();
+
+    let source_dir = TempDir::new().unwrap();
+    symlink(&secret_path, source_dir.path().join("leaked")).unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+
+    let result = copy_dir_contents(source_dir.path(), dest_dir.path());
+
+    assert!(
+        !directory_contains_content(dest_dir.path(), SYMLINK_SECRET_CONTENT),
+        "secret file content must never be copied into the destination via a symlink"
+    );
+    assert!(
+        result.is_err() || !dest_dir.path().join("leaked").exists(),
+        "a symlink entry must be rejected (Err) or skipped (absent from destination), \
+         not silently dereferenced into a regular file copy"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_copy_dir_contents_does_not_disclose_symlink_to_directory_outside_source() {
+    use std::os::unix::fs::symlink;
+
+    let secret_dir = TempDir::new().unwrap();
+    fs::write(
+        secret_dir.path().join("inner-secret.txt"),
+        SYMLINK_SECRET_CONTENT,
+    )
+    .unwrap();
+
+    let source_dir = TempDir::new().unwrap();
+    symlink(secret_dir.path(), source_dir.path().join("leaked-dir")).unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+
+    let result = copy_dir_contents(source_dir.path(), dest_dir.path());
+
+    assert!(
+        !directory_contains_content(dest_dir.path(), SYMLINK_SECRET_CONTENT),
+        "secret directory's content must never be copied into the destination via a symlinked directory"
+    );
+    assert!(
+        result.is_err() || !dest_dir.path().join("leaked-dir").exists(),
+        "a directory symlink entry must be rejected or skipped, not recursively dereferenced"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_copy_dir_contents_rejects_or_skips_symlink_even_when_target_is_inside_source_tree() {
+    // The finding is about dereferencing symlinks at all, not only ones that
+    // point outside the source tree: determining "inside vs outside" would
+    // itself require canonicalization that is fragile against symlink
+    // chains/TOCTOU, so a correct fix treats every symlink entry uniformly.
+    use std::os::unix::fs::symlink;
+
+    let source_dir = TempDir::new().unwrap();
+    let real_path = source_dir.path().join("real.txt");
+    fs::write(&real_path, SYMLINK_SECRET_CONTENT).unwrap();
+    symlink(&real_path, source_dir.path().join("link-to-real")).unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+
+    let result = copy_dir_contents(source_dir.path(), dest_dir.path());
+
+    // `real.txt` itself is a legitimate regular file; only the *symlink
+    // entry* must not be dereferenced into a second, independent copy under
+    // the link's name.
+    assert!(
+        result.is_err() || !dest_dir.path().join("link-to-real").exists(),
+        "a symlink must not be dereferenced even when its target is a legitimate same-tree file"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_copy_dir_contents_still_copies_regular_siblings_when_symlink_is_skipped() {
+    // Stub-killing: rules out an overcorrected "fail/empty everything"
+    // implementation — if the chosen fix is "skip the symlink and succeed",
+    // regular sibling files and subdirectories must still be copied intact.
+    use std::os::unix::fs::symlink;
+
+    let secret_dir = TempDir::new().unwrap();
+    let secret_path = secret_dir.path().join("secret.txt");
+    fs::write(&secret_path, SYMLINK_SECRET_CONTENT).unwrap();
+
+    let source_dir = TempDir::new().unwrap();
+    fs::write(source_dir.path().join("README.md"), "# Hello").unwrap();
+    fs::create_dir_all(source_dir.path().join("src")).unwrap();
+    fs::write(source_dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+    symlink(&secret_path, source_dir.path().join("leaked")).unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+    let result = copy_dir_contents(source_dir.path(), dest_dir.path());
+
+    if result.is_ok() {
+        assert_eq!(
+            fs::read_to_string(dest_dir.path().join("README.md")).unwrap(),
+            "# Hello",
+            "regular sibling file must still be copied when the symlink is merely skipped"
+        );
+        assert_eq!(
+            fs::read_to_string(dest_dir.path().join("src/main.rs")).unwrap(),
+            "fn main() {}",
+            "regular sibling subdirectory must still be copied when the symlink is merely skipped"
+        );
+    }
+    assert!(!directory_contains_content(
+        dest_dir.path(),
+        SYMLINK_SECRET_CONTENT
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_copy_dir_contents_rejects_or_skips_symlink_nested_in_subdirectory() {
+    // The recursive case: a symlink several directories deep must be caught
+    // too, not just top-level entries.
+    use std::os::unix::fs::symlink;
+
+    let secret_dir = TempDir::new().unwrap();
+    let secret_path = secret_dir.path().join("secret.txt");
+    fs::write(&secret_path, SYMLINK_SECRET_CONTENT).unwrap();
+
+    let source_dir = TempDir::new().unwrap();
+    let nested = source_dir.path().join("a").join("b").join("c");
+    fs::create_dir_all(&nested).unwrap();
+    symlink(&secret_path, nested.join("leaked")).unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+    let result = copy_dir_contents(source_dir.path(), dest_dir.path());
+
+    assert!(
+        !directory_contains_content(dest_dir.path(), SYMLINK_SECRET_CONTENT),
+        "a symlink nested several directories deep must not leak its target's content either"
+    );
+    assert!(
+        result.is_err()
+            || !dest_dir
+                .path()
+                .join("a")
+                .join("b")
+                .join("c")
+                .join("leaked")
+                .exists(),
+        "a nested symlink entry must be rejected or skipped"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_replace_working_tree_contents_does_not_disclose_symlink_target_content() {
+    // Regression test at the level actually called by `create_snapshot_branch`
+    // for the source-only mirror flow: `dest` simulates an already-initialized
+    // local git repository (has a `.git` directory, which must be preserved
+    // and must not be treated as a source entry); `source` simulates the
+    // shallow clone of the upstream repository's working tree.
+    use std::os::unix::fs::symlink;
+
+    let secret_dir = TempDir::new().unwrap();
+    let secret_path = secret_dir.path().join("secret.txt");
+    fs::write(&secret_path, SYMLINK_SECRET_CONTENT).unwrap();
+
+    let source_dir = TempDir::new().unwrap();
+    fs::write(source_dir.path().join("README.md"), "mirrored content").unwrap();
+    symlink(&secret_path, source_dir.path().join("leaked")).unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+    fs::create_dir_all(dest_dir.path().join(".git")).unwrap();
+    fs::write(dest_dir.path().join(".git/HEAD"), "ref: refs/heads/main").unwrap();
+    // Pre-existing tracked file that the snapshot replace step is expected
+    // to remove before copying `source`'s contents in.
+    fs::write(dest_dir.path().join("stale.txt"), "stale").unwrap();
+
+    let result = replace_working_tree_contents(dest_dir.path(), source_dir.path());
+
+    assert!(
+        !directory_contains_content(dest_dir.path(), SYMLINK_SECRET_CONTENT),
+        "replace_working_tree_contents must not let a symlink in the source tree \
+         disclose content from outside the clone"
+    );
+    assert!(
+        result.is_err() || !dest_dir.path().join("leaked").exists(),
+        "a symlink entry must be rejected or skipped, not dereferenced"
+    );
+    // `.git` must survive regardless of how the symlink finding is fixed.
+    assert!(
+        dest_dir.path().join(".git/HEAD").exists(),
+        ".git directory must never be touched by the working-tree replace step"
+    );
+}

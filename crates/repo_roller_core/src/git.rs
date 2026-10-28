@@ -1209,3 +1209,7 @@ fn copy_dir_contents(source: &std::path::Path, dest: &std::path::Path) -> Result
 #[cfg(test)]
 #[path = "git_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "git_proptests.rs"]
+mod proptests;

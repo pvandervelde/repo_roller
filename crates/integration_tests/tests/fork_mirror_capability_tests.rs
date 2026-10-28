@@ -22,6 +22,26 @@
 //! designated/non-designated template fixture and an explicitly *enabled*
 //! capability in `.reporoller-test`, which this test file does not assume —
 //! see the Tester's report for this gap.
+//!
+//! # `allowed_source_owners` (RCF-005 extension) gap
+//!
+//! The same gap applies to the HIGH finding that `allowed_source_owners`
+//! must additionally permit `source.owner` even when a capability is
+//! enabled (docs/spec/interfaces/fork-mirror-operations.md §2): testing
+//! "capability enabled + owner not on allow-list → `SourceOwnerNotAllowed`"
+//! and "capability enabled + owner on allow-list → gate passes" both
+//! require the capability to be explicitly enabled in `.reporoller-test`,
+//! which it is not. Those scenarios are covered at the unit level instead,
+//! directly against `validate_creation_mode_capability`, in
+//! `crates/repo_roller_core/src/lib_tests.rs` (search for
+//! `allowed_source_owners`), which does not require a live GitHub call.
+//!
+//! What *is* testable against the live, unmodified fixture is the ordering
+//! guarantee that the capability-disabled check still wins over the
+//! owner-allow-list check even for a source owner that could never
+//! plausibly be on an allow-list — see the three
+//! `*_disabled_by_default_takes_precedence_over_source_owner_check` tests
+//! below.
 
 use anyhow::Result;
 use auth_handler::UserAuthenticationService;
@@ -231,5 +251,167 @@ async fn test_source_only_mirror_disabled_by_default_returns_capability_disabled
     assert_is_capability_disabled_error(&result.unwrap_err(), "source_only_mirror");
 
     info!("✓ Source-only mirror capability-disabled-by-default test passed");
+    Ok(())
+}
+
+/// RCF-005 extension: the capability-disabled check must take precedence
+/// over the `allowed_source_owners` check (docs/spec/interfaces/
+/// fork-mirror-operations.md §2: "checks `allowed_source_owners`
+/// immediately after the capability-enabled check"). Uses a source owner
+/// name that could never plausibly appear on any real allow-list, so a
+/// future fixture change that enables the capability for `config.test_org`
+/// specifically cannot make this test coincidentally pass for the wrong
+/// reason — it must fail with `CapabilityDisabled`, not
+/// `SourceOwnerNotAllowed`, purely because the capability itself is off.
+#[tokio::test]
+async fn test_fork_creation_disabled_by_default_takes_precedence_over_source_owner_check(
+) -> Result<()> {
+    info!("Testing fork capability-disabled check precedence over source-owner allow-list check");
+
+    let (auth_service, metadata_provider, visibility_policy_provider, environment_detector, config) =
+        build_test_harness().await?;
+
+    let repo_name = generate_test_repo_name("test", "fork-disabled-owner-order");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("definitely-not-a-configured-allowlist-owner")?,
+        name: RepositoryName::new("template-test-basic")?,
+    };
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
+        OrganizationName::new(&config.test_org)?,
+    )
+    .creation_mode(CreationMode::Fork { source })
+    .build();
+
+    let event_providers = integration_tests::create_event_notification_providers();
+    let result = repo_roller_core::create_repository(
+        request,
+        metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller-test",
+        visibility_policy_provider,
+        environment_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
+    )
+    .await;
+
+    assert!(result.is_err());
+    // Discriminates against `SourceOwnerNotAllowed`: that error's message
+    // template is "Source owner '...' is not in the configured allow-list
+    // for '...'", which does not contain the literal substrings "disabled"
+    // or "capability", so `assert_is_capability_disabled_error` would fail
+    // if the gate checked owner-allow-list before capability-enabled.
+    assert_is_capability_disabled_error(&result.unwrap_err(), "fork");
+
+    info!("✓ Fork capability-disabled-takes-precedence-over-owner-check test passed");
+    Ok(())
+}
+
+/// Symmetric to the fork test above, for source+history mirror.
+#[tokio::test]
+async fn test_source_history_mirror_disabled_by_default_takes_precedence_over_source_owner_check(
+) -> Result<()> {
+    info!(
+        "Testing source+history mirror capability-disabled check precedence over \
+         source-owner allow-list check"
+    );
+
+    let (auth_service, metadata_provider, visibility_policy_provider, environment_detector, config) =
+        build_test_harness().await?;
+
+    let repo_name = generate_test_repo_name("test", "history-mirror-disabled-owner-order");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("definitely-not-a-configured-allowlist-owner")?,
+        name: RepositoryName::new("template-test-basic")?,
+    };
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
+        OrganizationName::new(&config.test_org)?,
+    )
+    .creation_mode(CreationMode::Mirror {
+        source,
+        preserve_history: true,
+    })
+    .build();
+
+    let event_providers = integration_tests::create_event_notification_providers();
+    let result = repo_roller_core::create_repository(
+        request,
+        metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller-test",
+        visibility_policy_provider,
+        environment_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_is_capability_disabled_error(&result.unwrap_err(), "source_history_mirror");
+
+    info!(
+        "✓ Source+history mirror capability-disabled-takes-precedence-over-owner-check test passed"
+    );
+    Ok(())
+}
+
+/// Symmetric to the fork test above, for source-only mirror.
+#[tokio::test]
+async fn test_source_only_mirror_disabled_by_default_takes_precedence_over_source_owner_check(
+) -> Result<()> {
+    info!(
+        "Testing source-only mirror capability-disabled check precedence over \
+         source-owner allow-list check"
+    );
+
+    let (auth_service, metadata_provider, visibility_policy_provider, environment_detector, config) =
+        build_test_harness().await?;
+
+    let repo_name = generate_test_repo_name("test", "source-only-mirror-disabled-owner-order");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("definitely-not-a-configured-allowlist-owner")?,
+        name: RepositoryName::new("template-test-basic")?,
+    };
+
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(&repo_name)?,
+        OrganizationName::new(&config.test_org)?,
+    )
+    .creation_mode(CreationMode::Mirror {
+        source,
+        preserve_history: false,
+    })
+    .build();
+
+    let event_providers = integration_tests::create_event_notification_providers();
+    let result = repo_roller_core::create_repository(
+        request,
+        metadata_provider.as_ref(),
+        &auth_service,
+        ".reporoller-test",
+        visibility_policy_provider,
+        environment_detector,
+        repo_roller_core::EventNotificationContext::new(
+            "integration-test",
+            event_providers.secret_resolver.clone(),
+            event_providers.metrics.clone(),
+        ),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_is_capability_disabled_error(&result.unwrap_err(), "source_only_mirror");
+
+    info!("✓ Source-only mirror capability-disabled-takes-precedence-over-owner-check test passed");
     Ok(())
 }

@@ -1182,3 +1182,378 @@ fn test_merge_policy_invalid_ceiling_treated_as_no_ceiling() {
     // Ceiling is invalid, so no ceiling applied; Admin request accepted as-is.
     assert_eq!(result.get("new-team"), Some(&AccessLevel::Admin));
 }
+
+// ============================================================================
+// FORK/MIRROR SOURCE-OWNER ALLOW-LIST GATE TESTS (HIGH finding, RCF-005
+// extension)
+// ============================================================================
+//
+// See docs/spec/interfaces/fork-mirror-operations.md §2 and §7: a fork/mirror
+// capability being enabled is NOT sufficient authorization — `source.owner`
+// must additionally appear (case-insensitively) in the merged
+// `allowed_source_owners` list. `validate_creation_mode_capability` must
+// check this immediately after the capability-enabled check and before the
+// template-designation check, before any GitHub API call.
+//
+// `validate_creation_mode_capability` is a pure, synchronous function that
+// takes no client — it can be (and is) exercised directly here without any
+// mock `RepositoryClient`, which also proves the "no GitHub API call before
+// rejection" property structurally (there is no client in scope to call).
+
+fn fork_request_with_source(owner: &str) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("new-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .creation_mode(CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new(owner).unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+    })
+    .build()
+}
+
+fn mirror_request_with_source(owner: &str, preserve_history: bool) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("new-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .creation_mode(CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new(owner).unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history,
+    })
+    .build()
+}
+
+/// Builds a `MergedConfiguration` with exactly one capability flag set
+/// (`enabled`) and `allowed_source_owners` set to `allowed_owners` (or left
+/// unset when `None`, exercising the fail-closed default).
+fn merged_config_with_capability(
+    capability: &str,
+    enabled: bool,
+    allowed_owners: Option<Vec<&str>>,
+) -> config_manager::MergedConfiguration {
+    use config_manager::{CreationCapabilitiesSettings, OverridableValue};
+
+    let mut capabilities = CreationCapabilitiesSettings::default();
+    match capability {
+        "fork" => capabilities.fork_enabled = Some(OverridableValue::allowed(enabled)),
+        "source_history_mirror" => {
+            capabilities.source_history_mirror_enabled = Some(OverridableValue::allowed(enabled))
+        }
+        "source_only_mirror" => {
+            capabilities.source_only_mirror_enabled = Some(OverridableValue::allowed(enabled))
+        }
+        other => panic!("unknown capability: {other}"),
+    }
+    capabilities.allowed_source_owners = allowed_owners
+        .map(|owners| OverridableValue::allowed(owners.into_iter().map(str::to_string).collect()));
+
+    let mut merged = config_manager::MergedConfiguration::new();
+    merged.creation_capabilities = capabilities;
+    merged
+}
+
+fn minimal_template_config(
+    designation: Option<config_manager::TemplateDesignation>,
+) -> TemplateConfig {
+    TemplateConfig {
+        template: TemplateMetadata {
+            name: "t".to_string(),
+            description: "d".to_string(),
+            author: "a".to_string(),
+            tags: vec![],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        rulesets: None,
+        default_visibility: None,
+        templating: None,
+        notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
+        naming_rules: None,
+        designation,
+        creation_capabilities: None,
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_rejects_fork_when_allowed_source_owners_unset() {
+    let request = fork_request_with_source("upstream-org");
+    let merged = merged_config_with_capability("fork", true, None);
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            owner,
+            capability,
+        })) => {
+            assert_eq!(owner, "upstream-org");
+            assert_eq!(capability, "fork");
+        }
+        other => panic!(
+            "expected SourceOwnerNotAllowed when the allow-list is unset \
+             (fail-closed default), even though the capability is enabled, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_rejects_fork_when_allowed_source_owners_empty() {
+    let request = fork_request_with_source("upstream-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec![]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::Configuration(
+                ConfigurationError::SourceOwnerNotAllowed { .. }
+            ))
+        ),
+        "an explicitly-empty allow-list must still deny every source owner, got {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_creation_mode_capability_rejects_fork_when_owner_not_in_allow_list() {
+    let request = fork_request_with_source("evil-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org", "another-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            owner,
+            capability,
+        })) => {
+            assert_eq!(owner, "evil-org");
+            assert_eq!(capability, "fork");
+        }
+        other => panic!("expected SourceOwnerNotAllowed, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allows_fork_when_owner_exactly_matches_allow_list() {
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allow_list_match_is_case_insensitive_list_upper() {
+    // Allow-list entry upper-case, request owner lower-case.
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["GOOD-ORG"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "case-insensitive match should pass: {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allow_list_match_is_case_insensitive_owner_upper() {
+    // Request owner has mixed case, allow-list stored lower-case.
+    let request = fork_request_with_source("Good-Org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "case-insensitive match should pass: {result:?}"
+    );
+}
+
+/// Stub-killing: a buggy implementation that only compares against the
+/// first allow-list entry (e.g. `list.first() == Some(owner)`) would fail
+/// this — the owner matches the *second* entry, not the first or last.
+#[test]
+fn test_validate_creation_mode_capability_allow_list_matches_any_position_not_just_first() {
+    let request = fork_request_with_source("second-org");
+    let merged = merged_config_with_capability(
+        "fork",
+        true,
+        Some(vec!["first-org", "second-org", "third-org"]),
+    );
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "owner matching a non-first list entry must still pass: {result:?}"
+    );
+}
+
+/// Ordering: the capability-enabled check must run before the owner
+/// allow-list check — a disabled capability must reject with
+/// `CapabilityDisabled` even when the source owner is on the allow-list.
+#[test]
+fn test_validate_creation_mode_capability_checks_capability_disabled_before_owner_allow_list() {
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", false, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::CapabilityDisabled {
+            capability,
+        })) => {
+            assert_eq!(capability, "fork");
+        }
+        other => panic!(
+            "expected CapabilityDisabled (checked before the owner allow-list), got {other:?}"
+        ),
+    }
+}
+
+/// Ordering: the owner allow-list check must run before the template
+/// designation check — a disallowed owner must reject with
+/// `SourceOwnerNotAllowed` even when a non-designated template is also
+/// passed (which would otherwise trigger `TemplateNotDesignated`).
+#[test]
+fn test_validate_creation_mode_capability_checks_owner_allow_list_before_template_designation() {
+    let request = fork_request_with_source("evil-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+    let wrong_template =
+        minimal_template_config(Some(config_manager::TemplateDesignation::SourceOnlyMirror));
+
+    let result = validate_creation_mode_capability(&request, &merged, Some(&wrong_template));
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            owner,
+            ..
+        })) => {
+            assert_eq!(owner, "evil-org");
+        }
+        other => {
+            panic!("expected SourceOwnerNotAllowed (checked before designation), got {other:?}")
+        }
+    }
+}
+
+/// Sanity check for the ordering test above: once the owner check passes,
+/// the pre-existing designation check must still fire as before — this
+/// rules out a fix that accidentally short-circuits `Ok(())` once the owner
+/// check passes, skipping the designation check entirely.
+#[test]
+fn test_validate_creation_mode_capability_falls_through_to_designation_check_when_owner_allowed() {
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+    let wrong_template =
+        minimal_template_config(Some(config_manager::TemplateDesignation::SourceOnlyMirror));
+
+    let result = validate_creation_mode_capability(&request, &merged, Some(&wrong_template));
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::Configuration(
+                ConfigurationError::TemplateNotDesignated { .. }
+            ))
+        ),
+        "expected TemplateNotDesignated once the owner check passes, got {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_creation_mode_capability_applies_allow_list_to_source_history_mirror() {
+    let request = mirror_request_with_source("evil-org", true);
+    let merged =
+        merged_config_with_capability("source_history_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            capability,
+            ..
+        })) => {
+            assert_eq!(capability, "source_history_mirror");
+        }
+        other => panic!("expected SourceOwnerNotAllowed, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_applies_allow_list_to_source_only_mirror() {
+    let request = mirror_request_with_source("evil-org", false);
+    let merged = merged_config_with_capability("source_only_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            capability,
+            ..
+        })) => {
+            assert_eq!(capability, "source_only_mirror");
+        }
+        other => panic!("expected SourceOwnerNotAllowed, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allows_source_history_mirror_when_owner_allowed() {
+    let request = mirror_request_with_source("good-org", true);
+    let merged =
+        merged_config_with_capability("source_history_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allows_source_only_mirror_when_owner_allowed() {
+    let request = mirror_request_with_source("good-org", false);
+    let merged = merged_config_with_capability("source_only_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+/// Regression guard: `CreationMode::Standard` has no `source` at all and
+/// must continue to bypass the entire fork/mirror gate (including the new
+/// owner allow-list check), regardless of how threadbare
+/// `creation_capabilities` is.
+#[test]
+fn test_validate_creation_mode_capability_standard_mode_bypasses_allow_list_entirely() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("new-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .build();
+    let merged = config_manager::MergedConfiguration::new(); // all-None capabilities
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "Standard mode must bypass the fork/mirror gate entirely: {result:?}"
+    );
+}
