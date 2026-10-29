@@ -546,3 +546,54 @@ fn test_replace_working_tree_contents_does_not_disclose_symlink_target_content()
         ".git directory must never be touched by the working-tree replace step"
     );
 }
+
+/// Mutation-kill: a no-op `replace_working_tree_contents` (e.g. the whole
+/// function body replaced with `Ok(())`) would still pass the
+/// non-disclosure assertions above, because an untouched `dest` trivially
+/// contains no leaked secret content. This test instead asserts the
+/// function's two core *positive* effects directly: stale entries tracked
+/// in `dest` but absent from `source` are deleted, and `source`'s current
+/// contents are actually copied in. Deliberately platform-independent (no
+/// symlinks) so it runs on every CI runner, not just `ubuntu-latest`.
+#[test]
+fn test_replace_working_tree_contents_deletes_stale_and_copies_source_contents() {
+    let source_dir = TempDir::new().unwrap();
+    fs::write(source_dir.path().join("README.md"), "mirrored content").unwrap();
+    fs::create_dir_all(source_dir.path().join("src")).unwrap();
+    fs::write(source_dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+
+    let dest_dir = TempDir::new().unwrap();
+    fs::create_dir_all(dest_dir.path().join(".git")).unwrap();
+    fs::write(dest_dir.path().join(".git/HEAD"), "ref: refs/heads/main").unwrap();
+    // Pre-existing tracked file/dir that must be removed because `source`
+    // does not contain them.
+    fs::write(dest_dir.path().join("stale.txt"), "stale").unwrap();
+    fs::create_dir_all(dest_dir.path().join("old_dir")).unwrap();
+    fs::write(dest_dir.path().join("old_dir/old.txt"), "old").unwrap();
+
+    let result = replace_working_tree_contents(dest_dir.path(), source_dir.path());
+    assert!(result.is_ok(), "replace should succeed: {:?}", result);
+
+    assert!(
+        !dest_dir.path().join("stale.txt").exists(),
+        "stale.txt must be deleted: it is tracked in dest but absent from source"
+    );
+    assert!(
+        !dest_dir.path().join("old_dir").exists(),
+        "old_dir must be deleted: it is tracked in dest but absent from source"
+    );
+    assert_eq!(
+        fs::read_to_string(dest_dir.path().join("README.md")).unwrap(),
+        "mirrored content",
+        "README.md must be copied in from source"
+    );
+    assert_eq!(
+        fs::read_to_string(dest_dir.path().join("src/main.rs")).unwrap(),
+        "fn main() {}",
+        "src/main.rs must be copied in from source, including nested directories"
+    );
+    assert!(
+        dest_dir.path().join(".git/HEAD").exists(),
+        ".git directory must never be touched by the working-tree replace step"
+    );
+}
