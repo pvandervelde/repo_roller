@@ -218,6 +218,189 @@ async fn test_update_repository_settings_success() {
     assert!(result.is_ok());
 }
 
+// ============================================================================
+// RepositorySettingsUpdate.default_branch Tests (RED: #255 follow-up Gap 2 --
+// "history mirror never sets the new repo's default branch on GitHub")
+// ============================================================================
+//
+// `create_history_mirror_repository` (repo_roller_core) needs to align a
+// newly created history-mirror repository's recorded `default_branch` with
+// the source's default branch via `update_repository_settings`. GitHub's
+// `PATCH /repos/{owner}/{repo}` endpoint accepts `default_branch` natively,
+// so this is a pure additive field on `RepositorySettingsUpdate` -- no new
+// client method needed. These tests pin down its serde contract and that
+// `update_repository_settings` actually transmits it.
+
+#[test]
+fn test_repository_settings_update_default_branch_serializes_when_present() {
+    let settings = RepositorySettingsUpdate {
+        default_branch: Some("develop".to_string()),
+        ..Default::default()
+    };
+
+    let value = serde_json::to_value(&settings).expect("RepositorySettingsUpdate must serialize");
+
+    assert_eq!(
+        value.get("default_branch"),
+        Some(&json!("develop")),
+        "default_branch must be present in the serialized payload when set: {value:?}"
+    );
+}
+
+#[test]
+fn test_repository_settings_update_default_branch_omitted_when_none() {
+    let settings = RepositorySettingsUpdate {
+        description: Some("unrelated field set".to_string()),
+        ..Default::default()
+    };
+
+    let value = serde_json::to_value(&settings).expect("RepositorySettingsUpdate must serialize");
+
+    assert!(
+        value.get("default_branch").is_none(),
+        "default_branch must be omitted (skip_serializing_if) when None, got: {value:?}"
+    );
+}
+
+#[test]
+fn test_repository_settings_update_default_branch_set_does_not_affect_unrelated_fields() {
+    // Adversarial: setting default_branch must not accidentally also set or
+    // suppress unrelated fields (catches a copy-paste mutation that aliases
+    // fields, or a serde attribute applied to the wrong field).
+    let settings = RepositorySettingsUpdate {
+        default_branch: Some("trunk".to_string()),
+        ..Default::default()
+    };
+
+    let value = serde_json::to_value(&settings).expect("RepositorySettingsUpdate must serialize");
+
+    assert_eq!(value.get("default_branch"), Some(&json!("trunk")));
+    assert!(value.get("description").is_none());
+    assert!(value.get("homepage").is_none());
+    assert!(value.get("private").is_none());
+    assert!(value.get("has_issues").is_none());
+    assert!(value.get("has_projects").is_none());
+    assert!(value.get("has_wiki").is_none());
+}
+
+#[test]
+fn test_repository_settings_update_default_branch_distinct_values_serialize_distinctly() {
+    // Stub-killing: a hardcoded "main" in the (de)serialization path would
+    // fail this test even though it might pass the "develop" test above.
+    let settings = RepositorySettingsUpdate {
+        default_branch: Some("release/2026.1".to_string()),
+        ..Default::default()
+    };
+
+    let value = serde_json::to_value(&settings).expect("RepositorySettingsUpdate must serialize");
+
+    assert_eq!(value.get("default_branch"), Some(&json!("release/2026.1")));
+}
+
+#[tokio::test]
+async fn test_update_repository_settings_sends_default_branch_in_patch_body() {
+    use wiremock::matchers::body_partial_json;
+
+    let mock_server = MockServer::start().await;
+    let owner = "test-owner";
+    let repo = "test-repo";
+    let settings = RepositorySettingsUpdate {
+        default_branch: Some("develop".to_string()),
+        ..Default::default()
+    };
+
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}")))
+        .and(body_partial_json(json!({ "default_branch": "develop" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 123456,
+            "name": repo,
+            "default_branch": "develop",
+            "url": format!("https://api.github.com/repos/{owner}/{repo}")
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .update_repository_settings(owner, repo, &settings)
+        .await;
+
+    if let Err(e) = &result {
+        eprintln!("update_repository_settings error: {e:?}");
+    }
+    assert!(
+        result.is_ok(),
+        "update_repository_settings with default_branch set must succeed"
+    );
+
+    mock_server.verify().await; // wiremock asserts the body_partial_json-matched PATCH was received exactly once
+}
+
+#[tokio::test]
+async fn test_update_repository_settings_without_default_branch_does_not_send_it() {
+    use wiremock::matchers::body_partial_json;
+
+    let mock_server = MockServer::start().await;
+    let owner = "test-owner";
+    let repo = "test-repo";
+    let settings = RepositorySettingsUpdate {
+        description: Some("no branch change here".to_string()),
+        ..Default::default()
+    };
+
+    // A mock that would only match if `default_branch` were present in the
+    // body must never be hit when the caller didn't set it.
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}")))
+        .and(body_partial_json(json!({ "default_branch": "main" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 123456,
+            "name": repo,
+            "url": format!("https://api.github.com/repos/{owner}/{repo}")
+        })))
+        .expect(0)
+        .mount(&mock_server)
+        .await;
+
+    // A permissive mock handles the actual (default_branch-less) request so
+    // the call still completes successfully.
+    Mock::given(method("PATCH"))
+        .and(path(format!("/repos/{owner}/{repo}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 123456,
+            "name": repo,
+            "url": format!("https://api.github.com/repos/{owner}/{repo}")
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(mock_server.uri())
+        .unwrap()
+        .app_from_rsa_pem(TEST_APP_ID.into(), create_test_pem().as_bytes())
+        .unwrap()
+        .build()
+        .unwrap();
+    let client = GitHubClient { client: octocrab };
+
+    let result = client
+        .update_repository_settings(owner, repo, &settings)
+        .await;
+
+    assert!(result.is_ok());
+    mock_server.verify().await; // wiremock asserts the default_branch-matching mock's expect(0) held
+}
+
 #[tokio::test]
 #[ignore = "Integration test - requires real GitHub App setup. octocrab models need complex mock data structure"]
 async fn test_list_installations_success() {

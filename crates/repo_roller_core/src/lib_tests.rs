@@ -1808,3 +1808,206 @@ async fn test_create_source_only_mirror_repository_propagates_github_repository_
 
     server.verify().await; // wiremock asserts both expect(1) calls were satisfied
 }
+
+// ============================================================================
+// designation_for_creation_mode Tests (RED: #255 follow-up Gap 1 --
+// "designated template is never auto-discovered")
+// ============================================================================
+//
+// `designation_for_creation_mode` is the pure mapping `load_creation_config`
+// must use to decide which `config_manager::TemplateDesignation` (if any) a
+// request's `CreationMode` implies, per
+// docs/spec/interfaces/fork-mirror-operations.md and the #255 follow-up gap
+// note ("load_creation_config only loads a template when the caller's
+// request.template is explicitly Some(...)"). It must consult only
+// `creation_mode` -- NOT `request.template` -- so that the separate
+// "explicit template always wins" rule (tested in
+// `configuration_tests.rs::effective_template_name`) stays orthogonal and
+// composable with this mapping.
+//
+// Mapping required:
+//   CreationMode::Standard                          -> None
+//   CreationMode::Fork { .. }                        -> Some(Fork)
+//   CreationMode::Mirror { preserve_history: true }  -> Some(SourceHistoryMirror)
+//   CreationMode::Mirror { preserve_history: false } -> Some(SourceOnlyMirror)
+
+#[test]
+fn test_designation_for_creation_mode_standard_returns_none() {
+    let mode = CreationMode::Standard;
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation, None,
+        "Standard creation has no fork/mirror designation"
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_fork_returns_fork_designation() {
+    let mode = CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+    };
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation,
+        Some(config_manager::TemplateDesignation::Fork)
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_history_mirror_returns_source_history_mirror_designation() {
+    let mode = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: true,
+    };
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation,
+        Some(config_manager::TemplateDesignation::SourceHistoryMirror)
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_source_only_mirror_returns_source_only_mirror_designation() {
+    let mode = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: false,
+    };
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation,
+        Some(config_manager::TemplateDesignation::SourceOnlyMirror)
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_history_and_source_only_mirror_designations_are_distinct() {
+    // Stub-killing: a lazy implementation might return the same designation
+    // for both `preserve_history` values (e.g. always `SourceHistoryMirror`).
+    // Assert they differ.
+    let history = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: true,
+    };
+    let source_only = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: false,
+    };
+
+    assert_ne!(
+        designation_for_creation_mode(&history),
+        designation_for_creation_mode(&source_only),
+        "history and source-only mirrors must map to distinct designations"
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_fork_and_standard_designations_are_distinct() {
+    // Stub-killing: a lazy implementation that always returns `Some(Fork)`
+    // (or always `None`) would pass a single-variant test but fail this one.
+    let fork = CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+    };
+
+    assert_ne!(
+        designation_for_creation_mode(&fork),
+        designation_for_creation_mode(&CreationMode::Standard)
+    );
+}
+
+// ============================================================================
+// history_mirror_default_branch_update Tests (RED: #255 follow-up Gap 2 --
+// "history mirror never sets the new repo's default branch on GitHub")
+// ============================================================================
+//
+// `create_history_mirror_repository` must call
+// `installation_repo_client.update_repository_settings` with a
+// `RepositorySettingsUpdate { default_branch: Some(source_default_branch),
+// ..Default::default() }` after `git::mirror_push` succeeds and before
+// returning. That call -- like the `git::mirror_clone`/`git::mirror_push`
+// steps themselves -- requires a live, network-reachable source repository
+// (see the module note above `wiremock_github_client`: the source and
+// push-target URLs are hardcoded `https://github.com/...` with no override
+// seam), so the full `create_history_mirror_repository` success path
+// (reaching this PATCH call) cannot be exercised end-to-end in this test
+// suite without live GitHub credentials, exactly like `mirror_clone` itself.
+//
+// `history_mirror_default_branch_update` isolates the one piece of this fix
+// that *is* synchronous, network-free, and therefore unit-testable without
+// live credentials: the exact `RepositorySettingsUpdate` payload built from
+// the source's default branch name. `create_history_mirror_repository` MUST
+// build its settings-update payload using this exact function (or logic
+// equivalent to it) so that payload construction cannot silently regress
+// (e.g. a hardcoded branch name, or accidentally setting unrelated fields)
+// independently of the (untestable-here) network wiring around it.
+
+#[test]
+fn test_history_mirror_default_branch_update_sets_default_branch_field() {
+    let settings = history_mirror_default_branch_update("develop");
+
+    assert_eq!(
+        settings.default_branch,
+        Some("develop".to_string()),
+        "default_branch must be set to the source's default branch name"
+    );
+}
+
+#[test]
+fn test_history_mirror_default_branch_update_preserves_arbitrary_branch_names() {
+    // Stub-killing: a hardcoded "main" would pass the test above but fail
+    // here, since the source's actual default branch is "trunk".
+    let settings = history_mirror_default_branch_update("trunk");
+
+    assert_eq!(settings.default_branch, Some("trunk".to_string()));
+}
+
+#[test]
+fn test_history_mirror_default_branch_update_rejects_empty_string_sentinel() {
+    // Stub-killing: a lazy implementation that unconditionally returns
+    // `Default::default()` (default_branch = None) would fail every test in
+    // this section; an implementation that returns `Some(String::new())`
+    // regardless of input would fail this one.
+    let settings = history_mirror_default_branch_update("release/2026.1");
+
+    assert_eq!(
+        settings.default_branch,
+        Some("release/2026.1".to_string())
+    );
+}
+
+#[test]
+fn test_history_mirror_default_branch_update_does_not_set_unrelated_fields() {
+    let settings = history_mirror_default_branch_update("main");
+
+    assert_eq!(settings.description, None);
+    assert_eq!(settings.homepage, None);
+    assert_eq!(settings.private, None);
+    assert_eq!(settings.has_issues, None);
+    assert_eq!(settings.has_projects, None);
+    assert_eq!(settings.has_wiki, None);
+}

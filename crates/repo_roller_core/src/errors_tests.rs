@@ -363,6 +363,37 @@ fn test_repo_roller_error_from_configuration_error() {
 }
 
 #[test]
+fn test_repo_roller_error_from_ambiguous_template_designation_is_not_swallowed() {
+    // #255 follow-up Gap 1 requirement: `find_designated_template`'s
+    // `AmbiguousTemplateDesignation` error must propagate out of repository
+    // creation as `RepoRollerError::Configuration`, not be silently
+    // swallowed by a catch-all fallback -- unlike a missing metadata
+    // repository, which legitimately falls back to defaults (CRF-001).
+    let config_err = ConfigurationError::AmbiguousTemplateDesignation {
+        org: "acme-corp".to_string(),
+        designation: "Fork".to_string(),
+        templates: vec!["fork-a".to_string(), "fork-b".to_string()],
+    };
+
+    let repo_err: RepoRollerError = config_err.into();
+
+    match repo_err {
+        RepoRollerError::Configuration(ConfigurationError::AmbiguousTemplateDesignation {
+            org,
+            designation,
+            templates,
+        }) => {
+            assert_eq!(org, "acme-corp");
+            assert_eq!(designation, "Fork");
+            assert_eq!(templates, vec!["fork-a".to_string(), "fork-b".to_string()]);
+        }
+        other => panic!(
+            "Expected RepoRollerError::Configuration(AmbiguousTemplateDesignation), got {other:?}"
+        ),
+    }
+}
+
+#[test]
 fn test_repo_roller_error_from_template_error() {
     let template_err = TemplateError::TemplateNotFound {
         name: "rust-library".to_string(),
