@@ -620,23 +620,15 @@ fn test_replace_working_tree_contents_deletes_stale_and_copies_source_contents()
 /// files — so libgit2 sees the already-on-disk working-tree files as
 /// "untracked files that would be overwritten" and refuses the checkout.
 ///
-/// Confirmed root cause and fix (verified locally, not applied — out of
-/// QA Engineer scope): adding `index.write()` immediately after
+/// Confirmed root cause and fix: adding `index.write()` immediately after
 /// `index.add_all(...)` in `prepare_index_and_tree` makes this test pass.
+/// Fixed in `prepare_index_and_tree` (crates/repo_roller_core/src/git.rs).
 ///
-/// This means `create_source_only_mirror_repository`
-/// (crates/repo_roller_core/src/lib.rs) fails on every invocation in
-/// production today. Reproduced identically on both Windows and WSL/Linux
-/// (via `cargo test`), so this is not a platform artifact.
-///
-/// Left `#[ignore]` rather than committed as a passing test: the defect is
-/// in production code, which is Coder scope, not QA Engineer scope. Remove
-/// the `#[ignore]` once `prepare_index_and_tree` calls `index.write()`.
+/// This meant `create_source_only_mirror_repository`
+/// (crates/repo_roller_core/src/lib.rs) failed on every invocation in
+/// production prior to the fix. Reproduced identically on both Windows and
+/// WSL/Linux (via `cargo test`), so this was not a platform artifact.
 #[test]
-#[ignore = "documents a confirmed production defect (missing index.write() \
-            in prepare_index_and_tree) that breaks create_snapshot_branch's \
-            checkout_tree call for every source-only-mirror creation; see \
-            QA audit report for #255, remove #[ignore] once fixed"]
 fn test_create_snapshot_branch_creates_branch_checks_out_and_commits_snapshot() {
     let repo_dir = TempDir::new().unwrap();
     init_local_git_repo(&repo_dir, "main").unwrap();

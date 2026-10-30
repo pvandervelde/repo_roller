@@ -179,6 +179,26 @@ pub(crate) fn prepare_index_and_tree(
         });
     }
 
+    // Persist the in-memory index to `.git/index` on disk. `write_tree()`
+    // below only serializes the index into a tree object in the object
+    // database - it does not sync the on-disk index file. Callers that
+    // perform a subsequent `checkout_tree` in the same process (e.g.
+    // `create_snapshot_branch`) diff against the on-disk index as their
+    // baseline, so without this call that checkout sees a stale (empty)
+    // index and treats already-present working-tree files as untracked
+    // files that would be overwritten, failing with a checkout conflict.
+    // Persisting here is additive and harmless for callers that only use
+    // the index in-memory (e.g. `commit_all_changes`'s original one-shot
+    // init -> commit -> push flow), since they rebuild it via `add_all`
+    // each time regardless.
+    index.write().map_err(|e| {
+        error!("Failed to write index to disk: {}", e);
+        SystemError::GitOperation {
+            operation: "write index to disk".to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+
     // Write the index to create a tree object
     // A tree in Git represents the state of files and directories at a point in time
     // This tree will be referenced by the commit we create later
