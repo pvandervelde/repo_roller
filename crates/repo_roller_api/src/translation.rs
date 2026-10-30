@@ -215,3 +215,7 @@ pub fn domain_repository_creation_result_to_http(
 #[cfg(test)]
 #[path = "translation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "translation_fork_mirror_tests.rs"]
+mod translation_fork_mirror_tests;

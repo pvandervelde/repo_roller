@@ -33,6 +33,10 @@ use tracing::{debug, error, info};
 #[path = "create_cmd_tests.rs"]
 mod create_cmd_tests;
 
+#[cfg(test)]
+#[path = "create_cmd_fork_mirror_tests.rs"]
+mod create_cmd_fork_mirror_tests;
+
 /// Loads CLI-specific configuration from a user-provided config file.
 ///
 /// This function loads CLI-specific configuration (name, owner, template) from

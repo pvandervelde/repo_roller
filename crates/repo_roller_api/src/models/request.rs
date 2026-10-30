@@ -263,3 +263,7 @@ pub type ValidateOrganizationParams = ListRepositoryTypesParams;
 #[cfg(test)]
 #[path = "request_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "request_fork_mirror_tests.rs"]
+mod request_fork_mirror_tests;
