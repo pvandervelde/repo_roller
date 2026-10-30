@@ -597,3 +597,111 @@ fn test_replace_working_tree_contents_deletes_stale_and_copies_source_contents()
         ".git directory must never be touched by the working-tree replace step"
     );
 }
+
+/// Mutation-kill / regression test for a confirmed production defect found
+/// during the #255 QA audit: `create_snapshot_branch` had zero test coverage
+/// (any caller using it in the exact sequence production code uses —
+/// `initialize_git_repository` i.e. `init_local_git_repo` +
+/// `commit_all_changes`, then `create_snapshot_branch` on the same
+/// `local_repo_path` — fails every time) with:
+///
+/// `GitOperation { operation: "checkout branch '...'", reason: "1 conflict
+/// prevents checkout; class=Checkout (20); code=Conflict (-13)" }`
+///
+/// Root cause: `prepare_index_and_tree` (git.rs) calls
+/// `index.add_all(...)` and `index.write_tree()` but never calls
+/// `index.write()`, so the staged index is never persisted to the on-disk
+/// `.git/index`. `write_tree()` only serializes the in-memory index into a
+/// tree object in the ODB; it does not sync `.git/index`. This was
+/// harmless for `commit_all_changes`'s original only use (a one-shot
+/// init+commit+push with no further checkout in the same process), but
+/// `create_snapshot_branch`'s subsequent `checkout_tree` call diffs against
+/// the **on-disk** index as its baseline — which still shows zero tracked
+/// files — so libgit2 sees the already-on-disk working-tree files as
+/// "untracked files that would be overwritten" and refuses the checkout.
+///
+/// Confirmed root cause and fix (verified locally, not applied — out of
+/// QA Engineer scope): adding `index.write()` immediately after
+/// `index.add_all(...)` in `prepare_index_and_tree` makes this test pass.
+///
+/// This means `create_source_only_mirror_repository`
+/// (crates/repo_roller_core/src/lib.rs) fails on every invocation in
+/// production today. Reproduced identically on both Windows and WSL/Linux
+/// (via `cargo test`), so this is not a platform artifact.
+///
+/// Left `#[ignore]` rather than committed as a passing test: the defect is
+/// in production code, which is Coder scope, not QA Engineer scope. Remove
+/// the `#[ignore]` once `prepare_index_and_tree` calls `index.write()`.
+#[test]
+#[ignore = "documents a confirmed production defect (missing index.write() \
+            in prepare_index_and_tree) that breaks create_snapshot_branch's \
+            checkout_tree call for every source-only-mirror creation; see \
+            QA audit report for #255, remove #[ignore] once fixed"]
+fn test_create_snapshot_branch_creates_branch_checks_out_and_commits_snapshot() {
+    let repo_dir = TempDir::new().unwrap();
+    init_local_git_repo(&repo_dir, "main").unwrap();
+    fs::write(repo_dir.path().join("original.txt"), "original content").unwrap();
+    commit_all_changes(&repo_dir, "Initial commit", false).unwrap();
+
+    let base_commit_oid = {
+        let repo = Repository::open(repo_dir.path()).unwrap();
+        let oid = repo.head().unwrap().peel_to_commit().unwrap().id();
+        oid
+    };
+
+    let source_dir = TempDir::new().unwrap();
+    fs::write(source_dir.path().join("snapshot.txt"), "snapshot content").unwrap();
+
+    let result = create_snapshot_branch(
+        &repo_dir,
+        "main",
+        "snapshot-branch",
+        source_dir.path(),
+        "Snapshot commit",
+    );
+    assert!(result.is_ok(), "snapshot branch creation should succeed: {:?}", result);
+
+    let repo = Repository::open(repo_dir.path()).unwrap();
+
+    // The new branch must actually exist.
+    let branch = repo
+        .find_branch("snapshot-branch", git2::BranchType::Local)
+        .expect("snapshot-branch must have been created");
+    let branch_commit = branch.get().peel_to_commit().unwrap();
+
+    // HEAD must have been moved onto the new branch (checkout + set_head).
+    assert_eq!(
+        repo.head().unwrap().name().ok(),
+        Some("refs/heads/snapshot-branch"),
+        "HEAD must point at the newly created snapshot branch"
+    );
+
+    // The snapshot commit must be a single child of the base commit, not a
+    // disconnected or merge commit.
+    assert_eq!(
+        branch_commit.parent_count(),
+        1,
+        "snapshot commit must have exactly one parent"
+    );
+    assert_eq!(
+        branch_commit.parent_id(0).unwrap(),
+        base_commit_oid,
+        "snapshot commit's parent must be the base branch's commit"
+    );
+    assert_eq!(
+        branch_commit.message().ok(),
+        Some("Snapshot commit"),
+        "snapshot commit must use the provided commit message"
+    );
+
+    // The working tree must reflect source's content, not the original.
+    assert!(
+        !repo_dir.path().join("original.txt").exists(),
+        "original.txt from the base commit must be replaced by the snapshot content"
+    );
+    assert_eq!(
+        fs::read_to_string(repo_dir.path().join("snapshot.txt")).unwrap(),
+        "snapshot content",
+        "snapshot.txt from source_files_path must be present in the working tree"
+    );
+}
