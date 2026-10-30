@@ -20,11 +20,9 @@ All three are **disabled by default** and must be explicitly turned on by an adm
 Each one is controlled independently, so you can enable forks without enabling mirrors, or
 enable only the source-only mirror, and so on.
 
-> **Current limitation:** as of this release, enabling and configuring these modes is only
-> possible through the configuration files described below. There is no CLI flag, REST API
-> field, or web UI control yet for actually *requesting* a fork or mirror creation — that
-> request-time surface has not shipped. This guide covers the administrative configuration
-> that is already in place and ready for that surface when it arrives.
+This guide covers both sides: the administrative configuration (capability toggles,
+source allow-list, settings-only templates) and, once that configuration is in place,
+how a repository creator actually requests a fork or mirror via the CLI or REST API.
 
 ## 1. Enable the capabilities you want
 
@@ -122,6 +120,124 @@ Rules:
 See [Template configuration schema: `designation`](../../reference/configuration/template-config.md#designation--forkmirror-settings-role)
 for the complete field reference.
 
+## 4. Request a fork or mirror creation
+
+Once a capability is enabled and its source owner is allow-listed (steps 1–2 above), any
+repository creator can request that mode via the CLI's `create` command or the REST API's
+`POST /api/v1/repositories` endpoint. A template is optional for all three modes — it is
+only ever consulted for its settings (via `designation`, step 3), never for files, with the
+one exception noted above for a `source_only_mirror`-designated template.
+
+### Fork (CLI)
+
+```bash
+repo-roller create \
+  --org myorg \
+  --repo payment-service \
+  --fork-from upstream-org/payment-service \
+  --description "Fork of upstream-org/payment-service"
+```
+
+`--fork-from` takes an `OWNER/REPO` value naming the source repository. GitHub performs the
+fork server-side, so the new repository joins GitHub's fork network with full history.
+`--fork-from` cannot be combined with `--mirror-from`, `--empty`, `--init-readme`, or
+`--init-gitignore` — the CLI rejects the combination before any GitHub API call.
+
+### Fork (REST API)
+
+```bash
+curl -X POST https://reporoller.myorg.example/api/v1/repositories \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "payment-service",
+    "organization": "myorg",
+    "creationMode": {
+      "type": "fork",
+      "source": { "owner": "upstream-org", "name": "payment-service" }
+    },
+    "description": "Fork of upstream-org/payment-service"
+  }'
+```
+
+### Mirror with full history (CLI)
+
+```bash
+repo-roller create \
+  --org myorg \
+  --repo payment-service-mirror \
+  --mirror-from upstream-org/payment-service \
+  --mirror-history \
+  --description "History mirror of upstream-org/payment-service"
+```
+
+With `--mirror-history`, RepoRoller clones the source as a bare mirror (all refs) and
+pushes it into the new, independent repository — full commit history, `HEAD` set to the
+source's default branch. The new repository is **not** part of GitHub's fork network.
+
+### Mirror with full history (REST API)
+
+```bash
+curl -X POST https://reporoller.myorg.example/api/v1/repositories \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "payment-service-mirror",
+    "organization": "myorg",
+    "creationMode": {
+      "type": "mirror",
+      "source": { "owner": "upstream-org", "name": "payment-service" },
+      "preserveHistory": true
+    },
+    "description": "History mirror of upstream-org/payment-service"
+  }'
+```
+
+### Mirror of source files only, no history (CLI)
+
+```bash
+repo-roller create \
+  --org myorg \
+  --repo payment-service-snapshot \
+  --mirror-from upstream-org/payment-service \
+  --description "Snapshot of upstream-org/payment-service's current files"
+```
+
+Omitting `--mirror-history` produces a source-only mirror: RepoRoller takes a snapshot of
+the source's current files only (no commit history) and delivers it as a pull request
+against the new repository for review, rather than pushing directly.
+
+### Mirror of source files only, no history (REST API)
+
+```bash
+curl -X POST https://reporoller.myorg.example/api/v1/repositories \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "payment-service-snapshot",
+    "organization": "myorg",
+    "creationMode": {
+      "type": "mirror",
+      "source": { "owner": "upstream-org", "name": "payment-service" },
+      "preserveHistory": false
+    },
+    "description": "Snapshot of current files from upstream-org/payment-service"
+  }'
+```
+
+Equivalently, omit `preserveHistory` entirely — it defaults to `false`.
+
+### Notes that apply to both surfaces
+
+- `creationMode`/`--fork-from`/`--mirror-from` are mutually exclusive with an explicit
+  `contentStrategy`/`--empty`/`--init-readme`/`--init-gitignore`. The CLI rejects the
+  combination via `clap`'s own conflict checking; the API rejects it with a
+  `400 VALIDATION_ERROR` on the `content_strategy` field.
+- A request naming a source repository whose owner is not on the resolved
+  `allowed_source_owners` list, or whose capability (`fork_enabled`,
+  `source_history_mirror_enabled`, `source_only_mirror_enabled`) is disabled, is rejected
+  before any GitHub API call — see the Troubleshooting table below.
+
 ## Troubleshooting
 
 | Symptom | Cause |
@@ -130,9 +246,14 @@ for the complete field reference.
 | Two templates both declaring `designation = "fork"` | Only one template per organisation may declare the same `designation`. Remove or change the duplicate. |
 | A template with `designation` set also forces `repository_type` | Remove the `policy = "fixed"` repository type policy from that template, or remove `designation` — the two cannot coexist on the same template. |
 | Allow-listed an owner but it's still rejected | Matching is case-insensitive but exact otherwise — check for typos, and confirm which configuration level actually wins for `allowed_source_owners` (it replaces, not merges). |
+| CLI rejects `--fork-from`/`--mirror-from` together with `--empty`/`--init-readme`/`--init-gitignore` | These flags are mutually exclusive — pick one content/creation strategy per request. |
+| API returns `400 VALIDATION_ERROR` on `content_strategy` alongside `creationMode` | Omit `contentStrategy` entirely when `creationMode.type` is `"fork"` or `"mirror"` — it is only meaningful for `"standard"` creation. |
+| `--mirror-from` request produced a pull request instead of pushing directly | Expected for a source-only mirror (`--mirror-history` not set, or `preserveHistory: false`). Add `--mirror-history` / `preserveHistory: true` for a direct-push, full-history mirror instead. |
 
 ## Related reference
 
 - [Global configuration schema](../../reference/configuration/global-config.md#creation_capabilities--fork-and-mirror-creation-toggles)
 - [Template configuration schema](../../reference/configuration/template-config.md#designation--forkmirror-settings-role)
 - [How configuration is resolved](../../explanation/configuration-hierarchy.md)
+- [`repo-roller create` CLI reference](../../reference/cli/create.md)
+- [Repositories API reference](../../reference/api/repositories.md)
