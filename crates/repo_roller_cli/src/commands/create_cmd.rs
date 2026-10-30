@@ -22,9 +22,9 @@ use auth_handler::UserAuthenticationService;
 use clap::Args;
 use keyring::Entry;
 use repo_roller_core::{
-    permissions::AccessLevel, ContentStrategy, OrganizationName, RepoRollerResult,
+    permissions::AccessLevel, ContentStrategy, CreationMode, OrganizationName, RepoRollerResult,
     RepositoryCreationRequest, RepositoryCreationRequestBuilder, RepositoryCreationResult,
-    RepositoryName, TemplateName,
+    RepositoryName, SourceRepositoryReference, TemplateName,
 };
 use std::{collections::HashMap, fs, future::Future};
 use tracing::{debug, error, info};
@@ -86,6 +86,47 @@ fn load_cli_config(config_path: &str) -> Result<(String, String, String), Error>
         },
         Err(e) => Err(Error::LoadFile(e)),
     }
+}
+
+/// Parses an `OWNER/REPO` value (as supplied to `--fork-from`/`--mirror-from`)
+/// into a validated [`SourceRepositoryReference`].
+///
+/// Splits `value` on exactly one `/`; zero or multiple slashes are rejected.
+/// The owner and repository name are then validated using the same
+/// [`OrganizationName::new`]/[`RepositoryName::new`] calls used elsewhere in
+/// this module (e.g. `--team`/`--collaborator` parsing).
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidArguments`] if `value` does not contain exactly
+/// one `/`, or if the owner/name on either side fails branded-type
+/// validation.
+fn parse_source_repository_reference(
+    value: &str,
+    flag_name: &str,
+) -> Result<SourceRepositoryReference, Error> {
+    let parts: Vec<&str> = value.split('/').collect();
+    if parts.len() != 2 {
+        return Err(Error::InvalidArguments(format!(
+            "Invalid --{flag_name} value '{value}'. Expected format OWNER/REPO (exactly one '/'), e.g. upstream-org/upstream-repo"
+        )));
+    }
+
+    let (owner_str, name_str) = (parts[0], parts[1]);
+
+    let owner = OrganizationName::new(owner_str).map_err(|e| {
+        Error::InvalidArguments(format!(
+            "Invalid owner '{owner_str}' in --{flag_name} value '{value}': {e}"
+        ))
+    })?;
+
+    let name = RepositoryName::new(name_str).map_err(|e| {
+        Error::InvalidArguments(format!(
+            "Invalid repository name '{name_str}' in --{flag_name} value '{value}': {e}"
+        ))
+    })?;
+
+    Ok(SourceRepositoryReference { owner, name })
 }
 
 /// Command-line arguments for the create command.
@@ -167,6 +208,19 @@ pub struct CreateArgs {
     /// `--collaborator alice:write --collaborator bob:read`
     #[arg(long = "collaborator", value_name = "USERNAME:PERMISSION")]
     pub collaborators: Vec<String>,
+
+    /// Fork an existing repository (format: "owner/repo").
+    #[arg(long, value_name = "OWNER/REPO", conflicts_with_all = ["mirror_from", "empty", "init_readme", "init_gitignore"])]
+    pub fork_from: Option<String>,
+
+    /// Mirror an existing repository (format: "owner/repo").
+    #[arg(long, value_name = "OWNER/REPO", conflicts_with_all = ["fork_from", "empty", "init_readme", "init_gitignore"])]
+    pub mirror_from: Option<String>,
+
+    /// With --mirror-from, preserve full commit history (source+history mirror).
+    /// Without it, only current file contents are mirrored via a PR (source-only mirror).
+    #[arg(long, requires = "mirror_from")]
+    pub mirror_history: bool,
 }
 
 /// Creates a repository using the default application configuration and authentication.
@@ -448,9 +502,14 @@ where
         }
     }
 
-    // Prompt for template if needed (not if --empty or --init-* flags are used).
-    // Template is optional when using empty or custom init strategies.
-    let needs_template = !options.empty && !options.init_readme && !options.init_gitignore;
+    // Prompt for template if needed (not if --empty or --init-* flags are used,
+    // and not for --fork-from/--mirror-from, where a template is optional and
+    // only ever used for its settings — see fork-mirror-operations.md §4).
+    let needs_template = !options.empty
+        && !options.init_readme
+        && !options.init_gitignore
+        && options.fork_from.is_none()
+        && options.mirror_from.is_none();
     if final_template.trim().is_empty() && needs_template {
         loop {
             final_template =
@@ -486,8 +545,23 @@ where
         builder = builder.template(template);
     }
 
-    // Determine content strategy based on flags
-    if options.empty {
+    // Determine creation mode / content strategy based on flags.
+    //
+    // `--fork-from`/`--mirror-from` select a non-Standard `CreationMode` and
+    // must never also call `.content_strategy(...)` — doing so would panic
+    // inside `RepositoryCreationRequestBuilder::build()` (see `request.rs`).
+    // `CreateArgs`'s `conflicts_with_all` lists make this unreachable from
+    // the CLI by construction, not just by convention.
+    if let Some(fork_from) = options.fork_from {
+        let source = parse_source_repository_reference(fork_from, "fork-from")?;
+        builder = builder.creation_mode(CreationMode::Fork { source });
+    } else if let Some(mirror_from) = options.mirror_from {
+        let source = parse_source_repository_reference(mirror_from, "mirror-from")?;
+        builder = builder.creation_mode(CreationMode::Mirror {
+            source,
+            preserve_history: options.mirror_history,
+        });
+    } else if options.empty {
         // Empty repository - no content files
         builder = builder.content_strategy(ContentStrategy::Empty);
     } else if options.init_readme || options.init_gitignore {
@@ -592,6 +666,12 @@ pub struct CreateCommandOptions<'a> {
     pub teams: &'a [String],
     /// Username → permission string pairs provided via `--collaborator USERNAME:PERMISSION` flags.
     pub collaborators: &'a [String],
+    /// Source repository to fork from, provided via `--fork-from OWNER/REPO`.
+    pub fork_from: &'a Option<String>,
+    /// Source repository to mirror from, provided via `--mirror-from OWNER/REPO`.
+    pub mirror_from: &'a Option<String>,
+    /// Whether to preserve full commit history for a mirror (`--mirror-history`).
+    pub mirror_history: bool,
 }
 
 impl<'a> CreateCommandOptions<'a> {
@@ -607,6 +687,9 @@ impl<'a> CreateCommandOptions<'a> {
         init_gitignore: bool,
         teams: &'a [String],
         collaborators: &'a [String],
+        fork_from: &'a Option<String>,
+        mirror_from: &'a Option<String>,
+        mirror_history: bool,
     ) -> Self {
         Self {
             config,
@@ -618,6 +701,9 @@ impl<'a> CreateCommandOptions<'a> {
             init_gitignore,
             teams,
             collaborators,
+            fork_from,
+            mirror_from,
+            mirror_history,
         }
     }
 }

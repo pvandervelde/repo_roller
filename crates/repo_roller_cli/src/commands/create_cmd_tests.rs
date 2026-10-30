@@ -97,8 +97,20 @@ async fn test_cli_config_invalid_toml() {
     let ask = make_ask_user_for_value;
 
     let _log = Arc::new(Mutex::new(CallLog::new()));
-    let options =
-        CreateCommandOptions::new(&path, &None, &None, &None, false, false, false, &[], &[]);
+    let options = CreateCommandOptions::new(
+        &path,
+        &None,
+        &None,
+        &None,
+        false,
+        false,
+        false,
+        &[],
+        &[],
+        &None,
+        &None,
+        false,
+    );
     let result = handle_create_command(options, ask, create_repository).await;
     assert!(matches!(result, Err(Error::ParseTomlFile(_))));
 }
@@ -119,6 +131,9 @@ async fn test_cli_config_missing() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
     let result = handle_create_command(options, ask, create_repository).await;
     assert!(matches!(result, Err(Error::LoadFile(_))));
@@ -136,8 +151,20 @@ async fn test_cli_config_missing_fields() {
 
     let create_repo = make_logged_create_repo_success(log.clone());
 
-    let options =
-        CreateCommandOptions::new(&path, &None, &None, &None, false, false, false, &[], &[]);
+    let options = CreateCommandOptions::new(
+        &path,
+        &None,
+        &None,
+        &None,
+        false,
+        false,
+        false,
+        &[],
+        &[],
+        &None,
+        &None,
+        false,
+    );
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
@@ -172,6 +199,9 @@ async fn test_create_repository_failure() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
     let result = handle_create_command(options, ask, create_repo).await;
 
@@ -209,6 +239,9 @@ async fn test_happy_path_with_all_args() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
@@ -237,8 +270,20 @@ async fn test_happy_path_with_cli_config() {
 
     let create_repo = make_logged_create_repo_success(log.clone());
 
-    let options =
-        CreateCommandOptions::new(&path, &None, &None, &None, false, false, false, &[], &[]);
+    let options = CreateCommandOptions::new(
+        &path,
+        &None,
+        &None,
+        &None,
+        false,
+        false,
+        false,
+        &[],
+        &[],
+        &None,
+        &None,
+        false,
+    );
     let result = handle_create_command(options, ask, create_repo).await;
     assert!(result.is_ok());
     let res = result.unwrap();
@@ -354,6 +399,9 @@ async fn test_empty_flag_creates_empty_repository() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -388,6 +436,9 @@ async fn test_empty_with_template_uses_template_settings() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -421,6 +472,9 @@ async fn test_init_readme_flag_creates_custom_init_repository() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -453,6 +507,9 @@ async fn test_init_gitignore_flag_creates_custom_init_repository() {
         true,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -485,6 +542,9 @@ async fn test_init_readme_and_gitignore_creates_both_files() {
         true,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -518,6 +578,9 @@ async fn test_init_flags_with_template_uses_template_settings() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -558,6 +621,9 @@ async fn test_empty_flag_does_not_require_template() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -596,6 +662,9 @@ async fn test_init_flags_do_not_require_template() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -629,6 +698,9 @@ async fn test_template_required_without_special_flags() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -666,6 +738,9 @@ async fn test_teams_flag_passes_to_request() {
         false,
         &teams,
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -699,6 +774,9 @@ async fn test_collaborators_flag_passes_to_request() {
         false,
         &[],
         &collaborators,
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -737,6 +815,9 @@ async fn test_multiple_teams_and_collaborators_pass_to_request() {
         false,
         &teams,
         &collaborators,
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -775,6 +856,9 @@ async fn test_team_invalid_format_no_colon_returns_error() {
         false,
         &teams,
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -809,6 +893,9 @@ async fn test_team_invalid_permission_string_returns_error() {
         false,
         &teams,
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -846,6 +933,9 @@ async fn test_collaborator_invalid_format_no_colon_returns_error() {
         false,
         &[],
         &collaborators,
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -883,6 +973,9 @@ async fn test_collaborator_invalid_permission_string_returns_error() {
         false,
         &[],
         &collaborators,
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -927,6 +1020,9 @@ async fn test_teams_accepts_all_valid_access_levels() {
         false,
         &teams,
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -964,6 +1060,9 @@ async fn test_no_teams_or_collaborators_flags_yields_empty_maps() {
         false,
         &[],
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
@@ -1005,6 +1104,9 @@ async fn test_team_slug_with_colon_splits_on_first_colon() {
         false,
         &teams,
         &[],
+        &None,
+        &None,
+        false,
     );
 
     let result = handle_create_command(options, ask, create_repo).await;
