@@ -1562,3 +1562,249 @@ fn test_validate_creation_mode_capability_standard_mode_bypasses_allow_list_enti
         "Standard mode must bypass the fork/mirror gate entirely: {result:?}"
     );
 }
+
+// ============================================================================
+// Fork/Mirror Dispatch Function Tests
+// ============================================================================
+//
+// `create_fork_repository`, `create_history_mirror_repository`, and
+// `create_source_only_mirror_repository` (added for #255) previously had
+// zero test coverage reachable without live GitHub credentials. The #255 QA
+// mutation-testing audit flagged this gap as "proven material, not
+// theoretical": the missing `index.write()` defect in `git.rs`
+// (`prepare_index_and_tree`), which broke `create_source_only_mirror_repository`
+// on every invocation, was only caught by a hand-reproduced scenario, not by
+// any dispatch-level test.
+//
+// `create_fork_repository` makes no git2 network calls at all (GitHub forks
+// the repository server-side), so it gets a full success-path test below,
+// proving it reaches `create_fork` and `get_organization_default_branch` and
+// returns a `RepositoryCreationResult`.
+//
+// `create_history_mirror_repository` and `create_source_only_mirror_repository`
+// both eventually call `git::mirror_clone` / `git::shallow_clone_working_tree`
+// and push to the real `https://github.com/{owner}/{name}.git` URL:
+// `github_client::Repository::url()` hardcodes the `github.com` host with no
+// override seam, and `SourceRepositoryReference` carries no URL field (see
+// `build_github_https_url`). Reaching that boundary and succeeding therefore
+// requires live GitHub credentials, exactly as already documented for the
+// identical architectural gap in `lib_span_tests.rs`/`observability.rs` and
+// in `integration_tests::fork_mirror_capability_tests` ("True success-path
+// fork/mirror creation ... require[s] ... live" fixtures). The tests below
+// exercise everything reachable without network -- visibility resolution,
+// local git initialization/commit (the exact code path the #255 defect
+// lived in), and the `create_github_repository` GitHub API call -- then
+// assert the resulting error is propagated correctly when that call fails,
+// proving the dispatch wiring up to the real network boundary.
+//
+// All three dispatch functions take `clients: &CreationClients`, whose
+// `installation_repo_client` field is a concrete `github_client::GitHubClient`
+// (not `&dyn RepositoryClient`), so `ConfigurableMockRepoClient` -- used
+// elsewhere in this file for functions that *do* take `&dyn RepositoryClient`
+// (e.g. `create_github_repository`, `initialize_git_repository`) -- cannot be
+// substituted here. Instead these tests point a real `GitHubClient` at a
+// `wiremock` server, mirroring the established pattern in
+// `permission_manager_tests.rs::create_test_github_client`.
+
+/// Creates a [`github_client::GitHubClient`] pointed at a wiremock server for
+/// testing. See the module note above for why this (rather than
+/// `ConfigurableMockRepoClient`) is required for the dispatch-function tests.
+fn wiremock_github_client(server_uri: &str) -> github_client::GitHubClient {
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(server_uri)
+        .expect("valid URI from wiremock")
+        .personal_token("test-token".to_string())
+        .build()
+        .expect("octocrab builder succeeds with valid base_uri");
+    github_client::GitHubClient::new(octocrab)
+}
+
+/// Success path: `create_fork_repository` must call `create_fork` against
+/// the source repository, apply post-creation settings (a no-op here since
+/// `merged_config` and the request carry no teams/collaborators/labels/etc.),
+/// look up the organization's default branch, and return a
+/// `RepositoryCreationResult` built from the forked repository.
+#[tokio::test]
+async fn test_create_fork_repository_success_path_reaches_fork_and_default_branch_calls_and_returns_result()
+{
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/repos/source-org/source-repo/forks"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "full_name": "test-org/new-repo",
+            "name": "new-repo",
+            "node_id": "MDEwOlJlcG9zaXRvcnkx",
+            "private": false
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/orgs/test-org"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_repository_branch": "main"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = fork_request_with_source("source-org");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: wiremock_github_client(&server.uri()),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result =
+        create_fork_repository(&request, &source, None, &merged_config, &clients, "test-user")
+            .await;
+
+    assert!(result.is_ok(), "fork creation should succeed: {result:?}");
+    let creation_result = result.unwrap();
+    assert_eq!(
+        creation_result.repository_url, "https://github.com/test-org/new-repo.git",
+        "repository_url must be derived from the forked repository's full_name"
+    );
+    assert_eq!(
+        creation_result.default_branch, "main",
+        "default_branch must come from get_organization_default_branch"
+    );
+
+    server.verify().await; // wiremock asserts both expect(1) calls were satisfied
+}
+
+/// `create_history_mirror_repository` must resolve visibility, then call
+/// `create_github_repository` (POST `/orgs/{owner}/repos`) before ever
+/// attempting the (network-requiring, see module note above)
+/// `git::mirror_clone`/`git::mirror_push` steps. This test forces the
+/// repository-creation call to fail and asserts the error is propagated as
+/// `RepoRollerError::GitHub`, proving the dispatch reaches that call with the
+/// correct parameters and stops there rather than proceeding to the
+/// unreachable-in-tests git mirror steps.
+#[tokio::test]
+async fn test_create_history_mirror_repository_propagates_github_repository_creation_error() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/orgs/test-org/repos"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
+            "message": "Repository creation failed"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = mirror_request_with_source("source-org", true);
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: wiremock_github_client(&server.uri()),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result = create_history_mirror_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        Arc::new(MockVisibilityPolicyProvider),
+        Arc::new(MockEnvironmentDetector),
+        "test-user",
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(RepoRollerError::GitHub(_))),
+        "repository-creation failure must be propagated as RepoRollerError::GitHub: {result:?}"
+    );
+
+    server.verify().await; // wiremock asserts the repo-creation call was made exactly once
+}
+
+/// `create_source_only_mirror_repository` must generate local content
+/// (`ZeroContentProvider`, since no template is designated), initialize and
+/// commit the local git repository (the exact `prepare_index_and_tree` code
+/// path the #255 defect lived in -- exercised here end-to-end, locally, with
+/// no network involved), then call `create_github_repository` before ever
+/// attempting the (network-requiring, see module note above)
+/// `push_repository_to_github_with_retry`/`git::shallow_clone_working_tree`/
+/// `git::create_snapshot_branch` steps. This test forces the
+/// repository-creation call to fail and asserts the error is propagated as
+/// `RepoRollerError::GitHub`, proving the dispatch reaches that call (after
+/// successfully exercising the fixed local git plumbing) with the correct
+/// parameters and stops there rather than proceeding to the
+/// unreachable-in-tests git/network steps.
+#[tokio::test]
+async fn test_create_source_only_mirror_repository_propagates_github_repository_creation_error() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/orgs/test-org"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_repository_branch": "main"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/orgs/test-org/repos"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
+            "message": "Repository creation failed"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = mirror_request_with_source("source-org", false);
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: wiremock_github_client(&server.uri()),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result = create_source_only_mirror_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        Arc::new(MockVisibilityPolicyProvider),
+        Arc::new(MockEnvironmentDetector),
+        "test-user",
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(RepoRollerError::GitHub(_))),
+        "repository-creation failure must be propagated as RepoRollerError::GitHub: {result:?}"
+    );
+
+    server.verify().await; // wiremock asserts both expect(1) calls were satisfied
+}

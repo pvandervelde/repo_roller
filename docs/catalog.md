@@ -240,6 +240,20 @@ Add to this whenever a reusable component becomes "the standard way".
   `apply_repository_configuration` were deliberately **not** widened — see
   `.llm/findings/fork-mirror-operations.md` item 1 for why and the follow-up
   options.
+  Test coverage (post-#255 audit): `create_fork_repository`,
+  `create_history_mirror_repository`, `create_source_only_mirror_repository`
+  previously had zero test coverage reachable without live GitHub
+  credentials. `create_fork_repository` now has a full success-path test
+  (`lib_tests.rs::test_create_fork_repository_success_path_reaches_fork_and_default_branch_calls_and_returns_result`,
+  via a `GitHubClient` pointed at a `wiremock::MockServer` — see
+  `wiremock_github_client` in `lib_tests.rs`) since it never calls git2 at
+  all (GitHub forks server-side). `create_history_mirror_repository`/
+  `create_source_only_mirror_repository` cannot get a network-free
+  success-path test — both eventually push/clone against the real,
+  hardcoded `https://github.com/...` URL (`github_client::Repository::url()`,
+  `build_github_https_url`, no override seam) — so their tests mock up to
+  `create_github_repository` and assert correct error propagation at that
+  boundary instead.
 
 - **`github_client::RepositoryClient::create_fork` / `create_pull_request` /
   `mark_pull_request_ready_for_review`** — fork creation, PR creation, and
@@ -281,6 +295,16 @@ Add to this whenever a reusable component becomes "the standard way".
   between `create_initial_commit` and `create_snapshot_branch`). Use
   `repo_roller_signature()` for any future RepoRoller-authored commit rather
   than re-inlining `Signature::now("RepoRoller", "repo-roller@example.com")`.
+  **Bug fix (post-#255 mutation-testing audit)**: `prepare_index_and_tree`
+  called `index.add_all(...)` + `index.write_tree()` but never `index.write()`,
+  so `.git/index` was never persisted to disk — harmless for
+  `commit_all_changes`'s one-shot init→commit→push use, but
+  `create_snapshot_branch`'s subsequent `checkout_tree` call diffed against
+  the stale on-disk index and failed every source-only-mirror creation with
+  a checkout conflict. Fixed by adding `index.write()` immediately after
+  `add_all`; see `.llm/tasks.md`'s "Mutation-Testing Audit Fix (post-#255)"
+  entry and the Rules & Tips note on `index.write_tree()` not persisting
+  `.git/index`.
 
 - **`repo_roller_core::git::copy_dir_contents`'s symlink guard** —
   security-remediation fix (CRITICAL finding) for arbitrary file disclosure
