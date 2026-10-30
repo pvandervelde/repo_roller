@@ -105,6 +105,15 @@ pub enum CreationMode {
         source: SourceRepositoryReference,
         /// `true`: full commit history mirror, HEAD = source default branch.
         /// `false`: source-only mirror, delivered via PR, no history.
+        ///
+        /// Renamed to `preserveHistory` on the wire: this enum is embedded
+        /// directly into `repo_roller_api`'s `CreateRepositoryRequest`,
+        /// whose other fields are `camelCase`
+        /// (`docs/spec/interfaces/fork-mirror-operations.md` §8a). The
+        /// enum-level `rename_all = "snake_case"` above governs variant tag
+        /// names only (already snake_case), not fields nested inside a
+        /// struct variant, so this field needs its own explicit rename.
+        #[serde(rename = "preserveHistory")]
         preserve_history: bool,
     },
 }

@@ -22,6 +22,7 @@ fn test_http_to_domain_create_repository_request_valid() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -57,6 +58,7 @@ fn test_http_to_domain_invalid_repository_name() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -79,6 +81,7 @@ fn test_http_to_domain_invalid_organization_name() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -101,6 +104,7 @@ fn test_http_to_domain_invalid_template_name() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -130,6 +134,7 @@ fn test_domain_to_http_create_repository_response() {
         content_strategy: repo_roller_core::ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let http_response = domain_repository_creation_result_to_http(domain_result, &http_req);
@@ -167,6 +172,7 @@ fn test_domain_to_http_default_visibility() {
         content_strategy: repo_roller_core::ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let http_response = domain_repository_creation_result_to_http(domain_result, &http_req);
@@ -190,6 +196,7 @@ fn test_http_to_domain_empty_variables() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -220,6 +227,7 @@ fn test_http_to_domain_multiple_variables() {
         content_strategy: ContentStrategy::Template,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -257,6 +265,7 @@ fn test_http_to_domain_empty_strategy_without_template() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -285,6 +294,7 @@ fn test_http_to_domain_empty_strategy_with_template() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -317,6 +327,7 @@ fn test_http_to_domain_custom_init_both_files() {
         },
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -352,6 +363,7 @@ fn test_http_to_domain_custom_init_with_template() {
         },
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -387,6 +399,7 @@ fn test_http_to_domain_template_strategy_requires_template() {
         content_strategy: ContentStrategy::Template, // Requires template
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     assert!(
@@ -411,6 +424,7 @@ fn test_http_to_domain_default_content_strategy_with_template() {
         content_strategy: ContentStrategy::Template, // Default
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -436,6 +450,7 @@ fn test_http_to_domain_visibility_public() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -461,6 +476,7 @@ fn test_http_to_domain_visibility_private() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -486,6 +502,7 @@ fn test_http_to_domain_visibility_none() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -515,6 +532,7 @@ fn test_http_to_domain_visibility_internal() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -547,6 +565,7 @@ fn test_http_to_domain_visibility_wrong_case_rejected() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -572,6 +591,7 @@ fn test_http_to_domain_visibility_invalid() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -603,6 +623,7 @@ fn test_http_to_domain_teams_with_valid_permissions() {
         content_strategy: ContentStrategy::Empty,
         teams,
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -634,6 +655,7 @@ fn test_http_to_domain_collaborators_with_valid_permissions() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators,
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -669,6 +691,7 @@ fn test_http_to_domain_teams_invalid_permission_returns_error() {
         content_strategy: ContentStrategy::Empty,
         teams,
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -697,6 +720,7 @@ fn test_http_to_domain_collaborators_invalid_permission_returns_error() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators,
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -722,6 +746,7 @@ fn test_http_to_domain_empty_teams_and_collaborators_yields_empty_maps() {
         content_strategy: ContentStrategy::Empty,
         teams: HashMap::new(),
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());
@@ -756,6 +781,7 @@ fn test_http_to_domain_teams_all_valid_access_levels() {
         content_strategy: ContentStrategy::Empty,
         teams,
         collaborators: HashMap::new(),
+        creation_mode: None,
     };
 
     let result = http_create_repository_request_to_domain(http_req, "test-actor".to_string());

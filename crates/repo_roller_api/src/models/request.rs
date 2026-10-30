@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Import ContentStrategy from core for API request support
-use repo_roller_core::ContentStrategy;
+use repo_roller_core::{ContentStrategy, CreationMode};
 
 // Domain type translation is handled by the translation module
 
@@ -122,6 +122,23 @@ pub struct CreateRepositoryRequest {
     /// Defaults to Template when not specified for backward compatibility.
     #[serde(default)]
     pub content_strategy: ContentStrategy,
+
+    /// Governs how the GitHub repository itself comes into existence
+    /// (Standard, Fork, or Mirror).
+    ///
+    /// Reuses `repo_roller_core::CreationMode` directly rather than defining
+    /// a separate HTTP-layer copy, matching the existing precedent of
+    /// embedding `content_strategy: ContentStrategy` from the same crate.
+    /// Absent from the request ⇒ `None`, which the translation layer treats
+    /// identically to `Some(CreationMode::Standard)`.
+    ///
+    /// # Example
+    ///
+    /// ```json
+    /// "creationMode": { "type": "fork", "source": { "owner": "upstream-org", "name": "some-repo" } }
+    /// ```
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creation_mode: Option<CreationMode>,
 
     /// Teams to add to the repository with specified access levels.
     ///

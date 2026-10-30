@@ -12,9 +12,46 @@ use crate::{
 use std::collections::HashMap;
 
 use repo_roller_core::{
-    permissions::AccessLevel, OrganizationName, RepositoryCreationRequest,
-    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName, TemplateName,
+    permissions::AccessLevel, CreationMode, OrganizationName, RepositoryCreationRequest,
+    RepositoryCreationRequestBuilder, RepositoryCreationResult, RepositoryName,
+    SourceRepositoryReference, TemplateName,
 };
+
+/// Re-validates the nested `owner`/`name` of a `SourceRepositoryReference`
+/// that arrived via HTTP deserialization.
+///
+/// `OrganizationName`/`RepositoryName` derive `Deserialize` directly on
+/// their inner `String` (`crates/repo_roller_core/src/repository.rs`), which
+/// does **not** invoke `OrganizationName::new()`/`RepositoryName::new()`.
+/// A malformed `source.owner`/`source.name` therefore deserializes
+/// successfully with the invalid value intact, so this function explicitly
+/// re-runs the `::new()` validation before the value is allowed to reach the
+/// domain layer. See `docs/spec/interfaces/fork-mirror-operations.md` §8a,
+/// "Correction (found during RED)".
+///
+/// # Errors
+///
+/// Returns `ApiError::validation_error` if either field fails branded-type
+/// validation.
+fn revalidate_source_repository_reference(
+    source: &SourceRepositoryReference,
+) -> Result<SourceRepositoryReference, ApiError> {
+    let owner = OrganizationName::new(source.owner.as_str()).map_err(|e| {
+        ApiError::validation_error(
+            "creationMode.source.owner",
+            format!("Invalid source owner: {}", e),
+        )
+    })?;
+
+    let name = RepositoryName::new(source.name.as_str()).map_err(|e| {
+        ApiError::validation_error(
+            "creationMode.source.name",
+            format!("Invalid source repository name: {}", e),
+        )
+    })?;
+
+    Ok(SourceRepositoryReference { owner, name })
+}
 
 /// Convert HTTP CreateRepositoryRequest to domain RepositoryCreationRequest.
 ///
@@ -55,9 +92,43 @@ pub fn http_create_repository_request_to_domain(
         None
     };
 
-    // Validate content strategy
     use repo_roller_core::ContentStrategy;
-    if matches!(http_req.content_strategy, ContentStrategy::Template) && template.is_none() {
+
+    // Resolve the creation mode (absent ⇒ Standard), explicitly
+    // re-validating the nested `source.owner`/`source.name` for Fork/Mirror
+    // rather than trusting the already-deserialized value (see
+    // `revalidate_source_repository_reference` doc comment).
+    let creation_mode = match http_req.creation_mode {
+        None | Some(CreationMode::Standard) => CreationMode::Standard,
+        Some(CreationMode::Fork { source }) => CreationMode::Fork {
+            source: revalidate_source_repository_reference(&source)?,
+        },
+        Some(CreationMode::Mirror {
+            source,
+            preserve_history,
+        }) => CreationMode::Mirror {
+            source: revalidate_source_repository_reference(&source)?,
+            preserve_history,
+        },
+    };
+    let is_fork_or_mirror = !matches!(creation_mode, CreationMode::Standard);
+
+    // Validate content strategy.
+    //
+    // Fork/Mirror bypass ContentStrategy entirely (content comes from
+    // GitHub/git, not a ContentProvider), so an explicit non-default
+    // content_strategy alongside a non-Standard creation_mode is rejected
+    // here rather than letting it reach the builder's panic guard
+    // (`RepositoryCreationRequestBuilder::build()`, request.rs) — API
+    // handlers must never panic on caller input.
+    if is_fork_or_mirror {
+        if !matches!(http_req.content_strategy, ContentStrategy::Template) {
+            return Err(ApiError::validation_error(
+                "content_strategy",
+                "not valid with a fork/mirror creation_mode",
+            ));
+        }
+    } else if matches!(http_req.content_strategy, ContentStrategy::Template) && template.is_none() {
         return Err(ApiError::validation_error(
             "contentStrategy",
             "Template strategy requires template field to be provided".to_string(),
@@ -134,8 +205,11 @@ pub fn http_create_repository_request_to_domain(
         RepositoryCreationRequestBuilder::new(name, owner)
     };
 
-    // Add content strategy
+    // Add content strategy and creation mode. By this point content_strategy
+    // is guaranteed to be the default (Template) whenever creation_mode is
+    // Fork/Mirror, so this can never trigger the builder's panic guard.
     builder = builder.content_strategy(http_req.content_strategy);
+    builder = builder.creation_mode(creation_mode);
 
     // Add visibility if provided
     if let Some(vis) = visibility {
