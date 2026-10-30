@@ -2,8 +2,8 @@
 "config_manager": minor
 "repo_roller_core": minor
 "github_client": minor
-"repo_roller_api": patch
-"repo_roller_cli": patch
+"repo_roller_api": minor
+"repo_roller_cli": minor
 ---
 
 RepoRoller's configuration layer now understands two new repository-creation modes
@@ -37,9 +37,22 @@ This release ships the domain model, configuration schema, and `github_client` p
 and mirror creation, plus the `repo_roller_core` dispatch and capability/designation/
 allow-list enforcement that runs ahead of any GitHub API call. There is no existing
 behavior change for standard template-based, empty, or custom-init repository creation —
-every new field and section defaults to its current/disabled behavior when absent. Note
-that no CLI flag or REST API field yet exists for *requesting* a fork or mirror creation —
-that request-time surface is follow-on work; this release covers the administrative
-configuration side only. `repo_roller_cli`'s `template validate` command additionally
-recognizes `designation` and `creation_capabilities` as known `.reporoller/template.toml`
-keys, so templates using them no longer trigger a spurious "unknown key" warning.
+every new field and section defaults to its current/disabled behavior when absent.
+
+**Request-time surface**: `repo_roller_cli`'s `create` command gains three new flags —
+`--fork-from <OWNER/REPO>` and `--mirror-from <OWNER/REPO>` to select a fork or mirror
+source, and `--mirror-history` to request a full-history mirror (direct push) instead of
+the default source-only mirror (delivered via a pull request). Both source flags are
+mutually exclusive with each other and with `--empty`/`--init-readme`/`--init-gitignore`.
+`repo_roller_api`'s `POST /api/v1/repositories` gains an optional `creationMode` JSON
+field (`{"type": "fork", "source": {"owner": ..., "name": ...}}` or `{"type": "mirror",
+"source": {...}, "preserveHistory": bool}`) that reuses `repo_roller_core::CreationMode`
+directly; omitting it (or sending `{"type": "standard"}`) preserves today's
+template/empty/custom-init behavior exactly, so existing integrations are unaffected.
+Both surfaces are gated by the same fail-closed capability/allow-list enforcement
+described above — a disabled capability or non-allow-listed source owner is rejected
+before any GitHub API call, from either the CLI or the API.
+
+`repo_roller_cli`'s `template validate` command additionally recognizes `designation` and
+`creation_capabilities` as known `.reporoller/template.toml` keys, so templates using them
+no longer trigger a spurious "unknown key" warning.
