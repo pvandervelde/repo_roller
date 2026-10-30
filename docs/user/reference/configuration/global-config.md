@@ -263,6 +263,54 @@ max_tags_per_push     = 3
 
 ---
 
+## `[creation_capabilities]` — fork and mirror creation toggles
+
+Independently enables or disables each of the three non-standard repository-creation
+modes, plus the allow-list of source owners that may be forked or mirrored from. Available
+at every configuration level (global, repository type, team, and template) with the usual
+override hierarchy.
+
+| Field | TOML type | Default | override_allowed default | Description |
+|---|---|---|---|---|
+| `fork_enabled` | bool | `false` | `true` | Allow creating a standard GitHub fork of a source repository |
+| `source_history_mirror_enabled` | bool | `false` | `true` | Allow creating a full-history mirror of a source repository (not part of the GitHub fork network) |
+| `source_only_mirror_enabled` | bool | `false` | `true` | Allow creating a mirror that copies only the source's current file contents (no history), delivered via a pull request |
+| `allowed_source_owners` | array of string | `[]` | `true` | GitHub organisation/user account names permitted as the *source* of a fork or mirror. Matching is case-insensitive. |
+
+> **Fail-closed defaults.** Unlike most settings in this reference, leaving a field unset
+> at every configuration level means the capability is **disabled**, not enabled. All three
+> `*_enabled` flags default to `false`, and `allowed_source_owners` defaults to empty (no
+> source owner permitted) — an administrator must explicitly opt in. Enabling a capability
+> alone is not enough: the source repository's owner must also appear in
+> `allowed_source_owners` (at whichever configuration level ultimately wins), or the request
+> is rejected before any GitHub API call is made. This is deliberate: the installation
+> token's read reach is often org-wide, and that reach is not by itself treated as
+> authorization to fork or mirror an arbitrary repository.
+>
+> `allowed_source_owners` is replaced wholesale by the highest-precedence level that sets
+> it — it is **not** additive across levels like `[[labels]]` or `[[webhooks]]`.
+
+```toml
+[creation_capabilities]
+fork_enabled                   = true
+source_history_mirror_enabled  = true
+source_only_mirror_enabled     = false
+allowed_source_owners          = ["upstream-org", "some-vendor"]
+```
+
+To lock a capability on or off so lower-precedence levels (or templates) cannot change it:
+
+```toml
+[creation_capabilities]
+fork_enabled = { value = true, override_allowed = false }
+```
+
+See [How-to: configure fork and mirror creation](../../how-to/configure/fork-and-mirror-creation.md)
+for a complete walkthrough, including how to designate a settings-only template for each
+mode via `.reporoller/template.toml`'s `designation` field.
+
+---
+
 ## `[repository_visibility]` — visibility policy
 
 Controls the allowed visibility values for repositories in the organisation.

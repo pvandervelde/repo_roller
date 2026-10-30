@@ -57,6 +57,7 @@ RepoRoller is an internal GitHub App that lets your organisation create new GitH
 | Configure webhooks | [Configure repository webhooks](how-to/configure/webhooks.md) |
 | Configure outbound notifications | [Configure outbound notification webhooks](how-to/configure/outbound-notifications.md) |
 | Configure team permissions | [Configure team and collaborator permissions](how-to/configure/team-permissions.md) |
+| Configure fork and mirror creation | [Configure fork and mirror repository creation](how-to/configure/fork-and-mirror-creation.md) |
 | Understand the configuration hierarchy | [How configuration is resolved](explanation/configuration-hierarchy.md) |
 
 ### Deploy and operate

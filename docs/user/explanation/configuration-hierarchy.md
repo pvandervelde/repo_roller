@@ -51,6 +51,16 @@ When a template or team config tries to set `security_advisories = false`, RepoR
 
 Override controls are one-directional: a lower level can lock a value against being overridden, but a higher level cannot unlock a value that a lower level locked.
 
+## Fail-closed exception: `[creation_capabilities]`
+
+Most settings in this reference default to a specific permissive or conservative value when
+left unset at every level (e.g. `[actions] enabled` defaults to `true`). The
+`[creation_capabilities]` section (fork and mirror creation toggles, and the
+`allowed_source_owners` allow-list) is the one deliberate exception: leaving every field
+unset at every level means fork and mirror creation stay **disabled**, and no source owner
+is permitted. An administrator must explicitly opt in at some level. See
+[Configure fork and mirror creation](../how-to/configure/fork-and-mirror-creation.md).
+
 ## "Why is my setting being ignored?"
 
 Work through this checklist:

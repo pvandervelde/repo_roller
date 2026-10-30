@@ -14,6 +14,7 @@ All configuration lives in the metadata repository (`.reporoller`). Changes take
 | [Configure a repository type](repository-types.md) | Create `types/{type}/config.toml` |
 | [Configure team-level settings](team-configuration.md) | Create `teams/{team}/config.toml` |
 | [Add configuration to a template](template-configuration.md) | Edit `.reporoller/template.toml` in a template repo |
+| [Configure fork and mirror creation](fork-and-mirror-creation.md) | `[creation_capabilities]` section and `designation` field |
 | [Configure branch protection rules](branch-protection-rules.md) | `[[rulesets]]` section |
 | [Configure repository labels](labels.md) | `[[labels]]` section |
 | [Configure repository webhooks](webhooks.md) | `[[webhooks]]` section |

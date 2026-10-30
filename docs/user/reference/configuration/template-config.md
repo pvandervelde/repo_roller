@@ -83,6 +83,46 @@ policy = "fixed"
 
 ---
 
+## `designation` — fork/mirror settings role
+
+A top-level field (not nested under any section) that declares this template as the
+**single** settings-only template for fork or mirror creation, instead of ordinary
+template-based creation.
+
+| Field | TOML type | Required | Description |
+|---|---|---|---|
+| `designation` | string | No | `"fork"`, `"source_history_mirror"`, or `"source_only_mirror"` |
+
+```toml
+designation = "fork"
+```
+
+At most one template per organisation may declare a given `designation` value — if two or
+more templates declare the same one, resolving it fails with an "ambiguous designation"
+error until the duplicate is removed. A template with `designation` set contributes only
+its `[repository]`, `[pull_requests]`, and similar **settings** sections to the fork/mirror
+— never its files — with one exception: a `source_only_mirror`-designated template's file
+contents *are* used, as the mirror's first commit.
+
+**Constraint:** `designation` cannot be combined with a `[repository_type]` section whose
+`policy = "fixed"` (the two are mutually exclusive roles). Combining `designation` with
+`policy = "preferable"`, or omitting `[repository_type]` entirely, is fine.
+
+See [How-to: configure fork and mirror creation](../../how-to/configure/fork-and-mirror-creation.md)
+for the full picture, including the capability toggles that must also be enabled before a
+designated template has any effect.
+
+---
+
+## `[creation_capabilities]` — fork/mirror capability overrides
+
+Identical fields to the global schema. See
+[global-config.md](global-config.md#creation_capabilities--fork-and-mirror-creation-toggles).
+A template-level override is the highest-precedence level for these fields, same as for
+`[repository]` and `[pull_requests]`.
+
+---
+
 ## `[pull_requests]` — pull request settings override
 
 Identical fields to the global schema. See [global-config.md](global-config.md#pull_requests--pull-request-and-merge-settings).
