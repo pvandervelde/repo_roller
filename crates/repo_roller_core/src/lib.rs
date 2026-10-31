@@ -382,15 +382,26 @@ async fn setup_github_clients(
 }
 
 /// Resolves the merged organization configuration and loads the template
-/// configuration from GitHub (when a template is specified).
+/// configuration from GitHub (when a template is specified, or one is
+/// auto-discovered for `request.creation_mode`'s designation -- #255
+/// follow-up Gap 1).
 ///
 /// Returns `(merged_config, template)` where `template` is `None` for
-/// empty-repository or no-template creations.
+/// empty-repository or no-template creations, and for designated creations
+/// where the organization has no template matching the designation.
+///
+/// When `request.template` is explicitly set, it always wins and no
+/// auto-discovery is attempted (see [`configuration::effective_template_name`]).
+/// Otherwise, [`designation_for_creation_mode`] maps `request.creation_mode`
+/// to the `TemplateDesignation` to auto-discover a template for.
 ///
 /// # Errors
 ///
-/// Returns `ConfigurationError` when the merged config cannot be resolved, or
-/// `TemplateError::TemplateNotFound` when the requested template does not exist.
+/// Returns `ConfigurationError` when the merged config cannot be resolved,
+/// when designated-template discovery is ambiguous
+/// (`ConfigurationError::AmbiguousTemplateDesignation`), or
+/// `TemplateError::TemplateNotFound` when an explicitly requested template
+/// does not exist.
 async fn load_creation_config(
     installation_token: &str,
     request: &RepositoryCreationRequest,
@@ -401,15 +412,25 @@ async fn load_creation_config(
     Option<config_manager::TemplateConfig>,
 )> {
     let template_name_for_config = request.template.as_ref().map(|t| t.as_ref()).unwrap_or("");
-    let merged_config = configuration::resolve_organization_configuration(
+
+    // An explicit template always wins; only derive a designation to
+    // auto-discover against when the caller gave none.
+    let designation = if request.template.is_none() {
+        designation_for_creation_mode(&request.creation_mode)
+    } else {
+        None
+    };
+
+    let (merged_config, resolved_template_name) = configuration::resolve_organization_configuration(
         installation_token,
         request.owner.as_ref(),
         template_name_for_config,
         metadata_repository_name,
+        designation,
     )
     .await?;
 
-    let template = if let Some(ref template_name) = request.template {
+    let template = if let Some(ref template_name) = resolved_template_name {
         debug!(
             "Loading template '{}' from organization '{}'",
             template_name, request.owner
@@ -453,9 +474,18 @@ async fn load_creation_config(
 ///
 /// This is a pure, synchronous mapping function: it never fails.
 fn designation_for_creation_mode(mode: &CreationMode) -> Option<config_manager::TemplateDesignation> {
-    // TODO: implement (RED phase - #255 follow-up Gap 1)
-    let _ = mode;
-    unimplemented!("designation_for_creation_mode: RED phase stub")
+    match mode {
+        CreationMode::Standard => None,
+        CreationMode::Fork { .. } => Some(config_manager::TemplateDesignation::Fork),
+        CreationMode::Mirror {
+            preserve_history: true,
+            ..
+        } => Some(config_manager::TemplateDesignation::SourceHistoryMirror),
+        CreationMode::Mirror {
+            preserve_history: false,
+            ..
+        } => Some(config_manager::TemplateDesignation::SourceOnlyMirror),
+    }
 }
 
 /// Resolves the final repository visibility by evaluating organization policies,
