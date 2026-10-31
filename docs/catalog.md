@@ -323,6 +323,134 @@ Add to this whenever a reusable component becomes "the standard way".
   repository) content into a location that gets committed/pushed/exposed.
   See `docs/spec/interfaces/fork-mirror-operations.md` §7.
 
+- **`repo_roller_core::configuration::effective_template_name`** — pure
+  decision function resolving which template name
+  `resolve_organization_configuration` must use to build its
+  `ConfigurationContext`, given the caller's explicit `template_name`
+  (empty string when none), the `TemplateDesignation` implied by
+  `CreationMode` (see `designation_for_creation_mode` below), and the
+  `ConfigurationResult<Option<String>>` from
+  `settings_manager.find_designated_template`
+  Location: `repo_roller_core/src/configuration.rs`
+  Returns: `Ok(Some(template_name))` when `template_name` is non-empty
+  (explicit always wins, discovery never even consulted); `Ok(None)` when
+  `template_name` is empty and `designation` is `None`; otherwise
+  `discovery_result` unchanged (`Ok(Some(name))`, `Ok(None)`, or
+  `Err(ConfigurationError::AmbiguousTemplateDesignation)`)
+  Use when: Any caller needs the same "explicit beats auto-discovery, no
+  designation means nothing to discover" decision for a template name
+  Notes: **#255 follow-up Gap 1 fix** ("designated template is never
+  auto-discovered"). `resolve_organization_configuration` only calls
+  `find_designated_template` when `template_name.is_empty() &&
+  designation.is_some()` — never otherwise. `resolve_organization_configuration`
+  now returns `(MergedConfiguration, Option<String>)`, threading the resolved
+  name back to `load_creation_config` for use with
+  `metadata_provider.load_template_configuration`. The `AmbiguousTemplateDesignation`
+  error propagates via the existing `RepoRollerError::Configuration(#[from]
+  ConfigurationError)` conversion — not swallowed by the
+  metadata-repository-unavailable fallback (that fallback is for CRF-001, a
+  different, legitimate case).
+
+- **`repo_roller_core::designation_for_creation_mode`** — pure mapping from
+  a request's `CreationMode` to the `TemplateDesignation`
+  `load_creation_config` should auto-discover a template for
+  Location: `repo_roller_core/src/lib.rs`
+  Mapping: `Standard -> None`, `Fork { .. } -> Some(Fork)`, `Mirror {
+  preserve_history: true, .. } -> Some(SourceHistoryMirror)`, `Mirror {
+  preserve_history: false, .. } -> Some(SourceOnlyMirror)`
+  Use when: `load_creation_config` needs a designation to pass to
+  `resolve_organization_configuration`'s auto-discovery; only called when
+  `request.template.is_none()` — an explicit template always wins and never
+  triggers discovery
+  Notes: Consults only `creation_mode`, never `request.template`, so it
+  stays orthogonal to and composable with `effective_template_name`'s
+  "explicit wins" rule.
+
+- **`repo_roller_core::history_mirror_default_branch_update`** — pure
+  builder for the `RepositorySettingsUpdate` payload
+  `create_history_mirror_repository` applies after `git::mirror_push`
+  succeeds
+  Location: `repo_roller_core/src/lib.rs`
+  Pattern: `RepositorySettingsUpdate { default_branch: Some(source_default_branch.to_string()),
+  ..Default::default() }` — sets only `default_branch`, leaves every other
+  field `None`
+  Use when: Aligning a newly created repository's recorded default branch
+  with a source repository's actual default branch after a history-preserving
+  mirror push
+  Notes: **#255 follow-up Gap 2 fix** ("history mirror never sets the new
+  repo's default branch on GitHub"). Mirror-pushing preserves the source's
+  branch structure as-is; GitHub cannot infer the intended default branch
+  from repository-creation options alone, so `create_history_mirror_repository`
+  now calls `installation_repo_client.update_repository_settings(owner, name,
+  &history_mirror_default_branch_update(&source_default_branch))` right
+  after `git::mirror_push` and before applying post-creation settings,
+  propagating any `github_client::Error` as `RepoRollerError::GitHub`.
+
+- **`github_client::RepositorySettingsUpdate::default_branch`** —
+  `Option<String>` field (`#[serde(skip_serializing_if = "Option::is_none")]`)
+  added to the existing settings-update struct
+  Location: `github_client/src/lib.rs`
+  Use when: A caller needs `update_repository_settings`'s PATCH to also set
+  `default_branch` (currently only `create_history_mirror_repository`, via
+  `history_mirror_default_branch_update` above)
+  Notes: Purely additive — `update_repository_settings` already PATCHes the
+  whole struct as the request body, so no new client method was needed.
+
+### CLI / API Fork & Mirror Request Surface (#255)
+
+- **`repo_roller_cli::commands::create_cmd::parse_source_repository_reference`**
+  — parses an `OWNER/REPO` CLI value (as supplied to `--fork-from`/
+  `--mirror-from`) into a validated `SourceRepositoryReference`
+  Location: `repo_roller_cli/src/commands/create_cmd.rs`
+  Pattern: Splits on exactly one `/` (zero or multiple `/` rejected), then
+  validates each half with `OrganizationName::new`/`RepositoryName::new` —
+  the same branded-type calls used elsewhere in this module (e.g.
+  `--team`/`--collaborator` parsing)
+  Use when: Adding a new CLI flag that accepts an `OWNER/REPO`-shaped source
+  repository reference
+  Errors: `Error::InvalidArguments` on a malformed split or failed
+  branded-type validation
+
+- **`repo_roller_api::translation::revalidate_source_repository_reference`**
+  — re-validates the nested `owner`/`name` of a `SourceRepositoryReference`
+  that arrived via HTTP deserialization
+  Location: `repo_roller_api/src/translation.rs`
+  Notes: `OrganizationName`/`RepositoryName` derive `Deserialize` directly
+  on their inner `String`, which does **not** invoke `::new()` validation —
+  a malformed `source.owner`/`source.name` therefore deserializes
+  successfully with the invalid value intact. This function explicitly
+  re-runs `::new()` before the value reaches the domain layer. See
+  `docs/spec/interfaces/fork-mirror-operations.md` §8a ("Correction (found
+  during RED)"). Use this pattern for any future HTTP request field whose
+  domain type derives `Deserialize` without going through `::new()`.
+
+- **`repo_roller_api::CreateRepositoryRequest.creation_mode`** —
+  `Option<repo_roller_core::CreationMode>` field reusing the core crate's
+  enum directly rather than defining a separate HTTP-layer copy
+  Location: `repo_roller_api/src/models/request.rs`
+  Pattern: `#[serde(skip_serializing_if = "Option::is_none")]`; absent from
+  the request ⇒ `None`, which `translation::http_request_to_domain` (or
+  equivalent) treats identically to `Some(CreationMode::Standard)`
+  Example: `"creationMode": { "type": "fork", "source": { "owner":
+  "upstream-org", "name": "some-repo" } }`
+  Use when: An HTTP client needs to request a Fork/Mirror creation; the
+  nested `source` is re-validated via `revalidate_source_repository_reference`
+  above before reaching the domain layer
+
+- **CLI `--fork-from` / `--mirror-from` / `--mirror-history` flags** —
+  `CreateArgs` fields surfacing fork/mirror creation from the command line
+  Location: `repo_roller_cli/src/commands/create_cmd.rs`
+  Pattern: `fork_from`/`mirror_from` are `Option<String>` (`OWNER/REPO`),
+  mutually exclusive via `conflicts_with_all` (each other, plus `--empty`/
+  `--init-readme`/`--init-gitignore`, since Fork/Mirror bypass
+  `ContentStrategy` entirely); `mirror_history: bool` is a plain flag with
+  `requires = "mirror_from"` (meaningless without `--mirror-from`) — `true`
+  selects a source+history mirror, `false` (default) a source-only mirror
+  delivered via PR
+  Use when: Extending the CLI's fork/mirror argument surface; parse values
+  with `parse_source_repository_reference` above before constructing
+  `CreationMode::Fork`/`CreationMode::Mirror`
+
 ### Caching
 
 - **Policy cache** — In-memory cache with TTL
