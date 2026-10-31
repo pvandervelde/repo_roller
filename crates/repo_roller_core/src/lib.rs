@@ -1147,9 +1147,10 @@ fn build_creation_result(
 fn history_mirror_default_branch_update(
     source_default_branch: &str,
 ) -> github_client::RepositorySettingsUpdate {
-    // TODO: implement (RED phase - #255 follow-up Gap 2)
-    let _ = source_default_branch;
-    unimplemented!("history_mirror_default_branch_update: RED phase stub")
+    github_client::RepositorySettingsUpdate {
+        default_branch: Some(source_default_branch.to_string()),
+        ..Default::default()
+    }
 }
 
 /// Create a new repository with type-safe API and organization settings integration.
@@ -1760,6 +1761,31 @@ async fn create_history_mirror_repository(
         error!("Failed to mirror-push to new repository: {}", e);
         RepoRollerError::System(e)
     })?;
+
+    // Mirror-pushing preserves the source's branch structure as-is; GitHub
+    // has no way to infer the intended default branch from repository-
+    // creation options alone, so align it explicitly with the source's
+    // actual default branch (#255 follow-up Gap 2).
+    clients
+        .installation_repo_client
+        .update_repository_settings(
+            request.owner.as_ref(),
+            request.name.as_ref(),
+            &history_mirror_default_branch_update(&source_default_branch),
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to set default branch on history-mirror repository {}/{}: {}",
+                request.owner, request.name, e
+            );
+            RepoRollerError::GitHub(GitHubError::NetworkError {
+                reason: format!(
+                    "Failed to set default branch on {}/{}: {}",
+                    request.owner, request.name, e
+                ),
+            })
+        })?;
 
     apply_post_creation_settings(
         &clients.installation_repo_client,
