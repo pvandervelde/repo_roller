@@ -421,14 +421,15 @@ async fn load_creation_config(
         None
     };
 
-    let (merged_config, resolved_template_name) = configuration::resolve_organization_configuration(
-        installation_token,
-        request.owner.as_ref(),
-        template_name_for_config,
-        metadata_repository_name,
-        designation,
-    )
-    .await?;
+    let (merged_config, resolved_template_name) =
+        configuration::resolve_organization_configuration(
+            installation_token,
+            request.owner.as_ref(),
+            template_name_for_config,
+            metadata_repository_name,
+            designation,
+        )
+        .await?;
 
     let template = if let Some(ref template_name) = resolved_template_name {
         debug!(
@@ -473,7 +474,9 @@ async fn load_creation_config(
 /// # Errors
 ///
 /// This is a pure, synchronous mapping function: it never fails.
-fn designation_for_creation_mode(mode: &CreationMode) -> Option<config_manager::TemplateDesignation> {
+fn designation_for_creation_mode(
+    mode: &CreationMode,
+) -> Option<config_manager::TemplateDesignation> {
     match mode {
         CreationMode::Standard => None,
         CreationMode::Fork { .. } => Some(config_manager::TemplateDesignation::Fork),

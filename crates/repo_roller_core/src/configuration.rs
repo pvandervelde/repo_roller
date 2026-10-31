@@ -189,14 +189,19 @@ pub(crate) async fn resolve_organization_configuration(
     let discovery_result: config_manager::ConfigurationResult<Option<String>> =
         if template_name.is_empty() {
             match designation {
-                Some(d) => settings_manager.find_designated_template(organization, d).await,
+                Some(d) => {
+                    settings_manager
+                        .find_designated_template(organization, d)
+                        .await
+                }
                 None => Ok(None),
             }
         } else {
             Ok(None)
         };
 
-    let resolved_template_name = effective_template_name(template_name, designation, discovery_result)?;
+    let resolved_template_name =
+        effective_template_name(template_name, designation, discovery_result)?;
     let effective_name = resolved_template_name.clone().unwrap_or_default();
 
     let config_context = ConfigurationContext::new(organization, &effective_name);
