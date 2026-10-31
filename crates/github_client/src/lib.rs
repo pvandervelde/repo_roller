@@ -3680,6 +3680,16 @@ pub struct RepositorySettingsUpdate {
     /// Update whether the wiki is enabled for this repository
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_wiki: Option<bool>,
+
+    /// Update the repository's default branch.
+    ///
+    /// Used by history-mirror repository creation (#255 follow-up) to align
+    /// the newly created repository's recorded default branch with the
+    /// source repository's actual default branch, since mirror-pushing
+    /// preserves the source's branch structure rather than letting GitHub
+    /// infer the default branch from repository-creation options.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_branch: Option<String>,
 }
 
 /// Authenticates with GitHub using an installation access token for a specific app installation.

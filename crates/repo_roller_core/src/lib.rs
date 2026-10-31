@@ -1098,6 +1098,30 @@ fn build_creation_result(
     }
 }
 
+/// Builds the `RepositorySettingsUpdate` payload `create_history_mirror_repository`
+/// must apply to the newly created repository after `git::mirror_push`
+/// succeeds, aligning its recorded default branch with the source
+/// repository's actual default branch.
+///
+/// Mirror-pushing preserves the source's branch structure as-is; GitHub has
+/// no way to infer the intended default branch from repository-creation
+/// options alone, so it must be set explicitly via a follow-up settings
+/// update (#255 follow-up Gap 2).
+///
+/// Sets only `default_branch`; every other field is left `None` so no
+/// unrelated repository setting is touched by this call.
+///
+/// # Errors
+///
+/// This is a pure, synchronous builder function: it never fails.
+fn history_mirror_default_branch_update(
+    source_default_branch: &str,
+) -> github_client::RepositorySettingsUpdate {
+    // TODO: implement (RED phase - #255 follow-up Gap 2)
+    let _ = source_default_branch;
+    unimplemented!("history_mirror_default_branch_update: RED phase stub")
+}
+
 /// Create a new repository with type-safe API and organization settings integration.
 ///
 /// This is the main repository creation orchestration function that coordinates:
