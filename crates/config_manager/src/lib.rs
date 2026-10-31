@@ -62,12 +62,14 @@ pub use overridable::OverridableValue;
 pub use repository_type_config::RepositoryTypeConfig;
 pub use repository_type_name::RepositoryTypeName;
 pub use repository_type_validator::RepositoryTypeValidator;
+pub use settings::CreationCapabilitiesSettings;
 pub use settings::LabelConfig;
 pub use settings::RepositoryNamingRulesConfig;
 pub use settings::{NotificationEndpoint, NotificationsConfig};
 pub use team_config::TeamConfig;
 pub use template_config::{
-    RepositoryTypePolicy, RepositoryTypeSpec, TemplateConfig, TemplateMetadata, TemplateVariable,
+    RepositoryTypePolicy, RepositoryTypeSpec, TemplateConfig, TemplateDesignation,
+    TemplateMetadata, TemplateVariable,
 };
 pub use template_loader::{CacheStatistics, TemplateLoader, TemplateRepository};
 pub use validator::{

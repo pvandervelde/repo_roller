@@ -11,6 +11,10 @@ use crate::errors::ValidationError;
 #[path = "repository_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "source_reference_tests.rs"]
+mod source_reference_tests;
+
 /// Validated GitHub repository name
 ///
 /// Represents a repository name that conforms to GitHub's naming rules.
@@ -154,4 +158,22 @@ impl AsRef<str> for OrganizationName {
     fn as_ref(&self) -> &str {
         &self.0
     }
+}
+
+/// Identifies a repository to fork or mirror from. May reference a
+/// repository outside the organization RepoRoller manages (e.g. the
+/// upstream of a fork).
+///
+/// No new validation rules are introduced: construction delegates entirely
+/// to the existing [`OrganizationName`]/[`RepositoryName`] branded-type
+/// validation above, since those rules already match GitHub's shared
+/// username/organization and repository naming rules.
+///
+/// See `docs/spec/interfaces/fork-mirror-operations.md` §3.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceRepositoryReference {
+    /// The owner (organization or user) of the source repository.
+    pub owner: OrganizationName,
+    /// The name of the source repository.
+    pub name: RepositoryName,
 }

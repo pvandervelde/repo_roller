@@ -3,8 +3,8 @@
 
 use super::*;
 use crate::{
-    ContentStrategy, OrganizationName, RepositoryCreationRequest, RepositoryCreationResult,
-    RepositoryName, RepositoryVisibility, TemplateName, Timestamp,
+    ContentStrategy, CreationMode, OrganizationName, RepositoryCreationRequest,
+    RepositoryCreationResult, RepositoryName, RepositoryVisibility, TemplateName, Timestamp,
 };
 use chrono::Utc;
 use std::collections::HashMap;
@@ -259,6 +259,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -313,6 +314,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -364,6 +366,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -416,6 +419,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         // Act
@@ -474,6 +478,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         // Act
@@ -515,6 +520,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -578,6 +584,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         };
 
         let merged_config = config_manager::MergedConfiguration::new();
@@ -1297,6 +1304,7 @@ mod publish_workflow_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         }
     }
 
@@ -1547,6 +1555,7 @@ mod http_delivery_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         }
     }
 
@@ -2431,6 +2440,7 @@ mod logging_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            creation_mode: CreationMode::Standard,
         }
     }
 

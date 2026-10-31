@@ -46,6 +46,8 @@
 //!
 //! See: specs/interfaces/template-loading.md
 
+use crate::errors::ConfigurationError;
+use crate::template_config::RepositoryTypePolicy;
 use crate::{ConfigurationResult, TemplateConfig};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -56,6 +58,10 @@ use tracing::{debug, info};
 #[cfg(test)]
 #[path = "template_loader_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "template_loader_designation_tests.rs"]
+mod designation_tests;
 
 /// Interface for accessing template repositories.
 ///
@@ -341,6 +347,8 @@ impl TemplateLoader {
             .load_template_config(org, template_name)
             .await?;
 
+        Self::validate_designation_repository_type_conflict(&config)?;
+
         // Store in cache (write lock)
         {
             let mut cache = self.cache.write().unwrap();
@@ -484,6 +492,45 @@ impl TemplateLoader {
     ) -> ConfigurationResult<bool> {
         // Delegate to repository (no caching for existence checks)
         self.repository.template_exists(org, template_name).await
+    }
+
+    /// Rejects templates that declare both a fork/mirror `designation` and a
+    /// `Fixed`-policy `repository_type`.
+    ///
+    /// These are orthogonal roles (see
+    /// `docs/spec/interfaces/fork-mirror-operations.md` §1): a `designation`
+    /// marks a template for settings-only application to fork/mirror
+    /// creation, while a `Fixed` `repository_type` locks ordinary
+    /// template-based creation to one repository type. Declaring
+    /// `designation` alone (with no `repository_type`, or with a
+    /// `Preferable`-policy `repository_type`) is the common case and remains
+    /// valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::InvalidConfiguration { field: "designation", .. }`
+    /// when both are set and the policy is `Fixed`.
+    fn validate_designation_repository_type_conflict(
+        config: &TemplateConfig,
+    ) -> ConfigurationResult<()> {
+        let Some(designation) = config.designation else {
+            return Ok(());
+        };
+        let Some(repository_type) = &config.repository_type else {
+            return Ok(());
+        };
+        if repository_type.policy != RepositoryTypePolicy::Fixed {
+            return Ok(());
+        }
+
+        Err(ConfigurationError::InvalidConfiguration {
+            field: "designation".to_string(),
+            reason: format!(
+                "template '{}' declares designation {:?} together with a Fixed repository_type \
+                 policy for '{}'; designation and a Fixed repository_type are mutually exclusive",
+                config.template.name, designation, repository_type.repository_type
+            ),
+        })
     }
 }
 

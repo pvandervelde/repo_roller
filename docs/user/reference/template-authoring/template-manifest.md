@@ -42,6 +42,23 @@ description = "What this template provides"  # Shown in web UI and CLI.
 # type   = "service"
 # policy = "fixed"      # "fixed" | "preferable"
 
+# Declare this template as the settings-only template used for fork or mirror
+# creation (top-level field, NOT nested under any section). At most one
+# template per org may declare a given value. Cannot be combined with
+# [repository_type] policy = "fixed". See how-to/configure/fork-and-mirror-creation.md.
+# designation = "fork"   # "fork" | "source_history_mirror" | "source_only_mirror"
+
+# ── Fork/mirror creation capabilities ───────────────────────────────────────────
+# Overrides global/type/team toggles for this template. All three *_enabled
+# flags and allowed_source_owners default to fail-closed (disabled/empty) when
+# unset at every level.
+
+# [creation_capabilities]
+# fork_enabled                  = true
+# source_history_mirror_enabled = true
+# source_only_mirror_enabled    = false
+# allowed_source_owners         = ["upstream-org"]
+
 # ── Pull request settings ──────────────────────────────────────────────────────
 
 # [pull_requests]

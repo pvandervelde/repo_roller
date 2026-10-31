@@ -159,8 +159,19 @@ pub struct TeamConfig {
     /// ```
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
+
+    /// Fork/mirror capability toggles contributed at the team level
+    /// (optional).
+    ///
+    /// See `docs/spec/interfaces/fork-mirror-operations.md` §2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_capabilities: Option<crate::settings::CreationCapabilitiesSettings>,
 }
 
 #[cfg(test)]
 #[path = "team_config_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "team_config_creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;

@@ -171,6 +171,8 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     }
 }
 
@@ -230,6 +232,8 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     }
 }
 
@@ -1576,11 +1580,13 @@ fn test_known_keys_sync_with_template_config() {
     // without updating TEMPLATE_CONFIG_KNOWN_KEYS, the serialised output will
     // contain a key not present in TEMPLATE_CONFIG_KNOWN_KEYS and this test fails.
     use config_manager::settings::{
-        DefaultCollaboratorConfig, DefaultTeamConfig, EnvironmentConfig, GitHubAppConfig,
-        NotificationsConfig, RulesetConfig, TemplatePermissionsConfig,
+        CreationCapabilitiesSettings, DefaultCollaboratorConfig, DefaultTeamConfig,
+        EnvironmentConfig, GitHubAppConfig, NotificationsConfig, RulesetConfig,
+        TemplatePermissionsConfig,
     };
     use config_manager::{
-        RepositoryNamingRulesConfig, RepositoryTypePolicy, RepositoryTypeSpec, RepositoryVisibility,
+        OverridableValue, RepositoryNamingRulesConfig, RepositoryTypePolicy, RepositoryTypeSpec,
+        RepositoryVisibility, TemplateDesignation,
     };
     use template_engine::TemplatingConfig;
 
@@ -1658,6 +1664,11 @@ fn test_known_keys_sync_with_template_config() {
             locked: false,
         }]),
         naming_rules: Some(vec![RepositoryNamingRulesConfig::default()]),
+        designation: Some(TemplateDesignation::Fork),
+        creation_capabilities: Some(CreationCapabilitiesSettings {
+            fork_enabled: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
     };
 
     let serialized =

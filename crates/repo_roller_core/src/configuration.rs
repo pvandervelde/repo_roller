@@ -33,11 +33,12 @@
 //!
 //! ```rust,ignore
 //! // Resolve organization configuration
-//! let merged_config = resolve_organization_configuration(
+//! let (merged_config, _template_name) = resolve_organization_configuration(
 //!     installation_token,
 //!     "my-org",
 //!     "rust-service",
-//!     ".reporoller"
+//!     ".reporoller",
+//!     None,
 //! ).await?;
 //!
 //! // Apply configuration to repository
@@ -91,12 +92,21 @@ mod tests;
 ///
 /// * `installation_token` - GitHub App installation token for authentication
 /// * `organization` - Organization name where the repository will be created
-/// * `template_name` - Name of the template being used
+/// * `template_name` - Name of the template being used; an empty string
+///   means the caller gave no explicit template name
 /// * `metadata_repository_name` - Name of the metadata repository (e.g., ".reporoller")
+/// * `designation` - The `TemplateDesignation` implied by the request's
+///   `CreationMode` (see `designation_for_creation_mode` in `lib.rs`), used
+///   to auto-discover a designated template when `template_name` is empty
+///   (#255 follow-up Gap 1)
 ///
 /// ## Returns
 ///
-/// Returns `RepoRollerResult<MergedConfiguration>` with the resolved configuration.
+/// Returns `RepoRollerResult<(MergedConfiguration, Option<String>)>`: the
+/// resolved configuration, plus the effective template name used to build
+/// it (see [`effective_template_name`]) -- `Some(explicit or auto-discovered
+/// name)`, or `None` when neither an explicit name nor a designated
+/// template was found.
 ///
 /// ## Errors
 ///
@@ -104,17 +114,21 @@ mod tests;
 /// - GitHub client creation fails
 /// - Configuration structure is invalid
 /// - Internal errors occur during resolution
+/// - Designated-template discovery is ambiguous
+///   (`ConfigurationError::AmbiguousTemplateDesignation`), propagated rather
+///   than swallowed by the metadata-repository-unavailable fallback below
 ///
 /// Note: Metadata repository access failures result in fallback, not errors.
 ///
 /// ## Example
 ///
 /// ```rust,ignore
-/// let config = resolve_organization_configuration(
+/// let (config, template_name) = resolve_organization_configuration(
 ///     installation_token,
 ///     "acme-corp",
 ///     "rust-service",
-///     ".reporoller"
+///     ".reporoller",
+///     None,
 /// ).await?;
 ///
 /// println!("Resolved {} labels", config.labels.len());
@@ -125,7 +139,8 @@ pub(crate) async fn resolve_organization_configuration(
     organization: &str,
     template_name: &str,
     metadata_repository_name: &str,
-) -> RepoRollerResult<config_manager::MergedConfiguration> {
+    designation: Option<config_manager::TemplateDesignation>,
+) -> RepoRollerResult<(config_manager::MergedConfiguration, Option<String>)> {
     use config_manager::{
         ConfigurationContext, GitHubMetadataProvider, MetadataProviderConfig,
         OrganizationSettingsManager,
@@ -164,10 +179,35 @@ pub(crate) async fn resolve_organization_configuration(
 
     let settings_manager = OrganizationSettingsManager::new(metadata_provider, template_loader);
 
-    let config_context = ConfigurationContext::new(organization, template_name);
+    // Auto-discover a designated template when the caller gave no explicit
+    // template name but the request's CreationMode implies a designation
+    // (Fork/SourceHistoryMirror/SourceOnlyMirror). Only attempt discovery in
+    // that case: an explicit template name always wins without even
+    // consulting discovery (see `effective_template_name`), and
+    // `CreationMode::Standard` (designation = None) never has anything to
+    // discover.
+    let discovery_result: config_manager::ConfigurationResult<Option<String>> =
+        if template_name.is_empty() {
+            match designation {
+                Some(d) => {
+                    settings_manager
+                        .find_designated_template(organization, d)
+                        .await
+                }
+                None => Ok(None),
+            }
+        } else {
+            Ok(None)
+        };
+
+    let resolved_template_name =
+        effective_template_name(template_name, designation, discovery_result)?;
+    let effective_name = resolved_template_name.clone().unwrap_or_default();
+
+    let config_context = ConfigurationContext::new(organization, &effective_name);
 
     info!("Calling settings_manager.resolve_configuration with context: org={}, template={}, team={:?}, repo_type={:?}",
-           organization, template_name, config_context.team(), config_context.repository_type());
+           organization, effective_name, config_context.team(), config_context.repository_type());
 
     let merged_config = settings_manager
         .resolve_configuration(&config_context)
@@ -193,7 +233,50 @@ pub(crate) async fn resolve_organization_configuration(
             merged_config.labels.keys().collect::<Vec<_>>()
         );
     }
-    Ok(merged_config)
+    Ok((merged_config, resolved_template_name))
+}
+
+/// Decides which template name [`resolve_organization_configuration`] must
+/// use to build its `ConfigurationContext`, given:
+///
+/// - `template_name`: the caller's explicit template name (empty string when
+///   the caller gave none),
+/// - `designation`: the `TemplateDesignation` implied by the request's
+///   `CreationMode` (see `designation_for_creation_mode` in `lib.rs`), and
+/// - `discovery_result`: the result of calling
+///   `settings_manager.find_designated_template(organization, designation)`
+///   -- only meaningful (and only actually invoked by the caller) when
+///   `template_name.is_empty() && designation.is_some()`.
+///
+/// ## Decision Table
+///
+/// - `template_name` non-empty: always returns
+///   `Ok(Some(template_name.to_string()))`, regardless of
+///   `designation`/`discovery_result` -- an explicit template always wins
+///   and is never even inspected against discovery.
+/// - `template_name` empty, `designation = None`: returns `Ok(None)` --
+///   `CreationMode::Standard` has no designation and nothing to discover.
+/// - `template_name` empty, `designation = Some(_)`: returns
+///   `discovery_result` unchanged (`Ok(Some(name))`, `Ok(None)`, or the
+///   propagated `Err`).
+///
+/// # Errors
+///
+/// Propagates `discovery_result`'s `Err` (notably
+/// `ConfigurationError::AmbiguousTemplateDesignation`) when reached.
+pub(crate) fn effective_template_name(
+    template_name: &str,
+    designation: Option<config_manager::TemplateDesignation>,
+    discovery_result: config_manager::ConfigurationResult<Option<String>>,
+) -> config_manager::ConfigurationResult<Option<String>> {
+    if !template_name.is_empty() {
+        return Ok(Some(template_name.to_string()));
+    }
+
+    match designation {
+        Some(_) => discovery_result,
+        None => Ok(None),
+    }
 }
 
 /// Apply merged configuration to a newly created repository.

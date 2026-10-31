@@ -425,6 +425,51 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         // Not implemented in test mock - return Ok
         Ok(())
     }
+
+    async fn create_fork(
+        &self,
+        _source_owner: &str,
+        source_repo: &str,
+        target_owner: Option<&str>,
+    ) -> Result<github_client::Repository, GitHubError> {
+        // Not exercised by the existing create_repository test suite - return a
+        // minimal success value so the mock satisfies the widened trait.
+        let owner = target_owner.unwrap_or("mock-owner");
+        Ok(github_client::Repository::new(
+            source_repo.to_string(),
+            format!("{owner}/{source_repo}"),
+            "MOCK_NODE_ID".to_string(),
+            false,
+        ))
+    }
+
+    async fn create_pull_request(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        payload: &github_client::PullRequestCreatePayload,
+    ) -> Result<github_client::PullRequest, GitHubError> {
+        Ok(github_client::PullRequest {
+            number: 1,
+            html_url: String::new(),
+            draft: payload.draft,
+            state: "open".to_string(),
+        })
+    }
+
+    async fn mark_pull_request_ready_for_review(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        pr_number: u64,
+    ) -> Result<github_client::PullRequest, GitHubError> {
+        Ok(github_client::PullRequest {
+            number: pr_number,
+            html_url: String::new(),
+            draft: false,
+            state: "open".to_string(),
+        })
+    }
 }
 
 /// Configuration for mock repository client behavior
@@ -600,6 +645,8 @@ async fn test_create_repository_type_conversion() {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     };
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);
@@ -1134,4 +1181,833 @@ fn test_merge_policy_invalid_ceiling_treated_as_no_ceiling() {
 
     // Ceiling is invalid, so no ceiling applied; Admin request accepted as-is.
     assert_eq!(result.get("new-team"), Some(&AccessLevel::Admin));
+}
+
+// ============================================================================
+// FORK/MIRROR SOURCE-OWNER ALLOW-LIST GATE TESTS (HIGH finding, RCF-005
+// extension)
+// ============================================================================
+//
+// See docs/spec/interfaces/fork-mirror-operations.md §2 and §7: a fork/mirror
+// capability being enabled is NOT sufficient authorization — `source.owner`
+// must additionally appear (case-insensitively) in the merged
+// `allowed_source_owners` list. `validate_creation_mode_capability` must
+// check this immediately after the capability-enabled check and before the
+// template-designation check, before any GitHub API call.
+//
+// `validate_creation_mode_capability` is a pure, synchronous function that
+// takes no client — it can be (and is) exercised directly here without any
+// mock `RepositoryClient`, which also proves the "no GitHub API call before
+// rejection" property structurally (there is no client in scope to call).
+
+fn fork_request_with_source(owner: &str) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("new-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .creation_mode(CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new(owner).unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+    })
+    .build()
+}
+
+fn mirror_request_with_source(owner: &str, preserve_history: bool) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("new-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .creation_mode(CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new(owner).unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history,
+    })
+    .build()
+}
+
+/// Builds a `MergedConfiguration` with exactly one capability flag set
+/// (`enabled`) and `allowed_source_owners` set to `allowed_owners` (or left
+/// unset when `None`, exercising the fail-closed default).
+fn merged_config_with_capability(
+    capability: &str,
+    enabled: bool,
+    allowed_owners: Option<Vec<&str>>,
+) -> config_manager::MergedConfiguration {
+    use config_manager::{CreationCapabilitiesSettings, OverridableValue};
+
+    let mut capabilities = CreationCapabilitiesSettings::default();
+    match capability {
+        "fork" => capabilities.fork_enabled = Some(OverridableValue::allowed(enabled)),
+        "source_history_mirror" => {
+            capabilities.source_history_mirror_enabled = Some(OverridableValue::allowed(enabled))
+        }
+        "source_only_mirror" => {
+            capabilities.source_only_mirror_enabled = Some(OverridableValue::allowed(enabled))
+        }
+        other => panic!("unknown capability: {other}"),
+    }
+    capabilities.allowed_source_owners = allowed_owners
+        .map(|owners| OverridableValue::allowed(owners.into_iter().map(str::to_string).collect()));
+
+    let mut merged = config_manager::MergedConfiguration::new();
+    merged.creation_capabilities = capabilities;
+    merged
+}
+
+fn minimal_template_config(
+    designation: Option<config_manager::TemplateDesignation>,
+) -> TemplateConfig {
+    TemplateConfig {
+        template: TemplateMetadata {
+            name: "t".to_string(),
+            description: "d".to_string(),
+            author: "a".to_string(),
+            tags: vec![],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        rulesets: None,
+        default_visibility: None,
+        templating: None,
+        notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
+        naming_rules: None,
+        designation,
+        creation_capabilities: None,
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_rejects_fork_when_allowed_source_owners_unset() {
+    let request = fork_request_with_source("upstream-org");
+    let merged = merged_config_with_capability("fork", true, None);
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            owner,
+            capability,
+        })) => {
+            assert_eq!(owner, "upstream-org");
+            assert_eq!(capability, "fork");
+        }
+        other => panic!(
+            "expected SourceOwnerNotAllowed when the allow-list is unset \
+             (fail-closed default), even though the capability is enabled, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_rejects_fork_when_allowed_source_owners_empty() {
+    let request = fork_request_with_source("upstream-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec![]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::Configuration(
+                ConfigurationError::SourceOwnerNotAllowed { .. }
+            ))
+        ),
+        "an explicitly-empty allow-list must still deny every source owner, got {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_creation_mode_capability_rejects_fork_when_owner_not_in_allow_list() {
+    let request = fork_request_with_source("evil-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org", "another-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            owner,
+            capability,
+        })) => {
+            assert_eq!(owner, "evil-org");
+            assert_eq!(capability, "fork");
+        }
+        other => panic!("expected SourceOwnerNotAllowed, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allows_fork_when_owner_exactly_matches_allow_list() {
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allow_list_match_is_case_insensitive_list_upper() {
+    // Allow-list entry upper-case, request owner lower-case.
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["GOOD-ORG"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "case-insensitive match should pass: {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allow_list_match_is_case_insensitive_owner_upper() {
+    // Request owner has mixed case, allow-list stored lower-case.
+    let request = fork_request_with_source("Good-Org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "case-insensitive match should pass: {result:?}"
+    );
+}
+
+/// Stub-killing: a buggy implementation that only compares against the
+/// first allow-list entry (e.g. `list.first() == Some(owner)`) would fail
+/// this — the owner matches the *second* entry, not the first or last.
+#[test]
+fn test_validate_creation_mode_capability_allow_list_matches_any_position_not_just_first() {
+    let request = fork_request_with_source("second-org");
+    let merged = merged_config_with_capability(
+        "fork",
+        true,
+        Some(vec!["first-org", "second-org", "third-org"]),
+    );
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "owner matching a non-first list entry must still pass: {result:?}"
+    );
+}
+
+/// Ordering: the capability-enabled check must run before the owner
+/// allow-list check — a disabled capability must reject with
+/// `CapabilityDisabled` even when the source owner is on the allow-list.
+#[test]
+fn test_validate_creation_mode_capability_checks_capability_disabled_before_owner_allow_list() {
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", false, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::CapabilityDisabled {
+            capability,
+        })) => {
+            assert_eq!(capability, "fork");
+        }
+        other => panic!(
+            "expected CapabilityDisabled (checked before the owner allow-list), got {other:?}"
+        ),
+    }
+}
+
+/// Ordering: the owner allow-list check must run before the template
+/// designation check — a disallowed owner must reject with
+/// `SourceOwnerNotAllowed` even when a non-designated template is also
+/// passed (which would otherwise trigger `TemplateNotDesignated`).
+#[test]
+fn test_validate_creation_mode_capability_checks_owner_allow_list_before_template_designation() {
+    let request = fork_request_with_source("evil-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+    let wrong_template =
+        minimal_template_config(Some(config_manager::TemplateDesignation::SourceOnlyMirror));
+
+    let result = validate_creation_mode_capability(&request, &merged, Some(&wrong_template));
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            owner,
+            ..
+        })) => {
+            assert_eq!(owner, "evil-org");
+        }
+        other => {
+            panic!("expected SourceOwnerNotAllowed (checked before designation), got {other:?}")
+        }
+    }
+}
+
+/// Sanity check for the ordering test above: once the owner check passes,
+/// the pre-existing designation check must still fire as before — this
+/// rules out a fix that accidentally short-circuits `Ok(())` once the owner
+/// check passes, skipping the designation check entirely.
+#[test]
+fn test_validate_creation_mode_capability_falls_through_to_designation_check_when_owner_allowed() {
+    let request = fork_request_with_source("good-org");
+    let merged = merged_config_with_capability("fork", true, Some(vec!["good-org"]));
+    let wrong_template =
+        minimal_template_config(Some(config_manager::TemplateDesignation::SourceOnlyMirror));
+
+    let result = validate_creation_mode_capability(&request, &merged, Some(&wrong_template));
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::Configuration(
+                ConfigurationError::TemplateNotDesignated { .. }
+            ))
+        ),
+        "expected TemplateNotDesignated once the owner check passes, got {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_creation_mode_capability_applies_allow_list_to_source_history_mirror() {
+    let request = mirror_request_with_source("evil-org", true);
+    let merged =
+        merged_config_with_capability("source_history_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            capability,
+            ..
+        })) => {
+            assert_eq!(capability, "source_history_mirror");
+        }
+        other => panic!("expected SourceOwnerNotAllowed, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_applies_allow_list_to_source_only_mirror() {
+    let request = mirror_request_with_source("evil-org", false);
+    let merged = merged_config_with_capability("source_only_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::SourceOwnerNotAllowed {
+            capability,
+            ..
+        })) => {
+            assert_eq!(capability, "source_only_mirror");
+        }
+        other => panic!("expected SourceOwnerNotAllowed, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allows_source_history_mirror_when_owner_allowed() {
+    let request = mirror_request_with_source("good-org", true);
+    let merged =
+        merged_config_with_capability("source_history_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+#[test]
+fn test_validate_creation_mode_capability_allows_source_only_mirror_when_owner_allowed() {
+    let request = mirror_request_with_source("good-org", false);
+    let merged = merged_config_with_capability("source_only_mirror", true, Some(vec!["good-org"]));
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+/// Regression guard: `CreationMode::Standard` has no `source` at all and
+/// must continue to bypass the entire fork/mirror gate (including the new
+/// owner allow-list check), regardless of how threadbare
+/// `creation_capabilities` is.
+#[test]
+fn test_validate_creation_mode_capability_standard_mode_bypasses_allow_list_entirely() {
+    // `.content_strategy(Empty)` sidesteps the pre-existing, unrelated builder
+    // rule that `ContentStrategy::Template` (the default) requires a template
+    // to be set — irrelevant to what this test exercises (the fork/mirror
+    // gate bypass for `CreationMode::Standard`).
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("new-repo").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .build();
+    let merged = config_manager::MergedConfiguration::new(); // all-None capabilities
+
+    let result = validate_creation_mode_capability(&request, &merged, None);
+
+    assert!(
+        result.is_ok(),
+        "Standard mode must bypass the fork/mirror gate entirely: {result:?}"
+    );
+}
+
+// ============================================================================
+// Fork/Mirror Dispatch Function Tests
+// ============================================================================
+//
+// `create_fork_repository`, `create_history_mirror_repository`, and
+// `create_source_only_mirror_repository` (added for #255) previously had
+// zero test coverage reachable without live GitHub credentials. The #255 QA
+// mutation-testing audit flagged this gap as "proven material, not
+// theoretical": the missing `index.write()` defect in `git.rs`
+// (`prepare_index_and_tree`), which broke `create_source_only_mirror_repository`
+// on every invocation, was only caught by a hand-reproduced scenario, not by
+// any dispatch-level test.
+//
+// `create_fork_repository` makes no git2 network calls at all (GitHub forks
+// the repository server-side), so it gets a full success-path test below,
+// proving it reaches `create_fork` and `get_organization_default_branch` and
+// returns a `RepositoryCreationResult`.
+//
+// `create_history_mirror_repository` and `create_source_only_mirror_repository`
+// both eventually call `git::mirror_clone` / `git::shallow_clone_working_tree`
+// and push to the real `https://github.com/{owner}/{name}.git` URL:
+// `github_client::Repository::url()` hardcodes the `github.com` host with no
+// override seam, and `SourceRepositoryReference` carries no URL field (see
+// `build_github_https_url`). Reaching that boundary and succeeding therefore
+// requires live GitHub credentials, exactly as already documented for the
+// identical architectural gap in `lib_span_tests.rs`/`observability.rs` and
+// in `integration_tests::fork_mirror_capability_tests` ("True success-path
+// fork/mirror creation ... require[s] ... live" fixtures). The tests below
+// exercise everything reachable without network -- visibility resolution,
+// local git initialization/commit (the exact code path the #255 defect
+// lived in), and the `create_github_repository` GitHub API call -- then
+// assert the resulting error is propagated correctly when that call fails,
+// proving the dispatch wiring up to the real network boundary.
+//
+// All three dispatch functions take `clients: &CreationClients`, whose
+// `installation_repo_client` field is a concrete `github_client::GitHubClient`
+// (not `&dyn RepositoryClient`), so `ConfigurableMockRepoClient` -- used
+// elsewhere in this file for functions that *do* take `&dyn RepositoryClient`
+// (e.g. `create_github_repository`, `initialize_git_repository`) -- cannot be
+// substituted here. Instead these tests point a real `GitHubClient` at a
+// `wiremock` server, mirroring the established pattern in
+// `permission_manager_tests.rs::create_test_github_client`.
+
+/// Creates a [`github_client::GitHubClient`] pointed at a wiremock server for
+/// testing. See the module note above for why this (rather than
+/// `ConfigurableMockRepoClient`) is required for the dispatch-function tests.
+fn wiremock_github_client(server_uri: &str) -> github_client::GitHubClient {
+    let octocrab = octocrab::Octocrab::builder()
+        .base_uri(server_uri)
+        .expect("valid URI from wiremock")
+        .personal_token("test-token".to_string())
+        .build()
+        .expect("octocrab builder succeeds with valid base_uri");
+    github_client::GitHubClient::new(octocrab)
+}
+
+/// Success path: `create_fork_repository` must call `create_fork` against
+/// the source repository, apply post-creation settings (a no-op here since
+/// `merged_config` and the request carry no teams/collaborators/labels/etc.),
+/// look up the organization's default branch, and return a
+/// `RepositoryCreationResult` built from the forked repository.
+#[tokio::test]
+async fn test_create_fork_repository_success_path_reaches_fork_and_default_branch_calls_and_returns_result()
+{
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/repos/source-org/source-repo/forks"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "full_name": "test-org/new-repo",
+            "name": "new-repo",
+            "node_id": "MDEwOlJlcG9zaXRvcnkx",
+            "private": false
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/orgs/test-org"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_repository_branch": "main"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = fork_request_with_source("source-org");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: wiremock_github_client(&server.uri()),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result =
+        create_fork_repository(&request, &source, None, &merged_config, &clients, "test-user")
+            .await;
+
+    assert!(result.is_ok(), "fork creation should succeed: {result:?}");
+    let creation_result = result.unwrap();
+    assert_eq!(
+        creation_result.repository_url, "https://github.com/test-org/new-repo.git",
+        "repository_url must be derived from the forked repository's full_name"
+    );
+    assert_eq!(
+        creation_result.default_branch, "main",
+        "default_branch must come from get_organization_default_branch"
+    );
+
+    server.verify().await; // wiremock asserts both expect(1) calls were satisfied
+}
+
+/// `create_history_mirror_repository` must resolve visibility, then call
+/// `create_github_repository` (POST `/orgs/{owner}/repos`) before ever
+/// attempting the (network-requiring, see module note above)
+/// `git::mirror_clone`/`git::mirror_push` steps. This test forces the
+/// repository-creation call to fail and asserts the error is propagated as
+/// `RepoRollerError::GitHub`, proving the dispatch reaches that call with the
+/// correct parameters and stops there rather than proceeding to the
+/// unreachable-in-tests git mirror steps.
+#[tokio::test]
+async fn test_create_history_mirror_repository_propagates_github_repository_creation_error() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/orgs/test-org/repos"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
+            "message": "Repository creation failed"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = mirror_request_with_source("source-org", true);
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: wiremock_github_client(&server.uri()),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result = create_history_mirror_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        Arc::new(MockVisibilityPolicyProvider),
+        Arc::new(MockEnvironmentDetector),
+        "test-user",
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(RepoRollerError::GitHub(_))),
+        "repository-creation failure must be propagated as RepoRollerError::GitHub: {result:?}"
+    );
+
+    server.verify().await; // wiremock asserts the repo-creation call was made exactly once
+}
+
+/// `create_source_only_mirror_repository` must generate local content
+/// (`ZeroContentProvider`, since no template is designated), initialize and
+/// commit the local git repository (the exact `prepare_index_and_tree` code
+/// path the #255 defect lived in -- exercised here end-to-end, locally, with
+/// no network involved), then call `create_github_repository` before ever
+/// attempting the (network-requiring, see module note above)
+/// `push_repository_to_github_with_retry`/`git::shallow_clone_working_tree`/
+/// `git::create_snapshot_branch` steps. This test forces the
+/// repository-creation call to fail and asserts the error is propagated as
+/// `RepoRollerError::GitHub`, proving the dispatch reaches that call (after
+/// successfully exercising the fixed local git plumbing) with the correct
+/// parameters and stops there rather than proceeding to the
+/// unreachable-in-tests git/network steps.
+#[tokio::test]
+async fn test_create_source_only_mirror_repository_propagates_github_repository_creation_error() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/orgs/test-org"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_repository_branch": "main"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/orgs/test-org/repos"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
+            "message": "Repository creation failed"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = mirror_request_with_source("source-org", false);
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: wiremock_github_client(&server.uri()),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result = create_source_only_mirror_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        Arc::new(MockVisibilityPolicyProvider),
+        Arc::new(MockEnvironmentDetector),
+        "test-user",
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(RepoRollerError::GitHub(_))),
+        "repository-creation failure must be propagated as RepoRollerError::GitHub: {result:?}"
+    );
+
+    server.verify().await; // wiremock asserts both expect(1) calls were satisfied
+}
+
+// ============================================================================
+// designation_for_creation_mode Tests (RED: #255 follow-up Gap 1 --
+// "designated template is never auto-discovered")
+// ============================================================================
+//
+// `designation_for_creation_mode` is the pure mapping `load_creation_config`
+// must use to decide which `config_manager::TemplateDesignation` (if any) a
+// request's `CreationMode` implies, per
+// docs/spec/interfaces/fork-mirror-operations.md and the #255 follow-up gap
+// note ("load_creation_config only loads a template when the caller's
+// request.template is explicitly Some(...)"). It must consult only
+// `creation_mode` -- NOT `request.template` -- so that the separate
+// "explicit template always wins" rule (tested in
+// `configuration_tests.rs::effective_template_name`) stays orthogonal and
+// composable with this mapping.
+//
+// Mapping required:
+//   CreationMode::Standard                          -> None
+//   CreationMode::Fork { .. }                        -> Some(Fork)
+//   CreationMode::Mirror { preserve_history: true }  -> Some(SourceHistoryMirror)
+//   CreationMode::Mirror { preserve_history: false } -> Some(SourceOnlyMirror)
+
+#[test]
+fn test_designation_for_creation_mode_standard_returns_none() {
+    let mode = CreationMode::Standard;
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation, None,
+        "Standard creation has no fork/mirror designation"
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_fork_returns_fork_designation() {
+    let mode = CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+    };
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation,
+        Some(config_manager::TemplateDesignation::Fork)
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_history_mirror_returns_source_history_mirror_designation() {
+    let mode = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: true,
+    };
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation,
+        Some(config_manager::TemplateDesignation::SourceHistoryMirror)
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_source_only_mirror_returns_source_only_mirror_designation() {
+    let mode = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: false,
+    };
+
+    let designation = designation_for_creation_mode(&mode);
+
+    assert_eq!(
+        designation,
+        Some(config_manager::TemplateDesignation::SourceOnlyMirror)
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_history_and_source_only_mirror_designations_are_distinct() {
+    // Stub-killing: a lazy implementation might return the same designation
+    // for both `preserve_history` values (e.g. always `SourceHistoryMirror`).
+    // Assert they differ.
+    let history = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: true,
+    };
+    let source_only = CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+        preserve_history: false,
+    };
+
+    assert_ne!(
+        designation_for_creation_mode(&history),
+        designation_for_creation_mode(&source_only),
+        "history and source-only mirrors must map to distinct designations"
+    );
+}
+
+#[test]
+fn test_designation_for_creation_mode_fork_and_standard_designations_are_distinct() {
+    // Stub-killing: a lazy implementation that always returns `Some(Fork)`
+    // (or always `None`) would pass a single-variant test but fail this one.
+    let fork = CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new("source-org").unwrap(),
+            name: RepositoryName::new("source-repo").unwrap(),
+        },
+    };
+
+    assert_ne!(
+        designation_for_creation_mode(&fork),
+        designation_for_creation_mode(&CreationMode::Standard)
+    );
+}
+
+// ============================================================================
+// history_mirror_default_branch_update Tests (RED: #255 follow-up Gap 2 --
+// "history mirror never sets the new repo's default branch on GitHub")
+// ============================================================================
+//
+// `create_history_mirror_repository` must call
+// `installation_repo_client.update_repository_settings` with a
+// `RepositorySettingsUpdate { default_branch: Some(source_default_branch),
+// ..Default::default() }` after `git::mirror_push` succeeds and before
+// returning. That call -- like the `git::mirror_clone`/`git::mirror_push`
+// steps themselves -- requires a live, network-reachable source repository
+// (see the module note above `wiremock_github_client`: the source and
+// push-target URLs are hardcoded `https://github.com/...` with no override
+// seam), so the full `create_history_mirror_repository` success path
+// (reaching this PATCH call) cannot be exercised end-to-end in this test
+// suite without live GitHub credentials, exactly like `mirror_clone` itself.
+//
+// `history_mirror_default_branch_update` isolates the one piece of this fix
+// that *is* synchronous, network-free, and therefore unit-testable without
+// live credentials: the exact `RepositorySettingsUpdate` payload built from
+// the source's default branch name. `create_history_mirror_repository` MUST
+// build its settings-update payload using this exact function (or logic
+// equivalent to it) so that payload construction cannot silently regress
+// (e.g. a hardcoded branch name, or accidentally setting unrelated fields)
+// independently of the (untestable-here) network wiring around it.
+
+#[test]
+fn test_history_mirror_default_branch_update_sets_default_branch_field() {
+    let settings = history_mirror_default_branch_update("develop");
+
+    assert_eq!(
+        settings.default_branch,
+        Some("develop".to_string()),
+        "default_branch must be set to the source's default branch name"
+    );
+}
+
+#[test]
+fn test_history_mirror_default_branch_update_preserves_arbitrary_branch_names() {
+    // Stub-killing: a hardcoded "main" would pass the test above but fail
+    // here, since the source's actual default branch is "trunk".
+    let settings = history_mirror_default_branch_update("trunk");
+
+    assert_eq!(settings.default_branch, Some("trunk".to_string()));
+}
+
+#[test]
+fn test_history_mirror_default_branch_update_rejects_empty_string_sentinel() {
+    // Stub-killing: a lazy implementation that unconditionally returns
+    // `Default::default()` (default_branch = None) would fail every test in
+    // this section; an implementation that returns `Some(String::new())`
+    // regardless of input would fail this one.
+    let settings = history_mirror_default_branch_update("release/2026.1");
+
+    assert_eq!(
+        settings.default_branch,
+        Some("release/2026.1".to_string())
+    );
+}
+
+#[test]
+fn test_history_mirror_default_branch_update_does_not_set_unrelated_fields() {
+    let settings = history_mirror_default_branch_update("main");
+
+    assert_eq!(settings.description, None);
+    assert_eq!(settings.homepage, None);
+    assert_eq!(settings.private, None);
+    assert_eq!(settings.has_issues, None);
+    assert_eq!(settings.has_projects, None);
+    assert_eq!(settings.has_wiki, None);
 }

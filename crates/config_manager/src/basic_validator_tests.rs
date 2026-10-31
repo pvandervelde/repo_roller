@@ -874,6 +874,8 @@ async fn test_validate_template_config_integration() {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     };
 
     let result = validator
