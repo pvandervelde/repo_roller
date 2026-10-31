@@ -83,7 +83,11 @@ pub(crate) fn debug_working_directory(local_repo_path: &TempDir) -> Result<usize
                             } else {
                                 content
                             };
-                            info!("  File content preview: {}", preview.replace('\n', "\\n"));
+                            // File content may originate from a fork/mirror source or a
+                            // template repository the operator does not control; previewing
+                            // it at `info!` would put arbitrary repository content (including
+                            // any secrets committed there) into production logs.
+                            debug!("  File content preview: {}", preview.replace('\n', "\\n"));
                         }
                     }
                 }

@@ -1462,12 +1462,13 @@ fn validate_creation_mode_capability(
     merged_config: &config_manager::MergedConfiguration,
     template: Option<&config_manager::TemplateConfig>,
 ) -> RepoRollerResult<()> {
-    let (capability, expected_designation, source_owner) = match &request.creation_mode {
+    let (capability, expected_designation, source_owner, enabled) = match &request.creation_mode {
         CreationMode::Standard => return Ok(()),
         CreationMode::Fork { source } => (
             "fork",
             config_manager::TemplateDesignation::Fork,
             source.owner.as_str(),
+            resolved_capability_flag(&merged_config.creation_capabilities.fork_enabled),
         ),
         CreationMode::Mirror {
             source,
@@ -1476,6 +1477,11 @@ fn validate_creation_mode_capability(
             "source_history_mirror",
             config_manager::TemplateDesignation::SourceHistoryMirror,
             source.owner.as_str(),
+            resolved_capability_flag(
+                &merged_config
+                    .creation_capabilities
+                    .source_history_mirror_enabled,
+            ),
         ),
         CreationMode::Mirror {
             source,
@@ -1484,22 +1490,12 @@ fn validate_creation_mode_capability(
             "source_only_mirror",
             config_manager::TemplateDesignation::SourceOnlyMirror,
             source.owner.as_str(),
+            resolved_capability_flag(
+                &merged_config
+                    .creation_capabilities
+                    .source_only_mirror_enabled,
+            ),
         ),
-    };
-
-    let enabled = match capability {
-        "fork" => resolved_capability_flag(&merged_config.creation_capabilities.fork_enabled),
-        "source_history_mirror" => resolved_capability_flag(
-            &merged_config
-                .creation_capabilities
-                .source_history_mirror_enabled,
-        ),
-        "source_only_mirror" => resolved_capability_flag(
-            &merged_config
-                .creation_capabilities
-                .source_only_mirror_enabled,
-        ),
-        _ => false,
     };
 
     if !enabled {
