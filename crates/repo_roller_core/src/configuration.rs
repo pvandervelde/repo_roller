@@ -196,6 +196,44 @@ pub(crate) async fn resolve_organization_configuration(
     Ok(merged_config)
 }
 
+/// Decides which template name [`resolve_organization_configuration`] must
+/// use to build its `ConfigurationContext`, given:
+///
+/// - `template_name`: the caller's explicit template name (empty string when
+///   the caller gave none),
+/// - `designation`: the `TemplateDesignation` implied by the request's
+///   `CreationMode` (see `designation_for_creation_mode` in `lib.rs`), and
+/// - `discovery_result`: the result of calling
+///   `settings_manager.find_designated_template(organization, designation)`
+///   -- only meaningful (and only actually invoked by the caller) when
+///   `template_name.is_empty() && designation.is_some()`.
+///
+/// ## Decision Table
+///
+/// - `template_name` non-empty: always returns
+///   `Ok(Some(template_name.to_string()))`, regardless of
+///   `designation`/`discovery_result` -- an explicit template always wins
+///   and is never even inspected against discovery.
+/// - `template_name` empty, `designation = None`: returns `Ok(None)` --
+///   `CreationMode::Standard` has no designation and nothing to discover.
+/// - `template_name` empty, `designation = Some(_)`: returns
+///   `discovery_result` unchanged (`Ok(Some(name))`, `Ok(None)`, or the
+///   propagated `Err`).
+///
+/// # Errors
+///
+/// Propagates `discovery_result`'s `Err` (notably
+/// `ConfigurationError::AmbiguousTemplateDesignation`) when reached.
+pub(crate) fn effective_template_name(
+    template_name: &str,
+    designation: Option<config_manager::TemplateDesignation>,
+    discovery_result: config_manager::ConfigurationResult<Option<String>>,
+) -> config_manager::ConfigurationResult<Option<String>> {
+    // TODO: implement (RED phase - #255 follow-up Gap 1)
+    let _ = (template_name, designation, discovery_result);
+    unimplemented!("effective_template_name: RED phase stub")
+}
+
 /// Apply merged configuration to a newly created repository.
 ///
 /// This function applies the resolved organization configuration to a repository,

@@ -433,6 +433,31 @@ async fn load_creation_config(
     Ok((merged_config, template))
 }
 
+/// Maps a request's `CreationMode` to the `TemplateDesignation`
+/// [`load_creation_config`] must auto-discover a template for, when the
+/// caller gave no explicit `request.template`.
+///
+/// Consults only `mode` -- never `request.template` -- so this mapping stays
+/// orthogonal to (and composable with) the separate "explicit template
+/// always wins" rule enforced by
+/// [`configuration::effective_template_name`].
+///
+/// | `CreationMode`                                   | Designation                    |
+/// |----------------------------------------------------|----------------------------------|
+/// | `Standard`                                          | `None`                           |
+/// | `Fork { .. }`                                       | `Some(TemplateDesignation::Fork)` |
+/// | `Mirror { preserve_history: true, .. }`             | `Some(TemplateDesignation::SourceHistoryMirror)` |
+/// | `Mirror { preserve_history: false, .. }`            | `Some(TemplateDesignation::SourceOnlyMirror)` |
+///
+/// # Errors
+///
+/// This is a pure, synchronous mapping function: it never fails.
+fn designation_for_creation_mode(mode: &CreationMode) -> Option<config_manager::TemplateDesignation> {
+    // TODO: implement (RED phase - #255 follow-up Gap 1)
+    let _ = mode;
+    unimplemented!("designation_for_creation_mode: RED phase stub")
+}
+
 /// Resolves the final repository visibility by evaluating organization policies,
 /// GitHub environment constraints, and the user's preference.
 ///
