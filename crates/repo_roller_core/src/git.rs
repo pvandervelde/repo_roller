@@ -1239,11 +1239,21 @@ fn copy_dir_contents(source: &std::path::Path, dest: &std::path::Path) -> Result
                 reason: e.to_string(),
             })?;
             copy_dir_contents(&src_path, &dest_path)?;
-        } else {
+        } else if file_type.is_file() {
             std::fs::copy(&src_path, &dest_path).map_err(|e| SystemError::FileSystem {
                 operation: format!("copy file to {:?}", dest_path),
                 reason: e.to_string(),
             })?;
+        } else {
+            // A checked-out git working tree only ever materializes regular
+            // files, directories, and symlinks (handled above) — this arm
+            // exists so an unexpected entry type (e.g. a socket or device
+            // file, which git itself cannot track) fails loudly instead of
+            // being silently passed to `fs::copy`.
+            return Err(SystemError::FileSystem {
+                operation: "copy working tree entry".to_string(),
+                reason: format!("unsupported file type for entry {:?}", src_path),
+            });
         }
     }
     Ok(())
