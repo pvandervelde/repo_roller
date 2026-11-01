@@ -273,7 +273,7 @@ async fn test_fork_creation_disabled_by_default_takes_precedence_over_source_own
 
     let repo_name = generate_test_repo_name("test", "fork-disabled-owner-order");
     let source = SourceRepositoryReference {
-        owner: OrganizationName::new("definitely-not-a-configured-allowlist-owner")?,
+        owner: OrganizationName::new("not-an-allowlisted-owner")?,
         name: RepositoryName::new("template-test-basic")?,
     };
 
@@ -326,7 +326,7 @@ async fn test_source_history_mirror_disabled_by_default_takes_precedence_over_so
 
     let repo_name = generate_test_repo_name("test", "history-mirror-disabled-owner-order");
     let source = SourceRepositoryReference {
-        owner: OrganizationName::new("definitely-not-a-configured-allowlist-owner")?,
+        owner: OrganizationName::new("not-an-allowlisted-owner")?,
         name: RepositoryName::new("template-test-basic")?,
     };
 
@@ -379,7 +379,7 @@ async fn test_source_only_mirror_disabled_by_default_takes_precedence_over_sourc
 
     let repo_name = generate_test_repo_name("test", "source-only-mirror-disabled-owner-order");
     let source = SourceRepositoryReference {
-        owner: OrganizationName::new("definitely-not-a-configured-allowlist-owner")?,
+        owner: OrganizationName::new("not-an-allowlisted-owner")?,
         name: RepositoryName::new("template-test-basic")?,
     };
 
