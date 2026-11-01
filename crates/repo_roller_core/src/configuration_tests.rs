@@ -96,7 +96,11 @@ fn test_effective_template_name_explicit_template_wins_even_over_ambiguous_disco
         templates: vec!["fork-a".to_string(), "fork-b".to_string()],
     });
 
-    let result = effective_template_name("explicit-template", Some(TemplateDesignation::Fork), ambiguous);
+    let result = effective_template_name(
+        "explicit-template",
+        Some(TemplateDesignation::Fork),
+        ambiguous,
+    );
 
     assert_eq!(result, Ok(Some("explicit-template".to_string())));
 }
@@ -181,7 +185,8 @@ fn test_effective_template_name_propagates_ambiguous_designation_error() {
         templates: vec!["mirror-a".to_string(), "mirror-b".to_string()],
     });
 
-    let result = effective_template_name("", Some(TemplateDesignation::SourceOnlyMirror), ambiguous);
+    let result =
+        effective_template_name("", Some(TemplateDesignation::SourceOnlyMirror), ambiguous);
 
     assert!(
         matches!(

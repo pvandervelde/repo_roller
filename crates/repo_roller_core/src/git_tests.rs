@@ -651,7 +651,11 @@ fn test_create_snapshot_branch_creates_branch_checks_out_and_commits_snapshot() 
         source_dir.path(),
         "Snapshot commit",
     );
-    assert!(result.is_ok(), "snapshot branch creation should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "snapshot branch creation should succeed: {:?}",
+        result
+    );
 
     let repo = Repository::open(repo_dir.path()).unwrap();
 

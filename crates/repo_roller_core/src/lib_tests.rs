@@ -1625,8 +1625,8 @@ fn wiremock_github_client(server_uri: &str) -> github_client::GitHubClient {
 /// look up the organization's default branch, and return a
 /// `RepositoryCreationResult` built from the forked repository.
 #[tokio::test]
-async fn test_create_fork_repository_success_path_reaches_fork_and_default_branch_calls_and_returns_result()
-{
+async fn test_create_fork_repository_success_path_reaches_fork_and_default_branch_calls_and_returns_result(
+) {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1665,9 +1665,15 @@ async fn test_create_fork_repository_success_path_reaches_fork_and_default_branc
         template_fetcher: template_engine::GitHubTemplateFetcher::new(),
     };
 
-    let result =
-        create_fork_repository(&request, &source, None, &merged_config, &clients, "test-user")
-            .await;
+    let result = create_fork_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        "test-user",
+    )
+    .await;
 
     assert!(result.is_ok(), "fork creation should succeed: {result:?}");
     let creation_result = result.unwrap();
@@ -1854,10 +1860,7 @@ fn test_designation_for_creation_mode_fork_returns_fork_designation() {
 
     let designation = designation_for_creation_mode(&mode);
 
-    assert_eq!(
-        designation,
-        Some(config_manager::TemplateDesignation::Fork)
-    );
+    assert_eq!(designation, Some(config_manager::TemplateDesignation::Fork));
 }
 
 #[test]
@@ -1994,10 +1997,7 @@ fn test_history_mirror_default_branch_update_rejects_empty_string_sentinel() {
     // regardless of input would fail this one.
     let settings = history_mirror_default_branch_update("release/2026.1");
 
-    assert_eq!(
-        settings.default_branch,
-        Some("release/2026.1".to_string())
-    );
+    assert_eq!(settings.default_branch, Some("release/2026.1".to_string()));
 }
 
 #[test]
