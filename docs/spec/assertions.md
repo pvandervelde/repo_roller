@@ -36,6 +36,37 @@ This document defines testable assertions about RepoRoller's behavior. These ass
 - **And**: All configuration policies are applied correctly
 - **And**: No template processing is performed
 
+**Assertion RCA-004: Fork Creation**
+
+- **Given**: Fork creation is enabled by configuration
+- **And**: A source repository reference is provided
+- **When**: A fork creation request is submitted
+- **Then**: A GitHub fork of the source repository is created (part of the GitHub fork network)
+- **And**: If a fork template is designated, its settings (not files) are applied to the new fork
+- **And**: If no fork template is designated, repository-type/team/global settings are applied
+- **And**: No files from the fork template are copied into the fork
+
+**Assertion RCA-005: Source+History Mirror Creation**
+
+- **Given**: Source+history mirror creation is enabled by configuration
+- **And**: A source repository reference is provided
+- **When**: A source+history mirror creation request is submitted
+- **Then**: An independent repository is created containing the complete commit history of the source
+- **And**: The mirror's default branch HEAD equals the source's default branch HEAD
+- **And**: The mirror is not part of the GitHub fork network
+- **And**: If a source+history-mirror template is designated, its settings (not files) are applied
+
+**Assertion RCA-006: Source-Only Mirror Creation**
+
+- **Given**: Source-only mirror creation is enabled by configuration
+- **And**: A source repository reference is provided
+- **When**: A source-only mirror creation request is submitted
+- **Then**: An independent repository is created, not part of the GitHub fork network
+- **And**: If a source-only-mirror template is designated, its contents are committed as the first commit
+- **And**: If no template is designated, the repository starts with an empty initial commit
+- **And**: A pull request containing the source repository's current file contents (no history) is opened
+- **And**: The pull request is marked ready for review (not draft)
+
 ### Repository Creation Failures
 
 **Assertion RCF-001: Invalid Authentication**
@@ -71,6 +102,23 @@ This document defines testable assertions about RepoRoller's behavior. These ass
 - **And**: No repository is created
 - **And**: Partial processing state is cleaned up
 - **And**: Error provides guidance on template optimization
+
+**Assertion RCF-005: Creation Capability Disabled**
+
+- **Given**: Fork, source+history-mirror, or source-only-mirror creation is disabled by configuration
+- **When**: A creation request for the disabled capability is submitted
+- **Then**: Request fails with a `CapabilityDisabled` error naming the disabled capability
+- **And**: No GitHub API calls are made
+- **And**: No repository is created
+
+**Assertion RCF-006: Non-Designated Template Rejected**
+
+- **Given**: A fork or mirror creation request explicitly names a template
+- **And**: That template does not carry the matching designation (Fork / SourceHistoryMirror / SourceOnlyMirror)
+- **When**: The request is submitted
+- **Then**: Request fails with a `TemplateNotDesignated` error
+- **And**: No GitHub API calls are made
+- **And**: No repository is created
 
 ## Configuration Resolution Assertions
 

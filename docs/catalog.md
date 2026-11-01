@@ -106,6 +106,351 @@ Add to this whenever a reusable component becomes "the standard way".
   Use when: Loading any configuration (defaults, policies, template settings)
   Notes: Cached with 5-minute TTL, see ADR-002
 
+### Fork & Mirror Creation (#255)
+
+- **`config_manager::TemplateDesignation`** — special role a template
+  self-declares beyond ordinary template-based creation (`Fork`,
+  `SourceHistoryMirror`, `SourceOnlyMirror`)
+  Location: `config_manager/src/template_config.rs`
+  Use when: A template's settings (not files) should apply automatically to
+  forks or mirrors; see `TemplateConfig::designation` (`Option<TemplateDesignation>`)
+  Notes: At most one template per org may declare a given designation —
+  enforced by `find_designated_template` below, not at template-load time. A
+  template MUST NOT combine `designation` with a `Fixed` `repository_type`
+  policy (validated at template-load time). See
+  `docs/spec/interfaces/fork-mirror-operations.md` §1.
+
+- **`OrganizationSettingsManager::find_designated_template(org, designation)`**
+  — finds the single template (if any) in `org` declaring `designation`
+  Location: `config_manager/src/organization_settings_manager.rs`
+  Returns: `Ok(None)` for zero matches, `Ok(Some(name))` for one,
+  `Err(ConfigurationError::AmbiguousTemplateDesignation)` for two or more
+  Use when: Resolving the fork/mirror settings-only template for a
+  `CreationMode::Fork`/`Mirror` request before calling `TemplateLoader`
+  Notes: Result shares the 5-minute `template_configurations` cache TTL.
+
+- **`config_manager::settings::CreationCapabilitiesSettings`** — independent
+  enable/disable toggles for fork creation and the two mirror modes
+  (`fork_enabled`, `source_history_mirror_enabled`, `source_only_mirror_enabled`),
+  each an `Option<OverridableValue<bool>>`, plus `allowed_source_owners:
+  Option<OverridableValue<Vec<String>>>` (security-remediation addition,
+  RCF-005 extension) — a case-insensitive allow-list of source owners
+  permitted for fork/mirror requests, merged through the *same* precedence as
+  the `*_enabled` flags (replaced wholesale by the highest-precedence level
+  that sets it, never unioned across levels)
+  Location: `config_manager/src/settings/creation_capabilities.rs`
+  Carried on: `GlobalDefaults`, `RepositoryTypeConfig`, `TeamConfig`,
+  `TemplateConfig` (same four structs that carry `repository`/
+  `pull_requests`/`branch_protection`), merged into
+  `MergedConfiguration::creation_capabilities`
+  Use when: Gating any new fork/mirror-like capability behind an
+  administrator-controlled, overridable toggle with Global → RepositoryType →
+  Team → Template precedence
+  Notes: **Fail-closed default** — a fully-`None` value at every level means
+  **disabled**, not enabled (unlike most other `Option<OverridableValue<_>>`
+  settings in this codebase, which tend to default permissively). Resolve
+  with `flag.as_ref().map(|v| *v.get()).unwrap_or(false)` — never
+  `unwrap_or(true)`. `allowed_source_owners` is independently fail-closed:
+  unset *or* explicitly empty both deny every source owner. See
+  `docs/spec/interfaces/fork-mirror-operations.md` §2.
+
+- **`ConfigurationMerger::merge_creation_capabilities_settings` /
+  `merge_capability_field` / `merge_allowed_source_owners_field`** —
+  field-by-field merge with override-policy validation and source tracking
+  for `CreationCapabilitiesSettings`
+  Location: `config_manager/src/merger.rs`
+  Pattern: Mirrors `merge_repository_settings`'s per-field
+  validate-then-assign-then-track shape (CRA-001/CRA-002), but factors the
+  per-field body into private helpers (REFACTOR pass) since
+  `CreationCapabilitiesSettings` has 3 fields of the same
+  `Option<OverridableValue<bool>>` shape (`merge_capability_field`) plus one
+  `Option<OverridableValue<Vec<String>>>` field (`merge_allowed_source_owners_field`,
+  added for the `allowed_source_owners` security fix — kept separate from
+  `merge_capability_field` because its value type isn't `bool`, and its
+  override-rejection path uses `ConfigurationMerger::validate_override_no_display`
+  instead of `validate_override`, since `Vec<String>` has no `Display` impl).
+  Call these helpers rather than re-inlining the validate/assign/track block
+  if a new capability/allow-list-shaped field is ever added. Note:
+  `merge_repository_settings` and its ~20 pre-existing sibling functions
+  (`merge_pull_request_settings`, etc.) still inline this shape per-field;
+  they were not touched by this extraction (out of scope — see
+  `.llm/findings/fork-mirror-operations.md` for the cross-cutting
+  observation).
+
+- **`ConfigurationMerger::validate_override_no_display<T: PartialEq>`** —
+  override-policy equality check for `OverridableValue<T>` fields whose `T`
+  does not implement `Display` (e.g. `Vec<String>`)
+  Location: `config_manager/src/merger.rs`
+  Pattern: Identical rejection logic to `validate_override<T: PartialEq +
+  Display>`, but the `OverrideNotPermitted` error message omits the
+  offending value (can't format it) and names only `field_path`
+  Use when: Adding a new non-`bool`, non-`Display` overridable settings field
+  that needs the same fixed-policy override enforcement as the existing
+  scalar fields
+
+- **`config_manager::OverridableValue<T>`'s `Deserialize` `visit_seq`** —
+  parses the simple TOML/JSON array form (e.g. `allowed_source_owners = ["a",
+  "b"]`) into `OverridableValue<T>` for sequence-typed `T` (e.g.
+  `Vec<String>`), auto-wrapping with `override_allowed: true`
+  Location: `config_manager/src/overridable.rs`
+  Pattern: Delegates to `T::deserialize` via
+  `serde::de::value::SeqAccessDeserializer`, mirroring the existing
+  scalar-visitor (`visit_bool`/`visit_str`/etc.) simple-format convention.
+  This was the missing case for any future `OverridableValue<Vec<_>>` or
+  `OverridableValue<[T; N]>` field — the visitor previously only handled
+  scalar/map shapes.
+
+- **`repo_roller_core::CreationMode`** — orthogonal-to-`ContentStrategy` enum
+  governing how the GitHub repository itself comes into existence
+  (`Standard`, `Fork { source }`, `Mirror { source, preserve_history }`)
+  Location: `repo_roller_core/src/request.rs`
+  Use when: A `RepositoryCreationRequest` needs anything other than the
+  create-then-run-content-strategy path. Set via
+  `RepositoryCreationRequestBuilder::creation_mode(mode)`.
+  Notes: `content_strategy` must stay at its default when `creation_mode` is
+  `Fork`/`Mirror` — builder-time panic otherwise. See
+  `docs/spec/interfaces/fork-mirror-operations.md` §4.
+
+- **`repo_roller_core::SourceRepositoryReference`** — identifies a repository
+  to fork/mirror from, which may be outside the managed organization
+  Location: `repo_roller_core/src/repository.rs`
+  Pattern: `{ owner: OrganizationName, name: RepositoryName }` — no new
+  validation rules, delegates entirely to those two branded types
+  Use when: Referencing an upstream/source repository in `CreationMode::Fork`/
+  `Mirror`
+
+- **`repo_roller_core::create_repository_inner` dispatch on `CreationMode`**
+  — four extracted orchestration functions, one per `CreationMode` arm:
+  `create_standard_repository`, `create_fork_repository`,
+  `create_history_mirror_repository`, `create_source_only_mirror_repository`
+  Location: `repo_roller_core/src/lib.rs`
+  Pattern: `validate_creation_mode_capability` (capability + designation gate,
+  RCF-005/RCF-006) runs once, before the dispatch, for every non-`Standard`
+  mode — before any GitHub-mutating call. Each arm ends by building its
+  `RepositoryCreationResult` via the shared `build_creation_result(&repo,
+  default_branch)` helper (REFACTOR pass — the four arms previously repeated
+  the same four-field struct literal verbatim).
+  Use when: Adding a fifth `CreationMode` variant — add a new dispatch arm
+  calling a new `create_*_repository` function, and reuse
+  `build_creation_result`/`build_github_https_url` rather than re-inlining
+  their logic.
+  Notes: `initialize_git_repository` and `create_github_repository` take
+  `&dyn RepositoryClient` (widened from `&GitHubClient` for unit-test
+  mockability); `apply_post_creation_settings` /
+  `apply_repository_configuration` were deliberately **not** widened — see
+  `.llm/findings/fork-mirror-operations.md` item 1 for why and the follow-up
+  options.
+  Test coverage (post-#255 audit): `create_fork_repository`,
+  `create_history_mirror_repository`, `create_source_only_mirror_repository`
+  previously had zero test coverage reachable without live GitHub
+  credentials. `create_fork_repository` now has a full success-path test
+  (`lib_tests.rs::test_create_fork_repository_success_path_reaches_fork_and_default_branch_calls_and_returns_result`,
+  via a `GitHubClient` pointed at a `wiremock::MockServer` — see
+  `wiremock_github_client` in `lib_tests.rs`) since it never calls git2 at
+  all (GitHub forks server-side). `create_history_mirror_repository`/
+  `create_source_only_mirror_repository` cannot get a network-free
+  success-path test — both eventually push/clone against the real,
+  hardcoded `https://github.com/...` URL (`github_client::Repository::url()`,
+  `build_github_https_url`, no override seam) — so their tests mock up to
+  `create_github_repository` and assert correct error propagation at that
+  boundary instead.
+
+- **`github_client::RepositoryClient::create_fork` / `create_pull_request` /
+  `mark_pull_request_ready_for_review`** — fork creation, PR creation, and
+  draft→ready-for-review transition
+  Location: `github_client/src/lib.rs` (trait + `GitHubClient` impl),
+  payload/response types in `github_client/src/pull_request.rs`
+  Key exports: `PullRequestCreatePayload` (`title`, `head`, `base`, `body`,
+  `draft` — `draft: false` by default), `PullRequest` (`number`, `html_url`,
+  `draft`, `state`)
+  Notes: Deserializes directly into RepoRoller's own `Repository`/
+  `PullRequest` types rather than `octocrab::models::*`, since the fork/PR
+  REST responses' nested `owner`/`head`/`base` author objects don't
+  reliably satisfy octocrab's richer `Author` model. Reuses the pre-existing
+  `log_octocrab_error` helper and its `match response { Ok(r) => ...,
+  Err(e) => {...} }` mapping idiom — already used 50+ times in this file —
+  do not introduce a new error-mapping pattern for future `RepositoryClient`
+  methods.
+
+- **`repo_roller_core::git::mirror_clone` / `mirror_push` /
+  `shallow_clone_working_tree` / `create_snapshot_branch`** — local-git
+  primitives for the two mirror modes (no GitHub API calls)
+  Location: `repo_roller_core/src/git.rs`
+  Key exports: `mirror_clone(source_url, token) -> (TempDir, default_branch)`
+  (bare `--mirror`-equivalent clone + all-refs fetch), `mirror_push(dir,
+  repo_url, token)` (`--mirror`-equivalent push), `shallow_clone_working_tree`
+  (depth-1 clone for current-contents-only mirrors), `create_snapshot_branch`
+  (branches off a base branch, replaces the working tree with another
+  repository's current contents, commits as a single child — no
+  merge/cherry-pick)
+  Notes: All four share `installation_token_credential_callbacks(token)` —
+  the same `x-access-token` installation-token credential strategy
+  `push_to_origin` uses. `push_to_origin` itself was refactored (REFACTOR
+  pass) to call this shared helper instead of its own independent inline
+  credential closure, consolidating what had become two parallel
+  implementations of the same authentication logic into one. `prepare_index_and_tree`,
+  `create_initial_commit`, and the new `create_snapshot_branch` share tree/commit
+  plumbing; the author/committer identity itself is centralized in
+  `repo_roller_signature()` (REFACTOR pass — previously duplicated verbatim
+  between `create_initial_commit` and `create_snapshot_branch`). Use
+  `repo_roller_signature()` for any future RepoRoller-authored commit rather
+  than re-inlining `Signature::now("RepoRoller", "repo-roller@example.com")`.
+  **Bug fix (post-#255 mutation-testing audit)**: `prepare_index_and_tree`
+  called `index.add_all(...)` + `index.write_tree()` but never `index.write()`,
+  so `.git/index` was never persisted to disk — harmless for
+  `commit_all_changes`'s one-shot init→commit→push use, but
+  `create_snapshot_branch`'s subsequent `checkout_tree` call diffed against
+  the stale on-disk index and failed every source-only-mirror creation with
+  a checkout conflict. Fixed by adding `index.write()` immediately after
+  `add_all`; see `.llm/tasks.md`'s "Mutation-Testing Audit Fix (post-#255)"
+  entry and the Rules & Tips note on `index.write_tree()` not persisting
+  `.git/index`.
+
+- **`repo_roller_core::git::copy_dir_contents`'s symlink guard** —
+  security-remediation fix (CRITICAL finding) for arbitrary file disclosure
+  via symlink dereference during the source-only mirror's working-tree-copy
+  step
+  Location: `repo_roller_core/src/git.rs`, called from
+  `replace_working_tree_contents` ← `create_snapshot_branch`
+  Pattern: Checks `entry.file_type()?.is_symlink()` for every directory entry
+  (recursively) and `continue`s past it — neither dereferencing it (the
+  `std::fs::copy` default behavior, which would copy a symlink *target's*
+  bytes even when the target lives outside the cloned source tree) nor
+  recreating it as a symlink in the destination. Regular sibling files/dirs
+  are still copied normally when a symlink is skipped. Use this
+  `is_symlink()`-check-then-skip pattern for any future recursive
+  tree-copy/tree-walk helper that reads attacker-influenced (cloned source
+  repository) content into a location that gets committed/pushed/exposed.
+  See `docs/spec/interfaces/fork-mirror-operations.md` §7.
+
+- **`repo_roller_core::configuration::effective_template_name`** — pure
+  decision function resolving which template name
+  `resolve_organization_configuration` must use to build its
+  `ConfigurationContext`, given the caller's explicit `template_name`
+  (empty string when none), the `TemplateDesignation` implied by
+  `CreationMode` (see `designation_for_creation_mode` below), and the
+  `ConfigurationResult<Option<String>>` from
+  `settings_manager.find_designated_template`
+  Location: `repo_roller_core/src/configuration.rs`
+  Returns: `Ok(Some(template_name))` when `template_name` is non-empty
+  (explicit always wins, discovery never even consulted); `Ok(None)` when
+  `template_name` is empty and `designation` is `None`; otherwise
+  `discovery_result` unchanged (`Ok(Some(name))`, `Ok(None)`, or
+  `Err(ConfigurationError::AmbiguousTemplateDesignation)`)
+  Use when: Any caller needs the same "explicit beats auto-discovery, no
+  designation means nothing to discover" decision for a template name
+  Notes: **#255 follow-up Gap 1 fix** ("designated template is never
+  auto-discovered"). `resolve_organization_configuration` only calls
+  `find_designated_template` when `template_name.is_empty() &&
+  designation.is_some()` — never otherwise. `resolve_organization_configuration`
+  now returns `(MergedConfiguration, Option<String>)`, threading the resolved
+  name back to `load_creation_config` for use with
+  `metadata_provider.load_template_configuration`. The `AmbiguousTemplateDesignation`
+  error propagates via the existing `RepoRollerError::Configuration(#[from]
+  ConfigurationError)` conversion — not swallowed by the
+  metadata-repository-unavailable fallback (that fallback is for CRF-001, a
+  different, legitimate case).
+
+- **`repo_roller_core::designation_for_creation_mode`** — pure mapping from
+  a request's `CreationMode` to the `TemplateDesignation`
+  `load_creation_config` should auto-discover a template for
+  Location: `repo_roller_core/src/lib.rs`
+  Mapping: `Standard -> None`, `Fork { .. } -> Some(Fork)`, `Mirror {
+  preserve_history: true, .. } -> Some(SourceHistoryMirror)`, `Mirror {
+  preserve_history: false, .. } -> Some(SourceOnlyMirror)`
+  Use when: `load_creation_config` needs a designation to pass to
+  `resolve_organization_configuration`'s auto-discovery; only called when
+  `request.template.is_none()` — an explicit template always wins and never
+  triggers discovery
+  Notes: Consults only `creation_mode`, never `request.template`, so it
+  stays orthogonal to and composable with `effective_template_name`'s
+  "explicit wins" rule.
+
+- **`repo_roller_core::history_mirror_default_branch_update`** — pure
+  builder for the `RepositorySettingsUpdate` payload
+  `create_history_mirror_repository` applies after `git::mirror_push`
+  succeeds
+  Location: `repo_roller_core/src/lib.rs`
+  Pattern: `RepositorySettingsUpdate { default_branch: Some(source_default_branch.to_string()),
+  ..Default::default() }` — sets only `default_branch`, leaves every other
+  field `None`
+  Use when: Aligning a newly created repository's recorded default branch
+  with a source repository's actual default branch after a history-preserving
+  mirror push
+  Notes: **#255 follow-up Gap 2 fix** ("history mirror never sets the new
+  repo's default branch on GitHub"). Mirror-pushing preserves the source's
+  branch structure as-is; GitHub cannot infer the intended default branch
+  from repository-creation options alone, so `create_history_mirror_repository`
+  now calls `installation_repo_client.update_repository_settings(owner, name,
+  &history_mirror_default_branch_update(&source_default_branch))` right
+  after `git::mirror_push` and before applying post-creation settings,
+  propagating any `github_client::Error` as `RepoRollerError::GitHub`.
+
+- **`github_client::RepositorySettingsUpdate::default_branch`** —
+  `Option<String>` field (`#[serde(skip_serializing_if = "Option::is_none")]`)
+  added to the existing settings-update struct
+  Location: `github_client/src/lib.rs`
+  Use when: A caller needs `update_repository_settings`'s PATCH to also set
+  `default_branch` (currently only `create_history_mirror_repository`, via
+  `history_mirror_default_branch_update` above)
+  Notes: Purely additive — `update_repository_settings` already PATCHes the
+  whole struct as the request body, so no new client method was needed.
+
+### CLI / API Fork & Mirror Request Surface (#255)
+
+- **`repo_roller_cli::commands::create_cmd::parse_source_repository_reference`**
+  — parses an `OWNER/REPO` CLI value (as supplied to `--fork-from`/
+  `--mirror-from`) into a validated `SourceRepositoryReference`
+  Location: `repo_roller_cli/src/commands/create_cmd.rs`
+  Pattern: Splits on exactly one `/` (zero or multiple `/` rejected), then
+  validates each half with `OrganizationName::new`/`RepositoryName::new` —
+  the same branded-type calls used elsewhere in this module (e.g.
+  `--team`/`--collaborator` parsing)
+  Use when: Adding a new CLI flag that accepts an `OWNER/REPO`-shaped source
+  repository reference
+  Errors: `Error::InvalidArguments` on a malformed split or failed
+  branded-type validation
+
+- **`repo_roller_api::translation::revalidate_source_repository_reference`**
+  — re-validates the nested `owner`/`name` of a `SourceRepositoryReference`
+  that arrived via HTTP deserialization
+  Location: `repo_roller_api/src/translation.rs`
+  Notes: `OrganizationName`/`RepositoryName` derive `Deserialize` directly
+  on their inner `String`, which does **not** invoke `::new()` validation —
+  a malformed `source.owner`/`source.name` therefore deserializes
+  successfully with the invalid value intact. This function explicitly
+  re-runs `::new()` before the value reaches the domain layer. See
+  `docs/spec/interfaces/fork-mirror-operations.md` §8a ("Correction (found
+  during RED)"). Use this pattern for any future HTTP request field whose
+  domain type derives `Deserialize` without going through `::new()`.
+
+- **`repo_roller_api::CreateRepositoryRequest.creation_mode`** —
+  `Option<repo_roller_core::CreationMode>` field reusing the core crate's
+  enum directly rather than defining a separate HTTP-layer copy
+  Location: `repo_roller_api/src/models/request.rs`
+  Pattern: `#[serde(skip_serializing_if = "Option::is_none")]`; absent from
+  the request ⇒ `None`, which `translation::http_request_to_domain` (or
+  equivalent) treats identically to `Some(CreationMode::Standard)`
+  Example: `"creationMode": { "type": "fork", "source": { "owner":
+  "upstream-org", "name": "some-repo" } }`
+  Use when: An HTTP client needs to request a Fork/Mirror creation; the
+  nested `source` is re-validated via `revalidate_source_repository_reference`
+  above before reaching the domain layer
+
+- **CLI `--fork-from` / `--mirror-from` / `--mirror-history` flags** —
+  `CreateArgs` fields surfacing fork/mirror creation from the command line
+  Location: `repo_roller_cli/src/commands/create_cmd.rs`
+  Pattern: `fork_from`/`mirror_from` are `Option<String>` (`OWNER/REPO`),
+  mutually exclusive via `conflicts_with_all` (each other, plus `--empty`/
+  `--init-readme`/`--init-gitignore`, since Fork/Mirror bypass
+  `ContentStrategy` entirely); `mirror_history: bool` is a plain flag with
+  `requires = "mirror_from"` (meaningless without `--mirror-from`) — `true`
+  selects a source+history mirror, `false` (default) a source-only mirror
+  delivered via PR
+  Use when: Extending the CLI's fork/mirror argument surface; parse values
+  with `parse_source_repository_reference` above before constructing
+  `CreationMode::Fork`/`CreationMode::Mirror`
+
 ### Caching
 
 - **Policy cache** — In-memory cache with TTL

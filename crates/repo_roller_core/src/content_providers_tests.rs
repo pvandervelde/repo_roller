@@ -2,7 +2,7 @@
 // See specs/interfaces/content-providers.md for complete specification
 
 use super::*;
-use crate::{ContentStrategy, OrganizationName, RepositoryName, TemplateName};
+use crate::{ContentStrategy, CreationMode, OrganizationName, RepositoryName, TemplateName};
 use std::collections::HashMap;
 
 // Mock TemplateFetcher for testing
@@ -33,6 +33,7 @@ fn create_test_request() -> RepositoryCreationRequest {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        creation_mode: CreationMode::Standard,
     }
 }
 fn create_test_template_config() -> config_manager::TemplateConfig {
@@ -60,6 +61,8 @@ fn create_test_template_config() -> config_manager::TemplateConfig {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     }
 }
 

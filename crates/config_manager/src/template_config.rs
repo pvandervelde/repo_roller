@@ -59,9 +59,9 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::{
-    BranchProtectionSettings, EnvironmentConfig, GitHubAppConfig, LabelConfig, NotificationsConfig,
-    PullRequestSettings, RepositorySettings, RulesetConfig, TemplatePermissionsConfig,
-    WebhookConfig,
+    BranchProtectionSettings, CreationCapabilitiesSettings, EnvironmentConfig, GitHubAppConfig,
+    LabelConfig, NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig,
+    TemplatePermissionsConfig, WebhookConfig,
 };
 use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
@@ -346,6 +346,64 @@ pub struct TemplateConfig {
     /// ```
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub naming_rules: Option<Vec<crate::settings::RepositoryNamingRulesConfig>>,
+
+    /// Special role this template plays in repository creation, beyond
+    /// ordinary template-based creation (optional).
+    ///
+    /// When set, this template is eligible to be discovered by
+    /// [`crate::OrganizationSettingsManager::find_designated_template`] for
+    /// fork, source+history mirror, or source-only mirror settings
+    /// application. At most one template per organization may declare a
+    /// given designation.
+    ///
+    /// # Constraint
+    ///
+    /// A template MUST NOT declare both `designation` and a `repository_type`
+    /// with `policy = "fixed"` — these are orthogonal roles. This is
+    /// enforced at template-load time (see `TemplateLoader::load_template_configuration`).
+    ///
+    /// # TOML Format
+    ///
+    /// ```toml
+    /// designation = "fork"  # or "source_history_mirror" | "source_only_mirror"
+    ///
+    /// [template]
+    /// name = "fork-settings"
+    /// description = "Settings applied to every fork"
+    /// author = "Platform Team"
+    /// tags = []
+    /// ```
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub designation: Option<TemplateDesignation>,
+
+    /// Fork/mirror capability toggles contributed by this template level
+    /// (optional).
+    ///
+    /// See [`CreationCapabilitiesSettings`] and
+    /// `docs/spec/interfaces/fork-mirror-operations.md` §2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_capabilities: Option<CreationCapabilitiesSettings>,
+}
+
+/// Special role a template plays in repository creation, beyond ordinary
+/// template-based creation.
+///
+/// A template self-declares at most one designation via
+/// [`TemplateConfig::designation`]. Designated templates contribute
+/// **settings only** when applied to a fork or source+history mirror; the
+/// source-only mirror designation additionally contributes file content as
+/// the mirror's first commit (see
+/// `docs/spec/interfaces/fork-mirror-operations.md` §1 and §6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TemplateDesignation {
+    /// This template's settings apply to newly created forks.
+    Fork,
+    /// This template's settings apply to source+history mirrors.
+    SourceHistoryMirror,
+    /// This template's settings apply to source-only mirrors; its file
+    /// contents are committed as the mirror's first commit.
+    SourceOnlyMirror,
 }
 
 /// Template metadata providing information about the template.
@@ -437,3 +495,11 @@ pub struct TemplateVariable {
 #[cfg(test)]
 #[path = "template_config_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "template_config_designation_tests.rs"]
+mod designation_tests;
+
+#[cfg(test)]
+#[path = "template_config_creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;

@@ -135,6 +135,9 @@ async fn main() {
                 args.init_gitignore,
                 &args.teams,
                 &args.collaborators,
+                &args.fork_from,
+                &args.mirror_from,
+                args.mirror_history,
             );
             let result =
                 handle_create_command(options, &ask_user_for_value, create_repository).await;

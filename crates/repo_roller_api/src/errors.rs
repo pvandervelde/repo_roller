@@ -549,6 +549,43 @@ fn convert_configuration_error(
                 identifier, context
             ),
         ),
+        ConfigurationError::AmbiguousTemplateDesignation {
+            org,
+            designation,
+            templates,
+        } => (
+            StatusCode::CONFLICT,
+            "AmbiguousTemplateDesignation",
+            format!(
+                "Multiple templates declare designation '{:?}' for organization '{}': {:?}. Expected at most one.",
+                designation, org, templates
+            ),
+        ),
+        ConfigurationError::TemplateNotDesignated {
+            template,
+            expected_designation,
+            actual_designation,
+        } => (
+            StatusCode::BAD_REQUEST,
+            "TemplateNotDesignated",
+            format!(
+                "Template '{}' is not designated for '{:?}' (actual: {:?})",
+                template, expected_designation, actual_designation
+            ),
+        ),
+        ConfigurationError::CapabilityDisabled { capability } => (
+            StatusCode::FORBIDDEN,
+            "CapabilityDisabled",
+            format!("Capability '{}' is disabled by configuration", capability),
+        ),
+        ConfigurationError::SourceOwnerNotAllowed { owner, capability } => (
+            StatusCode::FORBIDDEN,
+            "SourceOwnerNotAllowed",
+            format!(
+                "Source owner '{}' is not in the configured allow-list for '{}'",
+                owner, capability
+            ),
+        ),
     };
 
     (

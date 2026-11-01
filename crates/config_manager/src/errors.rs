@@ -94,7 +94,60 @@ pub enum ConfigurationError {
         /// Human-readable label for the level that locked the entry (e.g. `"org"`).
         context: String,
     },
+
+    /// More than one template in `org` declares the same fork/mirror
+    /// designation. At most one template per designation is permitted.
+    #[error("Multiple templates declare designation '{designation:?}' for organization '{org}': {templates:?}. Expected at most one.")]
+    AmbiguousTemplateDesignation {
+        /// The organization in which the conflicting templates were found.
+        org: String,
+        /// The designation that more than one template declared.
+        designation: String,
+        /// The names of the conflicting templates.
+        templates: Vec<String>,
+    },
+
+    /// A caller explicitly named a template for a fork/mirror request whose
+    /// `designation` does not match the expected one (including templates
+    /// with no designation at all).
+    #[error("Template '{template}' is not designated for '{expected_designation:?}' (actual: {actual_designation:?})")]
+    TemplateNotDesignated {
+        /// The template name that was requested.
+        template: String,
+        /// The designation required for this request (e.g. `"Fork"`).
+        expected_designation: String,
+        /// The template's actual designation, if any.
+        actual_designation: Option<String>,
+    },
+
+    /// The requested fork/mirror capability is disabled by configuration
+    /// (fail-closed default: a capability is disabled unless explicitly
+    /// enabled at some level of the configuration hierarchy).
+    #[error("Capability '{capability}' is disabled by configuration")]
+    CapabilityDisabled {
+        /// The disabled capability: `"fork"`, `"source_history_mirror"`, or
+        /// `"source_only_mirror"`.
+        capability: String,
+    },
+
+    /// `source.owner` of a fork/mirror request is not present
+    /// (case-insensitively) in the merged `allowed_source_owners` allow-list
+    /// for the requested capability. An unset or empty allow-list rejects
+    /// every source owner (fail-closed default) — see
+    /// `docs/spec/interfaces/fork-mirror-operations.md` §2.
+    #[error("Source owner '{owner}' is not in the configured allow-list for '{capability}'")]
+    SourceOwnerNotAllowed {
+        /// The rejected source owner.
+        owner: String,
+        /// The capability being requested: `"fork"`, `"source_history_mirror"`,
+        /// or `"source_only_mirror"`.
+        capability: String,
+    },
 }
 
 /// Result type alias for configuration operations.
 pub type ConfigurationResult<T> = Result<T, ConfigurationError>;
+
+#[cfg(test)]
+#[path = "errors_tests.rs"]
+mod tests;

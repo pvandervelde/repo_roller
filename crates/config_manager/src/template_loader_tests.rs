@@ -88,6 +88,8 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         teams: None,
         collaborators: None,
         naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
     }
 }
 

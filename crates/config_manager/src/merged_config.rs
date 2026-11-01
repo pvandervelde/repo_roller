@@ -37,9 +37,9 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::{
-    BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig, RepositorySettings,
-    RulesetConfig, WebhookConfig,
+    BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty, EnvironmentConfig,
+    GitHubAppConfig, LabelConfig, NotificationsConfig, PullRequestSettings,
+    RepositoryNamingRulesConfig, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use std::collections::HashMap;
 
@@ -158,6 +158,13 @@ pub struct MergedConfiguration {
     /// Same semantics as `max_team_access_level` but for collaborators.
     pub max_collaborator_access_level: Option<String>,
 
+    /// Fork/mirror capability toggles resolved across the full hierarchy.
+    ///
+    /// A fully-`None` value here (the default) means every capability is
+    /// disabled (fail-closed) — see
+    /// `docs/spec/interfaces/fork-mirror-operations.md` §2.
+    pub creation_capabilities: CreationCapabilitiesSettings,
+
     /// Source trace tracking which configuration source provided each setting.
     ///
     /// Used for auditing, debugging, and understanding configuration precedence.
@@ -194,6 +201,7 @@ impl MergedConfiguration {
             locked_collaborators: std::collections::HashSet::new(),
             max_team_access_level: None,
             max_collaborator_access_level: None,
+            creation_capabilities: CreationCapabilitiesSettings::default(),
             source_trace: ConfigurationSourceTrace::new(),
         }
     }

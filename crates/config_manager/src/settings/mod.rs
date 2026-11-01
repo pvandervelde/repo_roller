@@ -7,6 +7,7 @@
 
 pub mod actions;
 pub mod branch_protection;
+pub mod creation_capabilities;
 pub mod custom_property;
 pub mod environment;
 pub mod github_app;
@@ -23,6 +24,7 @@ pub mod webhook;
 // Re-export all types for convenient access
 pub use actions::ActionSettings;
 pub use branch_protection::BranchProtectionSettings;
+pub use creation_capabilities::CreationCapabilitiesSettings;
 pub use custom_property::CustomProperty;
 pub use environment::EnvironmentConfig;
 pub use github_app::GitHubAppConfig;

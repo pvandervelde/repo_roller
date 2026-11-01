@@ -37,6 +37,7 @@ Repository type configuration supports the same sections as global configuration
 | `[[default_collaborators]]` | No | Not available at type level |
 | `[permissions]` | Yes | Type-level permission policy (`required` and `restricted_types` fields) |
 | `[notifications]` | Yes | Inline outbound webhook configuration |
+| `[creation_capabilities]` | Yes | Overrides global defaults — fork/mirror enable flags and `allowed_source_owners` |
 
 For field-level documentation see [global-config.md](global-config.md). All field names, types, and `override_allowed` semantics are identical.
 

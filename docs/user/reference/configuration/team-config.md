@@ -32,6 +32,7 @@ Applies to repositories created by or for a specific team. Overrides global defa
 | `[[naming_rules]]` | Yes | **Additive** |
 | `[permissions]` | No | Only at global level |
 | `[notifications]` | Yes | Inline outbound webhook configuration |
+| `[creation_capabilities]` | Yes | Overrides global and type — fork/mirror enable flags and `allowed_source_owners` |
 
 ---
 
