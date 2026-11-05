@@ -17,7 +17,7 @@
 
 use async_trait::async_trait;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Extension, Json,
 };
 use serde::{Deserialize, Serialize};
@@ -1051,6 +1051,39 @@ pub async fn preview_configuration(
     };
 
     Ok(Json(response))
+}
+
+/// Query parameters for `GET /api/v1/orgs/:org/creation-capabilities`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreationCapabilitiesQuery {
+    /// Optional team slug to apply Team-level overrides for.
+    pub team: Option<String>,
+    /// Optional repository-type name to apply RepositoryType-level overrides for.
+    pub repository_type: Option<String>,
+}
+
+/// GET /api/v1/orgs/:org/creation-capabilities
+///
+/// Discover the resolved fork/mirror creation capabilities (enabled flags,
+/// allowed source owners, and designated templates) for an organization,
+/// optionally scoped by the `team` and/or `repositoryType` query parameters
+/// via the existing Global -> RepositoryType -> Team override precedence.
+///
+/// This is a read-only discovery endpoint: it reuses the existing
+/// configuration-merge and template-designation machinery, which only ever
+/// issues GET calls to GitHub, and never mutates anything. A disabled
+/// capability is reported as `false` with a `200` response, never an error.
+///
+/// See: docs/spec/interfaces/fork-mirror-operations.md §8b
+pub async fn get_creation_capabilities(
+    State(_state): State<AppState>,
+    Extension(_auth): Extension<AuthContext>,
+    Path(_org): Path<String>,
+    Query(_query): Query<CreationCapabilitiesQuery>,
+) -> Result<Json<CreationCapabilitiesResponse>, ApiError> {
+    // TODO: implement — see docs/spec/interfaces/fork-mirror-operations.md §8b.
+    todo!("get_creation_capabilities: resolve capabilities via OrganizationSettingsManager")
 }
 
 /// POST /api/v1/orgs/:org/validate
