@@ -1077,13 +1077,107 @@ pub struct CreationCapabilitiesQuery {
 ///
 /// See: docs/spec/interfaces/fork-mirror-operations.md §8b
 pub async fn get_creation_capabilities(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Extension(_auth): Extension<AuthContext>,
-    Path(_org): Path<String>,
-    Query(_query): Query<CreationCapabilitiesQuery>,
+    Path(org): Path<String>,
+    Query(query): Query<CreationCapabilitiesQuery>,
 ) -> Result<Json<CreationCapabilitiesResponse>, ApiError> {
-    // TODO: implement — see docs/spec/interfaces/fork-mirror-operations.md §8b.
-    todo!("get_creation_capabilities: resolve capabilities via OrganizationSettingsManager")
+    // Create settings manager and provider
+    let (manager, provider) = create_settings_manager(&org, &state).await?;
+
+    // Validate repository type exists before merging, mirroring the same
+    // check `preview_configuration` performs.
+    if let Some(ref repo_type) = query.repository_type {
+        let meta = provider
+            .discover_metadata_repository(&org)
+            .await
+            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+        let type_cfg = provider
+            .load_repository_type_configuration(&meta, repo_type)
+            .await
+            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+        if type_cfg.is_none() {
+            return Err(ApiError::from(RepoRollerError::Configuration(
+                config_manager::ConfigurationError::InvalidConfiguration {
+                    field: "repository_type".to_string(),
+                    reason: format!("Repository type '{}' is not defined", repo_type),
+                },
+            )));
+        }
+    }
+
+    // Build configuration context with an empty-string template — a
+    // first-class supported path in `resolve_configuration` that lets this
+    // endpoint resolve capability settings without requiring a template.
+    let mut context = ConfigurationContext::new(&org, "");
+
+    if let Some(ref team) = query.team {
+        context = context.with_team(team);
+    }
+
+    if let Some(ref repo_type) = query.repository_type {
+        context = context.with_repository_type(repo_type);
+    }
+
+    let merged = manager
+        .resolve_configuration(&context)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+
+    let fork_enabled = merged
+        .creation_capabilities
+        .fork_enabled
+        .as_ref()
+        .map(|v| *v.get())
+        .unwrap_or(false);
+    let source_history_mirror_enabled = merged
+        .creation_capabilities
+        .source_history_mirror_enabled
+        .as_ref()
+        .map(|v| *v.get())
+        .unwrap_or(false);
+    let source_only_mirror_enabled = merged
+        .creation_capabilities
+        .source_only_mirror_enabled
+        .as_ref()
+        .map(|v| *v.get())
+        .unwrap_or(false);
+    let allowed_source_owners = merged
+        .creation_capabilities
+        .allowed_source_owners
+        .as_ref()
+        .map(|v| v.get().clone())
+        .unwrap_or_default();
+
+    // Each of the three designation lookups is a separate call; any one of
+    // them returning `AmbiguousTemplateDesignation` short-circuits the whole
+    // handler via `?` (fail-fast — this is a single response, not three
+    // independent slots).
+    let fork_template = manager
+        .find_designated_template(&org, config_manager::TemplateDesignation::Fork)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+    let source_history_mirror_template = manager
+        .find_designated_template(
+            &org,
+            config_manager::TemplateDesignation::SourceHistoryMirror,
+        )
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+    let source_only_mirror_template = manager
+        .find_designated_template(&org, config_manager::TemplateDesignation::SourceOnlyMirror)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+
+    Ok(Json(CreationCapabilitiesResponse {
+        fork_enabled,
+        source_history_mirror_enabled,
+        source_only_mirror_enabled,
+        allowed_source_owners,
+        fork_template,
+        source_history_mirror_template,
+        source_only_mirror_template,
+    }))
 }
 
 /// POST /api/v1/orgs/:org/validate

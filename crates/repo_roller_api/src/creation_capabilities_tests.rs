@@ -446,7 +446,12 @@ fn test_app(mock_server: &MockServer) -> axum::Router {
 /// an allow-list, using the explicit `{ value = ..., override_allowed = ... }`
 /// `OverridableValue` TOML format (see
 /// `config_manager::global_defaults_creation_capabilities_tests`).
-fn capabilities_toml(fork: bool, history_mirror: bool, only_mirror: bool, owners: &[&str]) -> String {
+fn capabilities_toml(
+    fork: bool,
+    history_mirror: bool,
+    only_mirror: bool,
+    owners: &[&str],
+) -> String {
     let owners_toml = owners
         .iter()
         .map(|o| format!("\"{o}\""))
@@ -691,7 +696,10 @@ async fn test_creation_capabilities_source_history_mirror_template_returns_desig
         .unwrap();
     let resp: Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(resp["sourceHistoryMirrorTemplate"], "history-mirror-settings");
+    assert_eq!(
+        resp["sourceHistoryMirrorTemplate"],
+        "history-mirror-settings"
+    );
     assert_eq!(
         resp["forkTemplate"],
         Value::Null,
@@ -771,7 +779,8 @@ async fn test_creation_capabilities_repository_type_overrides_global_for_fork_en
     let mock_server = MockServer::start().await;
     let global = capabilities_toml(false, false, false, &[]);
     mount_full_resolution(&mock_server, "testorg", &global, &[]).await;
-    let repo_type_toml = "[creation_capabilities]\nfork_enabled = { value = true, override_allowed = true }\n";
+    let repo_type_toml =
+        "[creation_capabilities]\nfork_enabled = { value = true, override_allowed = true }\n";
     mount_repository_type(&mock_server, "testorg", "service", repo_type_toml).await;
 
     let app = test_app(&mock_server);
@@ -959,7 +968,9 @@ async fn test_creation_capabilities_response_is_camelcase_with_exact_field_set()
         .await
         .unwrap();
     let resp: Value = serde_json::from_slice(&body).unwrap();
-    let obj = resp.as_object().expect("response body must be a JSON object");
+    let obj = resp
+        .as_object()
+        .expect("response body must be a JSON object");
 
     let expected: std::collections::BTreeSet<&str> = [
         "forkEnabled",
@@ -1358,10 +1369,14 @@ async fn test_creation_capabilities_zero_mutating_http_calls_made_to_github() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let received = mock_server.received_requests().await.expect(
-        "wiremock request recording must be enabled by default for MockServer::start()",
+    let received = mock_server
+        .received_requests()
+        .await
+        .expect("wiremock request recording must be enabled by default for MockServer::start()");
+    assert!(
+        !received.is_empty(),
+        "expected at least one GitHub API call"
     );
-    assert!(!received.is_empty(), "expected at least one GitHub API call");
     for req in &received {
         assert_eq!(
             req.method.as_str(),
