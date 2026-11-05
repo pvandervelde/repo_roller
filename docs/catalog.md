@@ -149,10 +149,23 @@ Add to this whenever a reusable component becomes "the standard way".
   Notes: **Fail-closed default** — a fully-`None` value at every level means
   **disabled**, not enabled (unlike most other `Option<OverridableValue<_>>`
   settings in this codebase, which tend to default permissively). Resolve
-  with `flag.as_ref().map(|v| *v.get()).unwrap_or(false)` — never
-  `unwrap_or(true)`. `allowed_source_owners` is independently fail-closed:
-  unset *or* explicitly empty both deny every source owner. See
+  with `repo_roller_core::resolved_capability_flag(&flag)` (see entry below)
+  — never `unwrap_or(true)`. `allowed_source_owners` is independently
+  fail-closed: unset *or* explicitly empty both deny every source owner. See
   `docs/spec/interfaces/fork-mirror-operations.md` §2.
+
+- **`repo_roller_core::resolved_capability_flag(&Option<OverridableValue<bool>>)
+  -> bool`** — the single fail-closed resolver for any
+  `CreationCapabilitiesSettings` bool flag (`unwrap_or(false)`, never `true`)
+  Location: `repo_roller_core/src/lib.rs`
+  Use when: Reading a resolved `fork_enabled`/`source_history_mirror_enabled`/
+  `source_only_mirror_enabled`-shaped field out of a `MergedConfiguration`,
+  in either `repo_roller_core` or a downstream crate
+  Notes: Made `pub` (REFACTOR pass, creation-capabilities discovery endpoint
+  task) specifically so `repo_roller_api::handlers::get_creation_capabilities`
+  could reuse it instead of re-inlining `.map(|v| *v.get()).unwrap_or(false)`
+  a second time at a new call site. Call this rather than inlining the
+  resolution again for any future capability-flag consumer.
 
 - **`ConfigurationMerger::merge_creation_capabilities_settings` /
   `merge_capability_field` / `merge_allowed_source_owners_field`** —
@@ -449,17 +462,42 @@ Add to this whenever a reusable component becomes "the standard way".
   `organization_routes()` and `organization_routes_without_auth()`)
   Pattern: reuses `create_settings_manager` +
   `ConfigurationContext::new(&org, "")` (empty-template path) +
-  `resolve_configuration` + three `find_designated_template` calls —
-  no new `config_manager` merge logic. `CreationCapabilitiesResponse` is
-  a purpose-built camelCase type (unlike `GlobalDefaultsResponse`'s raw
-  `serde_json::to_value` dump) matching
-  `docs/spec/interfaces/fork-mirror-operations.md` §8b exactly.
+  `resolve_configuration` — no new `config_manager` merge logic.
+  `CreationCapabilitiesResponse` is a purpose-built camelCase type (unlike
+  `GlobalDefaultsResponse`'s raw `serde_json::to_value` dump) matching
+  `docs/spec/interfaces/fork-mirror-operations.md` §8b exactly. The handler
+  body itself delegates to three private helpers (REFACTOR pass, to stay
+  under this project's 50-line function guideline):
+  `resolve_creation_capability_fields` (the three bool flags +
+  `allowed_source_owners`, via `repo_roller_core::resolved_capability_flag`),
+  `resolve_template_designations` (the three `find_designated_template`
+  calls, fail-fast via `?` on the first `AmbiguousTemplateDesignation`), and
+  `validate_repository_type_exists` (shared with `preview_configuration` —
+  see below).
   Use when: A client (e.g. the SvelteKit frontend) needs to pre-filter
   its UI based on which fork/mirror capabilities are enabled before
   composing a creation request
   Errors: unknown `repositoryType` → 400 `InvalidConfiguration`; two+
   templates sharing a designation → 409 `AmbiguousTemplateDesignation`
   (fail-fast across all three designation lookups, one response)
+
+- **`repo_roller_api::handlers::validate_repository_type_exists(provider,
+  org, repo_type) -> Result<(), ApiError>`** — rejects an unknown
+  `repositoryType` with 400 `InvalidConfiguration` before it reaches
+  `resolve_configuration`
+  Location: `repo_roller_api/src/handlers.rs`
+  Pattern: `discover_metadata_repository` + `load_repository_type_configuration`,
+  `InvalidConfiguration` on `None`. Extracted (REFACTOR pass) from two
+  verbatim-duplicated inline blocks in `preview_configuration` and
+  `get_creation_capabilities` — both validate the same query/body field the
+  same way before building their `ConfigurationContext`.
+  Use when: A new handler accepts an optional `repositoryType` input and
+  must 400 on an unknown value rather than silently falling through
+  Notes: Carries a pre-existing `TODO` (not addressed by this extraction):
+  `resolve_configuration` re-runs `discover_metadata_repository` +
+  `load_repository_type_configuration` internally, so this check costs 2
+  extra GitHub round-trips per request — caching metadata-repo discovery
+  across the two calls is deferred tech debt.
 
 - **CLI `--fork-from` / `--mirror-from` / `--mirror-history` flags** —
   `CreateArgs` fields surfacing fork/mirror creation from the command line
