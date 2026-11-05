@@ -575,6 +575,143 @@ Otherwise, pass `creation_mode` straight to `builder.creation_mode(...)`.
   fork/mirror + explicit non-default `content_strategy` in the same request
   → `ApiError::validation_error`, no builder panic reaches the handler.
 
+## 8b. Capability Discovery Endpoint (API)
+
+Clients (the SvelteKit frontend in particular) need to know, before composing
+a fork/mirror creation request, whether each capability is enabled, which
+source owners are allowed, and which template (if any) is designated for
+each mode. None of this is exposed today: `GET /orgs/:org/defaults` only
+returns the Global level (no repository-type/team override applied), and
+`POST /orgs/:org/configuration/preview` requires a `template` up front, which
+fork/mirror intentionally makes optional. This section adds a dedicated
+read-only discovery endpoint that closes that gap by reusing existing
+merge/designation machinery — no new `config_manager` merge logic is
+required.
+
+### Route
+
+```
+GET /api/v1/orgs/:org/creation-capabilities?team=<team>&repositoryType=<type>
+```
+
+Both query parameters are optional. Add to `organization_routes()` AND
+`organization_routes_without_auth()` in `crates/repo_roller_api/src/routes.rs`
+(both router-builder functions currently duplicate every route — this one is
+no exception), and update the route list in the module doc comment at the
+top of that file.
+
+### Handler (`crates/repo_roller_api/src/handlers.rs`)
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreationCapabilitiesQuery {
+    pub team: Option<String>,
+    pub repository_type: Option<String>,
+}
+
+pub async fn get_creation_capabilities(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthContext>,
+    Path(org): Path<String>,
+    Query(query): Query<CreationCapabilitiesQuery>,
+) -> Result<Json<CreationCapabilitiesResponse>, ApiError>
+```
+
+Implementation:
+
+1. `let (manager, _provider) = create_settings_manager(&org, &state).await?;`
+   — the same helper `get_global_defaults`/`preview_configuration` already
+   use.
+2. Build `let mut context = ConfigurationContext::new(&org, "");` — the
+   empty-string template is already a first-class, tested case in
+   `OrganizationSettingsManager::resolve_configuration`
+   (`organization_settings_manager.rs:335`: `if context.template().is_empty()`
+   it proceeds with a minimal/empty `TemplateConfig` rather than erroring).
+   Do NOT invent a new "resolve without template" method — this path already
+   exists and is exercised by existing tests.
+3. Chain `.with_team(team)` / `.with_repository_type(repository_type)` from
+   the query params when present, exactly as `preview_configuration` does
+   (including its existing check that a named `repositoryType` actually
+   exists before merging, `handlers.rs:970-990`).
+4. `let merged = manager.resolve_configuration(&context).await.map_err(...)?;`
+5. Resolve the three booleans and the allow-list from
+   `merged.creation_capabilities` using the existing fail-closed pattern
+   documented in §2:
+   `merged.creation_capabilities.fork_enabled.as_ref().map(|v| *v.get()).unwrap_or(false)`
+   (same for `source_history_mirror_enabled`, `source_only_mirror_enabled`), and
+   `merged.creation_capabilities.allowed_source_owners.as_ref().map(|v| v.get().clone()).unwrap_or_default()`.
+6. Call `manager.find_designated_template(&org, TemplateDesignation::Fork)`,
+   `::SourceHistoryMirror`, `::SourceOnlyMirror` — three independent calls,
+   each `ConfigurationResult<Option<String>>`. Propagate
+   `ConfigurationError::AmbiguousTemplateDesignation` as an `ApiError` (already
+   maps to 409 via the existing `From` impl in `errors.rs` — no new mapping
+   needed).
+7. Assemble and return the response below.
+
+### Response shape
+
+```rust
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreationCapabilitiesResponse {
+    pub fork_enabled: bool,
+    pub source_history_mirror_enabled: bool,
+    pub source_only_mirror_enabled: bool,
+    pub allowed_source_owners: Vec<String>,
+    pub fork_template: Option<String>,
+    pub source_history_mirror_template: Option<String>,
+    pub source_only_mirror_template: Option<String>,
+}
+```
+
+Wire example:
+
+```json
+{
+  "forkEnabled": true,
+  "sourceHistoryMirrorEnabled": true,
+  "sourceOnlyMirrorEnabled": false,
+  "allowedSourceOwners": ["upstream-org", "some-vendor-org"],
+  "forkTemplate": "fork-settings",
+  "sourceHistoryMirrorTemplate": null,
+  "sourceOnlyMirrorTemplate": null
+}
+```
+
+This is a purpose-built `repo_roller_api` response type (like
+`TemplateSummary`/`GlobalDefaultsResponse`'s sibling `PreviewConfigurationResponse`),
+NOT a raw `serde_json::to_value(&config_manager_struct)` dump — so, unlike
+`/defaults` and `/configuration/preview`, it is camelCase end-to-end with no
+snake_case leakage.
+
+### Errors
+
+| Condition | Status | Code |
+|---|---|---|
+| Org/metadata repository not found | 404 | existing `ConfigurationError` mapping |
+| `repositoryType` query param names a type that doesn't exist | 400 | reuse the same `InvalidConfiguration` pattern `preview_configuration` uses (`handlers.rs:982-989`) |
+| Two+ templates share a designation | 409 | `AmbiguousTemplateDesignation` (existing mapping, §2) |
+
+No `CapabilityDisabled`/`SourceOwnerNotAllowed`/`TemplateNotDesignated` errors
+are raised here — those are creation-time rejections (§6); this endpoint's
+job is purely to report resolved state so a client can pre-filter its UI, and
+it must remain a reliable pre-flight signal regardless of capability state
+(an administrator inspecting a disabled capability must still get `200` with
+`"forkEnabled": false`, not an error).
+
+### Testing Requirements (addendum to §7)
+
+- All three capability combinations (enabled/disabled) resolve correctly
+  through Global → RepositoryType → Team precedence, with and without
+  `team`/`repositoryType` query params.
+- `allowedSourceOwners` returns `[]` (not omitted) when unset at every level.
+- Each of the three designation lookups returns `null` when no template
+  declares that designation, the template name when exactly one does, and
+  surfaces `409 AmbiguousTemplateDesignation` when two or more do.
+- Unknown `repositoryType` query value → `400`.
+- Response is valid with zero query parameters (global-only resolution).
+
 ## 8. Related Specifications
 
 - [Repository Creation Modes](repository-creation-modes.md) — `ContentStrategy`
