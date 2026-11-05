@@ -1338,3 +1338,7 @@ pub struct HealthCheckResponse {
 #[cfg(test)]
 #[path = "handlers_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;
