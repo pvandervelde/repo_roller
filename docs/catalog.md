@@ -437,6 +437,30 @@ Add to this whenever a reusable component becomes "the standard way".
   nested `source` is re-validated via `revalidate_source_repository_reference`
   above before reaching the domain layer
 
+- **`repo_roller_api::handlers::get_creation_capabilities`** /
+  **`CreationCapabilitiesQuery`** / **`CreationCapabilitiesResponse`** —
+  read-only discovery endpoint reporting resolved fork/mirror creation
+  capabilities (enabled flags, allow-listed source owners, designated
+  templates) for an org, optionally scoped by `team`/`repositoryType`
+  Location: handler + query struct in `repo_roller_api/src/handlers.rs`;
+  response struct in `repo_roller_api/src/models/response.rs`; route in
+  `repo_roller_api/src/routes.rs` (`GET
+  /api/v1/orgs/:org/creation-capabilities`, registered in both
+  `organization_routes()` and `organization_routes_without_auth()`)
+  Pattern: reuses `create_settings_manager` +
+  `ConfigurationContext::new(&org, "")` (empty-template path) +
+  `resolve_configuration` + three `find_designated_template` calls —
+  no new `config_manager` merge logic. `CreationCapabilitiesResponse` is
+  a purpose-built camelCase type (unlike `GlobalDefaultsResponse`'s raw
+  `serde_json::to_value` dump) matching
+  `docs/spec/interfaces/fork-mirror-operations.md` §8b exactly.
+  Use when: A client (e.g. the SvelteKit frontend) needs to pre-filter
+  its UI based on which fork/mirror capabilities are enabled before
+  composing a creation request
+  Errors: unknown `repositoryType` → 400 `InvalidConfiguration`; two+
+  templates sharing a designation → 409 `AmbiguousTemplateDesignation`
+  (fail-fast across all three designation lookups, one response)
+
 - **CLI `--fork-from` / `--mirror-from` / `--mirror-history` flags** —
   `CreateArgs` fields surfacing fork/mirror creation from the command line
   Location: `repo_roller_cli/src/commands/create_cmd.rs`
