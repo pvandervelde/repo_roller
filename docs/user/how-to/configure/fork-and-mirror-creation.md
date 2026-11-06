@@ -120,7 +120,48 @@ Rules:
 See [Template configuration schema: `designation`](../../reference/configuration/template-config.md#designation--forkmirror-settings-role)
 for the complete field reference.
 
-## 4. Request a fork or mirror creation
+## 4. Check what's currently enabled
+
+Before a repository creator composes a fork/mirror creation request, they can query the
+resolved capability state directly, instead of guessing from configuration files or
+discovering a disabled capability only after a rejected request:
+
+```
+GET /api/v1/orgs/{org}/creation-capabilities?team=<team>&repositoryType=<type>
+```
+
+`team` and `repositoryType` are both optional and apply the same Global → RepositoryType →
+Team precedence used everywhere else in this guide. This is a read-only, informational
+endpoint — it never mutates anything and never calls GitHub's write API — so checking it
+has no side effects and is safe to call speculatively. A disabled capability is always
+reported as `false` with a `200` response, never as an error.
+
+```bash
+curl -s https://reporoller.myorg.example/api/v1/orgs/myorg/creation-capabilities \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+```json
+{
+  "forkEnabled": true,
+  "sourceHistoryMirrorEnabled": true,
+  "sourceOnlyMirrorEnabled": false,
+  "allowedSourceOwners": ["upstream-org", "some-vendor-org"],
+  "forkTemplate": "fork-settings",
+  "sourceHistoryMirrorTemplate": null,
+  "sourceOnlyMirrorTemplate": null
+}
+```
+
+No prior endpoint can answer this before a template or source is chosen:
+`GET /api/v1/orgs/{org}/defaults` only reflects the Global level, and
+`POST /api/v1/orgs/{org}/configuration/preview` requires a `template` name up front, which
+fork/mirror creation intentionally makes optional. See
+[Creation capabilities discovery](../../reference/api/templates.md#get-apiv1orgsorgcreation-capabilities)
+for the full field reference and error responses (`400` for an unknown `repositoryType`,
+`409` if two templates declare the same `designation`).
+
+## 5. Request a fork or mirror creation
 
 Once a capability is enabled and its source owner is allow-listed (steps 1–2 above), any
 repository creator can request that mode via the CLI's `create` command or the REST API's
