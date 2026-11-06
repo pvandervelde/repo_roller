@@ -8,6 +8,7 @@ import {
   ApiAuthError,
   ApiNetworkError,
   ApiServerError,
+  ApiValidationError,
 } from '../src/lib/api/errors';
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,7 @@ vi.mock('../src/lib/api/client', () => ({
   listRepositoryTypes: vi.fn(),
   listTeams: vi.fn(),
   createRepository: vi.fn(),
+  getCreationCapabilities: vi.fn(),
 }));
 
 import {
@@ -28,6 +30,7 @@ import {
   getTemplateDetails,
   listRepositoryTypes,
   listTeams,
+  getCreationCapabilities,
 } from '../src/lib/api/client';
 
 // ---------------------------------------------------------------------------
@@ -83,6 +86,18 @@ describe('Create wizard (SCR-004)', () => {
     });
     vi.mocked(listRepositoryTypes).mockResolvedValue([]);
     vi.mocked(listTeams).mockResolvedValue([]);
+    // Default: fork/mirror fully disabled, so the pre-existing template-only
+    // flow (and every test above this point) is unaffected by the new
+    // discovery call introduced for Task #2.
+    vi.mocked(getCreationCapabilities).mockResolvedValue({
+      forkEnabled: false,
+      sourceHistoryMirrorEnabled: false,
+      sourceOnlyMirrorEnabled: false,
+      allowedSourceOwners: [],
+      forkTemplate: null,
+      sourceHistoryMirrorTemplate: null,
+      sourceOnlyMirrorTemplate: null,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -112,6 +127,12 @@ describe('Create wizard (SCR-004)', () => {
     vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
     render(CreatePage, { props: makeProps() });
     await waitFor(() => expect(listTemplates).toHaveBeenCalledWith('test-org'));
+  });
+
+  it('queries the creation-capabilities discovery endpoint for the organization on mount (WUI-005)', async () => {
+    render(CreatePage, { props: makeProps() });
+    await waitFor(() => expect(getCreationCapabilities).toHaveBeenCalled());
+    expect(vi.mocked(getCreationCapabilities).mock.calls[0][0]).toBe('test-org');
   });
 
   it('"Next" button is disabled when no template is selected', () => {
@@ -1051,4 +1072,825 @@ describe('Create wizard (SCR-004)', () => {
     await advanceToReviewNoVars();
     expect(document.querySelector('.wizard.wizard--step1')).toBeNull();
   });
-});
+
+  // ===========================================================================
+  // Task #2: Fork and Mirror creation (WUI-005, WUIE-003)
+  //
+  // RED-phase spec-gap notes (Tester -> Coder), documenting the judgment calls
+  // made to write deterministic assertions against a not-yet-written UI. The
+  // Coder may choose different copy/structure as long as the following
+  // observable contracts hold (update these notes + the affected assertions
+  // together if a documented assumption turns out to be wrong):
+  //
+  // 1. When `forkEnabled`, `sourceHistoryMirrorEnabled`, and
+  //    `sourceOnlyMirrorEnabled` are ALL false, the wizard renders exactly as
+  //    it does today -- no "Creation mode" control appears at all. The control
+  //    only appears once at least one of Fork/Mirror is enabled (additive
+  //    behaviour, zero risk to the pre-existing template-only flow).
+  // 2. The mode choice is a `role="radiogroup"` with accessible name matching
+  //    /creation mode/i (mirrors TemplateGrid's `role="radiogroup"` pattern),
+  //    containing radio options with accessible names exactly "Template"
+  //    (always present when the group renders), "Fork" (iff forkEnabled), and
+  //    "Mirror" (iff sourceHistoryMirrorEnabled || sourceOnlyMirrorEnabled).
+  //    "Template" is selected by default.
+  // 3. Selecting Fork or Mirror replaces the template grid on Step 1 with a
+  //    single labelled textbox with accessible name matching /source
+  //    repository/i, expecting "owner/repo" shape. The step-1 "Next" button
+  //    text is unchanged ("Next: Repository settings ->") across all modes.
+  // 4. When both `sourceHistoryMirrorEnabled` and `sourceOnlyMirrorEnabled`
+  //    are true, selecting Mirror additionally reveals a second
+  //    `role="radiogroup"` with accessible name matching /history
+  //    preservation/i, with two radio options matching /preserve.*history/i
+  //    and /contents only|source.only/i respectively; "preserve full history"
+  //    is checked by default. When only one of the two is enabled, no toggle
+  //    is rendered at all and the implicit choice is used.
+  // 5. Step 2 (Repository settings) and the Review step are otherwise
+  //    unchanged for Fork/Mirror -- repository name/type/team/visibility are
+  //    still collected identically. Fork/Mirror never produce a Variables
+  //    step (the designated settings template, if any, is informational-only
+  //    on Review, never user-editable).
+  // 6. A designated settings template name (when non-null) is shown as plain
+  //    text on Review containing the literal template name, near wording
+  //    matching /settings template/i.
+  // =============================================================================
+
+  type CapabilitiesFixture = {
+    forkEnabled: boolean;
+    sourceHistoryMirrorEnabled: boolean;
+    sourceOnlyMirrorEnabled: boolean;
+    allowedSourceOwners: string[];
+    forkTemplate: string | null;
+    sourceHistoryMirrorTemplate: string | null;
+    sourceOnlyMirrorTemplate: string | null;
+  };
+
+  function makeCapabilities(overrides: Partial<CapabilitiesFixture> = {}): CapabilitiesFixture {
+    return {
+      forkEnabled: false,
+      sourceHistoryMirrorEnabled: false,
+      sourceOnlyMirrorEnabled: false,
+      allowedSourceOwners: [],
+      forkTemplate: null,
+      sourceHistoryMirrorTemplate: null,
+      sourceOnlyMirrorTemplate: null,
+      ...overrides,
+    };
+  }
+
+  const CREATION_RESPONSE_FIXTURE = {
+    repository: {
+      name: 'my-repo',
+      fullName: 'test-org/my-repo',
+      url: 'https://github.com/test-org/my-repo',
+      visibility: 'private',
+    },
+    appliedConfiguration: {},
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  async function renderForkMirrorWizard(
+    capabilities: CapabilitiesFixture,
+    templates: TemplateSummary[] = mockTemplates,
+  ) {
+    vi.mocked(listTemplates).mockResolvedValue(templates);
+    vi.mocked(getCreationCapabilities).mockResolvedValue(capabilities);
+    render(CreatePage, { props: makeProps() });
+    await waitFor(() => expect(getCreationCapabilities).toHaveBeenCalled());
+  }
+
+  async function selectCreationMode(name: 'Template' | 'Fork' | 'Mirror') {
+    const radio = await screen.findByRole('radio', { name });
+    await fireEvent.click(radio);
+  }
+
+  async function fillSourceReference(value: string) {
+    const input = await screen.findByRole('textbox', { name: /source repository/i });
+    await fireEvent.input(input, { target: { value } });
+    await fireEvent.blur(input);
+  }
+
+  /** Advances a Fork/Mirror flow from source entry all the way to the Review step. */
+  async function advanceForkMirrorToReview(
+    mode: 'Fork' | 'Mirror',
+    capsOverrides: Partial<CapabilitiesFixture>,
+    opts: { source: string; repoName?: string; historyChoice?: 'preserve' | 'source-only' },
+  ) {
+    await renderForkMirrorWizard(makeCapabilities(capsOverrides));
+    await selectCreationMode(mode);
+    await fillSourceReference(opts.source);
+
+    if (opts.historyChoice) {
+      const name =
+        opts.historyChoice === 'preserve' ? /preserve.*history/i : /contents only|source.only/i;
+      await fireEvent.click(screen.getByRole('radio', { name }));
+    }
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled(),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /repository name/i });
+    await fireEvent.input(nameInput, { target: { value: opts.repoName ?? 'my-fork' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+    );
+  }
+
+  describe('Create wizard — mode gating from discovery capabilities (WUI-005)', () => {
+    beforeEach(() => {
+      vi.mocked(getTemplateDetails).mockResolvedValue({
+        name: 'rust-library',
+        displayName: 'Rust Library',
+        description: 'A Rust library template',
+        tags: [],
+        variables: [],
+      });
+    });
+
+    it('shows no creation-mode control at all when fork and mirror are both fully disabled', async () => {
+      await renderForkMirrorWizard(makeCapabilities());
+      expect(screen.queryByRole('radiogroup', { name: /creation mode/i })).toBeNull();
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Choose a template');
+    });
+
+    // All 2^3 combinations of {forkEnabled, sourceHistoryMirrorEnabled, sourceOnlyMirrorEnabled}
+    // and their effect on which modes/toggles are presented.
+    const combinations: Array<{
+      name: string;
+      caps: Partial<CapabilitiesFixture>;
+      expectFork: boolean;
+      expectMirror: boolean;
+      expectHistoryToggle: boolean;
+    }> = [
+      {
+        name: 'fork only',
+        caps: { forkEnabled: true },
+        expectFork: true,
+        expectMirror: false,
+        expectHistoryToggle: false,
+      },
+      {
+        name: 'source+history mirror only',
+        caps: { sourceHistoryMirrorEnabled: true },
+        expectFork: false,
+        expectMirror: true,
+        expectHistoryToggle: false,
+      },
+      {
+        name: 'source-only mirror only',
+        caps: { sourceOnlyMirrorEnabled: true },
+        expectFork: false,
+        expectMirror: true,
+        expectHistoryToggle: false,
+      },
+      {
+        name: 'fork + source+history mirror',
+        caps: { forkEnabled: true, sourceHistoryMirrorEnabled: true },
+        expectFork: true,
+        expectMirror: true,
+        expectHistoryToggle: false,
+      },
+      {
+        name: 'fork + source-only mirror',
+        caps: { forkEnabled: true, sourceOnlyMirrorEnabled: true },
+        expectFork: true,
+        expectMirror: true,
+        expectHistoryToggle: false,
+      },
+      {
+        name: 'both mirror sub-types, no fork',
+        caps: { sourceHistoryMirrorEnabled: true, sourceOnlyMirrorEnabled: true },
+        expectFork: false,
+        expectMirror: true,
+        expectHistoryToggle: true,
+      },
+      {
+        name: 'fork + both mirror sub-types',
+        caps: {
+          forkEnabled: true,
+          sourceHistoryMirrorEnabled: true,
+          sourceOnlyMirrorEnabled: true,
+        },
+        expectFork: true,
+        expectMirror: true,
+        expectHistoryToggle: true,
+      },
+    ];
+
+    for (const c of combinations) {
+      it(`[${c.name}] presents Fork=${c.expectFork}, Mirror=${c.expectMirror}, history-toggle=${c.expectHistoryToggle}`, async () => {
+        await renderForkMirrorWizard(makeCapabilities(c.caps));
+
+        const radiogroup = await screen.findByRole('radiogroup', { name: /creation mode/i });
+        expect(radiogroup).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Template' })).toBeInTheDocument();
+
+        if (c.expectFork) {
+          expect(screen.getByRole('radio', { name: 'Fork' })).toBeInTheDocument();
+        } else {
+          expect(screen.queryByRole('radio', { name: 'Fork' })).toBeNull();
+        }
+
+        if (c.expectMirror) {
+          expect(screen.getByRole('radio', { name: 'Mirror' })).toBeInTheDocument();
+          await fireEvent.click(screen.getByRole('radio', { name: 'Mirror' }));
+          if (c.expectHistoryToggle) {
+            expect(
+              await screen.findByRole('radiogroup', { name: /history preservation/i }),
+            ).toBeInTheDocument();
+          } else {
+            await screen.findByRole('textbox', { name: /source repository/i });
+            expect(screen.queryByRole('radiogroup', { name: /history preservation/i })).toBeNull();
+          }
+        } else {
+          expect(screen.queryByRole('radio', { name: 'Mirror' })).toBeNull();
+        }
+      });
+    }
+
+    it('a disabled mode is never selectable even if the radiogroup for the other mode is shown', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      await screen.findByRole('radiogroup', { name: /creation mode/i });
+      // Mirror is disabled in this fixture -- must not be present as an option at all.
+      expect(screen.queryByRole('radio', { name: 'Mirror' })).toBeNull();
+    });
+  });
+
+  describe('Create wizard — source owner/repo input (WUI-005)', () => {
+    async function renderInForkMode(allowedSourceOwners: string[] = []) {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true, allowedSourceOwners }));
+      await selectCreationMode('Fork');
+    }
+
+    it('shows a labelled source-repository textbox once Fork is selected', async () => {
+      await renderInForkMode();
+      expect(
+        await screen.findByRole('textbox', { name: /source repository/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not render the template-selection radiogroup in Fork mode (no arbitrary template choice)', async () => {
+      await renderInForkMode();
+      await screen.findByRole('textbox', { name: /source repository/i });
+      expect(screen.queryByRole('radiogroup', { name: /available templates/i })).toBeNull();
+    });
+
+    it('disables the step-1 "Next" button while the source field is empty', async () => {
+      await renderInForkMode();
+      await screen.findByRole('textbox', { name: /source repository/i });
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).toBeDisabled();
+    });
+
+    const malformed: Array<[string, string]> = [
+      ['no slash', 'ownerrepo'],
+      ['multiple slashes', 'owner/repo/extra'],
+      ['empty owner segment', '/repo'],
+      ['empty repo segment', 'owner/'],
+      ['only a slash', '/'],
+    ];
+
+    for (const [label, value] of malformed) {
+      it(`rejects a malformed source reference (${label}: "${value}")`, async () => {
+        await renderInForkMode();
+        await fillSourceReference(value);
+        await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+        expect(screen.getByRole('button', { name: /next: repository settings/i })).toBeDisabled();
+      });
+    }
+
+    it('accepts a well-formed "owner/repo" source reference and enables "Next"', async () => {
+      await renderInForkMode();
+      await fillSourceReference('upstream-org/some-repo');
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /next: repository settings/i }),
+        ).not.toBeDisabled(),
+      );
+    });
+
+    it('shows a non-blocking warning when the typed owner is absent from a non-empty allowedSourceOwners list', async () => {
+      await renderInForkMode(['trusted-org']);
+      await fillSourceReference('untrusted-org/some-repo');
+      await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+      // Non-blocking per the Interface Contract -- the allow-list is advisory
+      // only; the server remains authoritative.
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled();
+    });
+
+    it('shows no owner warning when allowedSourceOwners is empty (non-additive / not yet scoped)', async () => {
+      await renderInForkMode([]);
+      await fillSourceReference('anything-at-all/some-repo');
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('shows no owner warning when the typed owner IS present in the allowed list', async () => {
+      await renderInForkMode(['trusted-org']);
+      await fillSourceReference('trusted-org/some-repo');
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  });
+
+  describe('Create wizard — mirror history-preservation toggle (WUI-005)', () => {
+    it('offers a history-preservation radiogroup, defaulting to "preserve full history", when both sub-types are enabled', async () => {
+      await renderForkMirrorWizard(
+        makeCapabilities({ sourceHistoryMirrorEnabled: true, sourceOnlyMirrorEnabled: true }),
+      );
+      await selectCreationMode('Mirror');
+
+      await screen.findByRole('radiogroup', { name: /history preservation/i });
+      expect(screen.getByRole('radio', { name: /preserve.*history/i })).toBeChecked();
+      expect(screen.getByRole('radio', { name: /contents only|source.only/i })).not.toBeChecked();
+    });
+
+    it('offers no toggle when only source+history mirror is enabled (implicit preserve-history)', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ sourceHistoryMirrorEnabled: true }));
+      await selectCreationMode('Mirror');
+      await screen.findByRole('textbox', { name: /source repository/i });
+      expect(screen.queryByRole('radiogroup', { name: /history preservation/i })).toBeNull();
+    });
+
+    it('offers no toggle when only source-only mirror is enabled (implicit contents-only)', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ sourceOnlyMirrorEnabled: true }));
+      await selectCreationMode('Mirror');
+      await screen.findByRole('textbox', { name: /source repository/i });
+      expect(screen.queryByRole('radiogroup', { name: /history preservation/i })).toBeNull();
+    });
+  });
+
+  describe('Create wizard — creationMode submission payload (WUI-005, contract)', () => {
+    it('submits {"type":"fork","source":{owner,name}} for Fork mode, with no `template` key', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true },
+        { source: 'upstream-org/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect(call.creationMode).toEqual({
+        type: 'fork',
+        source: { owner: 'upstream-org', name: 'some-repo' },
+      });
+      expect('template' in call).toBe(false);
+    });
+
+    it('submits preserveHistory:true when the user explicitly chooses "preserve full history"', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+
+      await advanceForkMirrorToReview(
+        'Mirror',
+        { sourceHistoryMirrorEnabled: true, sourceOnlyMirrorEnabled: true },
+        { source: 'upstream-org/some-repo', historyChoice: 'preserve' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect(call.creationMode).toEqual({
+        type: 'mirror',
+        source: { owner: 'upstream-org', name: 'some-repo' },
+        preserveHistory: true,
+      });
+    });
+
+    it('submits preserveHistory:false when the user explicitly chooses "contents only"', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+
+      await advanceForkMirrorToReview(
+        'Mirror',
+        { sourceHistoryMirrorEnabled: true, sourceOnlyMirrorEnabled: true },
+        { source: 'upstream-org/some-repo', historyChoice: 'source-only' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect(call.creationMode).toEqual({
+        type: 'mirror',
+        source: { owner: 'upstream-org', name: 'some-repo' },
+        preserveHistory: false,
+      });
+    });
+
+    it('submits preserveHistory:true implicitly when only source+history mirror is enabled (no toggle shown)', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+
+      await advanceForkMirrorToReview(
+        'Mirror',
+        { sourceHistoryMirrorEnabled: true },
+        { source: 'upstream-org/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect((call.creationMode as { preserveHistory: boolean }).preserveHistory).toBe(true);
+    });
+
+    it('submits preserveHistory:false implicitly when only source-only mirror is enabled (no toggle shown)', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+
+      await advanceForkMirrorToReview(
+        'Mirror',
+        { sourceOnlyMirrorEnabled: true },
+        { source: 'upstream-org/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect((call.creationMode as { preserveHistory: boolean }).preserveHistory).toBe(false);
+    });
+
+    it('omits `creationMode` entirely for standard template-based creation (unchanged behaviour)', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+      vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+      vi.mocked(getTemplateDetails).mockResolvedValue({
+        name: 'rust-library',
+        displayName: 'Rust Library',
+        description: 'A Rust library template',
+        tags: [],
+        variables: [],
+      });
+      render(CreatePage, { props: makeProps() });
+
+      await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+      await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+      await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+      await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect('creationMode' in call).toBe(false);
+    });
+  });
+
+  describe('Create wizard — repositoryType casing fix (required fix)', () => {
+    it('sends camelCase `repositoryType` (never snake_case `repository_type`) when a type is selected', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+      vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+      vi.mocked(getTemplateDetails).mockResolvedValue({
+        name: 'rust-library',
+        displayName: 'Rust Library',
+        description: 'A Rust library template',
+        tags: [],
+        variables: [],
+      });
+      vi.mocked(listRepositoryTypes).mockResolvedValue([
+        { name: 'library', description: 'Library' },
+      ]);
+      render(CreatePage, { props: makeProps() });
+
+      await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+      await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+      await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+      await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+      );
+
+      await waitFor(() => expect(screen.getByLabelText(/repository type/i)).toBeInTheDocument());
+      await fireEvent.change(screen.getByLabelText(/repository type/i), {
+        target: { value: 'library' },
+      });
+
+      await fireEvent.input(screen.getByRole('textbox', { name: /repository name/i }), {
+        target: { value: 'my-repo' },
+      });
+      await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect(call.repositoryType).toBe('library');
+      expect('repository_type' in call).toBe(false);
+    });
+  });
+
+  describe('Create wizard — designated settings template shown read-only on Review (WUI-005)', () => {
+    it('shows the designated fork template as read-only text on Review when forkTemplate is set', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true, forkTemplate: 'fork-settings' },
+        { source: 'upstream-org/some-repo' },
+      );
+      expect(screen.getByText(/fork-settings/)).toBeInTheDocument();
+    });
+
+    it('shows no "settings template" text on Review when forkTemplate is null', async () => {
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true, forkTemplate: null },
+        { source: 'upstream-org/some-repo' },
+      );
+      expect(screen.queryByText(/settings template/i)).toBeNull();
+    });
+
+    it('shows the source-only-mirror template (not the history-mirror template) when "contents only" was chosen', async () => {
+      await advanceForkMirrorToReview(
+        'Mirror',
+        {
+          sourceHistoryMirrorEnabled: true,
+          sourceOnlyMirrorEnabled: true,
+          sourceHistoryMirrorTemplate: 'history-mirror-settings',
+          sourceOnlyMirrorTemplate: 'source-only-settings',
+        },
+        { source: 'upstream-org/some-repo', historyChoice: 'source-only' },
+      );
+      expect(screen.getByText(/source-only-settings/)).toBeInTheDocument();
+      expect(screen.queryByText(/history-mirror-settings/)).toBeNull();
+    });
+
+    it('shows the history-mirror template (not the source-only template) when "preserve history" was chosen', async () => {
+      await advanceForkMirrorToReview(
+        'Mirror',
+        {
+          sourceHistoryMirrorEnabled: true,
+          sourceOnlyMirrorEnabled: true,
+          sourceHistoryMirrorTemplate: 'history-mirror-settings',
+          sourceOnlyMirrorTemplate: 'source-only-settings',
+        },
+        { source: 'upstream-org/some-repo', historyChoice: 'preserve' },
+      );
+      expect(screen.getByText(/history-mirror-settings/)).toBeInTheDocument();
+      expect(screen.queryByText(/source-only-settings/)).toBeNull();
+    });
+  });
+
+  describe('Create wizard — fork/mirror rejection handling (WUIE-003)', () => {
+    it('shows a distinct message for CapabilityDisabled, not the generic permission-denied fallback', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockRejectedValue(
+        new ApiAuthError(403, {
+          code: 'CapabilityDisabled',
+          message: "Capability 'fork' is disabled by configuration",
+        }),
+      );
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true },
+        { source: 'upstream-org/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+      const text = screen.getByRole('alert').textContent ?? '';
+      expect(text).toMatch(/disabl/i);
+      expect(text).not.toMatch(/don't have permission/i);
+    });
+
+    it('shows a distinct message for SourceOwnerNotAllowed that names the offending owner', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockRejectedValue(
+        new ApiAuthError(403, {
+          code: 'SourceOwnerNotAllowed',
+          message: "Source owner 'sneaky-owner' is not in the configured allow-list for 'fork'",
+        }),
+      );
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true },
+        { source: 'sneaky-owner/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+      const text = screen.getByRole('alert').textContent ?? '';
+      expect(text).toMatch(/sneaky-owner/);
+      expect(text).not.toMatch(/don't have permission/i);
+    });
+
+    it('shows a distinct message for TemplateNotDesignated, not the generic 5xx-server-error fallback', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockRejectedValue(
+        new ApiValidationError(400, {
+          code: 'TemplateNotDesignated',
+          message: "Template 'x' is not designated for 'Fork' (actual: None)",
+        }),
+      );
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true },
+        { source: 'upstream-org/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+      const text = screen.getByRole('alert').textContent ?? '';
+      expect(text).toMatch(/designat/i);
+      expect(text).not.toMatch(/temporarily unavailable/i);
+    });
+
+    it('preserves the typed source reference and repository name after a CapabilityDisabled rejection (WUIE-003)', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockRejectedValue(
+        new ApiAuthError(403, { code: 'CapabilityDisabled', message: 'disabled' }),
+      );
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true },
+        { source: 'upstream-org/some-repo', repoName: 'my-fork' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+
+      await fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+      expect(screen.getByRole('textbox', { name: /repository name/i })).toHaveValue('my-fork');
+
+      await fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+      expect(screen.getByRole('textbox', { name: /source repository/i })).toHaveValue(
+        'upstream-org/some-repo',
+      );
+    });
+
+    it('preserves the typed source reference after a SourceOwnerNotAllowed rejection (WUIE-003)', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockRejectedValue(
+        new ApiAuthError(403, {
+          code: 'SourceOwnerNotAllowed',
+          message: "Source owner 'bad-owner' is not allowed",
+        }),
+      );
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true },
+        { source: 'bad-owner/some-repo' },
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+
+      await fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+      await fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+      expect(screen.getByRole('textbox', { name: /source repository/i })).toHaveValue(
+        'bad-owner/some-repo',
+      );
+    });
+  });
+
+  describe('Create wizard — discovery-endpoint failure degrades gracefully (Interface Contract §8b)', () => {
+    it('hides Fork/Mirror and keeps template creation fully functional when discovery network-fails', async () => {
+      vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+      vi.mocked(getTemplateDetails).mockResolvedValue({
+        name: 'rust-library',
+        displayName: 'Rust Library',
+        description: 'A Rust library template',
+        tags: [],
+        variables: [],
+      });
+      vi.mocked(getCreationCapabilities).mockRejectedValue(
+        new ApiNetworkError(new Error('offline')),
+      );
+      render(CreatePage, { props: makeProps() });
+
+      await waitFor(() => expect(getCreationCapabilities).toHaveBeenCalled());
+      expect(screen.queryByRole('radiogroup', { name: /creation mode/i })).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      // Template flow still fully works despite the discovery failure.
+      await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+      await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+      await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+      expect(screen.getByRole('button', { name: /next: repository settings/i })).not.toBeDisabled();
+    });
+
+    it('hides Fork/Mirror and shows no error banner when discovery returns an unexpected 500', async () => {
+      vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+      vi.mocked(getCreationCapabilities).mockRejectedValue(
+        new ApiServerError(500, { code: 'SystemError', message: 'boom' }),
+      );
+      render(CreatePage, { props: makeProps() });
+
+      await waitFor(() => expect(getCreationCapabilities).toHaveBeenCalled());
+      expect(screen.queryByRole('radiogroup', { name: /creation mode/i })).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('shows a distinct inline alert (not silent degradation) when discovery reports AmbiguousTemplateDesignation', async () => {
+      vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+      vi.mocked(getCreationCapabilities).mockRejectedValue(
+        new ApiConflictError(409, {
+          code: 'AmbiguousTemplateDesignation',
+          message: "Multiple templates declare designation 'Fork' for organization 'test-org'",
+        }),
+      );
+      render(CreatePage, { props: makeProps() });
+
+      await waitFor(() => expect(getCreationCapabilities).toHaveBeenCalled());
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+      expect(screen.getByRole('alert').textContent).toMatch(/ambiguous|multiple templates/i);
+      // Capability state could not be resolved -- Fork must not be offered as
+      // if it were known-safe to select.
+      expect(screen.queryByRole('radio', { name: 'Fork' })).toBeNull();
+    });
+  });
+
+  describe('Create wizard — accessibility of new fork/mirror controls (WUI-005)', () => {
+    it('exposes the creation-mode choice as a labelled radiogroup', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      expect(await screen.findByRole('radiogroup', { name: /creation mode/i })).toBeInTheDocument();
+    });
+
+    it('exposes the mirror history choice as a radiogroup distinct from the mode-choice radiogroup', async () => {
+      await renderForkMirrorWizard(
+        makeCapabilities({ sourceHistoryMirrorEnabled: true, sourceOnlyMirrorEnabled: true }),
+      );
+      await selectCreationMode('Mirror');
+      const groups = await screen.findAllByRole('radiogroup');
+      expect(groups.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('the source-repository field is reachable by its accessible name (proper label association)', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      await selectCreationMode('Fork');
+      expect(
+        await screen.findByRole('textbox', { name: /source repository/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('a malformed source reference is announced via role="alert" (matches InlineAlert error pattern)', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      await selectCreationMode('Fork');
+      await fillSourceReference('not-a-valid-reference');
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    });
+  });
+
+  describe('Create wizard — rapid mode switching resets state correctly (adversarial)', () => {
+    it('clears the source repository input after switching away to Template and back to Fork', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      await selectCreationMode('Fork');
+      await fillSourceReference('upstream-org/some-repo');
+      await selectCreationMode('Template');
+      await selectCreationMode('Fork');
+      expect(await screen.findByRole('textbox', { name: /source repository/i })).toHaveValue('');
+    });
+
+    it('never attaches a leftover `creationMode` to a standard submission after Fork data was previously entered', async () => {
+      const { createRepository } = await import('../src/lib/api/client');
+      vi.mocked(createRepository).mockResolvedValue(CREATION_RESPONSE_FIXTURE);
+      vi.mocked(getTemplateDetails).mockResolvedValue({
+        name: 'rust-library',
+        displayName: 'Rust Library',
+        description: 'A Rust library template',
+        tags: [],
+        variables: [],
+      });
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      await selectCreationMode('Fork');
+      await fillSourceReference('upstream-org/some-repo');
+      await selectCreationMode('Template');
+
+      await waitFor(() => screen.getByRole('radio', { name: 'rust-library' }));
+      await fireEvent.click(screen.getByRole('radio', { name: 'rust-library' }));
+      await waitFor(() => expect(getTemplateDetails).toHaveBeenCalled());
+      await fireEvent.click(screen.getByRole('button', { name: /next: repository settings/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Repository settings'),
+      );
+      await fireEvent.input(screen.getByRole('textbox', { name: /repository name/i }), {
+        target: { value: 'my-repo' },
+      });
+      await fireEvent.click(screen.getByRole('button', { name: /next: review/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Review and create'),
+      );
+      await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
+
+      await waitFor(() => expect(createRepository).toHaveBeenCalled());
+      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      expect('creationMode' in call).toBe(false);
+    });
+  });
+}); // closes the outer "Create wizard (SCR-004)" describe (re-opened above
+// Task #2's section so every nested describe added for Task #2 inherits its
+// beforeEach — listTemplates/getTemplateDetails/listRepositoryTypes/
+// listTeams/getCreationCapabilities defaults).
