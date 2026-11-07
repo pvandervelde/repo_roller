@@ -1020,6 +1020,52 @@ Add to this whenever a reusable component becomes "the standard way".
   for discoverability.
   Tags: frontend, svelte, sidebar, create-wizard
 
+- **`getCreationCapabilities(org, { team?, repositoryType? })`** — API client
+  function — `frontend/src/lib/api/client.ts` — Calls `GET
+  /api/v1/orgs/:org/creation-capabilities`, the frontend counterpart to the
+  backend catalog entry above. Builds the optional `team`/`repositoryType`
+  query string only when provided, reuses the existing `throwForStatus()`
+  error mapping (400→`ApiValidationError`, 409→`ApiConflictError` for
+  `AmbiguousTemplateDesignation`, 5xx→`ApiServerError`,
+  network→`ApiNetworkError`).
+  Use when: Pre-filtering fork/mirror creation-mode UI before a source/mode
+  is chosen — see the create wizard's `loadCapabilities()` below.
+  Tags: frontend, api-client, fork-mirror
+
+- **`CreationMode` / `CreationModeSource` / `CreationCapabilitiesResponse`**
+  — TypeScript types — `frontend/src/lib/api/types.ts` — Hand-written mirrors
+  of `repo_roller_core::CreationMode` (discriminated union, `type: 'standard'
+  | 'fork' | 'mirror'`) and the Task #1 discovery response, matching
+  `docs/spec/interfaces/fork-mirror-operations.md` §8a/§8b exactly
+  (camelCase, `creationMode` omitted entirely for standard creation rather
+  than sent as `{ type: 'standard' }`).
+  Also fixes `CreateRepositoryRequest.repository_type` → `repositoryType`
+  (was being sent as snake_case, which the Rust API's
+  `#[serde(deny_unknown_fields)]` rejected outright) and makes `template`
+  optional (required for standard creation, omitted for fork/mirror).
+  Tags: frontend, types, fork-mirror
+
+- **Create wizard Fork/Mirror mode** — `frontend/src/routes/create/+page.svelte`
+  — Extends the existing `currentStep` + `$derived` steps-list wizard with a
+  "Creation mode" `role="radiogroup"` (Template/Fork/Mirror, mirroring
+  `TemplateGrid`'s radiogroup pattern) shown only once `loadCapabilities()`
+  resolves at least one of `forkEnabled`/`sourceHistoryMirrorEnabled`/
+  `sourceOnlyMirrorEnabled` — any other discovery failure (network, 4xx/5xx)
+  degrades silently to the template-only flow; `AmbiguousTemplateDesignation`
+  alone surfaces as a distinct `InlineAlert`. Fork/Mirror swap the template
+  grid for a labelled "Source repository" textbox (`owner/repo` shape
+  validation, non-blocking `allowedSourceOwners` advisory via `role="status"`)
+  and skip the Variables step entirely; a second `role="radiogroup"` for
+  history preservation appears only when both mirror sub-types are enabled.
+  `CapabilityDisabled`/`SourceOwnerNotAllowed`/`TemplateNotDesignated` get
+  distinct `InlineAlert` messages instead of the generic permission/5xx
+  fallbacks, preserving all form state.
+  Use when: Extending this wizard further — reuse `selectCreationMode()`'s
+  reset-on-switch pattern (clears `sourceReference`/`historyChoiceExplicit`)
+  rather than letting stale Fork/Mirror state leak into a later standard
+  submission.
+  Tags: frontend, svelte, create-wizard, fork-mirror
+
 ## Cross-Cutting Helpers
 
 - **Logging**: `tracing` crate throughout
