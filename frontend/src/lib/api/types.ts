@@ -14,15 +14,51 @@
 // Requests
 // ---------------------------------------------------------------------------
 
+/**
+ * The repository source for a Fork or Mirror creation mode.
+ * Matches `repo_roller_core::SourceRepositoryReference` exactly (camelCase).
+ */
+export interface CreationModeSource {
+  owner: string;
+  name: string;
+}
+
+/**
+ * Discriminated union matching `repo_roller_core::CreationMode` exactly
+ * (`#[serde(tag = "type", rename_all = "snake_case")]`).
+ *
+ * Omit the `creationMode` field entirely on `CreateRepositoryRequest` for
+ * standard template-based creation — never send `{ type: 'standard' }`
+ * explicitly (see docs/spec/interfaces/fork-mirror-operations.md §8a).
+ */
+export type CreationMode =
+  | { type: 'standard' }
+  | { type: 'fork'; source: CreationModeSource }
+  | { type: 'mirror'; source: CreationModeSource; preserveHistory: boolean };
+
 /** POST /api/v1/repositories */
 export interface CreateRepositoryRequest {
   organization: string;
   name: string;
-  template: string;
+  /**
+   * Required for standard template-based creation; omit for Fork/Mirror
+   * (the backend auto-discovers the designated template, if any).
+   */
+  template?: string;
   visibility?: string;
   team?: string;
-  repository_type?: string;
+  /**
+   * camelCase to match the Rust API's `#[serde(rename_all = "camelCase")]`
+   * + `#[serde(deny_unknown_fields)]` — sending the legacy snake_case
+   * `repository_type` key causes the entire request to be rejected.
+   */
+  repositoryType?: string;
   variables?: Record<string, string>;
+  /**
+   * Present only for Fork/Mirror creation. Never send alongside a
+   * non-default `contentStrategy` — the API rejects that combination.
+   */
+  creationMode?: CreationMode;
 }
 
 /** POST /api/v1/repositories/validate-name (body) */
@@ -144,6 +180,22 @@ export interface GetTemplateDetailsResponse {
 // ---------------------------------------------------------------------------
 // Errors  (camelCase — Rust ErrorResponse uses #[serde(rename_all = "camelCase")])
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Creation-capabilities discovery (Task #2, fork-mirror-operations.md §8b)
+// ---------------------------------------------------------------------------
+
+/** 200 response for GET /api/v1/orgs/:org/creation-capabilities */
+export interface CreationCapabilitiesResponse {
+  forkEnabled: boolean;
+  sourceHistoryMirrorEnabled: boolean;
+  sourceOnlyMirrorEnabled: boolean;
+  /** Non-additive per team/repositoryType scope; `[]` when unset. */
+  allowedSourceOwners: string[];
+  forkTemplate: string | null;
+  sourceHistoryMirrorTemplate: string | null;
+  sourceOnlyMirrorTemplate: string | null;
+}
 
 export interface ErrorDetails {
   code: string;
