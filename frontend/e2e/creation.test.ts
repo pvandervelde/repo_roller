@@ -330,11 +330,40 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
     });
   }
 
+  // RepositoryNameField's availability check only fires on blur, and the
+  // Settings step's "Next: Review" button stays disabled until that check
+  // resolves to valid+available. Every scenario below that reaches Review
+  // must mock this endpoint AND explicitly blur the name field after
+  // filling it -- `.fill()` alone never blurs, and a genuinely-disabled
+  // button cannot receive focus in real Chromium (unlike the jsdom unit
+  // tests, where `fireEvent.click` bypasses native disabled-button
+  // suppression).
+  async function mockValidateNameRoute(page: import('@playwright/test').Page) {
+    await page.route(/\/api\/v1\/repositories\/validate-name$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ valid: true, available: true }),
+      });
+    });
+  }
+
+  /** Fills the repository-name field and blurs it so the async availability
+   * check (mocked via `mockValidateNameRoute`) resolves and "Next: Review"
+   * becomes enabled. */
+  async function fillAndBlurRepositoryName(page: import('@playwright/test').Page, name: string) {
+    const nameField = page.getByRole('textbox', { name: /repository name/i });
+    await nameField.fill(name);
+    await nameField.blur();
+    await expect(page.getByRole('button', { name: /next: review/i })).toBeEnabled();
+  }
+
   test('successful fork creation end-to-end sends the exact fork creationMode payload', async ({
     page,
   }) => {
     await mockEmptyTemplatesRoute(page);
     await mockCapabilities(page, { forkEnabled: true, forkTemplate: 'fork-settings' });
+    await mockValidateNameRoute(page);
 
     let capturedBody: Record<string, unknown> | null = null;
     await page.route(/\/api\/v1\/repositories$/, async (route) => {
@@ -359,7 +388,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
     await page.getByRole('radio', { name: 'Fork' }).click();
     await page.getByRole('textbox', { name: /source repository/i }).fill('upstream-org/some-repo');
     await page.getByRole('button', { name: /next/i }).click();
-    await page.getByRole('textbox', { name: /repository name/i }).fill('my-fork');
+    await fillAndBlurRepositoryName(page, 'my-fork');
     await page.getByRole('button', { name: /next: review/i }).click();
     await page.getByRole('button', { name: /create repository/i }).click();
 
@@ -379,6 +408,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
       sourceHistoryMirrorEnabled: true,
       sourceOnlyMirrorEnabled: true,
     });
+    await mockValidateNameRoute(page);
 
     let capturedBody: Record<string, unknown> | null = null;
     await page.route(/\/api\/v1\/repositories$/, async (route) => {
@@ -404,7 +434,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
     await page.getByRole('textbox', { name: /source repository/i }).fill('upstream-org/some-repo');
     await page.getByRole('radio', { name: /preserve.*history/i }).click();
     await page.getByRole('button', { name: /next/i }).click();
-    await page.getByRole('textbox', { name: /repository name/i }).fill('my-mirror');
+    await fillAndBlurRepositoryName(page, 'my-mirror');
     await page.getByRole('button', { name: /next: review/i }).click();
     await page.getByRole('button', { name: /create repository/i }).click();
 
@@ -417,6 +447,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
   }) => {
     await mockEmptyTemplatesRoute(page);
     await mockCapabilities(page, { sourceOnlyMirrorEnabled: true });
+    await mockValidateNameRoute(page);
 
     let capturedBody: Record<string, unknown> | null = null;
     await page.route(/\/api\/v1\/repositories$/, async (route) => {
@@ -443,7 +474,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
     // Only one mirror sub-type is enabled -- no history-preservation toggle.
     await expect(page.getByRole('radiogroup', { name: /history preservation/i })).toHaveCount(0);
     await page.getByRole('button', { name: /next/i }).click();
-    await page.getByRole('textbox', { name: /repository name/i }).fill('my-mirror2');
+    await fillAndBlurRepositoryName(page, 'my-mirror2');
     await page.getByRole('button', { name: /next: review/i }).click();
     await page.getByRole('button', { name: /create repository/i }).click();
 
@@ -456,6 +487,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
   }) => {
     await mockEmptyTemplatesRoute(page);
     await mockCapabilities(page, { forkEnabled: true });
+    await mockValidateNameRoute(page);
 
     await page.route(/\/api\/v1\/repositories$/, async (route) => {
       await route.fulfill({
@@ -474,7 +506,7 @@ test.describe('Creation wizard — Fork and Mirror creation (WUI-005)', () => {
     await page.getByRole('radio', { name: 'Fork' }).click();
     await page.getByRole('textbox', { name: /source repository/i }).fill('upstream-org/some-repo');
     await page.getByRole('button', { name: /next/i }).click();
-    await page.getByRole('textbox', { name: /repository name/i }).fill('my-fork');
+    await fillAndBlurRepositoryName(page, 'my-fork');
     await page.getByRole('button', { name: /next: review/i }).click();
     await page.getByRole('button', { name: /create repository/i }).click();
 

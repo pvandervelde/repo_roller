@@ -1436,7 +1436,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(call.creationMode).toEqual({
         type: 'fork',
         source: { owner: 'upstream-org', name: 'some-repo' },
@@ -1456,7 +1459,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(call.creationMode).toEqual({
         type: 'mirror',
         source: { owner: 'upstream-org', name: 'some-repo' },
@@ -1476,7 +1482,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(call.creationMode).toEqual({
         type: 'mirror',
         source: { owner: 'upstream-org', name: 'some-repo' },
@@ -1496,7 +1505,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect((call.creationMode as { preserveHistory: boolean }).preserveHistory).toBe(true);
     });
 
@@ -1512,7 +1524,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect((call.creationMode as { preserveHistory: boolean }).preserveHistory).toBe(false);
     });
 
@@ -1543,7 +1558,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect('creationMode' in call).toBe(false);
     });
   });
@@ -1588,7 +1606,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(call.repositoryType).toBe('library');
       expect('repository_type' in call).toBe(false);
     });
@@ -1886,7 +1907,10 @@ describe('Create wizard (SCR-004)', () => {
       await fireEvent.click(screen.getByRole('button', { name: /create repository/i }));
 
       await waitFor(() => expect(createRepository).toHaveBeenCalled());
-      const call = vi.mocked(createRepository).mock.calls[0][0] as Record<string, unknown>;
+      const call = vi.mocked(createRepository).mock.calls[0][0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect('creationMode' in call).toBe(false);
     });
   });
