@@ -1045,25 +1045,51 @@ Add to this whenever a reusable component becomes "the standard way".
   optional (required for standard creation, omitted for fork/mirror).
   Tags: frontend, types, fork-mirror
 
+- **`RadioGroup`** — Svelte component —
+  `frontend/src/lib/components/RadioGroup.svelte` — Shared, minimal
+  `role="radiogroup"` control for a flat list of labelled text options.
+  Props: `ariaLabel`, `name`, `options: RadioGroupOption[]` (`{value, label}`),
+  `selected: string | null`, `onchange: (value: string) => void`. Renders one
+  `<label><input type="radio">text</label>` per option; `checked` is derived
+  from `selected === option.value`, so the caller owns all selection state
+  (this component is purely presentational/controlled).
+  Use when: Rendering a small set of mutually-exclusive text options as
+  native radio inputs — call this rather than hand-rolling
+  `role="radiogroup"` + `<label><input type="radio">` markup a second time.
+  Deliberately NOT a fit for `TemplateGrid`/`TemplateCard`'s visual-card
+  radiogroup (card layout, hidden input, image/description per option) — that
+  pattern stays independent; do not try to unify the two.
+  Notes: Extracted (REFACTOR pass, fork/mirror creation-mode task) from two
+  verbatim-duplicated inline blocks in `create/+page.svelte` — the "Creation
+  mode" (Template/Fork/Mirror) and "History preservation" (Preserve full
+  history/Contents only) radiogroups, both introduced in the same task.
+  Tags: frontend, svelte, radiogroup, a11y, dry
+
 - **Create wizard Fork/Mirror mode** — `frontend/src/routes/create/+page.svelte`
   — Extends the existing `currentStep` + `$derived` steps-list wizard with a
-  "Creation mode" `role="radiogroup"` (Template/Fork/Mirror, mirroring
-  `TemplateGrid`'s radiogroup pattern) shown only once `loadCapabilities()`
-  resolves at least one of `forkEnabled`/`sourceHistoryMirrorEnabled`/
-  `sourceOnlyMirrorEnabled` — any other discovery failure (network, 4xx/5xx)
-  degrades silently to the template-only flow; `AmbiguousTemplateDesignation`
-  alone surfaces as a distinct `InlineAlert`. Fork/Mirror swap the template
-  grid for a labelled "Source repository" textbox (`owner/repo` shape
-  validation, non-blocking `allowedSourceOwners` advisory via `role="status"`)
-  and skip the Variables step entirely; a second `role="radiogroup"` for
-  history preservation appears only when both mirror sub-types are enabled.
+  "Creation mode" radiogroup (Template/Fork/Mirror, rendered via the shared
+  `RadioGroup` component above — distinct from `TemplateGrid`'s visual-card
+  radiogroup pattern) shown only once `loadCapabilities()` resolves at least
+  one of `forkEnabled`/`sourceHistoryMirrorEnabled`/`sourceOnlyMirrorEnabled`
+  — any other discovery failure (network, 4xx/5xx) degrades silently to the
+  template-only flow; `AmbiguousTemplateDesignation` alone surfaces as a
+  distinct `InlineAlert`. Fork/Mirror swap the template grid for a labelled
+  "Source repository" textbox (`owner/repo` shape validation, non-blocking
+  `allowedSourceOwners` advisory via `role="status"`) and skip the Variables
+  step entirely; a second `RadioGroup` for history preservation appears only
+  when both mirror sub-types are enabled.
   `CapabilityDisabled`/`SourceOwnerNotAllowed`/`TemplateNotDesignated` get
   distinct `InlineAlert` messages instead of the generic permission/5xx
-  fallbacks, preserving all form state.
+  fallbacks, preserving all form state; all three (plus `TemplateNotFound`)
+  share the `errorCode(err)` helper (REFACTOR pass — replaced three
+  verbatim-duplicated `err.errorDetails.code ?? ''` one-liners, one per
+  `instanceof` branch in `submitCreate`'s `catch`) for reading the
+  server-supplied error code.
   Use when: Extending this wizard further — reuse `selectCreationMode()`'s
   reset-on-switch pattern (clears `sourceReference`/`historyChoiceExplicit`)
   rather than letting stale Fork/Mirror state leak into a later standard
-  submission.
+  submission; reuse `errorCode(err)` rather than re-inlining
+  `err.errorDetails.code ?? ''` for any new error-code branch.
   Tags: frontend, svelte, create-wizard, fork-mirror
 
 ## Cross-Cutting Helpers

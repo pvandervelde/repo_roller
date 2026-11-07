@@ -11,6 +11,7 @@
   import VariableField from '$lib/components/VariableField.svelte';
   import InlineAlert from '$lib/components/InlineAlert.svelte';
   import CreationOverlay from '$lib/components/CreationOverlay.svelte';
+  import RadioGroup from '$lib/components/RadioGroup.svelte';
   import { goto } from '$app/navigation';
   import { enhance } from '$app/forms';
   import {
@@ -36,6 +37,7 @@
   } from '$lib/api/types';
   import type { NameValidationResult } from '$lib/components/RepositoryNameField.svelte';
   import type { RepositoryTypeOption } from '$lib/components/RepositoryTypePicker.svelte';
+  import type { RadioGroupOption } from '$lib/components/RadioGroup.svelte';
 
   const { data }: { data: PageData } = $props();
 
@@ -112,6 +114,24 @@
   const mirrorHistoryToggleVisible = $derived(
     capabilities.sourceHistoryMirrorEnabled && capabilities.sourceOnlyMirrorEnabled,
   );
+
+  // Options for the "Creation mode" RadioGroup — Template is always offered;
+  // Fork/Mirror appear only once their respective capability is enabled.
+  const modeOptions = $derived.by<RadioGroupOption[]>(() => {
+    const options: RadioGroupOption[] = [{ value: 'template', label: 'Template' }];
+    if (capabilities.forkEnabled) options.push({ value: 'fork', label: 'Fork' });
+    if (capabilities.sourceHistoryMirrorEnabled || capabilities.sourceOnlyMirrorEnabled) {
+      options.push({ value: 'mirror', label: 'Mirror' });
+    }
+    return options;
+  });
+
+  // Fixed options for the "History preservation" RadioGroup — only ever
+  // rendered when mirrorHistoryToggleVisible is true (both sub-types enabled).
+  const historyOptions: RadioGroupOption[] = [
+    { value: 'preserve', label: 'Preserve full history' },
+    { value: 'source-only', label: 'Contents only (via pull request)' },
+  ];
 
   // Implicit choice when only one mirror sub-type is enabled; the user's
   // default when both are enabled (WUI-005 judgment call #4).
@@ -292,6 +312,12 @@
     return name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
+  /** `errorDetails.code`, normalized to `''` when absent — shared by every
+   * submitCreate() error branch that switches on the server-supplied code. */
+  function errorCode(err: ApiConflictError | ApiAuthError | ApiValidationError): string {
+    return err.errorDetails.code ?? '';
+  }
+
   // ---------------------------------------------------------------------------
   // DOM ref for focus management (UX-ASSERT-024) — a single ref is sufficient
   // because exactly one step heading is ever mounted at a time.
@@ -469,7 +495,7 @@
       creatingRepo = false;
 
       if (err instanceof ApiConflictError) {
-        const code = err.errorDetails.code ?? '';
+        const code = errorCode(err);
         if (code === 'TemplateNotFound' || err.errorDetails.message?.includes('template')) {
           // UX-ASSERT-020: template not found — back to step 1, refresh list
           currentStep = 1;
@@ -491,7 +517,7 @@
         // WUIE-003: Fork/Mirror-specific 403s get a distinct, specific
         // message instead of the generic permission-denied fallback. Form
         // state is preserved — currentStep is left unchanged (Review).
-        const code = err.errorDetails.code ?? '';
+        const code = errorCode(err);
         if (code === 'CapabilityDisabled') {
           createError = `This creation mode is disabled for this organization. ${err.errorDetails.message}`;
         } else if (code === 'SourceOwnerNotAllowed') {
@@ -504,7 +530,7 @@
       } else if (err instanceof ApiValidationError) {
         // WUIE-003: TemplateNotDesignated (400) gets a distinct, specific
         // message instead of falling through to the generic 5xx fallback.
-        const code = err.errorDetails.code ?? '';
+        const code = errorCode(err);
         if (code === 'TemplateNotDesignated') {
           createError = `No settings template is designated for this creation mode. ${err.errorDetails.message}`;
         } else {
@@ -572,42 +598,13 @@
       {/if}
 
       {#if showModeChoice}
-        <div role="radiogroup" aria-label="Creation mode" class="wizard__mode-choice">
-          <label class="wizard__mode-option">
-            <input
-              type="radio"
-              name="creation-mode"
-              value="template"
-              checked={creationModeChoice === 'template'}
-              onchange={() => selectCreationMode('template')}
-            />
-            Template
-          </label>
-          {#if capabilities.forkEnabled}
-            <label class="wizard__mode-option">
-              <input
-                type="radio"
-                name="creation-mode"
-                value="fork"
-                checked={creationModeChoice === 'fork'}
-                onchange={() => selectCreationMode('fork')}
-              />
-              Fork
-            </label>
-          {/if}
-          {#if capabilities.sourceHistoryMirrorEnabled || capabilities.sourceOnlyMirrorEnabled}
-            <label class="wizard__mode-option">
-              <input
-                type="radio"
-                name="creation-mode"
-                value="mirror"
-                checked={creationModeChoice === 'mirror'}
-                onchange={() => selectCreationMode('mirror')}
-              />
-              Mirror
-            </label>
-          {/if}
-        </div>
+        <RadioGroup
+          ariaLabel="Creation mode"
+          name="creation-mode"
+          options={modeOptions}
+          selected={creationModeChoice}
+          onchange={(v) => selectCreationMode(v as 'template' | 'fork' | 'mirror')}
+        />
       {/if}
 
       {#if creationModeChoice === 'template'}
@@ -668,32 +665,15 @@
           {/if}
 
           {#if creationModeChoice === 'mirror' && mirrorHistoryToggleVisible}
-            <div role="radiogroup" aria-label="History preservation" class="wizard__mode-choice">
-              <label class="wizard__mode-option">
-                <input
-                  type="radio"
-                  name="history-choice"
-                  value="preserve"
-                  checked={effectiveHistoryChoice === 'preserve'}
-                  onchange={() => {
-                    historyChoiceExplicit = 'preserve';
-                  }}
-                />
-                Preserve full history
-              </label>
-              <label class="wizard__mode-option">
-                <input
-                  type="radio"
-                  name="history-choice"
-                  value="source-only"
-                  checked={effectiveHistoryChoice === 'source-only'}
-                  onchange={() => {
-                    historyChoiceExplicit = 'source-only';
-                  }}
-                />
-                Contents only (via pull request)
-              </label>
-            </div>
+            <RadioGroup
+              ariaLabel="History preservation"
+              name="history-choice"
+              options={historyOptions}
+              selected={effectiveHistoryChoice}
+              onchange={(v) => {
+                historyChoiceExplicit = v as 'preserve' | 'source-only';
+              }}
+            />
           {/if}
 
           <div class="wizard__actions wizard__actions--step1">
@@ -1045,21 +1025,8 @@
     border-color: var(--brand-primary);
   }
 
-  /* Creation-mode / history-preservation radiogroups (WUI-005) */
-  .wizard__mode-choice {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-  }
-
-  .wizard__mode-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.9375rem;
-    color: var(--color-text);
-    cursor: pointer;
-  }
+  /* Creation-mode / history-preservation radiogroups (WUI-005) are rendered
+     via the shared RadioGroup component — no page-local styling needed. */
 
   .wizard__designated-template {
     font-size: 0.875rem;
