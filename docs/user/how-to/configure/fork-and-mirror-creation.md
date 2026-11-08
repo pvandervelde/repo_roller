@@ -164,10 +164,37 @@ for the full field reference and error responses (`400` for an unknown `reposito
 ## 5. Request a fork or mirror creation
 
 Once a capability is enabled and its source owner is allow-listed (steps 1–2 above), any
-repository creator can request that mode via the CLI's `create` command or the REST API's
-`POST /api/v1/repositories` endpoint. A template is optional for all three modes — it is
-only ever consulted for its settings (via `designation`, step 3), never for files, with the
-one exception noted above for a `source_only_mirror`-designated template.
+repository creator can request that mode via the web UI's create-repository wizard, the CLI's
+`create` command, or the REST API's `POST /api/v1/repositories` endpoint. A template is optional
+for all three modes — it is only ever consulted for its settings (via `designation`, step 3),
+never for files, with the one exception noted above for a `source_only_mirror`-designated
+template.
+
+### Fork or mirror (web UI)
+
+The create-repository wizard's Step 1 ("Choose a template") automatically shows a **Creation
+mode** choice above the template grid, offering **Fork** and/or **Mirror** alongside the default
+**Template** option — but only for the modes enabled by steps 1–2 above. If neither
+`fork_enabled` nor either mirror capability is enabled for the resolved
+organisation/team/repository-type scope, this choice is omitted entirely and the wizard behaves
+exactly as it did before this feature existed.
+
+Selecting **Fork** or **Mirror** swaps the template grid for a single **Source repository** text
+field, where the user types the `owner/repo` of the repository to fork or mirror. For **Mirror**,
+if both `source_history_mirror_enabled` and `source_only_mirror_enabled` are turned on, a
+**History preservation** choice also appears ("Preserve full history" vs. "Contents only (via
+pull request)"); if only one of the two is enabled, that one is used automatically with no extra
+control shown. If `allowed_source_owners` is set and the typed owner isn't on it, the wizard shows
+a non-blocking advisory note — the user can still submit, since the server (not the browser) is
+the actual enforcement point for the allow-list. If a settings-only template is designated for the
+chosen mode (step 3 above), its name appears as read-only text on the final Review step; it is
+never offered as something the user can pick instead, and no files are copied from it for Fork or
+a history-preserving Mirror.
+
+See [Tour of the web interface: Creating a fork or mirror instead of a
+template](../../tutorials/tour-of-the-web-ui.md#creating-a-fork-or-mirror-instead-of-a-template)
+for a full screen-by-screen walkthrough, including what each rejection error looks like in the UI
+and how to recover from it without losing any entered values.
 
 ### Fork (CLI)
 
@@ -290,6 +317,9 @@ Equivalently, omit `preserveHistory` entirely — it defaults to `false`.
 | CLI rejects `--fork-from`/`--mirror-from` together with `--empty`/`--init-readme`/`--init-gitignore` | These flags are mutually exclusive — pick one content/creation strategy per request. |
 | API returns `400 VALIDATION_ERROR` on `content_strategy` alongside `creationMode` | Omit `contentStrategy` entirely when `creationMode.type` is `"fork"` or `"mirror"` — it is only meaningful for `"standard"` creation. |
 | `--mirror-from` request produced a pull request instead of pushing directly | Expected for a source-only mirror (`--mirror-history` not set, or `preserveHistory: false`). Add `--mirror-history` / `preserveHistory: true` for a direct-push, full-history mirror instead. |
+| Web UI's Review step shows "This creation mode is disabled for this organization." | The capability was enabled when the wizard loaded but was turned off before the request was submitted. Reload the wizard to pick up the current capability state. |
+| Web UI's Review step names a source owner as not allowed | The typed owner isn't on the resolved `allowed_source_owners` list. This is the same server-side check described above — the wizard's earlier advisory note is non-blocking, but the server still enforces it at submission. |
+| Web UI's Review step shows "No settings template is designated for this creation mode." | The organisation enabled the mode without designating a settings template, and one is required — see step 3 above. |
 
 ## Related reference
 
@@ -298,3 +328,4 @@ Equivalently, omit `preserveHistory` entirely — it defaults to `false`.
 - [How configuration is resolved](../../explanation/configuration-hierarchy.md)
 - [`repo-roller create` CLI reference](../../reference/cli/create.md)
 - [Repositories API reference](../../reference/api/repositories.md)
+- [Tour of the web interface](../../tutorials/tour-of-the-web-ui.md#creating-a-fork-or-mirror-instead-of-a-template) — screen-by-screen walkthrough of the web UI's Fork/Mirror creation flow
