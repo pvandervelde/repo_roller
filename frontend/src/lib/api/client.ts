@@ -54,6 +54,17 @@ interface RawTemplateDetailsResponse {
   configuration?: unknown;
 }
 
+/** Raw creation-capabilities response before defaulting of missing fields. */
+interface RawCreationCapabilitiesResponse {
+  forkEnabled?: boolean;
+  sourceHistoryMirrorEnabled?: boolean;
+  sourceOnlyMirrorEnabled?: boolean;
+  allowedSourceOwners?: string[];
+  forkTemplate?: string | null;
+  sourceHistoryMirrorTemplate?: string | null;
+  sourceOnlyMirrorTemplate?: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -241,5 +252,14 @@ export async function getCreationCapabilities(
   }`;
   const response = await apiFetch(url, { method: 'GET' });
   if (!response.ok) await throwForStatus(response);
-  return response.json() as Promise<CreationCapabilitiesResponse>;
+  const raw = (await response.json()) as RawCreationCapabilitiesResponse;
+  return {
+    forkEnabled: raw.forkEnabled ?? false,
+    sourceHistoryMirrorEnabled: raw.sourceHistoryMirrorEnabled ?? false,
+    sourceOnlyMirrorEnabled: raw.sourceOnlyMirrorEnabled ?? false,
+    allowedSourceOwners: raw.allowedSourceOwners ?? [],
+    forkTemplate: raw.forkTemplate ?? null,
+    sourceHistoryMirrorTemplate: raw.sourceHistoryMirrorTemplate ?? null,
+    sourceOnlyMirrorTemplate: raw.sourceOnlyMirrorTemplate ?? null,
+  };
 }

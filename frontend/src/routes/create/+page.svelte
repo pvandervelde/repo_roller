@@ -366,7 +366,23 @@
   // never be affected by a broken/unavailable discovery endpoint.
   async function loadCapabilities() {
     try {
-      capabilities = await getCreationCapabilities(data.organization, {});
+      const result = await getCreationCapabilities(data.organization, {});
+      // Defensive defaulting (mirrors the normalization in client.ts's
+      // getCreationCapabilities) applied again here so this component never
+      // dereferences a missing field directly — guards this component's
+      // derived values (e.g. sourceOwnerWarning reads
+      // capabilities.allowedSourceOwners.length) even when the client
+      // function itself is replaced by a test double that returns a
+      // malformed/partial response.
+      capabilities = {
+        forkEnabled: result.forkEnabled ?? false,
+        sourceHistoryMirrorEnabled: result.sourceHistoryMirrorEnabled ?? false,
+        sourceOnlyMirrorEnabled: result.sourceOnlyMirrorEnabled ?? false,
+        allowedSourceOwners: result.allowedSourceOwners ?? [],
+        forkTemplate: result.forkTemplate ?? null,
+        sourceHistoryMirrorTemplate: result.sourceHistoryMirrorTemplate ?? null,
+        sourceOnlyMirrorTemplate: result.sourceOnlyMirrorTemplate ?? null,
+      };
     } catch (err) {
       if (
         err instanceof ApiConflictError &&
