@@ -1665,6 +1665,69 @@ describe('Create wizard (SCR-004)', () => {
       expect(screen.getByText(/history-mirror-settings/)).toBeInTheDocument();
       expect(screen.queryByText(/source-only-settings/)).toBeNull();
     });
+
+    // -------------------------------------------------------------------------
+    // QA AUDIT PROBE (post-implementation, Task #2): the three tests above
+    // each only ever set ONE of {forkTemplate, sourceHistoryMirrorTemplate,
+    // sourceOnlyMirrorTemplate} to a non-null value at a time, leaving the
+    // other two at their `makeCapabilities()` default of `null`. A
+    // copy-paste mutant in `designatedTemplateName` (+page.svelte:173-181)
+    // that swapped e.g. the Fork branch to read
+    // `capabilities.sourceHistoryMirrorTemplate` instead of
+    // `capabilities.forkTemplate` would survive every test above, because
+    // in every one of those fixtures the "wrong" field is null and the
+    // correct field is the only one ever set non-null -- so "shows X, not Y"
+    // still passes trivially (X shows, Y doesn't, even under the swap,
+    // because Y really is null). This fixture sets all three fields to
+    // distinct non-null values simultaneously so a field swap is
+    // structurally visible regardless of which pair gets confused.
+    // -------------------------------------------------------------------------
+    const ALL_THREE_DISTINCT = {
+      forkTemplate: 'fork-only-settings',
+      sourceHistoryMirrorTemplate: 'history-only-settings',
+      sourceOnlyMirrorTemplate: 'contents-only-settings',
+    };
+
+    it('shows ONLY the fork template on Review in Fork mode, even when all three designated-template fields are simultaneously set to distinct values (kills a field-swap mutant)', async () => {
+      await advanceForkMirrorToReview(
+        'Fork',
+        { forkEnabled: true, ...ALL_THREE_DISTINCT },
+        { source: 'upstream-org/some-repo' },
+      );
+      expect(screen.getByText(/fork-only-settings/)).toBeInTheDocument();
+      expect(screen.queryByText(/history-only-settings/)).toBeNull();
+      expect(screen.queryByText(/contents-only-settings/)).toBeNull();
+    });
+
+    it('shows ONLY the source+history-mirror template on Review in Mirror/"preserve history" mode, even when all three designated-template fields are simultaneously set to distinct values (kills a field-swap mutant)', async () => {
+      await advanceForkMirrorToReview(
+        'Mirror',
+        {
+          sourceHistoryMirrorEnabled: true,
+          sourceOnlyMirrorEnabled: true,
+          ...ALL_THREE_DISTINCT,
+        },
+        { source: 'upstream-org/some-repo', historyChoice: 'preserve' },
+      );
+      expect(screen.getByText(/history-only-settings/)).toBeInTheDocument();
+      expect(screen.queryByText(/fork-only-settings/)).toBeNull();
+      expect(screen.queryByText(/contents-only-settings/)).toBeNull();
+    });
+
+    it('shows ONLY the source-only-mirror template on Review in Mirror/"contents only" mode, even when all three designated-template fields are simultaneously set to distinct values (kills a field-swap mutant)', async () => {
+      await advanceForkMirrorToReview(
+        'Mirror',
+        {
+          sourceHistoryMirrorEnabled: true,
+          sourceOnlyMirrorEnabled: true,
+          ...ALL_THREE_DISTINCT,
+        },
+        { source: 'upstream-org/some-repo', historyChoice: 'source-only' },
+      );
+      expect(screen.getByText(/contents-only-settings/)).toBeInTheDocument();
+      expect(screen.queryByText(/fork-only-settings/)).toBeNull();
+      expect(screen.queryByText(/history-only-settings/)).toBeNull();
+    });
   });
 
   describe('Create wizard — fork/mirror rejection handling (WUIE-003)', () => {
@@ -1865,6 +1928,56 @@ describe('Create wizard (SCR-004)', () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // QA AUDIT PROBE (post-implementation, Task #2): malformed/partial 200
+  // response from GET /creation-capabilities. `getCreationCapabilities()` in
+  // client.ts does a raw `response.json() as Promise<CreationCapabilitiesResponse>`
+  // cast with NO field normalization/defaulting (unlike `getTemplateDetails`,
+  // which defensively falls back `tags: raw.tags ?? []`, etc.). If the
+  // backend omits `allowedSourceOwners`, `capabilities.allowedSourceOwners`
+  // is `undefined` at runtime despite the TypeScript type claiming
+  // `string[]`, and the `sourceOwnerWarning` derived in +page.svelte reads
+  // `capabilities.allowedSourceOwners.length` / `.includes(...)` directly.
+  // ---------------------------------------------------------------------------
+  describe('Create wizard — malformed creation-capabilities response (QA audit probe, adversarial)', () => {
+    it('does not crash when the discovery response omits `allowedSourceOwners` and the user enters Fork mode with a valid source', async () => {
+      vi.mocked(listTemplates).mockResolvedValue(mockTemplates);
+      // Malformed per the wire contract: `allowedSourceOwners` is required
+      // (string[], `[]` when unset) but is omitted entirely here, simulating
+      // a backend bug / schema drift the client does not defend against.
+      vi.mocked(getCreationCapabilities).mockResolvedValue({
+        forkEnabled: true,
+        sourceHistoryMirrorEnabled: false,
+        sourceOnlyMirrorEnabled: false,
+        forkTemplate: null,
+        sourceHistoryMirrorTemplate: null,
+        sourceOnlyMirrorTemplate: null,
+        // allowedSourceOwners intentionally omitted
+      } as unknown as Awaited<ReturnType<typeof getCreationCapabilities>>);
+
+      render(CreatePage, { props: makeProps() });
+      await waitFor(() => expect(getCreationCapabilities).toHaveBeenCalled());
+
+      await selectCreationMode('Fork');
+      // Reading `sourceOwnerWarning` (which dereferences
+      // `capabilities.allowedSourceOwners.length`) is what would throw --
+      // typing a syntactically valid "owner/repo" source is exactly the
+      // input that exercises that derived value's non-null-source branch.
+      expect(async () => {
+        await fillSourceReference('upstream-org/some-repo');
+      }).not.toThrow();
+
+      // The wizard must still be usable afterwards -- Next becomes enabled
+      // for a well-formed source reference despite the malformed discovery
+      // payload.
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /next: repository settings/i }),
+        ).not.toBeDisabled(),
+      );
+    });
+  });
+
   describe('Create wizard — rapid mode switching resets state correctly (adversarial)', () => {
     it('clears the source repository input after switching away to Template and back to Fork', async () => {
       await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
@@ -1912,6 +2025,88 @@ describe('Create wizard (SCR-004)', () => {
         unknown
       >;
       expect('creationMode' in call).toBe(false);
+    });
+
+    // -------------------------------------------------------------------------
+    // QA AUDIT PROBE (post-implementation, Task #2): the existing test above
+    // only exercises Fork -> Template -> Fork. `selectCreationMode()`
+    // (+page.svelte:190-197) resets `sourceReference`/`historyChoiceExplicit`
+    // unconditionally on every mode change, not specifically when routing
+    // through Template, so a direct Fork -> Mirror transition (skipping
+    // Template entirely) is an equally valid path to the same reset logic
+    // and was not covered by any existing test.
+    // -------------------------------------------------------------------------
+    it('clears the source repository input on a DIRECT Fork -> Mirror transition (no intermediate Template step)', async () => {
+      await renderForkMirrorWizard(
+        makeCapabilities({ forkEnabled: true, sourceHistoryMirrorEnabled: true }),
+      );
+      await selectCreationMode('Fork');
+      await fillSourceReference('upstream-org/some-repo');
+      await selectCreationMode('Mirror');
+      expect(await screen.findByRole('textbox', { name: /source repository/i })).toHaveValue('');
+    });
+
+    it('resets an explicit "contents only" history choice back to the default ("preserve full history") after Mirror -> Fork -> Mirror', async () => {
+      await renderForkMirrorWizard(
+        makeCapabilities({
+          forkEnabled: true,
+          sourceHistoryMirrorEnabled: true,
+          sourceOnlyMirrorEnabled: true,
+        }),
+      );
+      await selectCreationMode('Mirror');
+      await screen.findByRole('radiogroup', { name: /history preservation/i });
+      await fireEvent.click(screen.getByRole('radio', { name: /contents only|source.only/i }));
+      expect(screen.getByRole('radio', { name: /contents only|source.only/i })).toBeChecked();
+
+      // Round-trip through Fork and back to Mirror.
+      await selectCreationMode('Fork');
+      await selectCreationMode('Mirror');
+
+      await screen.findByRole('radiogroup', { name: /history preservation/i });
+      // The explicit pick must not have survived the round-trip -- the
+      // default ("preserve full history") must be restored, not the
+      // previously-chosen "contents only".
+      expect(screen.getByRole('radio', { name: /preserve.*history/i })).toBeChecked();
+      expect(screen.getByRole('radio', { name: /contents only|source.only/i })).not.toBeChecked();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // QA AUDIT PROBE (post-implementation, Task #2): rapid double-click on
+  // Step 1's "Next" button. `advanceStep()` is not guarded the way
+  // `submitCreate()` is (no `creatingRepo`-style re-entrancy flag) — it
+  // unconditionally does `currentStep += 1`. Two synchronous, un-awaited
+  // clicks dispatched back-to-back (a real double-click, not two
+  // `await`-separated clicks) both run past the `currentStep += 1` line
+  // before either call's `await tick()` suspends, so the second call sees
+  // the *already-incremented* `currentStep` and increments again —
+  // skipping the Settings step (where the repository name is entered)
+  // entirely and landing straight on Review.
+  // ---------------------------------------------------------------------------
+  describe('Create wizard — rapid double-click on Step 1 "Next" (QA audit probe, adversarial)', () => {
+    it('does not skip the Settings step when "Next" is double-clicked rapidly in Fork mode', async () => {
+      await renderForkMirrorWizard(makeCapabilities({ forkEnabled: true }));
+      await selectCreationMode('Fork');
+      await fillSourceReference('upstream-org/some-repo');
+
+      const next = screen.getByRole('button', { name: /next: repository settings/i });
+      await waitFor(() => expect(next).not.toBeDisabled());
+
+      // Deliberately NOT awaited individually — simulates a real rapid
+      // double-click, where both DOM click events are dispatched before
+      // Svelte's `tick()` from the first handler invocation resolves.
+      const click1 = fireEvent.click(next);
+      const click2 = fireEvent.click(next);
+      await Promise.all([click1, click2]);
+
+      await waitFor(() => {
+        const heading = screen.getByRole('heading', { level: 1 });
+        // A correct implementation always lands on Settings after advancing
+        // from Step 1, regardless of how many times "Next" was invoked
+        // before the button could be disabled/removed.
+        expect(heading).toHaveTextContent('Repository settings');
+      });
     });
   });
 }); // closes the outer "Create wizard (SCR-004)" describe (re-opened above

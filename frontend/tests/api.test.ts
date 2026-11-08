@@ -298,6 +298,43 @@ describe('createRepository()', () => {
     expect(sentBody).not.toHaveProperty('template');
   });
 
+  // ---------------------------------------------------------------------------
+  // QA AUDIT PROBE (post-implementation, Task #2): adversarial `owner`/`name`
+  // content (embedded quotes, backslash, unicode/emoji, and an embedded
+  // literal "/" inside what the client-side regex treats as a single
+  // segment) must round-trip through the wire body EXACTLY as typed, with
+  // no corruption and no injection -- proving `createRepository()` builds
+  // the body via `JSON.stringify(req)` (safe, structural encoding) rather
+  // than any string concatenation that could produce malformed/injected
+  // JSON.
+  // ---------------------------------------------------------------------------
+  it('serialises adversarial `source.owner`/`source.name` content (quotes, backslashes, unicode) as exact, safely-escaped JSON string values', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    const adversarialOwner = 'weird"owner\\with\\backslashes and 🚀 emoji';
+    const adversarialName = '","injected":"value';
+    const req = {
+      organization: 'myorg',
+      name: 'my-fork',
+      creationMode: {
+        type: 'fork',
+        source: { owner: adversarialOwner, name: adversarialName },
+      },
+    };
+    await createRepository(req as unknown as Parameters<typeof createRepository>[0]);
+
+    const rawBody = vi.mocked(fetch).mock.calls[0][1]?.body as string;
+    // The raw wire body must be well-formed JSON (parsing it is itself the
+    // assertion that no string concatenation corrupted the structure).
+    const sentBody = JSON.parse(rawBody);
+    expect((sentBody.creationMode as { source: { owner: string; name: string } }).source).toEqual({
+      owner: adversarialOwner,
+      name: adversarialName,
+    });
+    // Also confirm the literal wire bytes are produced by JSON.stringify
+    // (not hand-built string interpolation) by comparing byte-for-byte.
+    expect(rawBody).toBe(JSON.stringify(req));
+  });
+
   it('serialises the exact mirror+preserveHistory:true `creationMode` JSON shape', async () => {
     mockFetch(CREATION_RESPONSE, 201);
     const req = {
