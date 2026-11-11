@@ -133,8 +133,8 @@
     { value: 'source-only', label: 'Contents only (via pull request)' },
   ];
 
-  // Implicit choice when only one mirror sub-type is enabled; the user's
-  // default when both are enabled (WUI-005 judgment call #4).
+  // Implicit choice when only one mirror sub-type is enabled; also the
+  // default pre-selected option when both are enabled.
   const defaultHistoryChoice = $derived<'preserve' | 'source-only'>(
     capabilities.sourceHistoryMirrorEnabled ? 'preserve' : 'source-only',
   );

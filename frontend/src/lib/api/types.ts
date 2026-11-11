@@ -182,7 +182,7 @@ export interface GetTemplateDetailsResponse {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Creation-capabilities discovery (Task #2, fork-mirror-operations.md §8b)
+// Creation-capabilities discovery (see docs/spec/interfaces/fork-mirror-operations.md §8b)
 // ---------------------------------------------------------------------------
 
 /** 200 response for GET /api/v1/orgs/:org/creation-capabilities */

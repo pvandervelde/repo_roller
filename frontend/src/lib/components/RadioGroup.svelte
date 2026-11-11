@@ -7,10 +7,10 @@
    * radiogroup, which has its own distinct layout and is not a fit for this
    * component).
    *
-   * Extracted (REFACTOR pass, fork/mirror creation-mode task) from two
-   * verbatim-duplicated inline blocks in `routes/create/+page.svelte` — the
-   * "Creation mode" (Template/Fork/Mirror) and "History preservation"
-   * (Preserve full history/Contents only) radiogroups.
+   * Extracted from two verbatim-duplicated inline blocks in
+   * `routes/create/+page.svelte` — the "Creation mode" (Template/Fork/Mirror)
+   * and "History preservation" (Preserve full history/Contents only)
+   * radiogroups.
    */
   export interface RadioGroupOption {
     value: string;

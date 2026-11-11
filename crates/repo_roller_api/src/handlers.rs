@@ -128,9 +128,9 @@ async fn create_settings_manager(
 /// `repo_type` is not defined, or whatever `provider` surfaces for discovery/
 /// load failures.
 ///
-// TODO: cache metadata repo discovery to avoid repeat call in resolve_configuration
-// (resolve_configuration re-runs discover_metadata_repository and
-// load_repository_type_configuration internally, resulting in 2 extra round-trips)
+// Known perf tech debt, tracked in #353: resolve_configuration re-runs
+// discover_metadata_repository and load_repository_type_configuration
+// internally, resulting in 2 extra round-trips when a repositoryType is set.
 async fn validate_repository_type_exists(
     provider: &Arc<dyn MetadataRepositoryProvider>,
     org: &str,
