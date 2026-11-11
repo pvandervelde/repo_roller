@@ -1199,7 +1199,10 @@ async fn resolve_template_designations(
         .await
         .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
     let source_history_mirror_template = manager
-        .find_designated_template(org, config_manager::TemplateDesignation::SourceHistoryMirror)
+        .find_designated_template(
+            org,
+            config_manager::TemplateDesignation::SourceHistoryMirror,
+        )
         .await
         .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
     let source_only_mirror_template = manager
