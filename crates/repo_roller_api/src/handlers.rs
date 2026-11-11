@@ -17,7 +17,7 @@
 
 use async_trait::async_trait;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Extension, Json,
 };
 use serde::{Deserialize, Serialize};
@@ -112,6 +112,47 @@ async fn create_settings_manager(
     )
     .map_err(|e| ApiError::from(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
     create_settings_manager_from_client(client, state)
+}
+
+/// Validate that `repo_type` is a defined repository type in `org`'s
+/// metadata repository, before it is handed to `resolve_configuration`.
+///
+/// Shared by `preview_configuration` and `get_creation_capabilities`, both of
+/// which must reject an unknown `repositoryType` query/body value with 400
+/// rather than let it silently fall through (`resolve_configuration` itself
+/// treats an unknown type the same as "no type configured").
+///
+/// # Errors
+///
+/// `ApiError` wrapping `ConfigurationError::InvalidConfiguration` when
+/// `repo_type` is not defined, or whatever `provider` surfaces for discovery/
+/// load failures.
+///
+// Known perf tech debt, tracked in #353: resolve_configuration re-runs
+// discover_metadata_repository and load_repository_type_configuration
+// internally, resulting in 2 extra round-trips when a repositoryType is set.
+async fn validate_repository_type_exists(
+    provider: &Arc<dyn MetadataRepositoryProvider>,
+    org: &str,
+    repo_type: &str,
+) -> Result<(), ApiError> {
+    let meta = provider
+        .discover_metadata_repository(org)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+    let type_cfg = provider
+        .load_repository_type_configuration(&meta, repo_type)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+    if type_cfg.is_none() {
+        return Err(ApiError::from(RepoRollerError::Configuration(
+            config_manager::ConfigurationError::InvalidConfiguration {
+                field: "repository_type".to_string(),
+                reason: format!("Repository type '{}' is not defined", repo_type),
+            },
+        )));
+    }
+    Ok(())
 }
 
 /// Validate a repository name against GitHub naming rules.
@@ -968,25 +1009,7 @@ pub async fn preview_configuration(
 
     // Validate repository type exists before merging
     if let Some(ref repo_type) = request.repository_type {
-        // TODO: cache metadata repo discovery to avoid repeat call in resolve_configuration
-        // (resolve_configuration re-runs discover_metadata_repository and
-        // load_repository_type_configuration internally, resulting in 2 extra round-trips)
-        let meta = provider
-            .discover_metadata_repository(&org)
-            .await
-            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
-        let type_cfg = provider
-            .load_repository_type_configuration(&meta, repo_type)
-            .await
-            .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
-        if type_cfg.is_none() {
-            return Err(ApiError::from(RepoRollerError::Configuration(
-                config_manager::ConfigurationError::InvalidConfiguration {
-                    field: "repository_type".to_string(),
-                    reason: format!("Repository type '{}' is not defined", repo_type),
-                },
-            )));
-        }
+        validate_repository_type_exists(&provider, &org, repo_type).await?;
     }
 
     // Create configuration context
@@ -1051,6 +1074,147 @@ pub async fn preview_configuration(
     };
 
     Ok(Json(response))
+}
+
+/// Query parameters for `GET /api/v1/orgs/:org/creation-capabilities`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreationCapabilitiesQuery {
+    /// Optional team slug to apply Team-level overrides for.
+    pub team: Option<String>,
+    /// Optional repository-type name to apply RepositoryType-level overrides for.
+    pub repository_type: Option<String>,
+}
+
+/// GET /api/v1/orgs/:org/creation-capabilities
+///
+/// Discover the resolved fork/mirror creation capabilities (enabled flags,
+/// allowed source owners, and designated templates) for an organization,
+/// optionally scoped by the `team` and/or `repositoryType` query parameters
+/// via the existing Global -> RepositoryType -> Team override precedence.
+///
+/// This is a read-only discovery endpoint: it reuses the existing
+/// configuration-merge and template-designation machinery, which only ever
+/// issues GET calls to GitHub, and never mutates anything. A disabled
+/// capability is reported as `false` with a `200` response, never an error.
+///
+/// See: docs/spec/interfaces/fork-mirror-operations.md §8b
+pub async fn get_creation_capabilities(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthContext>,
+    Path(org): Path<String>,
+    Query(query): Query<CreationCapabilitiesQuery>,
+) -> Result<Json<CreationCapabilitiesResponse>, ApiError> {
+    // Create settings manager and provider
+    let (manager, provider) = create_settings_manager(&org, &state).await?;
+
+    // Validate repository type exists before merging, mirroring the same
+    // check `preview_configuration` performs.
+    if let Some(ref repo_type) = query.repository_type {
+        validate_repository_type_exists(&provider, &org, repo_type).await?;
+    }
+
+    // Build configuration context with an empty-string template — a
+    // first-class supported path in `resolve_configuration` that lets this
+    // endpoint resolve capability settings without requiring a template.
+    let mut context = ConfigurationContext::new(&org, "");
+
+    if let Some(ref team) = query.team {
+        context = context.with_team(team);
+    }
+
+    if let Some(ref repo_type) = query.repository_type {
+        context = context.with_repository_type(repo_type);
+    }
+
+    let merged = manager
+        .resolve_configuration(&context)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+
+    let (
+        fork_enabled,
+        source_history_mirror_enabled,
+        source_only_mirror_enabled,
+        allowed_source_owners,
+    ) = resolve_creation_capability_fields(&merged.creation_capabilities);
+
+    let (fork_template, source_history_mirror_template, source_only_mirror_template) =
+        resolve_template_designations(&manager, &org).await?;
+
+    Ok(Json(CreationCapabilitiesResponse {
+        fork_enabled,
+        source_history_mirror_enabled,
+        source_only_mirror_enabled,
+        allowed_source_owners,
+        fork_template,
+        source_history_mirror_template,
+        source_only_mirror_template,
+    }))
+}
+
+/// Resolves the four `creation_capabilities` fields of a `MergedConfiguration`
+/// into their fail-closed defaults, for responses (like
+/// `get_creation_capabilities`) that report capability state directly rather
+/// than enforcing it.
+///
+/// Reuses `repo_roller_core::resolved_capability_flag` for the three bool
+/// flags instead of re-inlining `.map(|v| *v.get()).unwrap_or(false)` three
+/// times — see docs/catalog.md's "Fork & Mirror Creation" entry for why
+/// `unwrap_or(false)` (never `true`) is the fail-closed contract here.
+fn resolve_creation_capability_fields(
+    capabilities: &config_manager::CreationCapabilitiesSettings,
+) -> (bool, bool, bool, Vec<String>) {
+    let fork_enabled = repo_roller_core::resolved_capability_flag(&capabilities.fork_enabled);
+    let source_history_mirror_enabled =
+        repo_roller_core::resolved_capability_flag(&capabilities.source_history_mirror_enabled);
+    let source_only_mirror_enabled =
+        repo_roller_core::resolved_capability_flag(&capabilities.source_only_mirror_enabled);
+    let allowed_source_owners = capabilities
+        .allowed_source_owners
+        .as_ref()
+        .map(|v| v.get().clone())
+        .unwrap_or_default();
+    (
+        fork_enabled,
+        source_history_mirror_enabled,
+        source_only_mirror_enabled,
+        allowed_source_owners,
+    )
+}
+
+/// Resolves all three fork/mirror template designations for `org` in one
+/// place.
+///
+/// Each lookup is a separate call; any one of them returning
+/// `AmbiguousTemplateDesignation` short-circuits the whole function via `?`
+/// (fail-fast — `get_creation_capabilities` returns a single response, not
+/// three independent slots).
+async fn resolve_template_designations(
+    manager: &OrganizationSettingsManager,
+    org: &str,
+) -> Result<(Option<String>, Option<String>, Option<String>), ApiError> {
+    let fork_template = manager
+        .find_designated_template(org, config_manager::TemplateDesignation::Fork)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+    let source_history_mirror_template = manager
+        .find_designated_template(
+            org,
+            config_manager::TemplateDesignation::SourceHistoryMirror,
+        )
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+    let source_only_mirror_template = manager
+        .find_designated_template(org, config_manager::TemplateDesignation::SourceOnlyMirror)
+        .await
+        .map_err(|e| ApiError::from(RepoRollerError::Configuration(e)))?;
+
+    Ok((
+        fork_template,
+        source_history_mirror_template,
+        source_only_mirror_template,
+    ))
 }
 
 /// POST /api/v1/orgs/:org/validate
@@ -1338,3 +1502,7 @@ pub struct HealthCheckResponse {
 #[cfg(test)]
 #[path = "handlers_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "creation_capabilities_tests.rs"]
+mod creation_capabilities_tests;

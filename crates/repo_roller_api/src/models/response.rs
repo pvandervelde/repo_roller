@@ -440,6 +440,57 @@ pub struct PreviewConfigurationResponse {
 /// See: specs/interfaces/api-response-types.md#validateorganizationresponse
 pub type ValidateOrganizationResponse = ValidateRepositoryRequestResponse;
 
+/// HTTP response for the fork/mirror creation-capability discovery endpoint.
+///
+/// Unlike [`GlobalDefaultsResponse`] and [`PreviewConfigurationResponse`],
+/// this is a purpose-built response type rather than a raw
+/// `serde_json::to_value` dump of a `config_manager` struct, so it is
+/// camelCase end-to-end with no snake_case leakage.
+///
+/// # Example
+///
+/// ```json
+/// {
+///   "forkEnabled": true,
+///   "sourceHistoryMirrorEnabled": true,
+///   "sourceOnlyMirrorEnabled": false,
+///   "allowedSourceOwners": ["upstream-org", "some-vendor-org"],
+///   "forkTemplate": "fork-settings",
+///   "sourceHistoryMirrorTemplate": null,
+///   "sourceOnlyMirrorTemplate": null
+/// }
+/// ```
+///
+/// See: docs/spec/interfaces/fork-mirror-operations.md §8b
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreationCapabilitiesResponse {
+    /// Whether GitHub fork creation is enabled for this context.
+    pub fork_enabled: bool,
+
+    /// Whether source+history mirror creation is enabled for this context.
+    pub source_history_mirror_enabled: bool,
+
+    /// Whether source-only mirror creation is enabled for this context.
+    pub source_only_mirror_enabled: bool,
+
+    /// Allow-list of source owners permitted as the source repository's
+    /// owner for fork/mirror requests. Always present as an array (`[]`
+    /// when unset at every configuration level), never omitted or null.
+    pub allowed_source_owners: Vec<String>,
+
+    /// Name of the template designated for `Fork`, if exactly one exists.
+    pub fork_template: Option<String>,
+
+    /// Name of the template designated for `SourceHistoryMirror`, if
+    /// exactly one exists.
+    pub source_history_mirror_template: Option<String>,
+
+    /// Name of the template designated for `SourceOnlyMirror`, if exactly
+    /// one exists.
+    pub source_only_mirror_template: Option<String>,
+}
+
 /// Summary of a single GitHub organization team.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

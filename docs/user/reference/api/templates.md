@@ -186,3 +186,74 @@ Retrieves the resolved configuration for a specific repository type.
 | HTTP status | Code | Condition |
 |---|---|---|
 | 404 | `TYPE_NOT_FOUND` | Repository type does not exist in the metadata repository |
+
+---
+
+## `GET /api/v1/orgs/{org}/creation-capabilities`
+
+Discovers whether fork creation, mirror (source + history) creation, and
+mirror (source-only) creation are enabled for the organisation, the resolved
+source-owner allow-list, and the designated settings-only template (if any)
+for each of the three modes — all resolved through the standard
+Global → RepositoryType → Team configuration precedence.
+
+This endpoint exists because no other endpoint can answer these questions
+before a client composes a fork/mirror creation request:
+`GET /api/v1/orgs/{org}/defaults` only reflects the Global level, and
+`POST /api/v1/orgs/{org}/configuration/preview` requires a `template` name up
+front, which fork/mirror creation intentionally makes optional. This endpoint
+is purely informational — it performs zero mutations and issues no GitHub
+write calls — and it always reports a disabled capability as `false` with a
+`200` response, never as an error.
+
+### Path parameters
+
+| Parameter | Description |
+|---|---|
+| `org` | GitHub organisation slug |
+
+### Query parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `team` | string | No | Team slug. Applies Team-level overrides on top of RepositoryType/Global. |
+| `repositoryType` | string | No | Repository type slug. Applies RepositoryType-level overrides on top of Global. |
+
+Both parameters are optional. With neither supplied, capabilities resolve at
+the Global level only.
+
+### Response — 200 OK
+
+```json
+{
+  "forkEnabled": true,
+  "sourceHistoryMirrorEnabled": true,
+  "sourceOnlyMirrorEnabled": false,
+  "allowedSourceOwners": ["upstream-org", "some-vendor-org"],
+  "forkTemplate": "fork-settings",
+  "sourceHistoryMirrorTemplate": null,
+  "sourceOnlyMirrorTemplate": null
+}
+```
+
+- `forkEnabled` / `sourceHistoryMirrorEnabled` / `sourceOnlyMirrorEnabled` —
+  whether each creation mode is enabled, resolved from the
+  `[creation_capabilities]` configuration at whichever level wins. All three
+  default to `false` (fail-closed) when unset at every level.
+- `allowedSourceOwners` — the resolved allow-list of GitHub owners permitted
+  as a fork/mirror source. Always an array — `[]` when unset at every level,
+  never `null` or omitted.
+- `forkTemplate` / `sourceHistoryMirrorTemplate` / `sourceOnlyMirrorTemplate`
+  — the name of the template designated (via `designation` in its
+  `.reporoller/template.toml`) for that mode, or `null` if none is
+  designated.
+
+See [Configure fork and mirror repository creation](../../how-to/configure/fork-and-mirror-creation.md)
+for how these fields are configured.
+
+### Error responses
+
+| HTTP status | Code | Condition |
+|---|---|---|
+| 400 | `InvalidConfiguration` | `repositoryType` query parameter names a repository type that doesn't exist in the organisation |
+| 409 | `AmbiguousTemplateDesignation` | Two or more templates in the organisation declare the same `designation` value |

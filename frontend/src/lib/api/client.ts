@@ -17,6 +17,7 @@ import { getCurrentTraceparent } from '../observability/trace-context';
 import type {
   CreateRepositoryRequest,
   CreateRepositoryResponse,
+  CreationCapabilitiesResponse,
   ErrorResponse,
   GetTemplateDetailsResponse,
   ListRepositoryTypesResponse,
@@ -51,6 +52,17 @@ interface RawTemplateDetailsResponse {
   /** Backend returns variables as a Record<name, RawVariableDefinition>. */
   variables?: Record<string, RawVariableDefinition> | TemplateVariable[];
   configuration?: unknown;
+}
+
+/** Raw creation-capabilities response before defaulting of missing fields. */
+interface RawCreationCapabilitiesResponse {
+  forkEnabled?: boolean;
+  sourceHistoryMirrorEnabled?: boolean;
+  sourceOnlyMirrorEnabled?: boolean;
+  allowedSourceOwners?: string[];
+  forkTemplate?: string | null;
+  sourceHistoryMirrorTemplate?: string | null;
+  sourceOnlyMirrorTemplate?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,4 +228,38 @@ export async function createRepository(
   });
   if (!response.ok) await throwForStatus(response);
   return response.json() as Promise<CreateRepositoryResponse>;
+}
+
+/**
+ * Discover which fork/mirror creation modes are enabled for an organisation
+ * (optionally scoped by team/repositoryType), the resolved allow-list of
+ * source owners, and which template (if any) is designated for each mode.
+ * GET /api/v1/orgs/:org/creation-capabilities?team=<team>&repositoryType=<type>
+ *
+ * A disabled capability is reported as `false` with HTTP 200 — never an
+ * error. See docs/spec/interfaces/fork-mirror-operations.md §8b.
+ */
+export async function getCreationCapabilities(
+  org: string,
+  params: { team?: string; repositoryType?: string } = {},
+): Promise<CreationCapabilitiesResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.team) searchParams.set('team', params.team);
+  if (params.repositoryType) searchParams.set('repositoryType', params.repositoryType);
+  const query = searchParams.toString();
+  const url = `/api/v1/orgs/${encodeURIComponent(org)}/creation-capabilities${
+    query ? `?${query}` : ''
+  }`;
+  const response = await apiFetch(url, { method: 'GET' });
+  if (!response.ok) await throwForStatus(response);
+  const raw = (await response.json()) as RawCreationCapabilitiesResponse;
+  return {
+    forkEnabled: raw.forkEnabled ?? false,
+    sourceHistoryMirrorEnabled: raw.sourceHistoryMirrorEnabled ?? false,
+    sourceOnlyMirrorEnabled: raw.sourceOnlyMirrorEnabled ?? false,
+    allowedSourceOwners: raw.allowedSourceOwners ?? [],
+    forkTemplate: raw.forkTemplate ?? null,
+    sourceHistoryMirrorTemplate: raw.sourceHistoryMirrorTemplate ?? null,
+    sourceOnlyMirrorTemplate: raw.sourceOnlyMirrorTemplate ?? null,
+  };
 }

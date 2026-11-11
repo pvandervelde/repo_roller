@@ -5,6 +5,7 @@ import {
   validateRepositoryName,
   createRepository,
   listTeams,
+  getCreationCapabilities,
 } from '../src/lib/api/client';
 import {
   ApiAuthError,
@@ -268,6 +269,119 @@ describe('createRepository()', () => {
     expect(sentBody.variables.service_name).toBe('MyService');
   });
 
+  // -------------------------------------------------------------------------
+  // Fork/Mirror creationMode wire contract (Task #2, fork-mirror-operations.md §8a)
+  // -------------------------------------------------------------------------
+
+  it('serialises `repositoryType` (camelCase) when provided, NEVER the legacy snake_case `repository_type` key (required fix)', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    const req = { ...REQUEST, repositoryType: 'library' };
+    await createRepository(req as unknown as Parameters<typeof createRepository>[0]);
+    const sentBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(sentBody.repositoryType).toBe('library');
+    expect(sentBody).not.toHaveProperty('repository_type');
+  });
+
+  it('serialises the exact fork `creationMode` JSON shape required by the backend contract', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    const req = {
+      organization: 'myorg',
+      name: 'my-fork',
+      creationMode: { type: 'fork', source: { owner: 'upstream-org', name: 'some-repo' } },
+    };
+    await createRepository(req as unknown as Parameters<typeof createRepository>[0]);
+    const sentBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(sentBody.creationMode).toEqual({
+      type: 'fork',
+      source: { owner: 'upstream-org', name: 'some-repo' },
+    });
+    expect(sentBody).not.toHaveProperty('template');
+  });
+
+  // ---------------------------------------------------------------------------
+  // QA AUDIT PROBE (post-implementation, Task #2): adversarial `owner`/`name`
+  // content (embedded quotes, backslash, unicode/emoji, and an embedded
+  // literal "/" inside what the client-side regex treats as a single
+  // segment) must round-trip through the wire body EXACTLY as typed, with
+  // no corruption and no injection -- proving `createRepository()` builds
+  // the body via `JSON.stringify(req)` (safe, structural encoding) rather
+  // than any string concatenation that could produce malformed/injected
+  // JSON.
+  // ---------------------------------------------------------------------------
+  it('serialises adversarial `source.owner`/`source.name` content (quotes, backslashes, unicode) as exact, safely-escaped JSON string values', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    const adversarialOwner = 'weird"owner\\with\\backslashes and 🚀 emoji';
+    const adversarialName = '","injected":"value';
+    const req = {
+      organization: 'myorg',
+      name: 'my-fork',
+      creationMode: {
+        type: 'fork',
+        source: { owner: adversarialOwner, name: adversarialName },
+      },
+    };
+    await createRepository(req as unknown as Parameters<typeof createRepository>[0]);
+
+    const rawBody = vi.mocked(fetch).mock.calls[0][1]?.body as string;
+    // The raw wire body must be well-formed JSON (parsing it is itself the
+    // assertion that no string concatenation corrupted the structure).
+    const sentBody = JSON.parse(rawBody);
+    expect((sentBody.creationMode as { source: { owner: string; name: string } }).source).toEqual({
+      owner: adversarialOwner,
+      name: adversarialName,
+    });
+    // Also confirm the literal wire bytes are produced by JSON.stringify
+    // (not hand-built string interpolation) by comparing byte-for-byte.
+    expect(rawBody).toBe(JSON.stringify(req));
+  });
+
+  it('serialises the exact mirror+preserveHistory:true `creationMode` JSON shape', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    const req = {
+      organization: 'myorg',
+      name: 'my-mirror',
+      creationMode: {
+        type: 'mirror',
+        source: { owner: 'upstream-org', name: 'some-repo' },
+        preserveHistory: true,
+      },
+    };
+    await createRepository(req as unknown as Parameters<typeof createRepository>[0]);
+    const sentBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(sentBody.creationMode).toEqual({
+      type: 'mirror',
+      source: { owner: 'upstream-org', name: 'some-repo' },
+      preserveHistory: true,
+    });
+  });
+
+  it('serialises the exact mirror+preserveHistory:false `creationMode` JSON shape', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    const req = {
+      organization: 'myorg',
+      name: 'my-mirror',
+      creationMode: {
+        type: 'mirror',
+        source: { owner: 'upstream-org', name: 'some-repo' },
+        preserveHistory: false,
+      },
+    };
+    await createRepository(req as unknown as Parameters<typeof createRepository>[0]);
+    const sentBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(sentBody.creationMode).toEqual({
+      type: 'mirror',
+      source: { owner: 'upstream-org', name: 'some-repo' },
+      preserveHistory: false,
+    });
+  });
+
+  it('omits `creationMode` entirely from the wire JSON for standard template-based creation', async () => {
+    mockFetch(CREATION_RESPONSE, 201);
+    await createRepository(REQUEST);
+    const sentBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(sentBody).not.toHaveProperty('creationMode');
+  });
+
   it('throws ApiValidationError on 400 (invalid request)', async () => {
     mockFetch(errorBody('ValidationError', 'Repository name contains invalid characters'), 400);
     await expect(createRepository(REQUEST)).rejects.toThrow(ApiValidationError);
@@ -377,5 +491,125 @@ describe('listTeams()', () => {
   it('throws ApiNetworkError when fetch rejects', async () => {
     mockFetchNetworkError();
     await expect(listTeams('myorg')).rejects.toThrow(ApiNetworkError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCreationCapabilities (Task #2, fork-mirror-operations.md §8b)
+// ---------------------------------------------------------------------------
+
+describe('getCreationCapabilities()', () => {
+  const CAPS_RESPONSE = {
+    forkEnabled: true,
+    sourceHistoryMirrorEnabled: true,
+    sourceOnlyMirrorEnabled: false,
+    allowedSourceOwners: ['upstream-org'],
+    forkTemplate: 'fork-settings',
+    sourceHistoryMirrorTemplate: null,
+    sourceOnlyMirrorTemplate: null,
+  };
+
+  it('calls GET /api/v1/orgs/:org/creation-capabilities with no query params when team/repositoryType are omitted', async () => {
+    mockFetch(CAPS_RESPONSE);
+    await getCreationCapabilities('myorg', {});
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/api/v1/orgs/myorg/creation-capabilities');
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      calledUrl,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('includes a `team` query parameter when provided', async () => {
+    mockFetch(CAPS_RESPONSE);
+    await getCreationCapabilities('myorg', { team: 'platform' });
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toMatch(/team=platform/);
+  });
+
+  it('includes a `repositoryType` query parameter when provided', async () => {
+    mockFetch(CAPS_RESPONSE);
+    await getCreationCapabilities('myorg', { repositoryType: 'library' });
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toMatch(/repositoryType=library/);
+  });
+
+  it('includes both query parameters when both team and repositoryType are provided', async () => {
+    mockFetch(CAPS_RESPONSE);
+    await getCreationCapabilities('myorg', { team: 'platform', repositoryType: 'library' });
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toMatch(/team=platform/);
+    expect(calledUrl).toMatch(/repositoryType=library/);
+  });
+
+  it('returns the full typed capabilities response including booleans, allow-list, and template designations', async () => {
+    mockFetch(CAPS_RESPONSE);
+    const result = await getCreationCapabilities('myorg', {});
+    expect(result).toEqual(CAPS_RESPONSE);
+  });
+
+  it('returns an empty allowedSourceOwners array (not undefined/omitted) when the backend sends []', async () => {
+    mockFetch({ ...CAPS_RESPONSE, allowedSourceOwners: [] });
+    const result = await getCreationCapabilities('myorg', {});
+    expect(result.allowedSourceOwners).toEqual([]);
+  });
+
+  it('returns null (not undefined) for each non-designated template field', async () => {
+    mockFetch({
+      ...CAPS_RESPONSE,
+      forkTemplate: null,
+      sourceHistoryMirrorTemplate: null,
+      sourceOnlyMirrorTemplate: null,
+    });
+    const result = await getCreationCapabilities('myorg', {});
+    expect(result.forkTemplate).toBeNull();
+    expect(result.sourceHistoryMirrorTemplate).toBeNull();
+    expect(result.sourceOnlyMirrorTemplate).toBeNull();
+  });
+
+  it('reports a disabled capability as a plain `false` boolean, not an error', async () => {
+    mockFetch({
+      forkEnabled: false,
+      sourceHistoryMirrorEnabled: false,
+      sourceOnlyMirrorEnabled: false,
+      allowedSourceOwners: [],
+      forkTemplate: null,
+      sourceHistoryMirrorTemplate: null,
+      sourceOnlyMirrorTemplate: null,
+    });
+    const result = await getCreationCapabilities('myorg', {});
+    expect(result.forkEnabled).toBe(false);
+  });
+
+  it('throws ApiValidationError on 400 (unknown repositoryType query value)', async () => {
+    mockFetch(errorBody('InvalidConfiguration', "Repository type 'bogus' does not exist"), 400);
+    await expect(getCreationCapabilities('myorg', { repositoryType: 'bogus' })).rejects.toThrow(
+      ApiValidationError,
+    );
+  });
+
+  it('throws ApiConflictError on 409 (AmbiguousTemplateDesignation)', async () => {
+    mockFetch(
+      errorBody('AmbiguousTemplateDesignation', "Multiple templates declare designation 'Fork'"),
+      409,
+    );
+    await expect(getCreationCapabilities('myorg', {})).rejects.toThrow(ApiConflictError);
+  });
+
+  it('throws ApiServerError on 500', async () => {
+    mockFetch(errorBody('SystemError', 'Internal server error'), 500);
+    await expect(getCreationCapabilities('myorg', {})).rejects.toThrow(ApiServerError);
+  });
+
+  it('throws ApiNetworkError when fetch rejects', async () => {
+    mockFetchNetworkError();
+    await expect(getCreationCapabilities('myorg', {})).rejects.toThrow(ApiNetworkError);
+  });
+
+  it('URL-encodes the org name', async () => {
+    mockFetch(CAPS_RESPONSE);
+    await getCreationCapabilities('my org', {});
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/api/v1/orgs/my%20org/creation-capabilities');
   });
 });

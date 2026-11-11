@@ -88,6 +88,14 @@ create** step — that's the only place the final **Create Repository** button a
 
 - A page that's noticeably wider than the rest of the wizard on large screens — Step 1 alone uses
   the extra room for a two-column layout (grid on the left, details panel on the right).
+- If your organisation has enabled creating repositories as a **fork** or **mirror** of an
+  existing repository, a **Creation mode** choice appears above the template grid, with up to
+  three options: **Template** (selected by default — everything below describes this mode),
+  **Fork**, and **Mirror**. Only the modes your administrator has turned on for your
+  organisation are offered; if neither Fork nor Mirror is enabled, this choice doesn't appear at
+  all and the step looks exactly as described below. See
+  [Creating a fork or mirror](#creating-a-fork-or-mirror-instead-of-a-template) further down for
+  what changes when you pick Fork or Mirror.
 - A grid of template cards, each showing:
   - Template name (the human-readable display name configured by the template author; falls
     back to the repository slug if the template doesn't set one)
@@ -115,6 +123,44 @@ create** step — that's the only place the final **Create Repository** button a
 3. Use the details panel to review the template's full description and variable list before
    committing to it, without needing to advance past this step.
 4. Click **Next** when you have selected a template.
+
+#### Creating a fork or mirror instead of a template
+
+Clicking **Fork** or **Mirror** in the Creation mode choice replaces the template grid and
+details panel with a single form:
+
+- **Source repository** — a text field where you type the existing GitHub repository to fork or
+  mirror, in `owner/repo` form (for example, `upstream-org/payment-service`). The **Next** button
+  stays disabled until this is filled in with a value that matches that shape; an inline message
+  tells you to enter it as `"owner/repo"` if what you've typed doesn't parse.
+- If your organisation has curated a list of commonly used source owners and the owner you typed
+  isn't on it, a blue informational note appears under the field (for example: *"'some-owner' is
+  not in the list of commonly used source owners for this organization."*). This is advisory
+  only — you can still click **Next** and submit the request. The server makes the real
+  decision when you click **Create Repository** on the Review step; see the error table in
+  [Screen 6: Error](#screen-6-error-scr-006) below for what happens if it rejects the source
+  owner.
+- **Mirror only** — if your organisation has enabled *both* ways of mirroring (preserving full
+  history, and copying contents only via a pull request), a **History preservation** choice
+  appears with two options: **Preserve full history** and **Contents only (via pull request)**.
+  If your organisation has enabled only one of the two, that one is used automatically and this
+  choice does not appear.
+- There is no template grid, details panel, or search field in Fork/Mirror mode, and Fork/Mirror
+  never produce a Variables step — the wizard goes straight from Repository details to Review
+  and create, just as it would for a template with no variables.
+
+Steps 2 (Repository details) and the Review and create step work the same way as for
+template-based creation, with two differences, both on Review and create:
+
+- The repository summary shows **"Fork of `owner/repo`"** or **"Mirror of `owner/repo`"** in
+  place of a template name.
+- If your organisation has designated a settings-only template for the mode you chose, its name
+  appears as read-only text — **"Settings template: `name`"** — below the summary. This is
+  informational only: that template supplies configuration (branch protection rules, labels, and
+  similar settings), never files, and you cannot pick a different one. See
+  [Configure fork and mirror repository creation](../how-to/configure/fork-and-mirror-creation.md)
+  for the full administrative picture of how fork/mirror creation, the source allow-list, and
+  settings-only templates are configured.
 
 ### Step 2 of 3 or 4: Repository details
 
@@ -223,6 +269,23 @@ Click **Open on GitHub** to visit the newly created repository. Your work here i
 | "Template not found" | The selected template was deleted or renamed | Contact your platform team |
 | "Access denied to organisation" | Token scope is insufficient | Re-authenticate or contact platform team |
 | "Internal server error" | Unexpected backend failure | Note the request ID shown and contact your platform team |
+
+**Fork/Mirror-specific errors:** if you chose Fork or Mirror on Step 1, submitting on the Review
+step can also show one of the following. In every case the error appears inline on the Review
+step (you are not sent to a separate error page) and everything you entered — source repository,
+history choice, repository name, and settings — is preserved, so you can correct the problem and
+click **Create Repository** again without re-entering anything.
+
+| Error message | Likely cause | Action |
+|---|---|---|
+| "This creation mode is disabled for this organization." | Fork or Mirror was enabled when you loaded the page but was turned off before you submitted | Reload the page to see the organisation's current creation-mode options, or contact your platform team |
+| A message naming the source repository's owner as not allowed | The source repository's owner is not on the organisation's allow-list of permitted source owners | Double-check the `owner/repo` value for typos, or ask your platform team to add that owner to the allow-list |
+| "No settings template is designated for this creation mode." | The organisation enabled Fork or Mirror but hasn't designated a settings template, and one is required | Contact your platform team to designate a settings-only template for this mode |
+
+If the page itself shows a banner naming two templates both claiming the same designation (for
+example, two templates both marked as the organisation's Fork settings template) immediately
+after Step 1 loads, that's a configuration problem your platform team needs to fix before Fork or
+Mirror creation can be used — report it rather than retrying.
 
 ---
 
