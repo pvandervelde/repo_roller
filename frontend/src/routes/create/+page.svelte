@@ -11,6 +11,7 @@
   import VariableField from '$lib/components/VariableField.svelte';
   import InlineAlert from '$lib/components/InlineAlert.svelte';
   import CreationOverlay from '$lib/components/CreationOverlay.svelte';
+  import RadioGroup from '$lib/components/RadioGroup.svelte';
   import { goto } from '$app/navigation';
   import { enhance } from '$app/forms';
   import {
@@ -19,12 +20,24 @@
     listRepositoryTypes,
     listTeams,
     createRepository,
+    getCreationCapabilities,
   } from '$lib/api/client';
-  import { ApiConflictError, ApiAuthError, ApiNetworkError } from '$lib/api/errors';
+  import {
+    ApiConflictError,
+    ApiAuthError,
+    ApiNetworkError,
+    ApiValidationError,
+  } from '$lib/api/errors';
   import { withSpan, SPAN_NAMES } from '$lib/observability/spans';
-  import type { GetTemplateDetailsResponse, TemplateSummary } from '$lib/api/types';
+  import type {
+    CreateRepositoryRequest,
+    CreationCapabilitiesResponse,
+    GetTemplateDetailsResponse,
+    TemplateSummary,
+  } from '$lib/api/types';
   import type { NameValidationResult } from '$lib/components/RepositoryNameField.svelte';
   import type { RepositoryTypeOption } from '$lib/components/RepositoryTypePicker.svelte';
+  import type { RadioGroupOption } from '$lib/components/RadioGroup.svelte';
 
   const { data }: { data: PageData } = $props();
 
@@ -60,10 +73,134 @@
   let teams: Array<{ slug: string; name: string }> = $state([]);
 
   // ---------------------------------------------------------------------------
+  // Fork/Mirror creation-mode state (WUI-005, fork-mirror-operations.md §8a/§8b)
+  // ---------------------------------------------------------------------------
+
+  const DISABLED_CAPABILITIES: CreationCapabilitiesResponse = {
+    forkEnabled: false,
+    sourceHistoryMirrorEnabled: false,
+    sourceOnlyMirrorEnabled: false,
+    allowedSourceOwners: [],
+    forkTemplate: null,
+    sourceHistoryMirrorTemplate: null,
+    sourceOnlyMirrorTemplate: null,
+  };
+
+  // Resolved from GET /orgs/:org/creation-capabilities. Any discovery failure
+  // other than AmbiguousTemplateDesignation degrades silently by leaving this
+  // at the all-disabled default — the pre-existing template-only flow is
+  // never affected by a failed/erroring discovery call.
+  let capabilities = $state<CreationCapabilitiesResponse>(DISABLED_CAPABILITIES);
+  // Distinct, visible message for the one discovery failure that must NOT be
+  // degraded silently (AmbiguousTemplateDesignation).
+  let capabilitiesAlert: string | null = $state(null);
+
+  let creationModeChoice = $state<'template' | 'fork' | 'mirror'>('template');
+  let sourceReference = $state('');
+  // The user's explicit history-preservation pick; reset to null (falls back
+  // to the implicit/default choice) whenever the creation mode changes.
+  let historyChoiceExplicit = $state<'preserve' | 'source-only' | null>(null);
+
+  // ---------------------------------------------------------------------------
   // Derived values
   // ---------------------------------------------------------------------------
 
-  const hasVariables = $derived((templateDetails?.variables.length ?? 0) > 0);
+  const showModeChoice = $derived(
+    capabilities.forkEnabled ||
+      capabilities.sourceHistoryMirrorEnabled ||
+      capabilities.sourceOnlyMirrorEnabled,
+  );
+
+  const mirrorHistoryToggleVisible = $derived(
+    capabilities.sourceHistoryMirrorEnabled && capabilities.sourceOnlyMirrorEnabled,
+  );
+
+  // Options for the "Creation mode" RadioGroup — Template is always offered;
+  // Fork/Mirror appear only once their respective capability is enabled.
+  const modeOptions = $derived.by<RadioGroupOption[]>(() => {
+    const options: RadioGroupOption[] = [{ value: 'template', label: 'Template' }];
+    if (capabilities.forkEnabled) options.push({ value: 'fork', label: 'Fork' });
+    if (capabilities.sourceHistoryMirrorEnabled || capabilities.sourceOnlyMirrorEnabled) {
+      options.push({ value: 'mirror', label: 'Mirror' });
+    }
+    return options;
+  });
+
+  // Fixed options for the "History preservation" RadioGroup — only ever
+  // rendered when mirrorHistoryToggleVisible is true (both sub-types enabled).
+  const historyOptions: RadioGroupOption[] = [
+    { value: 'preserve', label: 'Preserve full history' },
+    { value: 'source-only', label: 'Contents only (via pull request)' },
+  ];
+
+  // Implicit choice when only one mirror sub-type is enabled; also the
+  // default pre-selected option when both are enabled.
+  const defaultHistoryChoice = $derived<'preserve' | 'source-only'>(
+    capabilities.sourceHistoryMirrorEnabled ? 'preserve' : 'source-only',
+  );
+
+  const effectiveHistoryChoice = $derived(historyChoiceExplicit ?? defaultHistoryChoice);
+  const preserveHistory = $derived(effectiveHistoryChoice === 'preserve');
+
+  // Basic client-side shape check: exactly two non-empty segments separated
+  // by exactly one '/'.
+  const parsedSource = $derived.by<{ owner: string; name: string } | null>(() => {
+    if (creationModeChoice === 'template') return null;
+    const match = /^([^/]+)\/([^/]+)$/.exec(sourceReference.trim());
+    return match ? { owner: match[1], name: match[2] } : null;
+  });
+
+  const sourceReferenceError = $derived.by<string | null>(() => {
+    if (creationModeChoice === 'template') return null;
+    if (sourceReference.trim().length === 0) return null;
+    if (parsedSource !== null) return null;
+    return 'Enter the source repository as "owner/repo".';
+  });
+
+  const sourceReferenceValid = $derived(creationModeChoice !== 'template' && parsedSource !== null);
+
+  // Advisory only — the allow-list is non-additive per team/repositoryType
+  // scope and the server remains authoritative; never blocks submission.
+  const sourceOwnerWarning = $derived.by<string | null>(() => {
+    if (creationModeChoice === 'template' || parsedSource === null) return null;
+    if (capabilities.allowedSourceOwners.length === 0) return null;
+    if (capabilities.allowedSourceOwners.includes(parsedSource.owner)) return null;
+    return `'${parsedSource.owner}' is not in the list of commonly used source owners for this organization.`;
+  });
+
+  // The designated settings template (if any) for the currently-selected
+  // Fork/Mirror mode — informational-only, never user-selectable (WUI-005).
+  const designatedTemplateName = $derived.by<string | null>(() => {
+    if (creationModeChoice === 'fork') return capabilities.forkTemplate;
+    if (creationModeChoice === 'mirror') {
+      return preserveHistory
+        ? capabilities.sourceHistoryMirrorTemplate
+        : capabilities.sourceOnlyMirrorTemplate;
+    }
+    return null;
+  });
+
+  // Label shown in RepositorySummary's "Template" chip for all three modes.
+  const summaryTemplateLabel = $derived.by<string>(() => {
+    if (creationModeChoice === 'fork') return `Fork of ${sourceReference}`;
+    if (creationModeChoice === 'mirror') return `Mirror of ${sourceReference}`;
+    return selectedTemplateName ?? '';
+  });
+
+  function selectCreationMode(mode: 'template' | 'fork' | 'mirror') {
+    if (creationModeChoice === mode) return;
+    creationModeChoice = mode;
+    // Adversarial-robustness: never leak Fork/Mirror form state across a
+    // round-trip through another mode (see "rapid mode switching" tests).
+    sourceReference = '';
+    historyChoiceExplicit = null;
+  }
+
+  // Fork/Mirror never produce a Variables step — the designated settings
+  // template (if any) is informational-only on Review, never user-editable.
+  const hasVariables = $derived(
+    creationModeChoice === 'template' && (templateDetails?.variables.length ?? 0) > 0,
+  );
 
   // A final "Review" step is always appended; the Create action lives there
   // exclusively (never on Settings/Variables, which only ever advance).
@@ -79,10 +216,12 @@
   const reviewStepNumber = $derived(steps.length);
 
   const step1NextEnabled = $derived(
-    selectedTemplateName !== null &&
-      templateDetails !== null &&
-      !templateDetailsLoading &&
-      templateDetailsError === null,
+    creationModeChoice === 'template'
+      ? selectedTemplateName !== null &&
+          templateDetails !== null &&
+          !templateDetailsLoading &&
+          templateDetailsError === null
+      : sourceReferenceValid,
   );
 
   // Step 2's "next" is enabled when name validation is available or check_failed
@@ -132,6 +271,9 @@
 
   const step1NextTooltip = $derived.by<string | null>(() => {
     if (step1NextEnabled) return null;
+    if (creationModeChoice !== 'template') {
+      return 'Enter a valid source repository ("owner/repo") to continue';
+    }
     if (!selectedTemplateName) return 'Select a template to continue';
     if (templateDetailsLoading) return 'Loading template details…';
     if (templateDetailsError) return 'Template details could not be loaded — try again';
@@ -170,6 +312,12 @@
     return name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
+  /** `errorDetails.code`, normalized to `''` when absent — shared by every
+   * submitCreate() error branch that switches on the server-supplied code. */
+  function errorCode(err: ApiConflictError | ApiAuthError | ApiValidationError): string {
+    return err.errorDetails.code ?? '';
+  }
+
   // ---------------------------------------------------------------------------
   // DOM ref for focus management (UX-ASSERT-024) — a single ref is sufficient
   // because exactly one step heading is ever mounted at a time.
@@ -183,6 +331,7 @@
 
   onMount(() => {
     loadTemplates();
+    loadCapabilities();
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Guard disabled while overlay is active (creation is in flight)
@@ -208,6 +357,39 @@
       templatesError = 'Could not load templates.';
     } finally {
       templatesLoading = false;
+    }
+  }
+
+  // WUI-005: discover Fork/Mirror capability state. Any failure other than
+  // AmbiguousTemplateDesignation degrades silently (capabilities stays at
+  // its all-disabled default, defined above) — the template-only flow must
+  // never be affected by a broken/unavailable discovery endpoint.
+  async function loadCapabilities() {
+    try {
+      const result = await getCreationCapabilities(data.organization, {});
+      // Defensive defaulting (mirrors the normalization in client.ts's
+      // getCreationCapabilities) applied again here so this component never
+      // dereferences a missing field directly — guards this component's
+      // derived values (e.g. sourceOwnerWarning reads
+      // capabilities.allowedSourceOwners.length) even when the client
+      // function itself is replaced by a test double that returns a
+      // malformed/partial response.
+      capabilities = {
+        forkEnabled: result.forkEnabled ?? false,
+        sourceHistoryMirrorEnabled: result.sourceHistoryMirrorEnabled ?? false,
+        sourceOnlyMirrorEnabled: result.sourceOnlyMirrorEnabled ?? false,
+        allowedSourceOwners: result.allowedSourceOwners ?? [],
+        forkTemplate: result.forkTemplate ?? null,
+        sourceHistoryMirrorTemplate: result.sourceHistoryMirrorTemplate ?? null,
+        sourceOnlyMirrorTemplate: result.sourceOnlyMirrorTemplate ?? null,
+      };
+    } catch (err) {
+      if (
+        err instanceof ApiConflictError &&
+        err.errorDetails.code === 'AmbiguousTemplateDesignation'
+      ) {
+        capabilitiesAlert = err.errorDetails.message;
+      }
     }
   }
 
@@ -280,6 +462,38 @@
     await advanceStep();
   }
 
+  /**
+   * Builds the POST /api/v1/repositories request body for the current
+   * creation mode. Fork/Mirror never send `template`/`variables` (the
+   * backend auto-discovers the designated template, if any) and standard
+   * template-based creation never sends `creationMode` (fork-mirror-
+   * operations.md §8a).
+   */
+  function buildCreateRequest(variables: Record<string, string>): CreateRepositoryRequest {
+    const base = {
+      organization: data.organization,
+      name: repoName,
+      visibility,
+      team: selectedTeamName ?? undefined,
+      repositoryType: selectedTypeName ?? undefined,
+    };
+
+    if (creationModeChoice === 'fork' && parsedSource !== null) {
+      return { ...base, creationMode: { type: 'fork', source: parsedSource } };
+    }
+    if (creationModeChoice === 'mirror' && parsedSource !== null) {
+      return {
+        ...base,
+        creationMode: { type: 'mirror', source: parsedSource, preserveHistory },
+      };
+    }
+    return {
+      ...base,
+      template: selectedTemplateName!,
+      variables: Object.keys(variables).length > 0 ? variables : undefined,
+    };
+  }
+
   async function submitCreate(variables: Record<string, string> = {}) {
     // Guards against duplicate submissions from rapid repeat clicks on the
     // Review step's "Create Repository" button (UX-ASSERT-018, security).
@@ -289,15 +503,7 @@
     creatingRepo = true;
     try {
       const result = await withSpan(SPAN_NAMES.CREATE_REPOSITORY_SUBMIT, () =>
-        createRepository({
-          organization: data.organization,
-          name: repoName,
-          template: selectedTemplateName!,
-          visibility,
-          team: selectedTeamName ?? undefined,
-          repository_type: selectedTypeName ?? undefined,
-          variables: Object.keys(variables).length > 0 ? variables : undefined,
-        }),
+        createRepository(buildCreateRequest(variables)),
       );
       // Success: navigate away (guard already suppressed while creatingRepo=true)
       await goto(`/create/success?repo=${encodeURIComponent(result.repository.fullName)}`);
@@ -305,7 +511,7 @@
       creatingRepo = false;
 
       if (err instanceof ApiConflictError) {
-        const code = err.errorDetails.code ?? '';
+        const code = errorCode(err);
         if (code === 'TemplateNotFound' || err.errorDetails.message?.includes('template')) {
           // UX-ASSERT-020: template not found — back to step 1, refresh list
           currentStep = 1;
@@ -324,9 +530,28 @@
           createError = `A repository named '${repoName}' was created while you were filling in this form. Please choose a different name.`;
         }
       } else if (err instanceof ApiAuthError) {
-        // 403 permission denied — show inline on current step
-        createError =
-          "You don't have permission to create repositories in this organization. Contact your administrator.";
+        // WUIE-003: Fork/Mirror-specific 403s get a distinct, specific
+        // message instead of the generic permission-denied fallback. Form
+        // state is preserved — currentStep is left unchanged (Review).
+        const code = errorCode(err);
+        if (code === 'CapabilityDisabled') {
+          createError = `This creation mode is disabled for this organization. ${err.errorDetails.message}`;
+        } else if (code === 'SourceOwnerNotAllowed') {
+          createError = err.errorDetails.message;
+        } else {
+          // 403 permission denied — show inline on current step
+          createError =
+            "You don't have permission to create repositories in this organization. Contact your administrator.";
+        }
+      } else if (err instanceof ApiValidationError) {
+        // WUIE-003: TemplateNotDesignated (400) gets a distinct, specific
+        // message instead of falling through to the generic 5xx fallback.
+        const code = errorCode(err);
+        if (code === 'TemplateNotDesignated') {
+          createError = `No settings template is designated for this creation mode. ${err.errorDetails.message}`;
+        } else {
+          createError = err.errorDetails.message;
+        }
       } else if (err instanceof ApiNetworkError) {
         createError = 'Could not reach the server. Check your connection and try again.';
       } else {
@@ -381,21 +606,91 @@
     {#if currentStep === 1}
       <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Choose a template</h1>
 
+      {#if capabilitiesAlert}
+        <InlineAlert variant="error" message={capabilitiesAlert} />
+      {/if}
       {#if createError}
         <InlineAlert variant="error" message={createError} />
       {/if}
 
-      <div class="wizard__step1-layout">
-        <div class="wizard__step1-main">
-          <TemplateGrid
-            {templates}
-            {selectedTemplateName}
-            loading={templatesLoading}
-            error={templatesError}
-            ontemplateSelect={handleTemplateSelect}
-            ontemplateDeselect={handleTemplateDeselect}
-            onretry={loadTemplates}
-          />
+      {#if showModeChoice}
+        <RadioGroup
+          ariaLabel="Creation mode"
+          name="creation-mode"
+          options={modeOptions}
+          selected={creationModeChoice}
+          onchange={(v) => selectCreationMode(v as 'template' | 'fork' | 'mirror')}
+        />
+      {/if}
+
+      {#if creationModeChoice === 'template'}
+        <div class="wizard__step1-layout">
+          <div class="wizard__step1-main">
+            <TemplateGrid
+              {templates}
+              {selectedTemplateName}
+              loading={templatesLoading}
+              error={templatesError}
+              ontemplateSelect={handleTemplateSelect}
+              ontemplateDeselect={handleTemplateDeselect}
+              onretry={loadTemplates}
+            />
+
+            <div class="wizard__actions wizard__actions--step1">
+              <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
+                <button
+                  type="button"
+                  class="wizard__btn-next"
+                  disabled={!step1NextEnabled}
+                  onclick={advanceStep}
+                >
+                  Next: Repository settings →
+                </button>
+              </span>
+            </div>
+          </div>
+          <div class="wizard__step1-sidebar">
+            <TemplateDetailsPanel
+              {templateDetails}
+              loading={templateDetailsLoading}
+              error={templateDetailsError}
+            />
+          </div>
+        </div>
+      {:else}
+        <div class="wizard__step2-fields">
+          <div class="wizard__field">
+            <label for="source-repository" class="wizard__label">Source repository</label>
+            <input
+              id="source-repository"
+              type="text"
+              class="wizard__input"
+              placeholder="owner/repo"
+              bind:value={sourceReference}
+            />
+            <p class="wizard__helper">
+              Enter the "owner/repo" of the repository to {creationModeChoice}.
+            </p>
+          </div>
+
+          {#if sourceReferenceError}
+            <InlineAlert variant="error" message={sourceReferenceError} />
+          {/if}
+          {#if sourceOwnerWarning}
+            <InlineAlert variant="info" message={sourceOwnerWarning} />
+          {/if}
+
+          {#if creationModeChoice === 'mirror' && mirrorHistoryToggleVisible}
+            <RadioGroup
+              ariaLabel="History preservation"
+              name="history-choice"
+              options={historyOptions}
+              selected={effectiveHistoryChoice}
+              onchange={(v) => {
+                historyChoiceExplicit = v as 'preserve' | 'source-only';
+              }}
+            />
+          {/if}
 
           <div class="wizard__actions wizard__actions--step1">
             <span class="wizard__btn-tip" title={step1NextTooltip ?? undefined}>
@@ -410,14 +705,7 @@
             </span>
           </div>
         </div>
-        <div class="wizard__step1-sidebar">
-          <TemplateDetailsPanel
-            {templateDetails}
-            loading={templateDetailsLoading}
-            error={templateDetailsError}
-          />
-        </div>
-      </div>
+      {/if}
     {:else if currentStep === 2}
       <h1 tabindex="-1" bind:this={wizardHeading} class="wizard__heading">Repository settings</h1>
 
@@ -479,7 +767,7 @@
         <RepositorySummary
           organization={data.organization}
           repositoryName={repoName}
-          templateName={selectedTemplateName ?? ''}
+          templateName={summaryTemplateLabel}
           typeName={selectedTypeName}
           {visibility}
           teamName={selectedTeamName}
@@ -554,7 +842,7 @@
         <RepositorySummary
           organization={data.organization}
           repositoryName={repoName}
-          templateName={templateDetails?.displayName ?? selectedTemplateName ?? ''}
+          templateName={templateDetails?.displayName ?? summaryTemplateLabel}
           typeName={selectedTypeName}
           {visibility}
           teamName={selectedTeamName}
@@ -562,6 +850,12 @@
           tags={templateDetails?.tags ?? []}
           variables={reviewVariables}
         />
+
+        {#if creationModeChoice !== 'template' && designatedTemplateName}
+          <p class="wizard__designated-template">
+            Settings template: <strong>{designatedTemplateName}</strong>
+          </p>
+        {/if}
       </div>
 
       <div class="wizard__actions">
@@ -726,6 +1020,32 @@
 
   .wizard__helper {
     font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  .wizard__input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.9375rem;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    box-sizing: border-box;
+  }
+
+  .wizard__input:focus {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+    border-color: var(--brand-primary);
+  }
+
+  /* Creation-mode / history-preservation radiogroups (WUI-005) are rendered
+     via the shared RadioGroup component — no page-local styling needed. */
+
+  .wizard__designated-template {
+    font-size: 0.875rem;
     color: var(--color-text-muted);
     margin: 0;
   }

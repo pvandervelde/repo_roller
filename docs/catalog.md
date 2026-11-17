@@ -149,10 +149,23 @@ Add to this whenever a reusable component becomes "the standard way".
   Notes: **Fail-closed default** — a fully-`None` value at every level means
   **disabled**, not enabled (unlike most other `Option<OverridableValue<_>>`
   settings in this codebase, which tend to default permissively). Resolve
-  with `flag.as_ref().map(|v| *v.get()).unwrap_or(false)` — never
-  `unwrap_or(true)`. `allowed_source_owners` is independently fail-closed:
-  unset *or* explicitly empty both deny every source owner. See
+  with `repo_roller_core::resolved_capability_flag(&flag)` (see entry below)
+  — never `unwrap_or(true)`. `allowed_source_owners` is independently
+  fail-closed: unset *or* explicitly empty both deny every source owner. See
   `docs/spec/interfaces/fork-mirror-operations.md` §2.
+
+- **`repo_roller_core::resolved_capability_flag(&Option<OverridableValue<bool>>)
+  -> bool`** — the single fail-closed resolver for any
+  `CreationCapabilitiesSettings` bool flag (`unwrap_or(false)`, never `true`)
+  Location: `repo_roller_core/src/lib.rs`
+  Use when: Reading a resolved `fork_enabled`/`source_history_mirror_enabled`/
+  `source_only_mirror_enabled`-shaped field out of a `MergedConfiguration`,
+  in either `repo_roller_core` or a downstream crate
+  Notes: Made `pub` (REFACTOR pass, creation-capabilities discovery endpoint
+  task) specifically so `repo_roller_api::handlers::get_creation_capabilities`
+  could reuse it instead of re-inlining `.map(|v| *v.get()).unwrap_or(false)`
+  a second time at a new call site. Call this rather than inlining the
+  resolution again for any future capability-flag consumer.
 
 - **`ConfigurationMerger::merge_creation_capabilities_settings` /
   `merge_capability_field` / `merge_allowed_source_owners_field`** —
@@ -436,6 +449,55 @@ Add to this whenever a reusable component becomes "the standard way".
   Use when: An HTTP client needs to request a Fork/Mirror creation; the
   nested `source` is re-validated via `revalidate_source_repository_reference`
   above before reaching the domain layer
+
+- **`repo_roller_api::handlers::get_creation_capabilities`** /
+  **`CreationCapabilitiesQuery`** / **`CreationCapabilitiesResponse`** —
+  read-only discovery endpoint reporting resolved fork/mirror creation
+  capabilities (enabled flags, allow-listed source owners, designated
+  templates) for an org, optionally scoped by `team`/`repositoryType`
+  Location: handler + query struct in `repo_roller_api/src/handlers.rs`;
+  response struct in `repo_roller_api/src/models/response.rs`; route in
+  `repo_roller_api/src/routes.rs` (`GET
+  /api/v1/orgs/:org/creation-capabilities`, registered in both
+  `organization_routes()` and `organization_routes_without_auth()`)
+  Pattern: reuses `create_settings_manager` +
+  `ConfigurationContext::new(&org, "")` (empty-template path) +
+  `resolve_configuration` — no new `config_manager` merge logic.
+  `CreationCapabilitiesResponse` is a purpose-built camelCase type (unlike
+  `GlobalDefaultsResponse`'s raw `serde_json::to_value` dump) matching
+  `docs/spec/interfaces/fork-mirror-operations.md` §8b exactly. The handler
+  body itself delegates to three private helpers (REFACTOR pass, to stay
+  under this project's 50-line function guideline):
+  `resolve_creation_capability_fields` (the three bool flags +
+  `allowed_source_owners`, via `repo_roller_core::resolved_capability_flag`),
+  `resolve_template_designations` (the three `find_designated_template`
+  calls, fail-fast via `?` on the first `AmbiguousTemplateDesignation`), and
+  `validate_repository_type_exists` (shared with `preview_configuration` —
+  see below).
+  Use when: A client (e.g. the SvelteKit frontend) needs to pre-filter
+  its UI based on which fork/mirror capabilities are enabled before
+  composing a creation request
+  Errors: unknown `repositoryType` → 400 `InvalidConfiguration`; two+
+  templates sharing a designation → 409 `AmbiguousTemplateDesignation`
+  (fail-fast across all three designation lookups, one response)
+
+- **`repo_roller_api::handlers::validate_repository_type_exists(provider,
+  org, repo_type) -> Result<(), ApiError>`** — rejects an unknown
+  `repositoryType` with 400 `InvalidConfiguration` before it reaches
+  `resolve_configuration`
+  Location: `repo_roller_api/src/handlers.rs`
+  Pattern: `discover_metadata_repository` + `load_repository_type_configuration`,
+  `InvalidConfiguration` on `None`. Extracted (REFACTOR pass) from two
+  verbatim-duplicated inline blocks in `preview_configuration` and
+  `get_creation_capabilities` — both validate the same query/body field the
+  same way before building their `ConfigurationContext`.
+  Use when: A new handler accepts an optional `repositoryType` input and
+  must 400 on an unknown value rather than silently falling through
+  Notes: Carries a pre-existing `TODO` (not addressed by this extraction):
+  `resolve_configuration` re-runs `discover_metadata_repository` +
+  `load_repository_type_configuration` internally, so this check costs 2
+  extra GitHub round-trips per request — caching metadata-repo discovery
+  across the two calls is deferred tech debt.
 
 - **CLI `--fork-from` / `--mirror-from` / `--mirror-history` flags** —
   `CreateArgs` fields surfacing fork/mirror creation from the command line
@@ -957,6 +1019,78 @@ Add to this whenever a reusable component becomes "the standard way".
   route-local conventions (not extracted as separate reusable abstractions) — recorded here only
   for discoverability.
   Tags: frontend, svelte, sidebar, create-wizard
+
+- **`getCreationCapabilities(org, { team?, repositoryType? })`** — API client
+  function — `frontend/src/lib/api/client.ts` — Calls `GET
+  /api/v1/orgs/:org/creation-capabilities`, the frontend counterpart to the
+  backend catalog entry above. Builds the optional `team`/`repositoryType`
+  query string only when provided, reuses the existing `throwForStatus()`
+  error mapping (400→`ApiValidationError`, 409→`ApiConflictError` for
+  `AmbiguousTemplateDesignation`, 5xx→`ApiServerError`,
+  network→`ApiNetworkError`).
+  Use when: Pre-filtering fork/mirror creation-mode UI before a source/mode
+  is chosen — see the create wizard's `loadCapabilities()` below.
+  Tags: frontend, api-client, fork-mirror
+
+- **`CreationMode` / `CreationModeSource` / `CreationCapabilitiesResponse`**
+  — TypeScript types — `frontend/src/lib/api/types.ts` — Hand-written mirrors
+  of `repo_roller_core::CreationMode` (discriminated union, `type: 'standard'
+  | 'fork' | 'mirror'`) and the Task #1 discovery response, matching
+  `docs/spec/interfaces/fork-mirror-operations.md` §8a/§8b exactly
+  (camelCase, `creationMode` omitted entirely for standard creation rather
+  than sent as `{ type: 'standard' }`).
+  Also fixes `CreateRepositoryRequest.repository_type` → `repositoryType`
+  (was being sent as snake_case, which the Rust API's
+  `#[serde(deny_unknown_fields)]` rejected outright) and makes `template`
+  optional (required for standard creation, omitted for fork/mirror).
+  Tags: frontend, types, fork-mirror
+
+- **`RadioGroup`** — Svelte component —
+  `frontend/src/lib/components/RadioGroup.svelte` — Shared, minimal
+  `role="radiogroup"` control for a flat list of labelled text options.
+  Props: `ariaLabel`, `name`, `options: RadioGroupOption[]` (`{value, label}`),
+  `selected: string | null`, `onchange: (value: string) => void`. Renders one
+  `<label><input type="radio">text</label>` per option; `checked` is derived
+  from `selected === option.value`, so the caller owns all selection state
+  (this component is purely presentational/controlled).
+  Use when: Rendering a small set of mutually-exclusive text options as
+  native radio inputs — call this rather than hand-rolling
+  `role="radiogroup"` + `<label><input type="radio">` markup a second time.
+  Deliberately NOT a fit for `TemplateGrid`/`TemplateCard`'s visual-card
+  radiogroup (card layout, hidden input, image/description per option) — that
+  pattern stays independent; do not try to unify the two.
+  Notes: Extracted (REFACTOR pass, fork/mirror creation-mode task) from two
+  verbatim-duplicated inline blocks in `create/+page.svelte` — the "Creation
+  mode" (Template/Fork/Mirror) and "History preservation" (Preserve full
+  history/Contents only) radiogroups, both introduced in the same task.
+  Tags: frontend, svelte, radiogroup, a11y, dry
+
+- **Create wizard Fork/Mirror mode** — `frontend/src/routes/create/+page.svelte`
+  — Extends the existing `currentStep` + `$derived` steps-list wizard with a
+  "Creation mode" radiogroup (Template/Fork/Mirror, rendered via the shared
+  `RadioGroup` component above — distinct from `TemplateGrid`'s visual-card
+  radiogroup pattern) shown only once `loadCapabilities()` resolves at least
+  one of `forkEnabled`/`sourceHistoryMirrorEnabled`/`sourceOnlyMirrorEnabled`
+  — any other discovery failure (network, 4xx/5xx) degrades silently to the
+  template-only flow; `AmbiguousTemplateDesignation` alone surfaces as a
+  distinct `InlineAlert`. Fork/Mirror swap the template grid for a labelled
+  "Source repository" textbox (`owner/repo` shape validation, non-blocking
+  `allowedSourceOwners` advisory via `role="status"`) and skip the Variables
+  step entirely; a second `RadioGroup` for history preservation appears only
+  when both mirror sub-types are enabled.
+  `CapabilityDisabled`/`SourceOwnerNotAllowed`/`TemplateNotDesignated` get
+  distinct `InlineAlert` messages instead of the generic permission/5xx
+  fallbacks, preserving all form state; all three (plus `TemplateNotFound`)
+  share the `errorCode(err)` helper (REFACTOR pass — replaced three
+  verbatim-duplicated `err.errorDetails.code ?? ''` one-liners, one per
+  `instanceof` branch in `submitCreate`'s `catch`) for reading the
+  server-supplied error code.
+  Use when: Extending this wizard further — reuse `selectCreationMode()`'s
+  reset-on-switch pattern (clears `sourceReference`/`historyChoiceExplicit`)
+  rather than letting stale Fork/Mirror state leak into a later standard
+  submission; reuse `errorCode(err)` rather than re-inlining
+  `err.errorDetails.code ?? ''` for any new error-code branch.
+  Tags: frontend, svelte, create-wizard, fork-mirror
 
 ## Cross-Cutting Helpers
 

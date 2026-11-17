@@ -1430,7 +1430,13 @@ async fn create_repository_inner(
 ///
 /// See docs/spec/interfaces/fork-mirror-operations.md §2: "treat a fully-`None`
 /// `CreationCapabilitiesSettings` at Global level as 'disabled'".
-fn resolved_capability_flag(flag: &Option<config_manager::OverridableValue<bool>>) -> bool {
+///
+/// Also reused by `repo_roller_api::handlers::get_creation_capabilities`,
+/// which resolves the same three `Option<OverridableValue<bool>>` fields for
+/// its discovery response — keep this as the single source of truth for the
+/// fail-closed resolution rule rather than re-inlining
+/// `.map(|v| *v.get()).unwrap_or(false)` at a new call site.
+pub fn resolved_capability_flag(flag: &Option<config_manager::OverridableValue<bool>>) -> bool {
     flag.as_ref().map(|v| *v.get()).unwrap_or(false)
 }
 

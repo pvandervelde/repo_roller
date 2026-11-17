@@ -459,6 +459,15 @@ This document defines testable assertions about RepoRoller's behavior. These ass
 - **And**: Estimated completion time is provided where possible
 - **And**: Error messages are displayed immediately when failures occur
 
+**Assertion WUI-005: Fork and Mirror Creation via Web Interface**
+
+- **Given**: User accesses the repository creation wizard with valid authentication
+- **And**: Fork and/or mirror creation capability state is known via `GET /orgs/:org/creation-capabilities`
+- **When**: User chooses "Fork" or "Mirror" as the creation mode and provides a source repository reference
+- **Then**: The wizard presents only the modes reported as enabled by the discovery endpoint, with a clear source-owner/source-repo input and, for mirrors, an explicit history-preservation choice
+- **And**: The submitted request's `creationMode` payload matches the API contract (`{"type":"fork","source":{...}}` or `{"type":"mirror","source":{...},"preserveHistory":bool}`)
+- **And**: A capability reported as disabled is not presented as a selectable option
+
 ### Web UI Error Handling
 
 **Assertion WUIE-001: Form Validation and Error Display**
@@ -476,6 +485,13 @@ This document defines testable assertions about RepoRoller's behavior. These ass
 - **Then**: User is notified of session expiration
 - **And**: User can re-authenticate without losing form data
 - **And**: Repository creation can continue after re-authentication
+
+**Assertion WUIE-003: Fork/Mirror Rejection Handling**
+
+- **Given**: A fork or mirror creation request is rejected by the API (`CapabilityDisabled`, `SourceOwnerNotAllowed`, or `TemplateNotDesignated`)
+- **When**: The response is received by the web interface
+- **Then**: A clear, specific error message is displayed to the user explaining the rejection reason
+- **And**: The user's form inputs are preserved so they can correct and resubmit without re-entering all data
 
 ## Integration and API Assertions
 
@@ -509,6 +525,25 @@ This document defines testable assertions about RepoRoller's behavior. These ass
 - **And**: Key Vault access failures fall back to environment variables
 - **And**: Sensitive values are never logged or cached in plaintext
 - **And**: Key Vault operations complete within timeout limits
+
+### RepoRoller REST API — Capability Discovery
+
+**Assertion IAA-003: Creation Capability Discovery Endpoint**
+
+- **Given**: A caller requests `GET /api/v1/orgs/:org/creation-capabilities`
+- **And**: Optional `team` and/or `repositoryType` query parameters are supplied
+- **When**: The request is processed
+- **Then**: The response reports the resolved `forkEnabled`, `sourceHistoryMirrorEnabled`, and `sourceOnlyMirrorEnabled` flags using the same Global → RepositoryType → Team precedence as repository creation
+- **And**: The response reports the resolved `allowedSourceOwners` list (empty array, never omitted, when unset at every level)
+- **And**: The response reports the designated template name (or `null`) for each of the three designations
+- **And**: A disabled capability is reported as `false` with HTTP 200, never as an error
+
+**Assertion IAA-004: Capability Discovery Ambiguity and Validation Errors**
+
+- **Given**: Two or more templates in the organization declare the same designation
+- **When**: `GET /api/v1/orgs/:org/creation-capabilities` is requested
+- **Then**: The request fails with `409 AmbiguousTemplateDesignation`
+- **And**: Given an unknown `repositoryType` query value instead, the request fails with `400`
 
 ## Behavioral Invariants
 

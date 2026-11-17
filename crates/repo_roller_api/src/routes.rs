@@ -16,6 +16,7 @@
 //! - GET    /api/v1/orgs/:org/repository-types/:type - Get type config
 //! - GET    /api/v1/orgs/:org/defaults - Get global defaults
 //! - POST   /api/v1/orgs/:org/configuration/preview - Preview configuration
+//! - GET    /api/v1/orgs/:org/creation-capabilities - Discover fork/mirror creation capabilities
 //! - POST   /api/v1/orgs/:org/validate - Validate organization
 //! - GET    /api/v1/orgs/:org/teams - List organization teams
 //! - GET    /api/v1/health - Health check
@@ -189,6 +190,10 @@ fn organization_routes() -> Router<AppState> {
             "/configuration/preview",
             post(handlers::preview_configuration),
         )
+        .route(
+            "/creation-capabilities",
+            get(handlers::get_creation_capabilities),
+        )
         // Organization validation
         .route("/validate", post(handlers::validate_organization))
         // Team routes
@@ -298,6 +303,10 @@ fn organization_routes_without_auth() -> Router<AppState> {
         .route(
             "/configuration/preview",
             post(handlers::preview_configuration),
+        )
+        .route(
+            "/creation-capabilities",
+            get(handlers::get_creation_capabilities),
         )
         // Organization validation
         .route("/validate", post(handlers::validate_organization))
