@@ -28,6 +28,7 @@
 //! `cleanup` step that runs even on failure (`.await.ok()` pattern).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Result;
 use auth_handler::{GitHubAuthService, UserAuthenticationService};
@@ -116,7 +117,8 @@ async fn create_test_dependencies(
         .await?;
 
     let github_client = GitHubClient::new(create_token_client(&installation_token)?);
-    let permission_manager = PermissionManager::new(github_client.clone(), PolicyEngine::new());
+    let permission_manager =
+        PermissionManager::new(Arc::new(github_client.clone()), PolicyEngine::new());
 
     Ok((github_client, permission_manager))
 }

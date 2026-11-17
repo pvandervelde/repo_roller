@@ -337,7 +337,11 @@ struct CreationClients {
     /// Raw installation token used for git push authentication.
     installation_token: String,
     /// GitHub API client authenticated as the installation.
-    installation_repo_client: GitHubClient,
+    ///
+    /// Held as a trait object so every downstream dispatch helper
+    /// (`create_github_repository`, `apply_post_creation_settings`, …) operates
+    /// against `RepositoryClient` uniformly and stays unit-testable with a mock.
+    installation_repo_client: std::sync::Arc<dyn RepositoryClient>,
     /// Template content fetcher backed by the same installation token.
     template_fetcher: template_engine::GitHubTemplateFetcher,
 }
@@ -370,7 +374,8 @@ async fn setup_github_clients(
                 reason: format!("Failed to create installation token client: {}", e),
             })
         })?;
-    let installation_repo_client = GitHubClient::new(installation_client);
+    let installation_repo_client: std::sync::Arc<dyn RepositoryClient> =
+        std::sync::Arc::new(GitHubClient::new(installation_client));
 
     let template_fetcher = template_engine::GitHubTemplateFetcher::new();
 
@@ -737,7 +742,7 @@ async fn push_repository_to_github_with_retry(
 /// Returns errors from configuration application; permission errors are logged
 /// and suppressed.
 async fn apply_post_creation_settings(
-    installation_repo_client: &GitHubClient,
+    installation_repo_client: &std::sync::Arc<dyn RepositoryClient>,
     request: &RepositoryCreationRequest,
     merged_config: &config_manager::MergedConfiguration,
     template: Option<&config_manager::TemplateConfig>,
@@ -755,7 +760,7 @@ async fn apply_post_creation_settings(
     // usable; log a warning rather than failing the entire creation.
     {
         let permission_manager = crate::permission_manager::PermissionManager::new(
-            installation_repo_client.clone(),
+            std::sync::Arc::clone(installation_repo_client),
             crate::policy_engine::PolicyEngine::new(),
         );
         let hierarchy = crate::permission_workflow::build_permission_hierarchy(template);
@@ -1620,7 +1625,7 @@ async fn create_standard_repository(
     let allow_empty_commit = matches!(request.content_strategy, ContentStrategy::Empty);
     let default_branch = initialize_git_repository(
         &local_repo_path,
-        &clients.installation_repo_client,
+        &*clients.installation_repo_client,
         request.owner.as_ref(),
         allow_empty_commit,
     )
@@ -1630,7 +1635,7 @@ async fn create_standard_repository(
     let repo = create_github_repository(
         request,
         merged_config,
-        &clients.installation_repo_client,
+        &*clients.installation_repo_client,
         visibility_decision.visibility,
     )
     .instrument(tracing::info_span!(
@@ -1750,7 +1755,7 @@ async fn create_history_mirror_repository(
     let repo = create_github_repository(
         request,
         merged_config,
-        &clients.installation_repo_client,
+        &*clients.installation_repo_client,
         visibility_decision.visibility,
     )
     .await?;
@@ -1851,7 +1856,7 @@ async fn create_source_only_mirror_repository(
     let allow_empty_commit = matches!(content_strategy, ContentStrategy::Empty);
     let default_branch = initialize_git_repository(
         &local_repo_path,
-        &clients.installation_repo_client,
+        &*clients.installation_repo_client,
         request.owner.as_ref(),
         allow_empty_commit,
     )
@@ -1860,7 +1865,7 @@ async fn create_source_only_mirror_repository(
     let repo = create_github_repository(
         request,
         merged_config,
-        &clients.installation_repo_client,
+        &*clients.installation_repo_client,
         visibility_decision.visibility,
     )
     .await?;

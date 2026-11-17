@@ -3,8 +3,9 @@
 //! This module provides the [`LabelManager`] component for orchestrating
 //! label operations with business logic, idempotency, and error handling.
 
-use github_client::{GitHubClient, RepositoryClient};
+use github_client::RepositoryClient;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::{GitHubError, RepoRollerResult};
@@ -18,13 +19,14 @@ use crate::{GitHubError, RepoRollerResult};
 /// # Examples
 ///
 /// ```rust,no_run
-/// use github_client::GitHubClient;
+/// use github_client::{GitHubClient, RepositoryClient};
 /// use repo_roller_core::LabelManager;
 /// use config_manager::settings::LabelConfig;
 /// use std::collections::HashMap;
+/// use std::sync::Arc;
 ///
 /// # async fn example(github_client: GitHubClient) -> Result<(), Box<dyn std::error::Error>> {
-/// let manager = LabelManager::new(github_client);
+/// let manager = LabelManager::new(Arc::new(github_client) as Arc<dyn RepositoryClient>);
 ///
 /// let mut labels = HashMap::new();
 /// labels.insert("bug".to_string(), LabelConfig {
@@ -40,7 +42,7 @@ use crate::{GitHubError, RepoRollerResult};
 /// ```
 pub struct LabelManager {
     /// GitHub client for API operations
-    github_client: GitHubClient,
+    github_client: Arc<dyn RepositoryClient>,
 }
 
 impl LabelManager {
@@ -53,14 +55,15 @@ impl LabelManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use github_client::GitHubClient;
+    /// use github_client::{GitHubClient, RepositoryClient};
     /// use repo_roller_core::LabelManager;
+    /// use std::sync::Arc;
     ///
     /// # async fn example(client: GitHubClient) {
-    /// let manager = LabelManager::new(client);
+    /// let manager = LabelManager::new(Arc::new(client) as Arc<dyn RepositoryClient>);
     /// # }
     /// ```
-    pub fn new(github_client: GitHubClient) -> Self {
+    pub fn new(github_client: Arc<dyn RepositoryClient>) -> Self {
         Self { github_client }
     }
 

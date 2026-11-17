@@ -2915,6 +2915,48 @@ impl RepositoryClient for GitHubClient {
             }
         }
     }
+
+    // The following methods delegate to GitHubClient's inherent implementations
+    // so GitHubClient can be used polymorphically through the RepositoryClient
+    // trait. The duplication is intentional for trait compliance (same pattern
+    // as get_installation_token_for_org above).
+
+    async fn add_team_to_repository(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        GitHubClient::add_team_to_repository(self, org, team_slug, repo, permission).await
+    }
+
+    async fn list_repository_collaborators(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<Collaborator>, Error> {
+        GitHubClient::list_repository_collaborators(self, owner, repo).await
+    }
+
+    async fn add_repository_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+        permission: &str,
+    ) -> Result<(), Error> {
+        GitHubClient::add_repository_collaborator(self, owner, repo, username, permission).await
+    }
+
+    async fn remove_repository_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> Result<(), Error> {
+        GitHubClient::remove_repository_collaborator(self, owner, repo, username).await
+    }
 }
 
 /// Payload structure for creating a new repository via the GitHub REST API.
@@ -3635,6 +3677,61 @@ pub trait RepositoryClient: Send + Sync {
         repo: &str,
         pr_number: u64,
     ) -> Result<PullRequest, Error>;
+
+    /// Grants a team the given permission level on a repository.
+    ///
+    /// Uses a PUT-based upsert: calling it for a team that already has access
+    /// updates the access level rather than failing.
+    ///
+    /// # Errors
+    /// - The team, organisation, or repository does not exist
+    /// - The GitHub API request fails
+    async fn add_team_to_repository(
+        &self,
+        org: &str,
+        team_slug: &str,
+        repo: &str,
+        permission: &str,
+    ) -> Result<(), Error>;
+
+    /// Lists all collaborators (individuals with direct access) for a repository.
+    ///
+    /// # Errors
+    /// - The repository does not exist or is not accessible
+    /// - The GitHub API request fails
+    async fn list_repository_collaborators(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<Collaborator>, Error>;
+
+    /// Adds a collaborator to a repository with the given permission level.
+    ///
+    /// Uses a PUT-based upsert: calling it for a collaborator that already has
+    /// access updates the access level rather than failing.
+    ///
+    /// # Errors
+    /// - The user or repository does not exist
+    /// - The GitHub API request fails
+    async fn add_repository_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+        permission: &str,
+    ) -> Result<(), Error>;
+
+    /// Removes a collaborator's direct access from a repository.
+    ///
+    /// # Errors
+    /// - The repository does not exist or is not accessible
+    /// - The GitHub API request fails
+    async fn remove_repository_collaborator(
+        &self,
+        owner: &str,
+        repo: &str,
+        username: &str,
+    ) -> Result<(), Error>;
 }
 
 /// Settings that can be updated for an existing repository.

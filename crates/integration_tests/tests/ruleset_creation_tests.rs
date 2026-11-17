@@ -138,7 +138,7 @@ async fn test_ruleset_creation_via_manager() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Apply rulesets using RulesetManager
-    let ruleset_manager = RulesetManager::new(github_client.clone());
+    let ruleset_manager = RulesetManager::new(Arc::new(github_client.clone()));
     let mut rulesets = HashMap::new();
     rulesets.insert(
         "main-protection".to_string(),
@@ -221,7 +221,7 @@ async fn test_rulesets_are_idempotent() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Apply rulesets first time
-    let ruleset_manager = RulesetManager::new(github_client.clone());
+    let ruleset_manager = RulesetManager::new(Arc::new(github_client.clone()));
     let mut rulesets = HashMap::new();
     rulesets.insert(
         "main-protection".to_string(),
@@ -318,7 +318,7 @@ async fn test_list_existing_rulesets() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Create known rulesets
-    let ruleset_manager = RulesetManager::new(github_client.clone());
+    let ruleset_manager = RulesetManager::new(Arc::new(github_client.clone()));
     let mut rulesets = HashMap::new();
     rulesets.insert(
         "branch-protection".to_string(),
@@ -414,7 +414,7 @@ async fn test_update_existing_rulesets() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Create initial rulesets
-    let ruleset_manager = RulesetManager::new(github_client.clone());
+    let ruleset_manager = RulesetManager::new(Arc::new(github_client.clone()));
     let mut rulesets = HashMap::new();
     rulesets.insert(
         "main-protection".to_string(),
@@ -506,7 +506,7 @@ async fn test_empty_ruleset_configuration() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Apply empty rulesets
-    let ruleset_manager = RulesetManager::new(github_client.clone());
+    let ruleset_manager = RulesetManager::new(Arc::new(github_client.clone()));
     let empty_rulesets = HashMap::new();
 
     let result = ruleset_manager

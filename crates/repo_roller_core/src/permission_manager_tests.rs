@@ -10,8 +10,9 @@
 //!    the GitHub REST API and verify the correct endpoints are called.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use github_client::GitHubClient;
+use github_client::{GitHubClient, RepositoryClient};
 use octocrab::Octocrab;
 use serde_json::json;
 use wiremock::matchers::{method, path};
@@ -27,15 +28,17 @@ use crate::{OrganizationName, RepositoryName};
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-/// Creates a [`GitHubClient`] pointed at a wiremock server for testing.
-fn create_test_github_client(server_uri: &str) -> GitHubClient {
+/// Creates a [`RepositoryClient`] (backed by a real [`GitHubClient`]) pointed at
+/// a wiremock server for testing. Returned as `Arc<dyn RepositoryClient>` so it
+/// can be handed directly to [`PermissionManager::new`].
+fn create_test_github_client(server_uri: &str) -> Arc<dyn RepositoryClient> {
     let octocrab = Octocrab::builder()
         .base_uri(server_uri)
         .expect("valid URI from wiremock")
         .personal_token("test-token".to_string())
         .build()
         .expect("octocrab builder succeeds with valid base_uri");
-    GitHubClient::new(octocrab)
+    Arc::new(GitHubClient::new(octocrab))
 }
 
 /// Builds a minimal valid [`PermissionRequest`] for the given org/repo.
