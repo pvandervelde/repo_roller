@@ -570,6 +570,12 @@ Labels and webhooks are applied as part of the `apply_repository_configuration()
 
 **Current Implementation** (labels already integrated):
 
+`apply_repository_configuration()` applies configured labels. It does not
+apply repository webhooks: if webhook configuration is present, the workflow
+logs a warning and continues. Although `WebhookManager` is implemented, this
+workflow does not invoke it. Outbound event notifications are a separate
+feature.
+
 ```rust
 pub(crate) async fn apply_repository_configuration(
     installation_repo_client: &GitHubClient,
@@ -584,11 +590,6 @@ pub(crate) async fn apply_repository_configuration(
                 .create_label(owner, repo_name, &label_config.name, ...)
                 .await?;
         }
-    }
-
-    // Webhooks are stubbed
-    if !merged_config.webhooks.is_empty() {
-        warn!("Webhook creation not yet implemented");
     }
 
     // ... other configuration
