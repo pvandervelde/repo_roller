@@ -45,8 +45,8 @@ octocrab = { version = "0.54", default-features = false, features = [
 # Distributed tracing (Observability Task #2): OpenTelemetry SDK + OTLP
 # exporter + the tracing<->OpenTelemetry bridge. Versions chosen for
 # compatibility with the `tracing`/`tracing-subscriber` 0.1/0.3 pins above.
-opentelemetry = "0.32"
-opentelemetry_sdk = "0.32"
+opentelemetry = "0.33"
+opentelemetry_sdk = "0.33"
 # "grpc-tonic" selects the gRPC/OTLP transport (port 4317, matching
 # DEFAULT_OTLP_ENDPOINT in tracing_otel.rs and the Jaeger OTLP/gRPC receiver
 # wired up in examples/local-stack/docker-compose.yml). The crate's own
@@ -59,7 +59,7 @@ opentelemetry_sdk = "0.32"
 # reqwest pulls in ring), so keeping TLS on aws-lc-rs here avoids the "both
 # providers present, no default installed" panic class entirely rather than
 # merely working around it.
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "tls-aws-lc"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "tls-aws-lc"] }
 tracing-opentelemetry = "0.33"
 regex = "1"
 secrecy = "0.10"
