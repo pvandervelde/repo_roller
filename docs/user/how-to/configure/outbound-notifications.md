@@ -13,28 +13,34 @@ Delivery is asynchronous (runs after creation returns), best-effort (failures ar
 
 ## Configuration file placement
 
-Create `notifications.toml` files in the metadata repository at the level(s) where you want notifications:
+Add the `notifications` section to the configuration file at each level where
+you want notifications:
 
 | Level | File path | Fires for |
 |---|---|---|
-| Organisation | `.reporoller/global/notifications.toml` | Every repository creation |
-| Team | `.reporoller/teams/{team-name}/notifications.toml` | Repositories for that team |
-| Template | `.reporoller/notifications.toml` inside the template repo | Repositories from that template |
+| Organisation | `global/defaults.toml` in the metadata repository | Every repository creation |
+| Team | `teams/{team-name}/config.toml` in the metadata repository | Repositories for that team |
+| Template | `.reporoller/template.toml` inside the template repository | Repositories from that template |
+
+The `.example.invalid` URLs and `REPLACE_WITH_*` values below are
+nonfunctional placeholders. In particular, `secret` contains a reference
+resolved by RepoRoller's configured secret resolver, not the secret itself.
 
 ## Configuration format
 
 ```toml
-[[outbound_webhooks]]
-url             = "https://monitoring.myorg.example/hooks/repo-created"
-secret          = "REPOROLLER_WEBHOOK_SECRET"
+[notifications]
+[[notifications.outbound_webhooks]]
+url             = "https://monitoring.example.invalid/hooks/repo-created"
+secret          = "REPLACE_WITH_WEBHOOK_SECRET_ENV_VAR"
 events          = ["repository.created"]
 active          = true
 timeout_seconds = 10
 description     = "Central monitoring system"
 
-[[outbound_webhooks]]
-url             = "https://audit.myorg.example/hooks/reporoller"
-secret          = "REPOROLLER_AUDIT_SECRET"
+[[notifications.outbound_webhooks]]
+url             = "https://audit.example.invalid/hooks/reporoller"
+secret          = "REPLACE_WITH_AUDIT_SECRET_ENV_VAR"
 events          = ["*"]
 timeout_seconds = 15
 description     = "Corporate audit log"
@@ -57,13 +63,13 @@ The `secret` field is a **reference** to the secret value, not the secret itself
 
 | Resolver | `secret` value | How it resolves |
 |---|---|---|
-| `EnvironmentSecretResolver` | `"REPOROLLER_WEBHOOK_SECRET"` | Reads `$REPOROLLER_WEBHOOK_SECRET` environment variable |
-| `FileSecretResolver` | `"secrets/webhook-secret.txt"` | Reads file at `<base_path>/secrets/webhook-secret.txt` |
+| `EnvironmentSecretResolver` | `"REPLACE_WITH_WEBHOOK_SECRET_ENV_VAR"` | Reads the named environment variable |
+| `FilesystemSecretResolver` | `"REPLACE_WITH_SECRET_RELATIVE_PATH"` | Reads the relative file at `<base_path>/REPLACE_WITH_SECRET_RELATIVE_PATH` |
 
 For Docker deployments, set the secret as an environment variable on the backend container:
 
 ```bash
-REPOROLLER_WEBHOOK_SECRET="your-actual-secret-value"
+REPLACE_WITH_WEBHOOK_SECRET_ENV_VAR="REPLACE_WITH_A_LONG_RANDOM_SECRET"
 ```
 
 ## Event types
@@ -79,23 +85,25 @@ Endpoints from all levels are combined for each creation. If the same `(url, eve
 
 ## Example: organisation-level audit and team-level Slack notification
 
-`global/notifications.toml`:
+`global/defaults.toml`:
 
 ```toml
-[[outbound_webhooks]]
-url             = "https://audit.myorg.example/hooks/reporoller"
-secret          = "REPOROLLER_AUDIT_SECRET"
+[notifications]
+[[notifications.outbound_webhooks]]
+url             = "https://audit.example.invalid/hooks/reporoller"
+secret          = "REPLACE_WITH_AUDIT_SECRET_ENV_VAR"
 events          = ["*"]
 timeout_seconds = 15
 description     = "Corporate audit log"
 ```
 
-`teams/platform-engineering/notifications.toml`:
+`teams/platform-engineering/config.toml`:
 
 ```toml
-[[outbound_webhooks]]
-url             = "https://hooks.slack.com/services/T00000/B00000/XXXX"
-secret          = "PE_SLACK_WEBHOOK_SECRET"
+[notifications]
+[[notifications.outbound_webhooks]]
+url             = "https://slack.example.invalid/hooks/repo-created"
+secret          = "REPLACE_WITH_SLACK_SECRET_ENV_VAR"
 events          = ["repository.created"]
 timeout_seconds = 5
 description     = "Platform Engineering Slack channel"

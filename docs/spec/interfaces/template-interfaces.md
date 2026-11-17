@@ -1,102 +1,74 @@
 # Template Processing Interfaces
 
-**Architectural Layer**: Business Interface (trait) + Infrastructure (file system + Handlebars implementation)
+**Architectural Layer**: Template processing
 **Crate**: `template_engine`
 **Responsibilities**:
 
-- **Knows**: Variable substitution rules, template file formats
-- **Does**: Fetches template files, processes variables, validates templates
+- **Knows**: Template file formats, variable substitution, and validation rules
+- **Does**: Fetches template files and renders content for repository creation
 
 ---
 
 ## Overview
 
-Template processing handles fetching template files from source repositories and performing variable substitution to generate final repository content.
+Template processing is split across configuration loading and content
+rendering. `config_manager::TemplateLoader` loads and caches template
+configuration; `template_engine::TemplateFetcher` retrieves template files,
+and `TemplateProcessor` renders eligible text files using Handlebars.
 
-## Current State
-
-**Existing Traits** (already defined):
-
-- `TemplateFetcher` - Fetches template files from source
-
-**Existing Types**:
-
-- `TemplateProcessor` - Performs variable substitution
-- `TemplateProcessingRequest` - Input for processing
-- `VariableConfig` - Variable validation rules
-
-**Status**: ✅ Generally well-designed
-
-**TODO**: Add type safety with branded types
-
----
-
-## Existing Interface: TemplateFetcher
+## Template file fetching
 
 ```rust
 #[async_trait]
 pub trait TemplateFetcher: Send + Sync {
-    async fn fetch_template_files(&self, source_repo: &str)
-        -> Result<Vec<(String, Vec<u8>)>, TemplateEngineError>;
-}
-```
-
-**Status**: ✅ Well-designed
-
-**TODO**: Change `source_repo: &str` to a typed `TemplateSource` or URL type
-
----
-
-## Template Processor
-
-```rust
-pub struct TemplateProcessor {
-    // Handlebars registry
-}
-
-impl TemplateProcessor {
-    pub fn new() -> Result<Self, TemplateEngineError>;
-
-    pub fn process_template(
+    async fn fetch_template_files(
         &self,
-        files: &[(String, Vec<u8>)],
-        request: &TemplateProcessingRequest,
-        base_path: &Path,
-    ) -> Result<ProcessedTemplate, TemplateEngineError>;
-
-    pub fn generate_built_in_variables(
-        &self,
-        params: &BuiltInVariablesParams,
-    ) -> HashMap<String, String>;
+        source_repo: &str,
+    ) -> Result<Vec<(String, Vec<u8>)>, String>;
 }
 ```
 
-**Status**: ✅ Well-designed
+The fetcher accepts a string repository reference and returns relative file
+paths with their contents. The `template_engine` crate does not depend on
+`repo_roller_core`, so it intentionally does not accept core domain newtypes.
+Callers pass validated values as strings at this crate boundary. No separate
+`TemplateSource` type is part of this interface.
 
-**TODO**: Migrate `BuiltInVariablesParams` to use branded types
+## Template processor
 
----
+`TemplateProcessor` renders fetched files using a
+`TemplateProcessingRequest`, which carries user variables, built-in
+variables, variable configuration, and optional templating configuration.
+`BuiltInVariablesParams` also borrows strings for repository, organization,
+template, user, and branch data for the same crate-boundary reason.
 
-## Types
+The core domain uses `RepositoryName`, `OrganizationName`, and `TemplateName`
+to validate names before they reach the template engine. The processor
+receives their string representations; it does not revalidate those domain
+names.
 
-### TemplateProcessingRequest
+Processing validates required variables and configured constraints before
+rendering. Binary files are preserved without text substitution. Rendering
+and validation failures are returned as template-processing errors to the
+repository-creation workflow.
 
-```rust
-pub struct TemplateProcessingRequest {
-    pub variables: HashMap<String, String>,
-    pub built_in_variables: HashMap<String, String>,
-    pub variable_configs: HashMap<String, VariableConfig>,
-    pub templating_config: Option<TemplatingConfig>,
-}
-```
+## Variable configuration
 
-### BuiltInVariablesParams
+Variable configuration describes whether a value is required and may provide
+a description, example, default, pattern, minimum or maximum length, and
+allowed options. The processor applies the constraints supplied for each
+variable; the template configuration schema is defined by
+`config_manager::TemplateVariable`.
+
+## Built-in variable boundary
+
+The parameters are borrowed strings rather than branded types:
 
 ```rust
 pub struct BuiltInVariablesParams<'a> {
-    pub repo_name: &'a str, // TODO: Change to &'a RepositoryName
-    pub org_name: &'a str,  // TODO: Change to &'a OrganizationName
-    pub template_name: &'a str, // TODO: Change to &'a TemplateName
+    pub repo_name: &'a str,
+    pub org_name: &'a str,
+    pub template_name: &'a str,
     pub template_repo: &'a str,
     pub user_login: &'a str,
     pub user_name: &'a str,
@@ -104,76 +76,11 @@ pub struct BuiltInVariablesParams<'a> {
 }
 ```
 
-### ProcessedTemplate
-
-```rust
-pub struct ProcessedTemplate {
-    pub files: Vec<(String, Vec<u8>)>,
-}
-```
-
----
-
-## Variable Configuration
-
-### VariableConfig
-
-```rust
-pub struct VariableConfig {
-    pub description: Option<String>,
-    pub example: Option<String>,
-    pub required: bool,
-    pub pattern: Option<String>,
-    pub min_length: Option<usize>,
-    pub max_length: Option<usize>,
-    pub options: Option<Vec<String>>,
-    pub default: Option<String>,
-}
-```
-
-**Status**: ✅ Comprehensive validation support
-
----
-
-## Error Handling
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum TemplateEngineError {
-    #[error("Template fetch failed: {0}")]
-    FetchError(String),
-
-    #[error("Variable substitution failed: {0}")]
-    SubstitutionError(String),
-
-    #[error("Variable validation failed: {0}")]
-    ValidationError(String),
-}
-```
-
----
-
-## Implementation Notes
-
-- Uses Handlebars for variable substitution
-- Supports `{{variable}}` syntax
-- Validates all required variables before processing
-- Handles binary files (no substitution)
-- Supports conditional blocks and loops
-
----
-
-## Migration Path
-
-1. Add branded type parameters to `BuiltInVariablesParams`
-2. Update template fetcher to use typed source references
-3. Add comprehensive error context
-4. Improve variable validation error messages
-
----
+This keeps `template_engine` independent of `repo_roller_core`. Core callers
+can pass a domain value using `as_ref()` or `as_str()` where available.
 
 ## Related Specifications
 
-- `specs/interfaces/repository-domain.md` - Uses template engine
-- `specs/interfaces/shared-types.md` - Type definitions
-- `specs/interfaces/error-types.md` - Error hierarchy
+- [Configuration Management](configuration-interfaces.md) — Template configuration resolution
+- [Template Configuration Loading](template-loading.md) — Loading template metadata
+- [Shared Types](shared-types.md) — Core validated names

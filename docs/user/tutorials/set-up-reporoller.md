@@ -9,11 +9,17 @@ type: "tutorial"
 
 By the end of this tutorial, RepoRoller will be running and accessible to your organisation. You will create the metadata repository, register two GitHub Apps, generate secrets, write a Docker Compose configuration, and verify a healthy deployment.
 
+> **Placeholder values:** `example-org`, `*.example.invalid`, and
+> `REPLACE_WITH_*` values in this guide are illustrative and nonfunctional.
+> Do not use them as credentials or commit populated secret files to source
+> control.
+
 **What you need before you start:**
 
 - Owner access to your GitHub organisation
 - A server with Docker and Docker Compose installed
-- A public-facing hostname for the frontend (e.g. `reporoller.myorg.example`) with TLS termination
+- A public-facing hostname for the frontend (for example,
+  `reporoller.example.invalid`) with TLS termination
 
 Estimated time: 45–60 minutes.
 
@@ -27,7 +33,7 @@ The metadata repository stores all configuration that controls how RepoRoller cr
 2. Clone it locally:
 
 ```bash
-git clone https://github.com/myorg/.reporoller.git
+git clone https://github.com/example-org/.reporoller.git
 cd .reporoller
 ```
 
@@ -71,8 +77,8 @@ RepoRoller uses a GitHub App as its service identity for creating repositories.
 
 1. Go to **GitHub → Organisation Settings → Developer settings → GitHub Apps → New GitHub App**.
 2. Fill in the form:
-   - **GitHub App name**: `RepoRoller-myorg` (must be unique on GitHub)
-   - **Homepage URL**: `https://reporoller.myorg.example`
+   - **GitHub App name**: `RepoRoller-example-org` (must be unique on GitHub)
+   - **Homepage URL**: `https://reporoller.example.invalid`
    - **Webhook**: uncheck **Active** — RepoRoller does not receive webhooks
 3. Under **Repository permissions**, set:
 
@@ -113,8 +119,8 @@ The frontend uses a separate OAuth App to authenticate end-users.
 1. Go to **GitHub → Organisation Settings → Developer settings → OAuth Apps → New OAuth App**.
 2. Fill in:
    - **Application name**: `RepoRoller`
-   - **Homepage URL**: `https://reporoller.myorg.example`
-   - **Authorization callback URL**: `https://reporoller.myorg.example/auth/callback`
+   - **Homepage URL**: `https://reporoller.example.invalid`
+   - **Authorization callback URL**: `https://reporoller.example.invalid/auth/callback`
 3. Click **Register application**.
 4. Copy the **Client ID** → `GITHUB_CLIENT_ID`.
 5. Click **Generate a new client secret** → `GITHUB_CLIENT_SECRET`.
@@ -152,7 +158,7 @@ cd ~/reporoller-deploy
 # docker-compose.yml
 services:
   backend:
-    image: ghcr.io/myorg/repo-roller-api:latest
+    image: ghcr.io/REPLACE_WITH_IMAGE_OWNER/repo-roller-api:latest
     networks:
       - internal
     environment:
@@ -171,7 +177,7 @@ services:
       retries: 5
 
   frontend:
-    image: ghcr.io/myorg/repo-roller-frontend:latest
+    image: ghcr.io/REPLACE_WITH_IMAGE_OWNER/repo-roller-frontend:latest
     ports:
       - "3000:3000"
     networks:
@@ -182,8 +188,8 @@ services:
     environment:
       GITHUB_CLIENT_ID:     "${GITHUB_CLIENT_ID}"
       GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
-      GITHUB_ORG:           "myorg"
-      ORIGIN:               "https://reporoller.myorg.example"
+      GITHUB_ORG:           "example-org"
+      ORIGIN:               "https://reporoller.example.invalid"
       SESSION_SECRET:       "${SESSION_SECRET}"
       BACKEND_API_URL:      "http://backend:8080"
       NODE_ENV:             "production"
@@ -193,16 +199,18 @@ networks:
     driver: bridge
 ```
 
-Create an `.env` file (do **not** commit this to source control):
+Create an `.env` file locally (do **not** commit it to source control). The
+following values are placeholders only; replace each with the corresponding
+value from your GitHub Apps or secrets manager:
 
 ```bash
 cat > .env << 'EOF'
-GITHUB_APP_ID=12345
-GITHUB_APP_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n
-JWT_SECRET=<your-jwt-secret>
-GITHUB_CLIENT_ID=Ov23libXXXXXXXXXXXXX
-GITHUB_CLIENT_SECRET=<your-oauth-client-secret>
-SESSION_SECRET=<your-session-secret>
+GITHUB_APP_ID=REPLACE_WITH_GITHUB_APP_ID
+GITHUB_APP_PRIVATE_KEY=REPLACE_WITH_PEM_CONTENT_WITH_LITERAL_\n_NEWLINES
+JWT_SECRET=REPLACE_WITH_GENERATED_JWT_SECRET
+GITHUB_CLIENT_ID=REPLACE_WITH_GITHUB_OAUTH_CLIENT_ID
+GITHUB_CLIENT_SECRET=REPLACE_WITH_GITHUB_OAUTH_CLIENT_SECRET
+SESSION_SECRET=REPLACE_WITH_GENERATED_SESSION_SECRET
 EOF
 ```
 
@@ -235,7 +243,7 @@ curl -f http://localhost:8080/api/v1/health
 
 **Open the frontend:**
 
-Open `https://reporoller.myorg.example` in a browser. You should see the **Sign In** screen. Click **Sign in with GitHub** and complete the OAuth flow.
+Open `https://reporoller.example.invalid` in a browser. You should see the **Sign In** screen. Click **Sign in with GitHub** and complete the OAuth flow.
 
 If the login succeeds and you are redirected to the **Create Repository** page, your deployment is working.
 

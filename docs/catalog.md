@@ -1140,8 +1140,8 @@ Add to this whenever a reusable component becomes "the standard way".
 - **Test utilities**: Add to `test_utils/src/`
   Pattern: Mock implementations, test builders, fixtures
 
-- **Experimental**: Create new branch, mark with TODO
-  Pattern: Must not be depended on by production code
+- **Experimental**: Keep experimental work isolated from production paths
+  Pattern: Document its scope and promotion criteria in the relevant issue or design specification
 
 ## Port Traits (Hexagonal Architecture)
 

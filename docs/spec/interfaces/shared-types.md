@@ -1,17 +1,17 @@
 # Shared Types Specification
 
 **Module**: Core shared types across all domains
-**Location**: `repo_roller_core/src/types.rs`
+**Location**: `repo_roller_core/src/repository.rs`, `template.rs`, `github.rs`, `authentication.rs`, and `lib.rs`
 **Purpose**: Define reusable domain primitives and common types
 
 ## Overview
 
-This specification defines the foundational types used throughout RepoRoller. All types use the newtype pattern (branded types) to provide compile-time type safety and prevent accidental mixing of conceptually different values.
+This specification describes the foundational types used throughout RepoRoller. Domain names and identifiers use newtypes to provide compile-time type safety and prevent accidental mixing of conceptually different values.
 
 ## Architectural Layer
 
 **Layer**: Domain Types (Core)
-**Dependencies**: Standard library only (`std`, `serde`, `uuid`, `chrono`)
+**Dependencies**: Core domain modules use `serde`, `uuid`, `chrono`, and `thiserror` where applicable.
 **Used By**: All business logic and infrastructure modules
 
 ## Core Result Types
@@ -29,8 +29,8 @@ pub type RepoRollerResult<T> = Result<T, RepoRollerError>;
 **Example**:
 
 ```rust
-pub async fn create_repository(request: CreateRepositoryRequest)
-    -> RepoRollerResult<Repository>
+pub async fn create_repository(request: RepositoryCreationRequest)
+    -> RepoRollerResult<RepositoryCreationResult>
 ```
 
 ## Domain Primitive Types
@@ -39,116 +39,46 @@ All domain primitives follow the newtype pattern for type safety.
 
 ### RepositoryName
 
-Represents a valid GitHub repository name.
+Represents a repository name validated by RepoRoller.
 
 ```rust
-/// A validated GitHub repository name.
-///
-/// Repository names must:
-/// - Be 1-100 characters long
-/// - Contain only alphanumeric characters, hyphens, underscores, and periods
-/// - Not start with a period or hyphen
-///
-/// See spec: specs/interfaces/shared-types.md
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RepositoryName(String);
-
-impl RepositoryName {
-    /// Create a new RepositoryName from a string.
-    ///
-    /// # Errors
-    /// Returns ValidationError if the name doesn't meet GitHub's requirements.
-    pub fn new(name: impl Into<String>) -> Result<Self, ValidationError> {
-        todo!("Validate repository name according to GitHub rules")
-    }
-
-    /// Get the underlying string value
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for RepositoryName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 ```
 
-**Validation Rules**:
-
-- Length: 1-100 characters
-- Pattern: `^[a-zA-Z0-9._-]+$`
-- Must not start with `.` or `-`
+`RepositoryName::new` rejects an empty value, values longer than 100 UTF-8
+bytes, names starting with `.` or `-`, and characters other than Unicode
+alphanumeric characters, hyphen, underscore, or period. It returns
+`ValidationError` on failure. `as_str`, `AsRef<str>`, and `Display` expose the
+validated value as text.
 
 ### OrganizationName
 
-Represents a GitHub organization or user account name.
+Represents a GitHub organization or user account name validated by RepoRoller.
 
 ```rust
-/// A GitHub organization or user name.
-///
-/// Organization names must:
-/// - Be 1-39 characters long
-/// - Contain only alphanumeric characters and hyphens
-/// - Not start or end with a hyphen
-///
-/// See spec: specs/interfaces/shared-types.md
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OrganizationName(String);
-
-impl OrganizationName {
-    /// Create a new OrganizationName from a string.
-    ///
-    /// # Errors
-    /// Returns ValidationError if the name doesn't meet GitHub's requirements.
-    pub fn new(name: impl Into<String>) -> Result<Self, ValidationError> {
-        todo!("Validate organization name according to GitHub rules")
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 ```
 
-**Validation Rules**:
-
-- Length: 1-39 characters
-- Pattern: `^[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$`
+`OrganizationName::new` rejects an empty value, values longer than 39 UTF-8
+bytes, leading or trailing hyphens, consecutive hyphens, and characters other
+than Unicode alphanumeric characters or hyphens. It returns `ValidationError`
+on failure.
 
 ### TemplateName
 
 Represents a template identifier.
 
 ```rust
-/// A template identifier used to reference repository templates.
-///
-/// Template names are organization-specific and follow kebab-case convention.
-///
-/// See spec: specs/interfaces/shared-types.md
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TemplateName(String);
-
-impl TemplateName {
-    /// Create a new TemplateName from a string.
-    ///
-    /// # Errors
-    /// Returns ValidationError if the name contains invalid characters.
-    pub fn new(name: impl Into<String>) -> Result<Self, ValidationError> {
-        todo!("Validate template name (kebab-case recommended)")
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 ```
 
-**Validation Rules**:
-
-- Length: 1-100 characters
-- Pattern: `^[a-z0-9]+(?:[_-][a-z0-9]+)*$` (kebab-case or snake_case)
+`TemplateName::new` accepts 1–50 UTF-8 bytes containing only lowercase ASCII
+letters, digits, or hyphens. The value must not start or end with a hyphen.
+Uppercase letters, underscores, spaces, and other characters are rejected.
+Validation failures return `ValidationError`.
 
 ### UserId
 
@@ -252,29 +182,15 @@ Secure wrapper for GitHub authentication tokens.
 ```rust
 /// A GitHub authentication token (PAT, OAuth, or Installation token).
 ///
-/// Implements security best practices:
-/// - No Debug output (prevents accidental logging)
-/// - Zeroize on drop (clears memory)
-/// - Explicit access required
-///
-/// See spec: specs/interfaces/shared-types.md
-#[derive(Clone, Serialize, Deserialize)]
-pub struct GitHubToken(secrecy::Secret<String>);
-
-impl GitHubToken {
-    pub fn new(token: impl Into<String>) -> Self {
-        Self(secrecy::Secret::new(token.into()))
-    }
-
-    /// Access the token value (use sparingly)
-    pub fn expose_secret(&self) -> &str {
-        use secrecy::ExposeSecret;
-        self.0.expose_secret()
-    }
-}
-
-// Explicitly no Debug implementation to prevent logging tokens
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubToken(String);
 ```
+
+`GitHubToken::new` rejects empty tokens and tokens shorter than 10 UTF-8
+bytes. `as_str` provides explicit access; its `Debug` and `Display`
+implementations redact the token value. The wrapper does not zeroize memory.
+Because it implements serialization, callers must not serialize it into logs
+or other untrusted output.
 
 ## Common Value Objects
 
@@ -320,30 +236,11 @@ impl Default for Timestamp {
 
 ## Error Handling
 
-All constructors that perform validation return appropriate errors:
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum ValidationError {
-    #[error("Invalid repository name: {0}")]
-    InvalidRepositoryName(String),
-
-    #[error("Invalid organization name: {0}")]
-    InvalidOrganizationName(String),
-
-    #[error("Invalid template name: {0}")]
-    InvalidTemplateName(String),
-
-    #[error("Value too short: minimum length {min}, got {actual}")]
-    TooShort { min: usize, actual: usize },
-
-    #[error("Value too long: maximum length {max}, got {actual}")]
-    TooLong { max: usize, actual: usize },
-
-    #[error("Invalid pattern: expected {expected}, got '{actual}'")]
-    PatternMismatch { expected: String, actual: String },
-}
-```
+The validated name and token constructors return
+`repo_roller_core::ValidationError`. Depending on the failed rule, this is
+`EmptyField`, `TooLong`, `TooShort`, or `InvalidFormat`, with the field name
+and constraint details included. No value is normalized automatically; a
+caller must correct invalid input and construct the type again.
 
 ## Usage Examples
 
@@ -373,14 +270,12 @@ fn create_repo(org: OrganizationName, name: RepositoryName) {
 ### Working with Tokens
 
 ```rust
-// Create token (never logged due to no Debug impl)
-let token = GitHubToken::new("ghp_xxxxxxxxxxxxxxxxxxxx");
+// Documentation-only value; never use a real credential in examples.
+let token = GitHubToken::new("PLACEHOLDER_TOKEN_NOT_A_REAL_CREDENTIAL")?;
 
 // Use token (explicit access required)
-let token_str = token.expose_secret();
+let token_str = token.as_str();
 authenticate_with_github(token_str).await?;
-
-// Token is automatically zeroized when dropped
 ```
 
 ### Timestamps
@@ -409,19 +304,16 @@ Branded types prevent common bugs:
 
 ### Serialization
 
-All types implement `Serialize` and `Deserialize` for:
-
-- JSON API responses
-- Configuration file parsing
-- Database storage (future)
+The listed domain wrappers derive `Serialize` and `Deserialize` for use by
+API and configuration boundaries. In particular, serializing `GitHubToken`
+exposes its credential value; do not include it in logs, diagnostics, or
+untrusted output.
 
 ### Performance
 
-Newtype pattern has zero runtime cost:
-
-- Wrapped type has same memory layout
-- No indirection or allocation overhead
-- Optimizes to raw type in release builds
+The newtypes preserve the wrapped value's ordinary ownership and allocation
+behavior while adding validation at construction and type distinctions at
+compile time.
 
 ## Dependencies
 
@@ -430,41 +322,28 @@ Newtype pattern has zero runtime cost:
 serde = { version = "1.0", features = ["derive"] }
 uuid = { version = "1.0", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-secrecy = "0.8"
-thiserror = "1.0"
+thiserror = "2.0"
 ```
 
 ## Testing Requirements
 
-Each branded type must have tests for:
+Each branded type should have tests for:
 
 - Valid value construction
 - Invalid value rejection with appropriate errors
-- Serialization/deserialization round-trip
-- Display formatting
+- Serialization/deserialization round-trip where supported
+- Display formatting where implemented
 - Equality and hashing (for types used in collections)
 
-## Migration Path
+## Boundary Usage
 
-For existing code using `String` or primitive types:
-
-```rust
-// Before
-fn create_repository(org: &str, name: &str) -> Result<()> { }
-
-// After
-fn create_repository(org: OrganizationName, name: RepositoryName) -> Result<()> { }
-
-// Migration wrapper (temporary)
-fn create_repository_legacy(org: &str, name: &str) -> Result<()> {
-    let org_name = OrganizationName::new(org)?;
-    let repo_name = RepositoryName::new(name)?;
-    create_repository(org_name, repo_name)
-}
-```
+External strings should be validated with the relevant constructor before
+they enter domain logic. The repository-creation request uses
+`RepositoryName`, `OrganizationName`, and optional `TemplateName` values;
+GitHub and template-engine APIs that accept strings receive their string
+representations at those boundaries.
 
 ---
 
-**Status**: Interface Specification
-**Next Steps**: Implement types in `repo_roller_core/src/types.rs`
+**Status**: Implemented in the domain modules listed above
 **See Also**: [Error Types](error-types.md), [Repository Domain](repository-domain.md)

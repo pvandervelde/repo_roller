@@ -56,20 +56,20 @@ All domain primitives use newtype pattern for type safety.
 
 | Error Type | Location | Purpose | Spec Reference |
 |------------|----------|---------|----------------|
-| `RepoRollerError` | `repo_roller_core/src/errors.rs` | Top-level error enum | [error-types.md](error-types.md#reporollererror) |
-| `ValidationError` | `repo_roller_core/src/errors.rs` | Input validation failures | [error-types.md](error-types.md#validationerror) |
-| `RepositoryError` | `repo_roller_core/src/errors.rs` | Repository operation errors | [error-types.md](error-types.md#repositoryerror) |
-| `ConfigurationError` | `config_manager/src/errors.rs` | Configuration errors | [error-types.md](error-types.md#configurationerror) |
-| `TemplateError` | `template_engine/src/lib.rs` | Template processing errors | [error-types.md](error-types.md#templateerror) |
-| `AuthenticationError` | `auth_handler/src/lib.rs` | Auth/authz errors | [error-types.md](error-types.md#authenticationerror) |
-| `GitHubError` | `github_client/src/errors.rs` | GitHub API errors | [error-types.md](error-types.md#githuberror) |
-| `SystemError` | `repo_roller_core/src/errors.rs` | System/infrastructure errors | [error-types.md](error-types.md#systemerror) |
+| `RepoRollerError` | `repo_roller_core/src/errors.rs` | Top-level error enum | [error-types.md](interfaces/error-types.md#reporollererror) |
+| `ValidationError` | `repo_roller_core/src/errors.rs` | Input validation failures | [error-types.md](interfaces/error-types.md#validationerror) |
+| `RepositoryError` | `repo_roller_core/src/errors.rs` | Repository operation errors | [error-types.md](interfaces/error-types.md#repositoryerror) |
+| `ConfigurationError` | `config_manager/src/errors.rs` | Configuration errors | [error-types.md](interfaces/error-types.md#configurationerror) |
+| `TemplateError` | `template_engine/src/lib.rs` | Template processing errors | [error-types.md](interfaces/error-types.md#templateerror) |
+| `AuthenticationError` | `auth_handler/src/lib.rs` | Auth/authz errors | [error-types.md](interfaces/error-types.md#authenticationerror) |
+| `GitHubError` | `github_client/src/errors.rs` | GitHub API errors | [error-types.md](interfaces/error-types.md#githuberror) |
+| `SystemError` | `repo_roller_core/src/errors.rs` | System/infrastructure errors | [error-types.md](interfaces/error-types.md#systemerror) |
 
-**New Error Variants (Task 1.0)**:
+**Metadata discovery error**:
 
 - `ConfigurationError::AmbiguousMetadataRepository` - Multiple metadata repos found with same topic
 
-**New Error Variants (Task 3.0)**:
+**Template loading errors**:
 
 - `ConfigurationError::TemplateNotFound` - Template repository not found or not accessible
 - `ConfigurationError::TemplateConfigurationMissing` - Template repository exists but missing `.reporoller/template.toml`
@@ -80,18 +80,18 @@ All domain primitives use newtype pattern for type safety.
 
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
-| `RepositoryCreationOrchestrator` | `repo_roller_core/src/repository.rs` | Repository creation workflow | [repository-domain.md](repository-domain.md) |
-| `CreateRepositoryRequest` | `repo_roller_core/src/repository.rs` | Repository creation request | [repository-domain.md](repository-domain.md) |
-| `Repository` | `repo_roller_core/src/repository.rs` | Repository entity | [repository-domain.md](repository-domain.md) |
+| `create_repository` | `repo_roller_core/src/lib.rs` | Repository creation workflow | [repository-domain.md](interfaces/repository-domain.md) |
+| `RepositoryCreationRequest` | `repo_roller_core/src/request.rs` | Typed repository creation request | [repository-domain.md](interfaces/repository-domain.md) |
+| `RepositoryCreationResult` | `repo_roller_core/src/request.rs` | Successful repository creation result | [repository-domain.md](interfaces/repository-domain.md) |
 
 ### Configuration Domain
 
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
-| `ConfigurationManager` | `config_manager/src/lib.rs` | Hierarchical config resolution | [configuration-interfaces.md](configuration-interfaces.md) |
-| `OrganizationConfigurationProvider` | `config_manager/src/lib.rs` | Org config access | [configuration-interfaces.md](configuration-interfaces.md) |
-| `ConfigurationPolicyValidator` | `config_manager/src/lib.rs` | Override policy enforcement | [configuration-interfaces.md](configuration-interfaces.md) |
-| `MetadataRepositoryProvider` | `config_manager/src/github_metadata_provider.rs` | Metadata repository discovery and access | [organization-repository-settings.md](../design/organization-repository-settings.md) |
+| `OrganizationSettingsManager` | `config_manager/src/organization_settings_manager.rs` | Hierarchical configuration resolution | [configuration-interfaces.md](interfaces/configuration-interfaces.md) |
+| `MetadataRepositoryProvider` | `config_manager/src/metadata_provider.rs` | Metadata repository discovery and access abstraction | [organization-repository-settings.md](design/organization-repository-settings.md) |
+| `ConfigurationMerger` | `config_manager/src/merger.rs` | Merge applicable configuration levels | [configuration-interfaces.md](interfaces/configuration-interfaces.md) |
+| `ConfigurationValidator` | `config_manager/src/validator.rs` | Validate configuration | [configuration-interfaces.md](interfaces/configuration-interfaces.md) |
 | `TemplateRepository` | `config_manager/src/template_loader.rs` | Template configuration access abstraction | [template-loading.md](interfaces/template-loading.md) |
 | `TemplateLoader` | `config_manager/src/template_loader.rs` | Template config loading with caching | [template-loading.md](interfaces/template-loading.md) |
 
@@ -101,8 +101,8 @@ All domain primitives use newtype pattern for type safety.
 |-----------|----------|---------|----------------|
 | `RepositoryCreatedEvent` | `repo_roller_core/src/event_publisher.rs` | Event payload for repository.created | [event-publisher.md](interfaces/event-publisher.md#repositorycreatedevent) |
 | `AppliedSettings` | `repo_roller_core/src/event_publisher.rs` | Repository settings in event payload | [event-publisher.md](interfaces/event-publisher.md#appliedsettings) |
-| `NotificationEndpoint` | `repo_roller_core/src/event_publisher.rs` | Webhook endpoint configuration | [event-publisher.md](interfaces/event-publisher.md#notificationendpoint) |
-| `NotificationsConfig` | `repo_roller_core/src/event_publisher.rs` | Configuration file structure | [event-publisher.md](interfaces/event-publisher.md#notificationsconfig) |
+| `NotificationEndpoint` | `config_manager/src/settings/notifications.rs` | Outbound webhook endpoint configuration | [event-publisher.md](interfaces/event-publisher.md#notificationendpoint) |
+| `NotificationsConfig` | `config_manager/src/settings/notifications.rs` | Outbound notification configuration | [event-publisher.md](interfaces/event-publisher.md#notificationsconfig) |
 | `DeliveryResult` | `repo_roller_core/src/event_publisher.rs` | Delivery outcome | [event-publisher.md](interfaces/event-publisher.md#deliveryresult) |
 | `SecretResolver` | `repo_roller_core/src/event_secrets.rs` | Secret resolution abstraction | [event-secrets.md](interfaces/event-secrets.md#secretresolver-trait) |
 | `EventMetrics` | `repo_roller_core/src/event_metrics.rs` | Metrics recording abstraction | [event-metrics.md](interfaces/event-metrics.md#eventmetrics-trait) |
@@ -111,9 +111,9 @@ All domain primitives use newtype pattern for type safety.
 
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
-| `TemplateEngine` | `template_engine/src/lib.rs` | Template variable substitution | [template-interfaces.md](template-interfaces.md) |
-| `TemplateSource` | `template_engine/src/lib.rs` | Template content retrieval | [template-interfaces.md](template-interfaces.md) |
-| `TemplateProcessor` | `template_engine/src/lib.rs` | Template processing orchestration | [template-interfaces.md](template-interfaces.md) |
+| `TemplateFetcher` | `template_engine/src/lib.rs` | Template file retrieval | [template-interfaces.md](interfaces/template-interfaces.md) |
+| `TemplateProcessor` | `template_engine/src/lib.rs` | Template variable substitution | [template-interfaces.md](interfaces/template-interfaces.md) |
+| `TemplateProcessingRequest` | `template_engine/src/lib.rs` | Template processor input | [template-interfaces.md](interfaces/template-interfaces.md) |
 
 ### Authentication Domain
 
@@ -121,7 +121,7 @@ All domain primitives use newtype pattern for type safety.
 |-----------|----------|---------|----------------|
 | `UserAuthenticationService` | `auth_handler/src/lib.rs` | User authentication | — |
 
-### Visibility Domain (Task 5.0)
+### Visibility Domain
 
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
@@ -143,22 +143,13 @@ All domain primitives use newtype pattern for type safety.
 
 | Interface | Location | Purpose | Spec Reference |
 |-----------|----------|---------|----------------|
-| `RepositoryProvider` | `github_client/src/lib.rs` | GitHub repo operations | [github-interfaces.md](github-interfaces.md) |
-| `RepositoryClient` (existing) | `github_client/src/lib.rs` | GitHub API client | Currently implemented |
-| `GitHubClient` | `github_client/src/lib.rs` | Concrete GitHub implementation | Currently implemented |
+| `RepositoryClient` | `github_client/src/lib.rs` | Repository creation and update operations | [github-interfaces.md](interfaces/github-interfaces.md) |
+| `GitHubClient` | `github_client/src/lib.rs` | Concrete GitHub API client | [github-interfaces.md](interfaces/github-interfaces.md) |
 
-**New Methods (Task 1.0)**:
+**Repository and metadata operations include**:
 
-- `search_repositories_by_topic(org: &str, topic: &str)` - Search for repositories by topic within organization ([github-repository-search.md](interfaces/github-repository-search.md))
-
-**New Methods (Task 2.0)**:
-
-- `list_directory_contents(owner: &str, repo: &str, path: &str, branch: &str)` - List contents of repository directory ([github-directory-listing.md](interfaces/github-directory-listing.md))
-
-**New Types (Task 2.0)**:
-
-- `TreeEntry` - Directory entry with type information (`github_client/src/models.rs`)
-- `EntryType` - Enum for file/dir/symlink/submodule (`github_client/src/models.rs`)
+- `get_installation_token_for_org` and `get_organization_default_branch` for organization-scoped operations
+- Repository content access for configuration and template loading
 
 ## HTTP API Types
 
@@ -168,7 +159,7 @@ All domain primitives use newtype pattern for type safety.
 
 | Type | Location | Purpose | Spec Reference |
 |------|----------|---------|----------------|
-| `CreateRepositoryHttpRequest` | `repo_roller_api/src/models/request.rs` | HTTP request for repository creation | [api-request-types.md](interfaces/api-request-types.md) |
+| `CreateRepositoryRequest` | `repo_roller_api/src/models/request.rs` | HTTP request for repository creation | [api-request-types.md](interfaces/api-request-types.md) |
 | `ValidateRepositoryNameRequest` | `repo_roller_api/src/models/request.rs` | Name validation request | [api-request-types.md](interfaces/api-request-types.md) |
 | `PreviewConfigurationRequest` | `repo_roller_api/src/models/request.rs` | Configuration preview request | [api-request-types.md](interfaces/api-request-types.md) |
 
@@ -230,9 +221,9 @@ All domain primitives use newtype pattern for type safety.
 |------|----------|---------|----------------|
 | `TemplateConfig` | `config_manager/src/template_config.rs` | Template configuration | [template-loading.md](interfaces/template-loading.md) |
 | `TemplatingConfig` | `template_engine/src/lib.rs` | File filtering configuration (Task 7.0) | [template-file-filtering.md](interfaces/template-file-filtering.md) |
-| `RepositorySettings` | `config_manager/src/settings/repository.rs` | Repository settings | [configuration-interfaces.md](configuration-interfaces.md) |
+| `RepositorySettings` | `config_manager/src/settings/repository.rs` | Repository settings | [configuration-interfaces.md](interfaces/configuration-interfaces.md) |
 | `CacheStatistics` | `config_manager/src/template_loader.rs` | Template cache metrics | [template-loading.md](interfaces/template-loading.md) |
-| `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](template-interfaces.md) |
+| `VariableConfig` | `template_engine/src/lib.rs` | Variable validation rules | [template-interfaces.md](interfaces/template-interfaces.md) |
 | `CustomInitOptions` | `repo_roller_core/src/content_providers.rs` | Custom initialization options | [content-providers.md](interfaces/content-providers.md) |
 | `LabelConfig` | `config_manager/src/settings/label.rs` | Label configuration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
 | `WebhookConfig` | `config_manager/src/settings/webhook.rs` | Webhook configuration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
@@ -242,17 +233,17 @@ All domain primitives use newtype pattern for type safety.
 | Type | Location | Purpose | Spec Reference |
 |------|----------|---------|----------------|
 | `Label` | `github_client/src/label.rs` | GitHub label representation | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
-| `Webhook` | `github_client/src/lib.rs` (to be added) | GitHub webhook with ID | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
-| `WebhookDetails` | `github_client/src/lib.rs` (to be added) | Webhook config details | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `Webhook` | `github_client/src/webhook.rs` | GitHub webhook with ID | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `WebhookDetails` | `github_client/src/webhook.rs` | Webhook config details | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
 
 ## Manager Components (Task 10.0)
 
 | Type | Location | Purpose | Spec Reference |
 |------|----------|---------|----------------|
-| `LabelManager` | `repo_roller_core/src/label_manager.rs` (to be added) | Label orchestration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
-| `WebhookManager` | `repo_roller_core/src/webhook_manager.rs` (to be added) | Webhook orchestration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
-| `ApplyLabelsResult` | `repo_roller_core/src/label_manager.rs` (to be added) | Label operation result | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
-| `ApplyWebhooksResult` | `repo_roller_core/src/webhook_manager.rs` (to be added) | Webhook operation result | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `LabelManager` | `repo_roller_core/src/label_manager.rs` | Label orchestration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `WebhookManager` | `repo_roller_core/src/webhook_manager.rs` | Webhook orchestration | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `ApplyLabelsResult` | `repo_roller_core/src/label_manager.rs` | Label operation result | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
+| `ApplyWebhooksResult` | `repo_roller_core/src/webhook_manager.rs` | Webhook operation result | [github-label-webhook-operations.md](interfaces/github-label-webhook-operations.md) |
 
 ## Content Provider Types
 
@@ -269,13 +260,18 @@ All domain primitives use newtype pattern for type safety.
 
 ### Async Trait Pattern
 
-All interface traits that perform I/O use `async_trait`:
+I/O abstractions use asynchronous traits where an implementation boundary is
+needed. For example, `TemplateRepository` abstracts template configuration
+storage:
 
 ```rust
 #[async_trait]
-pub trait RepositoryProvider: Send + Sync {
-    async fn create_repository(&self, request: CreateRepositoryRequest)
-        -> RepositoryResult<Repository>;
+pub trait TemplateRepository: Send + Sync {
+    async fn load_template_config(
+        &self,
+        org: &str,
+        template_name: &str,
+    ) -> ConfigurationResult<TemplateConfig>;
 }
 ```
 
@@ -284,18 +280,14 @@ pub trait RepositoryProvider: Send + Sync {
 
 ### Builder Pattern
 
-Complex types with many optional fields use builders:
+`RepositoryCreationRequestBuilder` constructs typed repository creation
+requests:
 
 ```rust
-CreateRepositoryRequest::builder()
-    .name(repo_name)
-    .owner(org_name)
+RepositoryCreationRequestBuilder::new(repo_name, organization)
     .template(template_name)
-    .build()?
+    .build()
 ```
-
-**Status**: Not yet implemented (TODO)
-**Candidates**: `CreateRepositoryRequest`, `RepositorySettings`
 
 ### Newtype Pattern
 
@@ -305,8 +297,8 @@ All domain primitives wrapped for type safety:
 pub struct RepositoryName(String);
 ```
 
-**Location**: `repo_roller_core/src/types.rs`
-**See**: [Shared Types](shared-types.md)
+**Location**: `repo_roller_core/src/repository.rs`, `template.rs`, and `github.rs`
+**See**: [Shared Types](interfaces/shared-types.md)
 
 ## Cross-Cutting Concerns
 
@@ -329,15 +321,10 @@ async fn create_repository(&self, org: OrganizationName, name: RepositoryName) {
 
 ### Serialization
 
-Types that cross API boundaries implement `Serialize`/`Deserialize`:
-
-```rust
-#[derive(Serialize, Deserialize)]
-pub struct CreateRepositoryRequest { }
-```
-
-**Location**: API-facing types
-**Dependencies**: `serde` crate
+API request/response DTOs derive `Serialize` and `Deserialize` where they
+cross JSON boundaries. Domain types that are serialized also derive the
+appropriate serde traits. These definitions are maintained in their
+respective API and domain modules.
 
 ## Dependency Graph
 
@@ -345,58 +332,39 @@ pub struct CreateRepositoryRequest { }
 
 ```
 repo_roller_core
-├── types.rs (no dependencies, just std + serde)
-├── errors.rs (depends on: types.rs, thiserror)
-├── repository.rs (depends on: types.rs, errors.rs, interface traits)
-└── [other modules]
+├── repository.rs, template.rs, github.rs, authentication.rs (domain types)
+├── request.rs (creation requests and results)
+├── errors.rs (domain errors and result aliases)
+└── [orchestration, permissions, visibility, notification modules]
 ```
 
 ### External Integration Dependencies
 
 ```
 github_client
-├── implements RepositoryProvider trait
-├── depends on: repo_roller_core types & errors
+├── provides GitHubClient and RepositoryClient
 └── external: octocrab, tokio
 
 template_engine
-├── implements TemplateEngine trait
-├── depends on: repo_roller_core types & errors
+├── provides TemplateFetcher and TemplateProcessor
 └── external: handlebars, regex
 
 config_manager
-├── implements ConfigurationManager trait
-├── depends on: repo_roller_core types & errors
+├── provides configuration models, loaders, merger, and validation
 └── external: toml, serde
 
 auth_handler
-├── implements UserAuthenticationService trait
-├── depends on: repo_roller_core types & errors
+├── provides UserAuthenticationService
 └── external: jsonwebtoken, chrono
 ```
 
 ## Testing Utilities
 
-### Test Builders
+### Test helpers and mocks
 
-**Status**: TODO - Not yet implemented
-
-```rust
-// Planned test utilities
-pub mod test_utils {
-    pub fn repository_name(name: &str) -> RepositoryName { }
-    pub fn create_repo_request() -> CreateRepositoryRequest { }
-    pub fn mock_github_client() -> MockRepositoryProvider { }
-}
-```
-
-**Location**: `repo_roller_core/src/test_utils.rs` (planned)
-
-### Mock Implementations
-
-**Status**: TODO - Not yet implemented
-
-Mock implementations for all interface traits to enable testing.
+Tests define local mocks and fixtures alongside the modules they exercise.
+The `test_utils` crate provides shared helpers such as test repository-name
+generation; there is no central set of builders or mocks for every service.
 
 ## Usage Guidelines
 
@@ -444,12 +412,12 @@ Create new interface trait when:
 
 ### Refactoring
 
-When refactoring existing code to use new types:
+When changing interfaces or introducing new types:
 
-- Add TODO comments to mark conversion points
-- Don't break existing functionality
-- Create migration wrappers if needed
-- Update registry when complete
+- Update affected call sites and their tests together.
+- Preserve existing behavior unless the change explicitly alters it.
+- Document any required migration in a linked issue or specification.
+- Update this registry with the implemented interface.
 
 ## Quick Reference
 
@@ -459,13 +427,13 @@ When refactoring existing code to use new types:
 2. `OrganizationName` - Repository creation, config resolution
 3. `TemplateName` - Template operations
 4. `RepoRollerResult<T>` - All public functions
-5. `CreateRepositoryRequest` - Repository creation workflow
+5. `RepositoryCreationRequest` - Repository creation workflow
 
 ### Most Important Traits
 
-1. `RepositoryProvider` - GitHub integration boundary
-2. `ConfigurationManager` - Configuration system boundary
-3. `TemplateEngine` - Template processing boundary
+1. `RepositoryClient` - GitHub repository operations
+2. `MetadataRepositoryProvider` - Configuration source access
+3. `TemplateRepository` - Template configuration access
 4. `UserAuthenticationService` - Authentication boundary
 
 ## Infrastructure Components
@@ -494,13 +462,4 @@ When refactoring existing code to use new types:
 
 ---
 
-**Last Updated**: 2026-01-01
-**Maintainer**: Interface Designer
-**Status**: Updated with release automation infrastructure
-
-**Next Actions**:
-
-- Implement types in `repo_roller_core/src/types.rs`
-- Implement errors in `repo_roller_core/src/errors.rs`
-- Add TODO comments to existing code for migration
-- Update as new types are added
+Update this registry when implemented interfaces or their locations change.

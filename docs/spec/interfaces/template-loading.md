@@ -2,29 +2,30 @@
 
 **Architectural Layer**: Business Logic / Interface Abstraction
 **Module Path**: `crates/config_manager/src/template_loader.rs`
-**Responsibilities** (from RDD):
+**Responsibilities**:
 
 - **Knows**: Template repository structure, cache key generation, template configuration schema
-- **Does**: Discovers template repositories, loads `.reporoller/template.toml`, caches loaded configurations
-
-**Related Task**: Task 3.0 - Load Template Configuration from Template Repository
+- **Does**: Loads `.reporoller/template.toml` from a named repository and caches parsed configuration
 
 ## Overview
 
-This interface defines the contract for loading template configurations from template repositories. Templates are stored as GitHub repositories containing a `.reporoller/template.toml` file that defines repository creation settings, required variables, and metadata.
+Template configuration loading is implemented by `TemplateRepository`,
+`GitHubTemplateRepository`, and `TemplateLoader`. A configured template is a
+GitHub repository containing `.reporoller/template.toml`, which defines
+metadata, variables, and repository settings.
 
-The system provides:
+The implementation provides:
 
-- **Template Discovery**: Finding template repositories by name or topic
+- **Repository access**: Checking whether a named repository is accessible
 - **Configuration Loading**: Reading and parsing `.reporoller/template.toml` files
-- **Intelligent Caching**: In-memory caching to reduce GitHub API calls
+- **In-memory caching**: Reducing repeated GitHub API calls
 - **Error Context**: Clear error messages for missing or malformed configurations
 
 ## Dependencies
 
-- **Types**: `TemplateConfig`, `TemplateMetadata` (from [template_config.rs](../../crates/config_manager/src/template_config.rs))
+- **Types**: `TemplateConfig`, `TemplateMetadata` (from [template_config.rs](../../../crates/config_manager/src/template_config.rs))
 - **Errors**: `ConfigurationError` variants for template loading failures
-- **GitHub Client**: `GitHubClient` trait for repository access
+- **GitHub Client**: Concrete `github_client::GitHubClient` for repository access
 - **Standard Types**: `HashMap`, `Arc`, `RwLock` for caching
 
 ## Architecture Context
@@ -325,32 +326,19 @@ pub enum ConfigurationError {
 
 ### Error Context
 
-All errors include:
-
-- Organization name
-- Template name
-- Operation being performed
-- Underlying cause (when applicable)
+Errors distinguish inaccessible or missing template repositories, missing
+configuration files, TOML parse failures, and invalid template configuration.
+Repository lookup errors include the organization and template; parsing and
+validation errors include the relevant cause or invalid field.
 
 ## Integration with OrganizationSettingsManager
 
-The `OrganizationSettingsManager` will use `TemplateLoader` instead of creating stub configurations:
-
-```rust
-// Current code (line ~299 in organization_settings_manager.rs):
-// TODO: Load actual template configuration from template repository
-let template_config = crate::template_config::TemplateConfig { /* stub */ };
-
-// After Task 3.0 implementation:
-let template_config = self
-    .template_loader
-    .load_template_configuration(context.organization(), context.template())
-    .await
-    .map_err(|e| {
-        warn!("Failed to load template configuration: {}", e);
-        e
-    })?;
-```
+`OrganizationSettingsManager` uses `TemplateLoader` when a template is
+specified. Without a template, it constructs an empty `TemplateConfig` and
+continues with organization and other applicable settings. For a named
+template, the loader checks its cache, loads the repository configuration on
+a miss, validates template designation and repository-type consistency, and
+caches a successful result.
 
 ## Testing Requirements
 
@@ -480,32 +468,19 @@ impl TemplateCacheKey {
   - Single writer for updates (cache misses)
   - Safe concurrent invalidation
 
-## Migration Strategy
+## Implemented behavior
 
-### Phase 1: Add Interface and Stubs
-
-- Define `TemplateRepository` trait
-- Create `TemplateLoader` with basic cache
-- Add new error variants
-- **All stubs compile, tests skipped**
-
-### Phase 2: Implement GitHub Backend
-
-- Implement `GitHubTemplateRepository`
-- Use `GitHubClient::get_file_content()` to read `.reporoller/template.toml`
-- Handle 404 errors appropriately
-
-### Phase 3: Integrate with OrganizationSettingsManager
-
-- Replace stub template creation (line ~299)
-- Add `TemplateLoader` to manager dependencies
-- Update constructor to accept loader
-
-### Phase 4: Testing
-
-- Unit tests with mock repository
-- Integration tests against glitchgrove
-- Verify cache effectiveness
+- The GitHub adapter checks repository accessibility, then reads
+  `.reporoller/template.toml` using the GitHub contents API.
+- A missing repository returns `ConfigurationError::TemplateNotFound`; a
+  missing configuration file returns
+  `ConfigurationError::TemplateConfigurationMissing`.
+- TOML parsing and configuration validation errors are propagated to the
+  caller; a failed load is not cached.
+- Cache entries are keyed by organization and template name. They do not
+  expire automatically; callers can invalidate one entry or clear the cache.
+- Cache hit, miss, and entry-count statistics are available through
+  `cache_statistics()`.
 
 ## Example Usage
 
@@ -563,7 +538,7 @@ if loader.template_exists("myorg", "new-template").await? {
 
 ## Related Specifications
 
-- [Template Configuration Types](../../crates/config_manager/src/template_config.rs)
+- [Template Configuration Types](../../../crates/config_manager/src/template_config.rs)
 - [Configuration Error Types](error-types.md)
 - [GitHub Client Interface](github-interfaces.md)
 - [Organization Settings Manager](configuration-interfaces.md)
