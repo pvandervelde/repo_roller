@@ -53,6 +53,7 @@
 use crate::errors::{GitHubError, RepoRollerError, RepoRollerResult, SystemError};
 use crate::{LabelManager, RulesetManager, WebhookManager};
 use github_client::{GitHubClient, RepositoryClient};
+use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
 #[cfg(test)]
@@ -346,7 +347,7 @@ pub(crate) fn effective_template_name(
 ///
 /// - Branch protection rules application
 pub(crate) async fn apply_repository_configuration(
-    installation_repo_client: &GitHubClient,
+    installation_repo_client: &Arc<dyn RepositoryClient>,
     owner: &str,
     repo_name: &str,
     merged_config: &config_manager::MergedConfiguration,
@@ -368,7 +369,7 @@ pub(crate) async fn apply_repository_configuration(
             "Labels to apply: {:?}",
             merged_config.labels.keys().collect::<Vec<_>>()
         );
-        let label_manager = LabelManager::new(installation_repo_client.clone());
+        let label_manager = LabelManager::new(Arc::clone(installation_repo_client));
         let label_result = label_manager
             .apply_labels(owner, repo_name, &merged_config.labels)
             .await?;
@@ -388,7 +389,7 @@ pub(crate) async fn apply_repository_configuration(
 
     // Apply webhooks using WebhookManager
     if !merged_config.webhooks.is_empty() {
-        let webhook_manager = WebhookManager::new(installation_repo_client.clone());
+        let webhook_manager = WebhookManager::new(Arc::clone(installation_repo_client));
         let webhook_result = webhook_manager
             .apply_webhooks(owner, repo_name, &merged_config.webhooks)
             .await?;
@@ -428,7 +429,7 @@ pub(crate) async fn apply_repository_configuration(
             .map(|r| (r.name.clone(), r.clone()))
             .collect();
 
-        let ruleset_manager = RulesetManager::new(installation_repo_client.clone());
+        let ruleset_manager = RulesetManager::new(Arc::clone(installation_repo_client));
         let ruleset_result = ruleset_manager
             .apply_rulesets(owner, repo_name, &rulesets_map)
             .await?;

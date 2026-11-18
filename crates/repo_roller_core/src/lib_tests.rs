@@ -470,6 +470,47 @@ impl RepositoryClient for ConfigurableMockRepoClient {
             state: "open".to_string(),
         })
     }
+
+    async fn add_team_to_repository(
+        &self,
+        _org: &str,
+        _team_slug: &str,
+        _repo: &str,
+        _permission: &str,
+    ) -> Result<(), GitHubError> {
+        // Not exercised by the create_repository test suite - return success.
+        Ok(())
+    }
+
+    async fn list_repository_collaborators(
+        &self,
+        _owner: &str,
+        _repo: &str,
+    ) -> Result<Vec<github_client::Collaborator>, GitHubError> {
+        // Not exercised by the create_repository test suite - return empty.
+        Ok(vec![])
+    }
+
+    async fn add_repository_collaborator(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _username: &str,
+        _permission: &str,
+    ) -> Result<(), GitHubError> {
+        // Not exercised by the create_repository test suite - return success.
+        Ok(())
+    }
+
+    async fn remove_repository_collaborator(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _username: &str,
+    ) -> Result<(), GitHubError> {
+        // Not exercised by the create_repository test suite - return success.
+        Ok(())
+    }
 }
 
 /// Configuration for mock repository client behavior
@@ -1661,7 +1702,7 @@ async fn test_create_fork_repository_success_path_reaches_fork_and_default_branc
     let merged_config = config_manager::MergedConfiguration::new();
     let clients = CreationClients {
         installation_token: "test-token".to_string(),
-        installation_repo_client: wiremock_github_client(&server.uri()),
+        installation_repo_client: std::sync::Arc::new(wiremock_github_client(&server.uri())),
         template_fetcher: template_engine::GitHubTemplateFetcher::new(),
     };
 
@@ -1721,7 +1762,7 @@ async fn test_create_history_mirror_repository_propagates_github_repository_crea
     let merged_config = config_manager::MergedConfiguration::new();
     let clients = CreationClients {
         installation_token: "test-token".to_string(),
-        installation_repo_client: wiremock_github_client(&server.uri()),
+        installation_repo_client: std::sync::Arc::new(wiremock_github_client(&server.uri())),
         template_fetcher: template_engine::GitHubTemplateFetcher::new(),
     };
 
@@ -1791,7 +1832,7 @@ async fn test_create_source_only_mirror_repository_propagates_github_repository_
     let merged_config = config_manager::MergedConfiguration::new();
     let clients = CreationClients {
         installation_token: "test-token".to_string(),
-        installation_repo_client: wiremock_github_client(&server.uri()),
+        installation_repo_client: std::sync::Arc::new(wiremock_github_client(&server.uri())),
         template_fetcher: template_engine::GitHubTemplateFetcher::new(),
     };
 

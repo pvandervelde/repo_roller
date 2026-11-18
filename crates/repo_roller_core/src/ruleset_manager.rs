@@ -3,8 +3,9 @@
 //! This module provides the [`RulesetManager`] component for orchestrating
 //! repository ruleset operations with business logic and idempotency.
 
-use github_client::{GitHubClient, RepositoryClient, RepositoryRuleset};
+use github_client::{RepositoryClient, RepositoryRuleset};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::{GitHubError, RepoRollerResult};
@@ -27,13 +28,14 @@ use crate::{GitHubError, RepoRollerResult};
 /// # Examples
 ///
 /// ```rust,no_run
-/// use github_client::GitHubClient;
+/// use github_client::{GitHubClient, RepositoryClient};
 /// use repo_roller_core::RulesetManager;
 /// use config_manager::settings::RulesetConfig;
 /// use std::collections::HashMap;
+/// use std::sync::Arc;
 ///
 /// # async fn example(github_client: GitHubClient) -> Result<(), Box<dyn std::error::Error>> {
-/// let manager = RulesetManager::new(github_client);
+/// let manager = RulesetManager::new(Arc::new(github_client) as Arc<dyn RepositoryClient>);
 ///
 /// let mut rulesets = HashMap::new();
 /// // Add rulesets from org, team, template levels...
@@ -45,7 +47,7 @@ use crate::{GitHubError, RepoRollerResult};
 /// ```
 pub struct RulesetManager {
     /// GitHub client for API operations
-    github_client: GitHubClient,
+    github_client: Arc<dyn RepositoryClient>,
 }
 
 impl RulesetManager {
@@ -58,14 +60,15 @@ impl RulesetManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use github_client::GitHubClient;
+    /// use github_client::{GitHubClient, RepositoryClient};
     /// use repo_roller_core::RulesetManager;
+    /// use std::sync::Arc;
     ///
     /// # async fn example(client: GitHubClient) {
-    /// let manager = RulesetManager::new(client);
+    /// let manager = RulesetManager::new(Arc::new(client) as Arc<dyn RepositoryClient>);
     /// # }
     /// ```
-    pub fn new(github_client: GitHubClient) -> Self {
+    pub fn new(github_client: Arc<dyn RepositoryClient>) -> Self {
         Self { github_client }
     }
 

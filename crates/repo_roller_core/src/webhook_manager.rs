@@ -3,7 +3,8 @@
 //! This module provides the [`WebhookManager`] component for orchestrating
 //! webhook operations with validation, idempotency, and secret management.
 
-use github_client::{GitHubClient, RepositoryClient, Webhook};
+use github_client::{RepositoryClient, Webhook};
+use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::{GitHubError, RepoRollerResult, ValidationError};
@@ -16,12 +17,13 @@ use crate::{GitHubError, RepoRollerResult, ValidationError};
 /// # Examples
 ///
 /// ```rust,no_run
-/// use github_client::GitHubClient;
+/// use github_client::{GitHubClient, RepositoryClient};
 /// use repo_roller_core::WebhookManager;
 /// use config_manager::settings::WebhookConfig;
+/// use std::sync::Arc;
 ///
 /// # async fn example(github_client: GitHubClient) -> Result<(), Box<dyn std::error::Error>> {
-/// let manager = WebhookManager::new(github_client);
+/// let manager = WebhookManager::new(Arc::new(github_client) as Arc<dyn RepositoryClient>);
 ///
 /// let webhooks = vec![WebhookConfig {
 ///     url: "https://example.com/webhook".to_string(),
@@ -38,7 +40,7 @@ use crate::{GitHubError, RepoRollerResult, ValidationError};
 /// ```
 pub struct WebhookManager {
     /// GitHub client for API operations
-    github_client: GitHubClient,
+    github_client: Arc<dyn RepositoryClient>,
 }
 
 impl WebhookManager {
@@ -51,14 +53,15 @@ impl WebhookManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use github_client::GitHubClient;
+    /// use github_client::{GitHubClient, RepositoryClient};
     /// use repo_roller_core::WebhookManager;
+    /// use std::sync::Arc;
     ///
     /// # async fn example(client: GitHubClient) {
-    /// let manager = WebhookManager::new(client);
+    /// let manager = WebhookManager::new(Arc::new(client) as Arc<dyn RepositoryClient>);
     /// # }
     /// ```
-    pub fn new(github_client: GitHubClient) -> Self {
+    pub fn new(github_client: Arc<dyn RepositoryClient>) -> Self {
         Self { github_client }
     }
 

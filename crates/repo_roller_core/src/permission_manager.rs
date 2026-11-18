@@ -32,8 +32,9 @@
 //! See `docs/spec/design/multi-level-permissions.md` for the full specification.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use github_client::GitHubClient;
+use github_client::RepositoryClient;
 use tracing::{info, instrument, warn};
 
 use crate::permission_audit_logger::PermissionAuditLogger;
@@ -184,19 +185,23 @@ impl Default for ApplyPermissionsResult {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use github_client::GitHubClient;
+/// use github_client::{GitHubClient, RepositoryClient};
 /// use repo_roller_core::permission_manager::PermissionManager;
 /// use repo_roller_core::policy_engine::PolicyEngine;
+/// use std::sync::Arc;
 ///
 /// # async fn example(client: GitHubClient) {
-/// let manager = PermissionManager::new(client, PolicyEngine::new());
+/// let manager = PermissionManager::new(
+///     Arc::new(client) as Arc<dyn RepositoryClient>,
+///     PolicyEngine::new(),
+/// );
 /// # }
 /// ```
 pub struct PermissionManager {
     /// Structured audit logger for recording permission decisions.
     audit_logger: PermissionAuditLogger,
     /// GitHub client for applying permissions via the GitHub API.
-    github_client: GitHubClient,
+    github_client: Arc<dyn RepositoryClient>,
     /// Policy engine for validating permission requests against the hierarchy.
     policy_engine: PolicyEngine,
 }
@@ -212,15 +217,19 @@ impl PermissionManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use github_client::GitHubClient;
+    /// use github_client::{GitHubClient, RepositoryClient};
     /// use repo_roller_core::permission_manager::PermissionManager;
     /// use repo_roller_core::policy_engine::PolicyEngine;
+    /// use std::sync::Arc;
     ///
     /// # async fn example(client: GitHubClient) {
-    /// let manager = PermissionManager::new(client, PolicyEngine::new());
+    /// let manager = PermissionManager::new(
+    ///     Arc::new(client) as Arc<dyn RepositoryClient>,
+    ///     PolicyEngine::new(),
+    /// );
     /// # }
     /// ```
-    pub fn new(github_client: GitHubClient, policy_engine: PolicyEngine) -> Self {
+    pub fn new(github_client: Arc<dyn RepositoryClient>, policy_engine: PolicyEngine) -> Self {
         Self {
             audit_logger: PermissionAuditLogger::new(),
             github_client,

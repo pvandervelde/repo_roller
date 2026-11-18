@@ -187,7 +187,7 @@ async fn test_webhook_creation_via_manager() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Apply webhooks using WebhookManager
-    let webhook_manager = WebhookManager::new(github_client.clone());
+    let webhook_manager = WebhookManager::new(Arc::new(github_client.clone()));
     let webhook_configs = vec![config_manager::settings::WebhookConfig {
         url: "https://httpbin.org/post".to_string(),
         content_type: "json".to_string(),
@@ -273,7 +273,7 @@ async fn test_label_application_idempotency() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Apply labels using LabelManager
-    let label_manager = LabelManager::new(github_client.clone());
+    let label_manager = LabelManager::new(Arc::new(github_client.clone()));
     let mut label_configs = std::collections::HashMap::new();
     label_configs.insert(
         "test-label".to_string(),
@@ -367,7 +367,7 @@ async fn test_webhook_application_idempotency() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Apply webhooks using WebhookManager
-    let webhook_manager = WebhookManager::new(github_client.clone());
+    let webhook_manager = WebhookManager::new(Arc::new(github_client.clone()));
     let webhook_configs = vec![config_manager::settings::WebhookConfig {
         url: "https://httpbin.org/webhook-test".to_string(),
         content_type: "json".to_string(),
@@ -457,7 +457,7 @@ async fn test_webhook_validation_rejects_invalid() -> Result<()> {
     info!("✓ Test repository created: {}", repo_name.as_ref());
 
     // Try to apply webhook with HTTP URL (should fail validation - HTTPS required)
-    let webhook_manager = WebhookManager::new(github_client.clone());
+    let webhook_manager = WebhookManager::new(Arc::new(github_client.clone()));
     let invalid_webhook_configs = vec![config_manager::settings::WebhookConfig {
         url: "http://example.com/webhook".to_string(), // HTTP not HTTPS!
         content_type: "json".to_string(),
@@ -572,7 +572,7 @@ async fn test_multiple_labels_batch_creation() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Apply multiple labels using LabelManager
-    let label_manager = LabelManager::new(github_client.clone());
+    let label_manager = LabelManager::new(Arc::new(github_client.clone()));
     let mut label_configs = std::collections::HashMap::new();
 
     // Create 5 test labels
