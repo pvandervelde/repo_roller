@@ -300,6 +300,8 @@ RepoRoller SHALL publish event notifications to configured webhook endpoints whe
 - TLS certificate validation enforced
 - Secret values are resolved through the configured `SecretResolver`; the
   built-in implementations read environment variables or files
+- Azure Key Vault is not a built-in secret resolver target; deployments can
+  integrate other secret stores by providing a `SecretResolver` implementation
 
 **Acceptance Criteria**:
 
