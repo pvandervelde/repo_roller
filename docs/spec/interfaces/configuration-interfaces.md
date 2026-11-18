@@ -1,117 +1,85 @@
 # Configuration Management Interfaces
 
-**Architectural Layer**: Business Interface (trait) + Infrastructure (implementation)
+**Architectural Layer**: Configuration orchestration and infrastructure
 **Crate**: `config_manager`
 **Responsibilities**:
 
-- **Knows**: Template definitions, variable configurations, hierarchical config resolution
-- **Does**: Loads configuration, validates templates, merges config sources
+- **Knows**: Metadata repository layout, configuration schemas, and merge precedence
+- **Does**: Discovers and loads configuration, resolves templates, merges settings, and validates the result
 
 ---
 
 ## Overview
 
-Configuration management provides template definitions and repository settings. It supports hierarchical configuration (global, organization, repository level) and template variable validation.
+Configuration is resolved for each repository creation request by
+`OrganizationSettingsManager`. It loads applicable settings from the metadata
+repository, loads an optional template configuration from the template
+repository, merges the values, and validates the merged configuration before
+the repository is created.
 
-## Current State
+The configuration model is implemented with concrete types and services; it
+does not expose a `ConfigurationManager` trait.
 
-**Temporary Compatibility Stubs** (added for backward compatibility):
+## Configuration sources
 
-- `Config` struct with templates list
-- `TemplateConfig` struct with template settings
-- `VariableConfig` struct for variable validation
+The merger considers the applicable sources in this order:
 
-**TODO**: Replace with proper trait-based design defined below.
+1. Organization-wide `GlobalDefaults`
+2. Repository-type configuration
+3. Team configuration
+4. Template configuration
 
----
+Later levels override earlier values where a setting is overridable. Settings
+documented as additive (including naming rules, labels, webhooks, rulesets,
+and notification endpoints) are accumulated according to their type-specific
+merge behavior.
 
-## Interface Trait
+## Main components
 
-```rust
-/// Configuration management service
-#[async_trait]
-pub trait ConfigurationManager: Send + Sync {
-    /// Get template configuration by name
-    async fn get_template(&self, name: &TemplateName)
-        -> Result<TemplateConfiguration, ConfigError>;
+### OrganizationSettingsManager
 
-    /// List all available templates
-    async fn list_templates(&self) -> Result<Vec<TemplateName>, ConfigError>;
+`OrganizationSettingsManager` is the configuration-resolution entry point. It
+uses a `MetadataRepositoryProvider` to discover and load metadata, a
+`TemplateLoader` to load optional template configuration, a
+`ConfigurationMerger` to combine sources, and a validator to check the merged
+result. Callers provide a `ConfigurationContext` identifying the organization
+and any applicable team, repository type, and template.
 
-    /// Get organization-specific configuration
-    async fn get_org_config(&self, org: &OrganizationName)
-        -> Result<OrganizationConfiguration, ConfigError>;
-}
-```
+### Configuration source types
 
----
+- `GlobalDefaults` contains organization-wide settings.
+- `TeamConfig` contains team-level overrides and additive settings.
+- `RepositoryTypeConfig` contains repository-type settings.
+- `TemplateConfig` contains template metadata, variables, and template-level
+  settings.
+- `MergedConfiguration` is the resolved result consumed by repository
+  creation.
 
-## Types
+### Template loading
 
-### TemplateConfiguration
+`TemplateRepository` abstracts retrieval of template configuration.
+`GitHubTemplateRepository` reads `.reporoller/template.toml` from GitHub
+repositories, and `TemplateLoader` parses and caches the resulting
+`TemplateConfig`. See [Template Configuration Loading](template-loading.md).
 
-```rust
-pub struct TemplateConfiguration {
-    pub name: TemplateName,
-    pub source_repo: String,
-    pub description: Option<String>,
-    pub variable_configs: HashMap<String, VariableConfiguration>,
-    pub features: Vec<String>,
-}
-```
+## Naming rules
 
-### VariableConfiguration
+Repository naming rules are represented by `RepositoryNamingRulesConfig`, not
+by one organization-level regular expression. A rule can specify an allowed
+pattern, forbidden patterns, reserved words, a required prefix or suffix, and
+minimum or maximum length. Rules from applicable sources are additive, and a
+repository name must satisfy every merged rule.
 
-```rust
-pub struct VariableConfiguration {
-    pub description: Option<String>,
-    pub required: bool,
-    pub pattern: Option<String>,
-    pub default: Option<String>,
-    pub example: Option<String>,
-}
-```
+## Error handling
 
-### OrganizationConfiguration
-
-> **Note**: The `OrganizationConfiguration` stub below is superseded by the
-> production types implemented in `config_manager`. Refer to the following
-> source files for the authoritative definitions:
->
-> - `crates/config_manager/src/global_defaults.rs` — `GlobalDefaults` (org-level defaults)
-> - `crates/config_manager/src/settings/naming.rs` — `RepositoryNamingRulesConfig`
-> - `crates/config_manager/src/merged_config.rs` — `MergedConfiguration`
->
-> Naming rules are **not** a single regex string. They are an additive
-> collection of `RepositoryNamingRulesConfig` entries, each of which may
-> specify any combination of: `allowed_pattern`, `forbidden_patterns`,
-> `reserved_words`, `required_prefix`, `required_suffix`, `min_length`, and
-> `max_length`. Rules from all hierarchy levels (global → type → team →
-> template) are concatenated; every rule in the merged set must be satisfied.
-
-```rust
-// Superseded — see global_defaults.rs and settings/naming.rs
-pub struct OrganizationConfiguration {
-    pub default_branch: String,
-    // OUTDATED: was Option<String> (single regex).
-    // Actual type: Vec<RepositoryNamingRulesConfig> (additive, multi-field rules).
-    pub naming_rules: Vec<RepositoryNamingRulesConfig>,
-    pub required_apps: Vec<String>,
-}
-```
-
----
-
-## Implementation Notes
-
-- Load from TOML files (file system implementation)
-- Future: Load from database or API (different implementations)
-- Support environment-specific overrides
-- Validate configuration on load
-
----
+Configuration operations return `ConfigurationResult<T>`. Failures include
+metadata discovery or loading errors, invalid configuration, template lookup
+or parsing errors, and validation failures. The repository-creation
+orchestrator converts configuration errors into `RepoRollerError` for its
+public result.
 
 ## Related Specifications
 
-- `specs/interfaces/repository-domain.md` - Uses configuration
-- `specs/interfaces/shared-types.md` - Type definitions
+- [Repository Domain](repository-domain.md) — Configuration use during repository creation
+- [Shared Types](shared-types.md) — Domain value validation
+- [Template Configuration Loading](template-loading.md) — Template source and cache behavior

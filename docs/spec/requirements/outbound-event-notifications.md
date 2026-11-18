@@ -145,9 +145,9 @@ RepoRoller SHALL publish event notifications to configured webhook endpoints whe
 
 **Details**:
 
-- Organization-level: `.reporoller/global/notifications.toml`
-- Team-level: `.reporoller/teams/{team-name}/notifications.toml`
-- Template-level: `.reporoller/` in template repository `notifications.toml`
+- Organization-level: `global/defaults.toml` in the metadata repository
+- Team-level: `teams/{team-name}/config.toml` in the metadata repository
+- Template-level: `.reporoller/template.toml` in the template repository
 
 **Behavior**:
 
@@ -298,7 +298,10 @@ RepoRoller SHALL publish event notifications to configured webhook endpoints whe
 - Webhook secrets never logged or exposed
 - HTTPS required for all webhook endpoints (no HTTP)
 - TLS certificate validation enforced
-- Secrets stored in secure secret management system (Azure Key Vault)
+- Secret values are resolved through the configured `SecretResolver`; the
+  built-in implementations read environment variables or files
+- Azure Key Vault is not a built-in secret resolver target; deployments can
+  integrate other secret stores by providing a `SecretResolver` implementation
 
 **Acceptance Criteria**:
 
@@ -345,35 +348,46 @@ RepoRoller SHALL publish event notifications to configured webhook endpoints whe
 
 ## Configuration Example
 
+The URLs and secret references below are nonfunctional documentation
+placeholders. Secret references identify values supplied to a configured
+resolver; they are not secret values.
+
 ```toml
-# .reporoller/global/notifications.toml (organization level)
-[[outbound_webhooks]]
-url = "https://ci.example.com/hooks/repo-created"
-secret = "azurekeyvault://prod-keyvault/ci-webhook-secret"
+# global/defaults.toml (organization level)
+[notifications]
+[[notifications.outbound_webhooks]]
+url = "https://ci.example.invalid/hooks/repo-created"
+secret = "REPLACE_WITH_CI_SECRET_ENV_VAR"
 events = ["repository.created"]
 active = true
 timeout_seconds = 10
 description = "CI/CD system integration"
 
-[[outbound_webhooks]]
-url = "https://inventory.example.com/api/repositories"
-secret = "azurekeyvault://prod-keyvault/inventory-webhook-secret"
+[[notifications.outbound_webhooks]]
+url = "https://inventory.example.invalid/api/repositories"
+secret = "REPLACE_WITH_INVENTORY_SECRET_ENV_VAR"
 events = ["repository.created"]
 active = true
 description = "Asset inventory system"
+```
 
-# .reporoller/teams/platform-team/notifications.toml (team level)
-[[outbound_webhooks]]
-url = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX"
-secret = "azurekeyvault://prod-keyvault/slack-webhook-secret"
+```toml
+# teams/platform-team/config.toml (team level)
+[notifications]
+[[notifications.outbound_webhooks]]
+url = "https://slack.example.invalid/hooks/repo-created"
+secret = "REPLACE_WITH_SLACK_SECRET_ENV_VAR"
 events = ["repository.created"]
 active = true
 description = "Platform team Slack notifications"
+```
 
-# .reporoller/notifications.toml (template level, in template repo)
-[[outbound_webhooks]]
-url = "https://docs.example.com/api/create-project"
-secret = "azurekeyvault://prod-keyvault/docs-webhook-secret"
+```toml
+# .reporoller/template.toml (template repository)
+[notifications]
+[[notifications.outbound_webhooks]]
+url = "https://docs.example.invalid/api/create-project"
+secret = "REPLACE_WITH_DOCS_SECRET_ENV_VAR"
 events = ["repository.created"]
 active = true
 description = "Documentation platform integration"

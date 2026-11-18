@@ -1,149 +1,97 @@
 # GitHub Integration Interfaces
 
-**Architectural Layer**: Business Interface (trait) + Infrastructure (GitHub API implementation)
+**Architectural Layer**: Infrastructure adapter
 **Crate**: `github_client`
 **Responsibilities**:
 
-- **Knows**: GitHub API protocols, authentication flows
-- **Does**: Creates repositories, fetches data, manages installations
+- **Knows**: GitHub API operations, authentication, and API error handling
+- **Does**: Creates and updates repositories, retrieves organization settings, and applies repository access
 
 ---
 
 ## Overview
 
-GitHub integration provides the boundary between business logic and GitHub's API. All GitHub operations go through these interfaces.
+`GitHubClient` wraps the GitHub API client used by RepoRoller. Repository
+creation is exposed through the `RepositoryClient` trait; organization
+lookups and other GitHub operations are methods on `GitHubClient`. The
+interfaces use strings at the GitHub API boundary. Core workflows validate
+names with `OrganizationName` and `RepositoryName` before calling them.
 
-## Current State
+There are no separate `OrganizationProvider` or `InstallationProvider`
+traits in the current API.
 
-**Existing Traits** (already well-designed):
-
-- `RepositoryClient` - Repository operations
-- `TemplateFetcher` - (actually in `template_engine` crate)
-
-**TODO**: Add organization and permissions interfaces
-
----
-
-## Existing Interface: RepositoryClient
+## Repository operations
 
 ```rust
 #[async_trait]
 pub trait RepositoryClient: Send + Sync {
+    async fn create_org_repository(
+        &self,
+        owner: &str,
+        payload: &RepositoryCreatePayload,
+    ) -> Result<Repository, Error>;
+
     async fn create_user_repository(
         &self,
         payload: &RepositoryCreatePayload,
-    ) -> Result<Repository, GitHubClientError>;
+    ) -> Result<Repository, Error>;
 
-    async fn create_org_repository(
+    async fn get_organization_default_branch(
         &self,
-        org: &str,
-        payload: &RepositoryCreatePayload,
-    ) -> Result<Repository, GitHubClientError>;
-
-    async fn get_installation_token_for_org(&self, org: &str)
-        -> Result<String, GitHubClientError>;
-
-    async fn get_organization_default_branch(&self, org: &str)
-        -> Result<String, GitHubClientError>;
+        org_name: &str,
+    ) -> Result<String, Error>;
 }
 ```
 
-**Status**: ✅ Well-designed, already in use
+`RepositoryCreatePayload` contains the repository name, optional
+description/homepage, privacy, and selected GitHub repository feature flags.
+The `Repository` returned by the client represents the GitHub response.
+`RepositoryClient` also exposes repository update operations; see its
+definition in `crates/github_client/src/lib.rs` for the complete method list.
 
-**TODO**: Migrate `org: &str` parameters to use `OrganizationName` type
+## Organization and installation operations
 
----
+`GitHubClient` provides concrete methods for organization-related operations,
+including:
 
-## New Interface: OrganizationProvider
+- `get_installation_token_for_org(org_name: &str) -> Result<String, Error>`
+- `get_organization_default_branch(org_name: &str) -> Result<String, Error>`
 
-```rust
-#[async_trait]
-pub trait OrganizationProvider: Send + Sync {
-    /// Get organization details
-    async fn get_organization(&self, org: &OrganizationName)
-        -> Result<Organization, GitHubClientError>;
+These are API-boundary methods and accept string identifiers. The core wraps
+and validates organization and installation values in its domain types where
+those types are part of the workflow; the GitHub client does not define a
+separate organization-details or installation-provider abstraction.
 
-    /// Check if organization exists
-    async fn organization_exists(&self, org: &OrganizationName)
-        -> Result<bool, GitHubClientError>;
+## Permissions
 
-    /// Get organization default branch setting
-    async fn get_default_branch(&self, org: &OrganizationName)
-        -> Result<String, GitHubClientError>;
-}
-```
+Repository permissions are coordinated by
+`repo_roller_core::permission_manager::PermissionManager`, not a GitHub
+permissions-provider trait. The manager evaluates requests using the core
+policy engine, then applies approved team and collaborator access using
+`GitHubClient` methods such as `add_team_to_repository`,
+`set_team_repository_permission`, `add_repository_collaborator`,
+`set_collaborator_permission`, and `remove_repository_collaborator`.
 
----
+- Team access is applied through the GitHub team-repository API.
+- Collaborator access is applied through the collaborator API.
+- A collaborator request with `AccessLevel::None` removes an existing
+  collaborator; team removal is not currently exposed by `GitHubClient`.
+- Permission decisions and application outcomes are recorded by the core
+  permission audit logger.
 
-## New Interface: InstallationProvider
+Permission policy and request types are defined in
+`repo_roller_core::permissions`; see the
+[permission design specification](../design/multi-level-permissions.md).
 
-```rust
-#[async_trait]
-pub trait InstallationProvider: Send + Sync {
-    /// Get installation ID for an organization
-    async fn get_installation_for_org(&self, org: &OrganizationName)
-        -> Result<InstallationId, GitHubClientError>;
+## Errors and behavior
 
-    /// Get installation token
-    async fn get_installation_token(&self, installation_id: InstallationId)
-        -> Result<GitHubToken, GitHubClientError>;
-}
-```
-
----
-
-## Types
-
-### RepositoryCreatePayload
-
-```rust
-pub struct RepositoryCreatePayload {
-    pub name: String, // TODO: Change to RepositoryName
-    pub description: Option<String>,
-    pub private: bool,
-    pub auto_init: bool,
-}
-```
-
-### Repository (response)
-
-```rust
-pub struct Repository {
-    // Fields from octocrab response
-}
-```
-
----
-
-## Error Handling
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum GitHubClientError {
-    #[error("GitHub API error: {0}")]
-    ApiError(String),
-
-    #[error("Authentication failed: {0}")]
-    AuthenticationError(String),
-
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
-}
-```
-
----
-
-## Implementation Notes
-
-- Use `octocrab` as GitHub API client
-- Handle rate limiting gracefully
-- Retry transient errors
-- Log all API calls for debugging
-
----
+GitHub operations return `github_client::Error`. Callers should propagate
+these errors through their domain error type rather than treating an API
+failure as a successful operation. GitHub API authentication and rate limits
+are managed by the client and the specific API operation.
 
 ## Related Specifications
 
-- `specs/interfaces/repository-domain.md` - Uses these interfaces
-- `specs/interfaces/authentication-interfaces.md` - Authentication integration
-- `specs/interfaces/shared-types.md` - Type definitions
+- [Repository Domain](repository-domain.md) — Repository creation orchestration
+- [Shared Types](shared-types.md) — Validated names and token handling
+- [Permission Design](../design/multi-level-permissions.md) — Permission policy and application

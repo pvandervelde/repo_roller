@@ -568,34 +568,13 @@ pub struct ApplyWebhooksResult {
 
 Labels and webhooks are applied as part of the `apply_repository_configuration()` function in `crates/repo_roller_core/src/configuration.rs`.
 
-**Current Implementation** (labels already integrated):
+**Current Implementation**:
 
-```rust
-pub(crate) async fn apply_repository_configuration(
-    installation_repo_client: &GitHubClient,
-    owner: &str,
-    repo_name: &str,
-    merged_config: &config_manager::MergedConfiguration,
-) -> RepoRollerResult<()> {
-    // Labels are already applied via direct GitHubClient calls
-    if !merged_config.labels.is_empty() {
-        for (label_name, label_config) in &merged_config.labels {
-            installation_repo_client
-                .create_label(owner, repo_name, &label_config.name, ...)
-                .await?;
-        }
-    }
-
-    // Webhooks are stubbed
-    if !merged_config.webhooks.is_empty() {
-        warn!("Webhook creation not yet implemented");
-    }
-
-    // ... other configuration
-}
-```
-
-**Proposed Enhanced Implementation** (using managers):
+`apply_repository_configuration()` applies configured labels and webhooks
+through `LabelManager` and `WebhookManager`, respectively. Both managers log
+their results, including warnings for individual failures. Errors returned by
+either manager propagate from the workflow. Outbound event notifications are
+a separate feature.
 
 ```rust
 pub(crate) async fn apply_repository_configuration(
@@ -607,35 +586,44 @@ pub(crate) async fn apply_repository_configuration(
     // Apply labels using LabelManager
     if !merged_config.labels.is_empty() {
         let label_manager = LabelManager::new(installation_repo_client.clone());
-        let result = label_manager
+        let label_result = label_manager
             .apply_labels(owner, repo_name, &merged_config.labels)
-            .await
-            .map_err(|e| {
-                error!("Failed to apply labels: {}", e);
-                e
-            })?;
+            .await?;
 
         info!(
-            "Applied labels: {} created, {} updated, {} skipped, {} failed",
-            result.created, result.updated, result.skipped, result.failed
+            "Label application complete: created={}, updated={}, failed={}, skipped={}",
+            label_result.created, label_result.updated, label_result.failed, label_result.skipped
         );
+
+        if label_result.failed > 0 {
+            warn!(
+                "Failed to apply {} label(s): {:?}",
+                label_result.failed, label_result.failed_labels
+            );
+        }
     }
 
     // Apply webhooks using WebhookManager
     if !merged_config.webhooks.is_empty() {
         let webhook_manager = WebhookManager::new(installation_repo_client.clone());
-        let result = webhook_manager
+        let webhook_result = webhook_manager
             .apply_webhooks(owner, repo_name, &merged_config.webhooks)
-            .await
-            .map_err(|e| {
-                error!("Failed to apply webhooks: {}", e);
-                e
-            })?;
+            .await?;
 
         info!(
-            "Applied webhooks: {} created, {} updated, {} skipped, {} failed",
-            result.created, result.updated, result.skipped, result.failed
+            "Webhook application complete: created={}, updated={}, failed={}, skipped={}",
+            webhook_result.created,
+            webhook_result.updated,
+            webhook_result.failed,
+            webhook_result.skipped
         );
+
+        if webhook_result.failed > 0 {
+            warn!(
+                "Failed to apply {} webhook(s): {:?}",
+                webhook_result.failed, webhook_result.failed_webhooks
+            );
+        }
     }
 
     // ... other configuration
