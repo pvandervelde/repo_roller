@@ -102,16 +102,16 @@ fn validate_backend_jwt(token: &str, secret: &str) -> Result<Claims, AuthError> 
 
     jsonwebtoken::decode::<Claims>(token, &decoding_key, &validation)
         .map(|data| data.claims)
-    .map_err(|e| match e.kind() {
-        jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-            tracing::debug!("Rejected expired backend JWT");
-            AuthError::TokenExpired
-        }
-        _ => {
-            tracing::debug!("Rejected invalid backend JWT: {}", e);
-            AuthError::Authentication(AuthenticationError::InvalidToken)
-        }
-    })
+        .map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                tracing::debug!("Rejected expired backend JWT");
+                AuthError::TokenExpired
+            }
+            _ => {
+                tracing::debug!("Rejected invalid backend JWT: {}", e);
+                AuthError::Authentication(AuthenticationError::InvalidToken)
+            }
+        })
 }
 
 /// Authentication context attached to requests after successful authentication.
