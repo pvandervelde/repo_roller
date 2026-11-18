@@ -68,12 +68,14 @@ pub(crate) fn generate_backend_jwt(user_login: &str, secret: &str) -> Result<Str
         exp: (now + JWT_EXPIRY_SECS) as usize,
     };
 
-    jsonwebtoken::encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
-    )
-    .map_err(|e| {
+    let encoding_key = EncodingKey::from_secret(secret.as_bytes()).map_err(|e| {
+        tracing::error!("Failed to build backend JWT encoding key: {}", e);
+        AuthError::Authentication(AuthenticationError::AuthenticationFailed {
+            reason: "JWT encoding failed".to_string(),
+        })
+    })?;
+
+    jsonwebtoken::encode(&Header::default(), &claims, &encoding_key).map_err(|e| {
         tracing::error!("Failed to encode backend JWT: {}", e);
         AuthError::Authentication(AuthenticationError::AuthenticationFailed {
             reason: "JWT encoding failed".to_string(),
@@ -93,12 +95,13 @@ fn validate_backend_jwt(token: &str, secret: &str) -> Result<Claims, AuthError> 
         leeway: 30,
         ..Default::default()
     };
-    jsonwebtoken::decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret.as_bytes()),
-        &validation,
-    )
-    .map(|data| data.claims)
+    let decoding_key = DecodingKey::from_secret(secret.as_bytes()).map_err(|e| {
+        tracing::debug!("Failed to build backend JWT decoding key: {}", e);
+        AuthError::Authentication(AuthenticationError::InvalidToken)
+    })?;
+
+    jsonwebtoken::decode::<Claims>(token, &decoding_key, &validation)
+        .map(|data| data.claims)
     .map_err(|e| match e.kind() {
         jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
             tracing::debug!("Rejected expired backend JWT");

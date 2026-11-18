@@ -171,7 +171,7 @@ async fn test_expired_jwt_rejected() {
     let expired_token = jsonwebtoken::encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
+        &EncodingKey::from_secret(secret.as_bytes()).expect("encoding key must build"),
     )
     .expect("encoding must succeed");
 
@@ -284,7 +284,7 @@ fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
     validation.validate_exp = false;
     let data = jsonwebtoken::decode::<Claims>(
         &token,
-        &DecodingKey::from_secret(secret.as_bytes()),
+        &DecodingKey::from_secret(secret.as_bytes()).expect("decoding key must build"),
         &validation,
     )
     .expect("token must decode");
