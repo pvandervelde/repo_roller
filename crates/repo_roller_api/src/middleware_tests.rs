@@ -151,6 +151,36 @@ fn test_generate_backend_jwt_roundtrip() {
     assert_eq!(token.split('.').count(), 3);
 }
 
+/// Test that generate_backend_jwt fails when given an empty secret.
+///
+/// `jsonwebtoken` 12 made `EncodingKey::from_secret` reject empty secrets, so
+/// the encoding-key construction now surfaces an `AuthError` rather than
+/// panicking or silently using an empty key.
+#[test]
+fn test_generate_backend_jwt_empty_secret_errors() {
+    let result = generate_backend_jwt("alice", "");
+    assert!(
+        result.is_err(),
+        "An empty signing secret must produce an error, not a token"
+    );
+}
+
+/// Test that validate_backend_jwt fails when given an empty secret.
+///
+/// Mirrors the encoding path: `jsonwebtoken` 12 rejects empty secrets when
+/// building the `DecodingKey`, so validation returns an `AuthError` before the
+/// token is ever parsed.
+#[test]
+fn test_validate_backend_jwt_empty_secret_errors() {
+    let token =
+        generate_backend_jwt("alice", crate::TEST_JWT_SECRET).expect("JWT generation must succeed");
+    let result = validate_backend_jwt(&token, "");
+    assert!(
+        result.is_err(),
+        "An empty validation secret must produce an error"
+    );
+}
+
 /// Test that a JWT with an expiry well in the past (beyond the 30-second leeway) is rejected.
 ///
 /// The middleware uses a 30-second leeway. Tokens expired more than 30 seconds ago
