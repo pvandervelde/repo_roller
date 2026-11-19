@@ -2187,7 +2187,7 @@ impl RepositoryClient for GitHubClient {
         }
     }
 
-    #[instrument(skip(self, payload))]
+    #[instrument(skip(self, payload), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo)))]
     async fn set_actions_workflow_permissions(
         &self,
         owner: &str,
@@ -2213,7 +2213,7 @@ impl RepositoryClient for GitHubClient {
         .await
     }
 
-    #[instrument(skip(self, payload))]
+    #[instrument(skip(self, payload), fields(owner = %span_attributes::sanitize_span_attribute_value(owner), repo = %span_attributes::sanitize_span_attribute_value(repo)))]
     async fn set_actions_access_level(
         &self,
         owner: &str,

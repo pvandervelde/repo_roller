@@ -319,6 +319,31 @@ Add to this whenever a reusable component becomes "the standard way".
   `.llm/findings/action-settings-permissions.md` for the deferred
   cross-scope consolidation.
 
+- **`repo_roller_core::ActionsManager::apply_action_settings`** — applies
+  the 3 new `ActionSettings` fields (`default_workflow_permissions`,
+  `can_approve_pull_request_reviews`, `access_level`) to a repository via
+  the two `RepositoryClient` methods above
+  Location: `repo_roller_core/src/actions_manager.rs`
+  Key exports: `ActionsManager::new(github_client)`, `apply_action_settings(owner,
+  repo, actions: &ActionSettings) -> RepoRollerResult<()>`
+  Use when: Mapping a merged `ActionSettings` value to GitHub's Actions
+  permission endpoints — mirrors the `LabelManager`/`WebhookManager`/
+  `RulesetManager` constructor/manager shape (none of which have their own
+  catalog entries either; this entry exists primarily to document the
+  intentional scope boundary below)
+  Notes: Only the 3 new fields are mapped. The 5 pre-existing `ActionSettings`
+  fields (`enabled`, `allowed_actions`, `github_owned_allowed`,
+  `verified_allowed`, `patterns_allowed`) are deliberately **not** applied
+  here — mapping those to `PUT .../actions/permissions` and
+  `PUT .../actions/permissions/selected-actions` is out of scope for
+  #276/#277 even though those fields are now fully merge-wired through the
+  4-level hierarchy (see `ConfigurationMerger::merge_action_settings`
+  below). The two calls are independent but sequential: if
+  `set_actions_workflow_permissions` fails, `set_actions_access_level` is
+  never attempted (errors propagate via `?`, not collected). Called from
+  `configuration::apply_repository_configuration` only when at least one of
+  the 3 new fields is `Some` on `merged_config.actions`.
+
 - **`repo_roller_core::git::mirror_clone` / `mirror_push` /
   `shallow_clone_working_tree` / `create_snapshot_branch`** — local-git
   primitives for the two mirror modes (no GitHub API calls)
