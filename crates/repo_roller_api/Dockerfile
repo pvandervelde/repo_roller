@@ -2,7 +2,7 @@
 # Optimized for small image size and security
 
 # Stage 1: Build
-FROM rust:1.98-bookworm@sha256:c49256cbe5ea0188bc658a689500d70c41eb51f009a7a7be209caf60a944f3ec AS builder
+FROM rust:1.100-bookworm@sha256:198cd28b4ba92b20fe849d5d8b119ace1bd28423d9e82e9c4de5ee1300d453a0 AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,7 +24,7 @@ COPY crates/ crates/
 RUN cargo build --release --package repo_roller_api
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 # Install runtime dependencies (OpenSSL for HTTPS, git for template cloning,
 # wget for the Docker health check probe against GET /api/v1/health)
