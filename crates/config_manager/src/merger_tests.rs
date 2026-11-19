@@ -1643,6 +1643,60 @@ fn test_repository_type_overrides_global_allowed_actions() {
     );
 }
 
+/// Stub-killing: `apply_repository_type_overrides` has an `if let Some(base_actions)
+/// = &global.actions { merge_action_settings(...) } else { merged.actions =
+/// override_actions.clone(); track_action_settings_sources(...) }` branch for
+/// actions (merger.rs ~503-519). Every other repository-type-level actions
+/// test in this file sets `global.actions` to `Some(..)`, so they only ever
+/// exercise the `if` arm. This test sets `global.actions` to `None` (the
+/// global `GlobalDefaults` has no actions block at all) while `repo_type.actions`
+/// is `Some`, forcing the `else` arm: the override must still be applied to
+/// `merged.actions` and its source still tracked as `RepositoryType`. An
+/// implementation that deleted or no-opped the `else` arm would silently drop
+/// repository-type-only actions settings whenever no global actions baseline
+/// exists -- this would pass every other actions test in this file undetected.
+#[test]
+fn test_repository_type_only_actions_applied_when_global_actions_absent() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default(); // global.actions is None
+    let repo_type = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            allowed_actions: Some(OverridableValue::allowed("selected".to_string())),
+            access_level: Some(OverridableValue::allowed("organization".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(
+            &global,
+            Some(&repo_type),
+            None,
+            &minimal_template_for_actions(),
+        )
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.get_source("actions.allowed_actions"),
+        Some(ConfigurationSource::RepositoryType),
+        "source must still be tracked as RepositoryType via the else-arm's track_action_settings_sources call"
+    );
+    assert_eq!(
+        merged.get_source("actions.access_level"),
+        Some(ConfigurationSource::RepositoryType)
+    );
+    assert_eq!(
+        merged.actions.allowed_actions.map(|v| v.value),
+        Some("selected".to_string()),
+        "repository-type-only actions override must be applied even with no global actions baseline"
+    );
+    assert_eq!(
+        merged.actions.access_level.map(|v| v.value),
+        Some("organization".to_string())
+    );
+}
+
 #[test]
 fn test_team_overrides_repository_type_github_owned_allowed() {
     let merger = ConfigurationMerger::new();
