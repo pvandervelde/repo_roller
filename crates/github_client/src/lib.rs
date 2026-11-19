@@ -1943,6 +1943,68 @@ impl GitHubClient {
             },
         }
     }
+
+    /// Sends a `PUT` request to `path` with `payload`, tolerating GitHub's
+    /// `204 No Content` success response.
+    ///
+    /// Factored out (REFACTOR pass, #276/#277) of
+    /// `set_actions_workflow_permissions` and `set_actions_access_level`,
+    /// which otherwise repeated this exact
+    /// deserialize-as-`Option<Value>`-then-intercept-the-EOF-`Err`-variant
+    /// shape verbatim. GitHub returns `204 No Content` (empty body, no JSON)
+    /// on success for both of those endpoints; octocrab tries to deserialize
+    /// the body regardless of status code, so an empty body produces a
+    /// `serde_json::Error` whose `is_eof()` is `true`. That specific error
+    /// shape is intercepted and treated as success rather than propagated.
+    ///
+    /// Not reused by the pre-existing, differently-shaped 204-tolerant call
+    /// sites elsewhere in this file (e.g. team-repository-permission `PUT`,
+    /// which also logs `team_slug`/`repo_owner`/`permission` fields and has
+    /// its own `NOT_FOUND`-specific branch) — see
+    /// `.llm/findings/action-settings-permissions.md` for why that
+    /// broader consolidation was deferred rather than folded into this pass.
+    async fn put_tolerating_204_no_content<T>(
+        &self,
+        path: String,
+        payload: &T,
+        owner: &str,
+        repo: &str,
+        success_message: &str,
+        failure_message: &str,
+    ) -> Result<(), Error>
+    where
+        T: Serialize + ?Sized,
+    {
+        debug!("Making API call to: {}", path);
+        // Use Option<serde_json::Value> to handle 204 No Content responses
+        let response: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(path, Some(payload)).await;
+
+        match response {
+            Ok(_) => {
+                info!(owner = owner, repo = repo, "{}", success_message);
+                Ok(())
+            }
+            // GitHub returns 204 No Content on success — empty body, no JSON.
+            // octocrab tries to deserialise the body regardless of status code;
+            // an empty body produces `serde_json::Error::is_eof() == true`.
+            // Intercept that variant and treat it as success.
+            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "{} (204 No Content)",
+                    success_message
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!(owner = owner, repo = repo, "{}: {}", failure_message, e);
+                log_octocrab_error(failure_message, e);
+                Err(Error::ApiError())
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -2140,43 +2202,15 @@ impl RepositoryClient for GitHubClient {
 
         let path = format!("/repos/{owner}/{repo}/actions/permissions/workflow");
 
-        debug!("Making API call to: {}", path);
-        // Use Option<serde_json::Value> to handle 204 No Content responses
-        let response: OctocrabResult<Option<serde_json::Value>> =
-            self.client.put(path, Some(payload)).await;
-
-        match response {
-            Ok(_) => {
-                info!(
-                    owner = owner,
-                    repo = repo,
-                    "Successfully set Actions workflow permissions on repository"
-                );
-                Ok(())
-            }
-            // GitHub returns 204 No Content on success — empty body, no JSON.
-            // octocrab tries to deserialise the body regardless of status code;
-            // an empty body produces `serde_json::Error::is_eof() == true`.
-            // Intercept that variant and treat it as success.
-            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
-                info!(
-                    owner = owner,
-                    repo = repo,
-                    "Successfully set Actions workflow permissions on repository (204 No Content)"
-                );
-                Ok(())
-            }
-            Err(e) => {
-                error!(
-                    owner = owner,
-                    repo = repo,
-                    "Failed to set Actions workflow permissions: {}",
-                    e
-                );
-                log_octocrab_error("Failed to set Actions workflow permissions", e);
-                Err(Error::ApiError())
-            }
-        }
+        self.put_tolerating_204_no_content(
+            path,
+            payload,
+            owner,
+            repo,
+            "Successfully set Actions workflow permissions on repository",
+            "Failed to set Actions workflow permissions",
+        )
+        .await
     }
 
     #[instrument(skip(self, payload))]
@@ -2194,43 +2228,15 @@ impl RepositoryClient for GitHubClient {
 
         let path = format!("/repos/{owner}/{repo}/actions/permissions/access");
 
-        debug!("Making API call to: {}", path);
-        // Use Option<serde_json::Value> to handle 204 No Content responses
-        let response: OctocrabResult<Option<serde_json::Value>> =
-            self.client.put(path, Some(payload)).await;
-
-        match response {
-            Ok(_) => {
-                info!(
-                    owner = owner,
-                    repo = repo,
-                    "Successfully set Actions access level on repository"
-                );
-                Ok(())
-            }
-            // GitHub returns 204 No Content on success — empty body, no JSON.
-            // octocrab tries to deserialise the body regardless of status code;
-            // an empty body produces `serde_json::Error::is_eof() == true`.
-            // Intercept that variant and treat it as success.
-            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
-                info!(
-                    owner = owner,
-                    repo = repo,
-                    "Successfully set Actions access level on repository (204 No Content)"
-                );
-                Ok(())
-            }
-            Err(e) => {
-                error!(
-                    owner = owner,
-                    repo = repo,
-                    "Failed to set Actions access level: {}",
-                    e
-                );
-                log_octocrab_error("Failed to set Actions access level", e);
-                Err(Error::ApiError())
-            }
-        }
+        self.put_tolerating_204_no_content(
+            path,
+            payload,
+            owner,
+            repo,
+            "Successfully set Actions access level on repository",
+            "Failed to set Actions access level",
+        )
+        .await
     }
 
     async fn search_repositories(&self, query: &str) -> Result<Vec<Repository>, Error> {

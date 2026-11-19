@@ -1107,7 +1107,7 @@ impl ConfigurationMerger {
     ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
         let mut source_updates = Vec::new();
 
-        self.merge_capability_field(
+        self.merge_override_field(
             "creation_capabilities.fork_enabled",
             &mut target.fork_enabled,
             &override_settings.fork_enabled,
@@ -1116,7 +1116,7 @@ impl ConfigurationMerger {
             &mut source_updates,
         )?;
 
-        self.merge_capability_field(
+        self.merge_override_field(
             "creation_capabilities.source_history_mirror_enabled",
             &mut target.source_history_mirror_enabled,
             &override_settings.source_history_mirror_enabled,
@@ -1125,7 +1125,7 @@ impl ConfigurationMerger {
             &mut source_updates,
         )?;
 
-        self.merge_capability_field(
+        self.merge_override_field(
             "creation_capabilities.source_only_mirror_enabled",
             &mut target.source_only_mirror_enabled,
             &override_settings.source_only_mirror_enabled,
@@ -1145,20 +1145,26 @@ impl ConfigurationMerger {
         Ok(source_updates)
     }
 
-    /// Merges a single fork/mirror capability field with override-policy
-    /// validation and source tracking.
+    /// Merges a single `Option<OverridableValue<T>>` field with
+    /// override-policy validation and source tracking.
     ///
     /// Factored out of [`Self::merge_creation_capabilities_settings`], whose
-    /// three capability fields (`fork_enabled`, `source_history_mirror_enabled`,
-    /// `source_only_mirror_enabled`) otherwise repeat this exact
-    /// validate-then-assign-then-track shape.
+    /// three `bool` capability fields (`fork_enabled`,
+    /// `source_history_mirror_enabled`, `source_only_mirror_enabled`)
+    /// otherwise repeated this exact validate-then-assign-then-track shape.
+    /// Generalized over `T` (REFACTOR pass, #276/#277) so
+    /// [`Self::merge_action_settings`]'s 7 `Option<OverridableValue<_>>`
+    /// fields (4 `bool`, 3 `String`) reuse the same helper instead of
+    /// re-inlining the shape a second time per value type. Any future
+    /// `Option<OverridableValue<T>>` field with `T: Clone + PartialEq +
+    /// Display` should call this rather than inlining the block again.
     #[allow(clippy::too_many_arguments)]
-    fn merge_capability_field(
+    fn merge_override_field<T: Clone + PartialEq + std::fmt::Display>(
         &self,
         field_path: &str,
-        target: &mut Option<OverridableValue<bool>>,
-        override_value: &Option<OverridableValue<bool>>,
-        base_value: &Option<OverridableValue<bool>>,
+        target: &mut Option<OverridableValue<T>>,
+        override_value: &Option<OverridableValue<T>>,
+        base_value: &Option<OverridableValue<T>>,
         source: ConfigurationSource,
         source_updates: &mut Vec<(String, ConfigurationSource)>,
     ) -> ConfigurationResult<()> {
@@ -1175,13 +1181,14 @@ impl ConfigurationMerger {
     /// Merges the `allowed_source_owners` field with override-policy
     /// validation and source tracking.
     ///
-    /// Mirrors [`Self::merge_capability_field`]'s shape, but for
+    /// Mirrors [`Self::merge_override_field`]'s shape, but for
     /// `OverridableValue<Vec<String>>`: the allow-list is replaced wholesale
     /// by the highest-precedence level that sets it (NOT unioned across
     /// levels — see `docs/spec/interfaces/fork-mirror-operations.md` §2).
     /// Kept as a separate method (rather than reusing
-    /// [`Self::merge_capability_field`]) because its value type is
-    /// `Vec<String>`, not `bool`.
+    /// [`Self::merge_override_field`]) because `Vec<String>` has no
+    /// `Display` impl, so it needs `validate_override_no_display` instead of
+    /// `validate_override`.
     fn merge_allowed_source_owners_field(
         &self,
         target: &mut Option<OverridableValue<Vec<String>>>,
@@ -1204,12 +1211,14 @@ impl ConfigurationMerger {
     /// Merges GitHub Actions settings with override policy validation.
     ///
     /// Mirrors [`Self::merge_repository_settings`]'s field-by-field
-    /// precedence-and-override-enforcement pattern: each of the 7
-    /// `Option<OverridableValue<T>>` fields is merged independently (so an
-    /// override touching only one field never perturbs the others), while
-    /// `patterns_allowed` (a plain `Option<Vec<String>>` with no
-    /// `override_allowed` policy) is replaced wholesale whenever the
-    /// higher-precedence level sets it.
+    /// precedence-and-override-enforcement pattern, but — since all 7
+    /// `Option<OverridableValue<T>>` fields share the identical
+    /// validate-then-assign-then-track shape (4 `bool`, 3 `String`) — each
+    /// delegates to [`Self::merge_override_field`] (REFACTOR pass,
+    /// #276/#277) rather than re-inlining the block 7 times. `patterns_allowed`
+    /// (a plain `Option<Vec<String>>` with no `override_allowed` policy) is
+    /// the one field with no override semantics, so it's replaced wholesale
+    /// inline whenever the higher-precedence level sets it.
     ///
     /// # Errors
     ///
@@ -1224,84 +1233,68 @@ impl ConfigurationMerger {
     ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
         let mut source_updates = Vec::new();
 
-        if let Some(override_value) = &override_settings.enabled {
-            if let Some(base_value) = &base_settings.enabled {
-                self.validate_override("actions.enabled", base_value, &override_value.value)?;
-            }
-            target.enabled = Some(override_value.clone());
-            source_updates.push(("actions.enabled".to_string(), source));
-        }
+        self.merge_override_field(
+            "actions.enabled",
+            &mut target.enabled,
+            &override_settings.enabled,
+            &base_settings.enabled,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.allowed_actions {
-            if let Some(base_value) = &base_settings.allowed_actions {
-                self.validate_override(
-                    "actions.allowed_actions",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.allowed_actions = Some(override_value.clone());
-            source_updates.push(("actions.allowed_actions".to_string(), source));
-        }
+        self.merge_override_field(
+            "actions.allowed_actions",
+            &mut target.allowed_actions,
+            &override_settings.allowed_actions,
+            &base_settings.allowed_actions,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.github_owned_allowed {
-            if let Some(base_value) = &base_settings.github_owned_allowed {
-                self.validate_override(
-                    "actions.github_owned_allowed",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.github_owned_allowed = Some(override_value.clone());
-            source_updates.push(("actions.github_owned_allowed".to_string(), source));
-        }
+        self.merge_override_field(
+            "actions.github_owned_allowed",
+            &mut target.github_owned_allowed,
+            &override_settings.github_owned_allowed,
+            &base_settings.github_owned_allowed,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.verified_allowed {
-            if let Some(base_value) = &base_settings.verified_allowed {
-                self.validate_override(
-                    "actions.verified_allowed",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.verified_allowed = Some(override_value.clone());
-            source_updates.push(("actions.verified_allowed".to_string(), source));
-        }
+        self.merge_override_field(
+            "actions.verified_allowed",
+            &mut target.verified_allowed,
+            &override_settings.verified_allowed,
+            &base_settings.verified_allowed,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.default_workflow_permissions {
-            if let Some(base_value) = &base_settings.default_workflow_permissions {
-                self.validate_override(
-                    "actions.default_workflow_permissions",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.default_workflow_permissions = Some(override_value.clone());
-            source_updates.push(("actions.default_workflow_permissions".to_string(), source));
-        }
+        self.merge_override_field(
+            "actions.default_workflow_permissions",
+            &mut target.default_workflow_permissions,
+            &override_settings.default_workflow_permissions,
+            &base_settings.default_workflow_permissions,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.can_approve_pull_request_reviews {
-            if let Some(base_value) = &base_settings.can_approve_pull_request_reviews {
-                self.validate_override(
-                    "actions.can_approve_pull_request_reviews",
-                    base_value,
-                    &override_value.value,
-                )?;
-            }
-            target.can_approve_pull_request_reviews = Some(override_value.clone());
-            source_updates.push((
-                "actions.can_approve_pull_request_reviews".to_string(),
-                source,
-            ));
-        }
+        self.merge_override_field(
+            "actions.can_approve_pull_request_reviews",
+            &mut target.can_approve_pull_request_reviews,
+            &override_settings.can_approve_pull_request_reviews,
+            &base_settings.can_approve_pull_request_reviews,
+            source,
+            &mut source_updates,
+        )?;
 
-        if let Some(override_value) = &override_settings.access_level {
-            if let Some(base_value) = &base_settings.access_level {
-                self.validate_override("actions.access_level", base_value, &override_value.value)?;
-            }
-            target.access_level = Some(override_value.clone());
-            source_updates.push(("actions.access_level".to_string(), source));
-        }
+        self.merge_override_field(
+            "actions.access_level",
+            &mut target.access_level,
+            &override_settings.access_level,
+            &base_settings.access_level,
+            source,
+            &mut source_updates,
+        )?;
 
         // `patterns_allowed` has no `override_allowed` policy: the
         // highest-precedence level that sets it always wins, replacing the
