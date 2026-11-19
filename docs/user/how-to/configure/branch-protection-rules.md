@@ -96,6 +96,59 @@ required_status_checks = [
 | `required_signatures` | Requires signed commits |
 | `creation` | Prevents creation of new matching refs |
 
+## Bypass actors
+
+Use `[[rulesets.bypass_actors]]` to allow specific actors to bypass a ruleset.
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `actor_id` | Yes | — | Numeric GitHub actor ID |
+| `actor_type` | Yes | — | Type of actor (see table below) |
+| `bypass_mode` | No | `"always"` | When the bypass applies |
+
+Supported `actor_type` values:
+
+| Value | Description |
+|---|---|
+| `OrganizationAdmin` | Organization administrators |
+| `RepositoryRole` | Repository-level roles (admin, maintain, write); `actor_id` specifies the role |
+| `Team` | Specific teams; use the team's numeric ID as `actor_id` |
+| `Integration` | GitHub Apps |
+| `DeployKey` | Deploy keys |
+
+Supported `bypass_mode` values:
+
+| Value | Description |
+|---|---|
+| `always` | Can bypass the ruleset at any time (default) |
+| `pull_request` | Can only bypass via a pull request |
+
+For example, this ruleset allows organization administrators to bypass at any time and a team to bypass only via a pull request:
+
+```toml
+[[rulesets]]
+name        = "require-pr-on-main"
+target      = "branch"
+enforcement = "active"
+
+[rulesets.conditions.ref_name]
+include = ["refs/heads/main"]
+
+[[rulesets.bypass_actors]]
+actor_id    = 1
+actor_type  = "OrganizationAdmin"
+bypass_mode = "always"
+
+[[rulesets.bypass_actors]]
+actor_id    = 123
+actor_type  = "Team"
+bypass_mode = "pull_request"
+
+[[rulesets.rules]]
+type = "pull_request"
+required_approving_review_count = 2
+```
+
 ## Ruleset hierarchy
 
 Rulesets from all levels are applied independently. A repository created with a global, type, team, and template ruleset will have four separate rulesets:
