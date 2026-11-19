@@ -349,3 +349,66 @@ fn test_additive_collections_from_multiple_sources() {
     // All webhooks should be present (additive)
     assert_eq!(config.webhooks.len(), 3);
 }
+
+// ============================================================================
+// `actions` field (#276/#277) -- wiring ActionSettings into MergedConfiguration
+// ============================================================================
+
+use crate::settings::ActionSettings;
+use crate::OverridableValue;
+
+/// Spec: `MergedConfiguration.actions` is non-optional (`ActionSettings`, not
+/// `Option<ActionSettings>`) and default-initialized to
+/// `ActionSettings::default()`, mirroring the existing `repository` field's
+/// pattern.
+#[test]
+fn test_merged_configuration_new_has_default_actions() {
+    let config = MergedConfiguration::new();
+    assert_eq!(config.actions, ActionSettings::default());
+}
+
+#[test]
+fn test_merged_configuration_default_has_default_actions() {
+    let config = MergedConfiguration::default();
+    assert_eq!(config.actions, ActionSettings::default());
+}
+
+/// Stub-killing: `actions` must be independently settable/readable, not
+/// aliased to another field (e.g. `repository`).
+#[test]
+fn test_merged_configuration_actions_can_be_set_and_read_back() {
+    let mut config = MergedConfiguration::new();
+    config.actions = ActionSettings {
+        access_level: Some(OverridableValue::allowed("organization".to_string())),
+        ..Default::default()
+    };
+
+    assert_eq!(config.actions.access_level.unwrap().value, "organization");
+}
+
+#[test]
+fn test_merged_configuration_clone_preserves_actions() {
+    let mut config = MergedConfiguration::new();
+    config.actions = ActionSettings {
+        default_workflow_permissions: Some(OverridableValue::allowed("write".to_string())),
+        ..Default::default()
+    };
+
+    let cloned = config.clone();
+    assert_eq!(config.actions, cloned.actions);
+}
+
+#[test]
+fn test_record_source_and_get_source_for_actions_field_path() {
+    let mut config = MergedConfiguration::new();
+    config.record_source(
+        "actions.default_workflow_permissions",
+        ConfigurationSource::Team,
+    );
+
+    assert_eq!(
+        config.get_source("actions.default_workflow_permissions"),
+        Some(ConfigurationSource::Team)
+    );
+    assert_eq!(config.get_source("actions.access_level"), None);
+}

@@ -342,3 +342,101 @@ fn test_deserialize_without_permissions_gives_none() {
     let config: RepositoryTypeConfig = toml::from_str(toml).expect("Failed to parse");
     assert!(config.permissions.is_none());
 }
+
+// ── GitHub Actions settings field (#276/#277) ─────────────────────────────
+
+use crate::settings::ActionSettings;
+use crate::OverridableValue;
+
+#[test]
+fn test_repository_type_config_actions_defaults_to_none() {
+    let config = RepositoryTypeConfig::default();
+    assert!(config.actions.is_none());
+}
+
+#[test]
+fn test_repository_type_config_actions_roundtrips_through_json() {
+    let config = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            default_workflow_permissions: Some(OverridableValue::allowed("write".to_string())),
+            access_level: Some(OverridableValue::allowed("organization".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let roundtripped: RepositoryTypeConfig = serde_json::from_str(&json).expect("deserialize");
+
+    let actions = roundtripped.actions.expect("actions set");
+    assert_eq!(actions.default_workflow_permissions.unwrap().value, "write");
+    assert_eq!(actions.access_level.unwrap().value, "organization");
+}
+
+/// Verifies the flexible simple-value TOML deserialization (which
+/// `OverridableValue<T>`'s custom `Deserialize` implements) actually applies
+/// to the 3 new fields, not just the 5 pre-existing ones.
+#[test]
+fn test_repository_type_config_actions_parses_simple_toml_for_new_fields() {
+    let toml = r#"
+        [actions]
+        default_workflow_permissions = "read"
+        can_approve_pull_request_reviews = true
+        access_level = "enterprise"
+    "#;
+
+    let config: RepositoryTypeConfig = toml::from_str(toml).expect("parse");
+    let actions = config.actions.expect("actions set");
+
+    let permissions = actions
+        .default_workflow_permissions
+        .expect("default_workflow_permissions set");
+    assert_eq!(permissions.value, "read");
+    assert!(permissions.override_allowed, "auto-wrapped as overridable");
+
+    let can_approve = actions
+        .can_approve_pull_request_reviews
+        .expect("can_approve_pull_request_reviews set");
+    assert_eq!(can_approve.value, true);
+    assert!(can_approve.override_allowed);
+
+    let access_level = actions.access_level.expect("access_level set");
+    assert_eq!(access_level.value, "enterprise");
+    assert!(access_level.override_allowed);
+}
+
+#[test]
+fn test_repository_type_config_actions_parses_explicit_toml_format() {
+    let toml = r#"
+        [actions]
+        access_level = { value = "none", override_allowed = false }
+    "#;
+
+    let config: RepositoryTypeConfig = toml::from_str(toml).expect("parse");
+    let actions = config.actions.expect("actions set");
+    let access_level = actions.access_level.expect("access_level set");
+
+    assert_eq!(access_level.value, "none");
+    assert!(!access_level.override_allowed);
+}
+
+/// Stub-killing: setting a new field alongside a pre-existing field must
+/// preserve both -- rules out an implementation that only wires up one or
+/// the other.
+#[test]
+fn test_repository_type_config_actions_preserves_pre_existing_field_when_new_field_set() {
+    let toml = r#"
+        [actions]
+        enabled = true
+        access_level = "organization"
+    "#;
+
+    let config: RepositoryTypeConfig = toml::from_str(toml).expect("parse");
+    let actions = config.actions.expect("actions set");
+
+    assert_eq!(actions.enabled.expect("enabled set").value, true);
+    assert_eq!(
+        actions.access_level.expect("access_level set").value,
+        "organization"
+    );
+}

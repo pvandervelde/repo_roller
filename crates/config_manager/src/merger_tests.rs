@@ -3,6 +3,7 @@
 use super::*;
 use crate::settings::custom_property::CustomPropertyValue;
 use crate::settings::environment::EnvironmentProtectionRules;
+use crate::settings::ActionSettings;
 use crate::template_config::TemplateMetadata;
 
 // ============================================================================
@@ -1509,4 +1510,1014 @@ fn test_no_labels_across_all_levels_yields_empty_map() {
         merged.labels.is_empty(),
         "No labels provided means empty merged map"
     );
+}
+
+// ============================================================================
+// `actions` (ActionSettings) merge wiring (#276/#277)
+//
+// Prior to this change, `ActionSettings` was defined on `GlobalDefaults` and
+// `TeamConfig` but never wired into `ConfigurationMerger` at all -- these
+// tests pin down the first-ever wiring of all 8 `ActionSettings` fields
+// (the 5 pre-existing fields plus the 3 new ones: `default_workflow_permissions`,
+// `can_approve_pull_request_reviews`, `access_level`) across the full
+// Global -> RepositoryType -> Team -> Template hierarchy, mirroring
+// `merge_repository_settings`'s field-by-field precedence-and-override
+// pattern (see `merger_creation_capabilities_tests.rs` for the analogous
+// precedent on `CreationCapabilitiesSettings`).
+// ============================================================================
+
+/// Minimal template with no settings, so it never overrides anything.
+fn minimal_template_for_actions() -> NewTemplateConfig {
+    NewTemplateConfig {
+        template: TemplateMetadata {
+            name: "t".to_string(),
+            description: "d".to_string(),
+            author: "a".to_string(),
+            tags: vec![],
+        },
+        repository: None,
+        repository_type: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        rulesets: None,
+        variables: None,
+        default_visibility: None,
+        templating: None,
+        notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
+        naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
+        actions: None,
+    }
+}
+
+fn template_with_actions(actions: ActionSettings) -> NewTemplateConfig {
+    NewTemplateConfig {
+        actions: Some(actions),
+        ..minimal_template_for_actions()
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Tier 1: Specification tests -- defaults and precedence
+// ----------------------------------------------------------------------------
+
+#[test]
+fn test_merged_configuration_exposes_actions_field_default_when_absent_everywhere() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(merged.actions, ActionSettings::default());
+}
+
+#[test]
+fn test_global_only_enabled_is_reflected_in_merged_configuration() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(merged.actions.enabled.map(|v| v.value), Some(true));
+}
+
+#[test]
+fn test_repository_type_overrides_global_allowed_actions() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            allowed_actions: Some(OverridableValue::allowed("all".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let repo_type = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            allowed_actions: Some(OverridableValue::allowed("selected".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(
+            &global,
+            Some(&repo_type),
+            None,
+            &minimal_template_for_actions(),
+        )
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.allowed_actions.map(|v| v.value),
+        Some("selected".to_string()),
+        "repository-type level should win over global"
+    );
+}
+
+#[test]
+fn test_team_overrides_repository_type_github_owned_allowed() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+    let repo_type = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            github_owned_allowed: Some(OverridableValue::allowed(false)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            github_owned_allowed: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(
+            &global,
+            Some(&repo_type),
+            Some(&team),
+            &minimal_template_for_actions(),
+        )
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.github_owned_allowed.map(|v| v.value),
+        Some(true),
+        "team level should win over repository-type"
+    );
+}
+
+#[test]
+fn test_template_overrides_team_verified_allowed() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            verified_allowed: Some(OverridableValue::allowed(false)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let template = template_with_actions(ActionSettings {
+        verified_allowed: Some(OverridableValue::allowed(true)),
+        ..Default::default()
+    });
+
+    let merged = merger
+        .merge_configurations(&global, None, Some(&team), &template)
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.verified_allowed.map(|v| v.value),
+        Some(true),
+        "template level (highest precedence) should win over team"
+    );
+}
+
+#[test]
+fn test_global_only_default_workflow_permissions_is_reflected_in_merged_configuration() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            default_workflow_permissions: Some(OverridableValue::allowed("read".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.default_workflow_permissions.map(|v| v.value),
+        Some("read".to_string())
+    );
+}
+
+#[test]
+fn test_team_overrides_global_can_approve_pull_request_reviews() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            can_approve_pull_request_reviews: Some(OverridableValue::allowed(false)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            can_approve_pull_request_reviews: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, Some(&team), &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged
+            .actions
+            .can_approve_pull_request_reviews
+            .map(|v| v.value),
+        Some(true),
+        "team level should win over global"
+    );
+}
+
+#[test]
+fn test_template_overrides_team_access_level() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            access_level: Some(OverridableValue::allowed("organization".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let template = template_with_actions(ActionSettings {
+        access_level: Some(OverridableValue::allowed("enterprise".to_string())),
+        ..Default::default()
+    });
+
+    let merged = merger
+        .merge_configurations(&global, None, Some(&team), &template)
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.access_level.map(|v| v.value),
+        Some("enterprise".to_string()),
+        "template level (highest precedence) should win over team"
+    );
+}
+
+#[test]
+fn test_global_only_patterns_allowed_is_reflected_in_merged_configuration() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            patterns_allowed: Some(vec!["actions/checkout@*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.patterns_allowed,
+        Some(vec!["actions/checkout@*".to_string()])
+    );
+}
+
+#[test]
+fn test_team_overrides_repository_type_patterns_allowed_wholesale_replace() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+    let repo_type = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            patterns_allowed: Some(vec!["repo-type/*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            patterns_allowed: Some(vec!["team/*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(
+            &global,
+            Some(&repo_type),
+            Some(&team),
+            &minimal_template_for_actions(),
+        )
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.patterns_allowed,
+        Some(vec!["team/*".to_string()]),
+        "team's list must replace repository-type's list wholesale, not union"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Tier 2: Adversarial -- override-policy enforcement
+// ----------------------------------------------------------------------------
+
+#[test]
+fn test_team_cannot_override_fixed_global_enabled() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::fixed(false)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result =
+        merger.merge_configurations(&global, None, Some(&team), &minimal_template_for_actions());
+
+    assert!(
+        result.is_err(),
+        "team must not override a fixed enabled policy"
+    );
+    match result.unwrap_err() {
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert!(
+                setting.contains("enabled"),
+                "error should reference the enabled field, got: {setting}"
+            );
+        }
+        other => panic!("expected OverrideNotPermitted, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_template_cannot_override_fixed_global_allowed_actions() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            allowed_actions: Some(OverridableValue::fixed("local_only".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let template = template_with_actions(ActionSettings {
+        allowed_actions: Some(OverridableValue::allowed("all".to_string())),
+        ..Default::default()
+    });
+
+    let result = merger.merge_configurations(&global, None, None, &template);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert!(setting.contains("allowed_actions"));
+        }
+        other => panic!("expected OverrideNotPermitted, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_repository_type_cannot_override_fixed_global_github_owned_allowed() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            github_owned_allowed: Some(OverridableValue::fixed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let repo_type = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            github_owned_allowed: Some(OverridableValue::allowed(false)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result = merger.merge_configurations(
+        &global,
+        Some(&repo_type),
+        None,
+        &minimal_template_for_actions(),
+    );
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert!(setting.contains("github_owned_allowed"));
+        }
+        other => panic!("expected OverrideNotPermitted, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_team_cannot_override_fixed_global_default_workflow_permissions() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            default_workflow_permissions: Some(OverridableValue::fixed("read".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            default_workflow_permissions: Some(OverridableValue::allowed("write".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result =
+        merger.merge_configurations(&global, None, Some(&team), &minimal_template_for_actions());
+
+    assert!(
+        result.is_err(),
+        "team must not override a fixed default_workflow_permissions policy"
+    );
+    match result.unwrap_err() {
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert!(setting.contains("default_workflow_permissions"));
+        }
+        other => panic!("expected OverrideNotPermitted, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_template_cannot_override_fixed_global_access_level() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            access_level: Some(OverridableValue::fixed("none".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let template = template_with_actions(ActionSettings {
+        access_level: Some(OverridableValue::allowed("enterprise".to_string())),
+        ..Default::default()
+    });
+
+    let result = merger.merge_configurations(&global, None, None, &template);
+
+    assert!(
+        result.is_err(),
+        "template must not override a fixed access_level policy"
+    );
+    match result.unwrap_err() {
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert!(setting.contains("access_level"));
+        }
+        other => panic!("expected OverrideNotPermitted, got {other:?}"),
+    }
+}
+
+/// A fixed value re-asserted with the *same* value at a higher level is not
+/// an override attempt and must succeed (mirrors `validate_override`'s
+/// equality short-circuit used throughout the rest of the merger).
+#[test]
+fn test_reasserting_identical_fixed_action_value_does_not_error() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            verified_allowed: Some(OverridableValue::fixed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            verified_allowed: Some(OverridableValue::allowed(true)), // same value
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result =
+        merger.merge_configurations(&global, None, Some(&team), &minimal_template_for_actions());
+    assert!(
+        result.is_ok(),
+        "identical re-assertion must not error: {result:?}"
+    );
+}
+
+/// `patterns_allowed` is a plain `Option<Vec<String>>` with no
+/// `override_allowed` flag (per the interface contract), so there is no
+/// policy to violate -- a higher-precedence level must always be able to
+/// replace it with a *different* list, even when the lower level's
+/// `ActionSettings` is otherwise built from `OverridableValue::fixed(..)`
+/// policies for its other fields. Stub-killing: an implementation that
+/// mistakenly threads `patterns_allowed` through `validate_override` (which
+/// requires a base `OverridableValue` to compare against) would either fail
+/// to compile or spuriously reject this.
+#[test]
+fn test_patterns_allowed_can_always_be_replaced_with_a_different_list() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            patterns_allowed: Some(vec!["global-org/*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let template = template_with_actions(ActionSettings {
+        patterns_allowed: Some(vec!["template-org/*".to_string()]),
+        ..Default::default()
+    });
+
+    let result = merger.merge_configurations(&global, None, None, &template);
+
+    let merged = result.expect("patterns_allowed has no override policy to violate");
+    assert_eq!(
+        merged.actions.patterns_allowed,
+        Some(vec!["template-org/*".to_string()])
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Tier 2: Adversarial -- field independence
+// ----------------------------------------------------------------------------
+
+/// Stub-killing: setting one `ActionSettings` field at a higher level must
+/// not perturb other fields inherited from a lower level -- rules out an
+/// implementation that merges the whole struct wholesale (losing unset
+/// fields) instead of field-by-field.
+#[test]
+fn test_action_fields_merge_independently_across_levels() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
+            github_owned_allowed: Some(OverridableValue::allowed(true)),
+            verified_allowed: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(false)), // only override this one
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, Some(&team), &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.enabled.map(|v| v.value),
+        Some(false),
+        "team override should apply to enabled"
+    );
+    assert_eq!(
+        merged.actions.github_owned_allowed.map(|v| v.value),
+        Some(true),
+        "github_owned_allowed must be inherited from global, untouched by team's enabled override"
+    );
+    assert_eq!(
+        merged.actions.verified_allowed.map(|v| v.value),
+        Some(true),
+        "verified_allowed must be inherited from global, untouched by team's enabled override"
+    );
+}
+
+#[test]
+fn test_patterns_allowed_override_does_not_perturb_other_action_fields_from_lower_level() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
+            patterns_allowed: Some(vec!["global-org/*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            patterns_allowed: Some(vec!["team-org/*".to_string()]), // only this
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, Some(&team), &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.actions.patterns_allowed,
+        Some(vec!["team-org/*".to_string()]),
+        "team override should apply to patterns_allowed"
+    );
+    assert_eq!(
+        merged.actions.enabled.map(|v| v.value),
+        Some(true),
+        "enabled must be inherited from global, untouched by team's patterns_allowed override"
+    );
+}
+
+#[test]
+fn test_other_action_field_override_does_not_perturb_patterns_allowed_from_lower_level() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(false)),
+            patterns_allowed: Some(vec!["global-org/*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)), // only this
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, Some(&team), &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(merged.actions.enabled.map(|v| v.value), Some(true));
+    assert_eq!(
+        merged.actions.patterns_allowed,
+        Some(vec!["global-org/*".to_string()]),
+        "patterns_allowed must be inherited from global, untouched by team's enabled override"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Tier 2: Adversarial -- source tracking
+// ----------------------------------------------------------------------------
+
+/// Mutation-kill: source tracking must actually record an entry for every
+/// non-`None` `ActionSettings` field at Global level -- a no-op
+/// implementation would still pass every value-assertion test above (the
+/// merged *value* is correct either way) but would silently drop the audit
+/// trail used by `MergedConfiguration::get_source`.
+#[test]
+fn test_global_action_settings_are_source_tracked_for_all_eight_fields() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
+            allowed_actions: Some(OverridableValue::allowed("all".to_string())),
+            github_owned_allowed: Some(OverridableValue::allowed(true)),
+            verified_allowed: Some(OverridableValue::allowed(true)),
+            patterns_allowed: Some(vec!["org/*".to_string()]),
+            default_workflow_permissions: Some(OverridableValue::allowed("read".to_string())),
+            can_approve_pull_request_reviews: Some(OverridableValue::allowed(true)),
+            access_level: Some(OverridableValue::allowed("organization".to_string())),
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    for field in [
+        "actions.enabled",
+        "actions.allowed_actions",
+        "actions.github_owned_allowed",
+        "actions.verified_allowed",
+        "actions.patterns_allowed",
+        "actions.default_workflow_permissions",
+        "actions.can_approve_pull_request_reviews",
+        "actions.access_level",
+    ] {
+        assert_eq!(
+            merged.get_source(field),
+            Some(ConfigurationSource::Global),
+            "{field} should be tracked as Global source"
+        );
+    }
+}
+
+#[test]
+fn test_source_tracking_for_actions_fields_set_at_different_levels() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let repo_type = RepositoryTypeConfig {
+        actions: Some(ActionSettings {
+            allowed_actions: Some(OverridableValue::allowed("selected".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            access_level: Some(OverridableValue::allowed("organization".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let template = template_with_actions(ActionSettings {
+        default_workflow_permissions: Some(OverridableValue::allowed("write".to_string())),
+        ..Default::default()
+    });
+
+    let merged = merger
+        .merge_configurations(&global, Some(&repo_type), Some(&team), &template)
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.get_source("actions.enabled"),
+        Some(ConfigurationSource::Global)
+    );
+    assert_eq!(
+        merged.get_source("actions.allowed_actions"),
+        Some(ConfigurationSource::RepositoryType)
+    );
+    assert_eq!(
+        merged.get_source("actions.access_level"),
+        Some(ConfigurationSource::Team)
+    );
+    assert_eq!(
+        merged.get_source("actions.default_workflow_permissions"),
+        Some(ConfigurationSource::Template)
+    );
+}
+
+#[test]
+fn test_patterns_allowed_source_is_tracked() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            patterns_allowed: Some(vec!["org/*".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert_eq!(
+        merged.get_source("actions.patterns_allowed"),
+        Some(ConfigurationSource::Global)
+    );
+}
+
+#[test]
+fn test_absent_actions_at_every_level_resolves_to_all_none_and_no_source_tracked() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults::default();
+
+    let merged = merger
+        .merge_configurations(&global, None, None, &minimal_template_for_actions())
+        .expect("merge should succeed");
+
+    assert!(merged.actions.enabled.is_none());
+    assert!(merged.actions.allowed_actions.is_none());
+    assert!(merged.actions.github_owned_allowed.is_none());
+    assert!(merged.actions.verified_allowed.is_none());
+    assert!(merged.actions.patterns_allowed.is_none());
+    assert!(merged.actions.default_workflow_permissions.is_none());
+    assert!(merged.actions.can_approve_pull_request_reviews.is_none());
+    assert!(merged.actions.access_level.is_none());
+    assert_eq!(merged.get_source("actions.enabled"), None);
+}
+
+/// Stub-killing: the error path must name the *actual* offending field, not
+/// a generic/wrong one -- rules out a copy-paste bug where every
+/// `ActionSettings` field's validation reports the same hardcoded field name.
+#[test]
+fn test_override_error_references_the_specific_actions_field_path() {
+    let merger = ConfigurationMerger::new();
+    let global = GlobalDefaults {
+        actions: Some(ActionSettings {
+            can_approve_pull_request_reviews: Some(OverridableValue::fixed(false)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let team = TeamConfig {
+        actions: Some(ActionSettings {
+            can_approve_pull_request_reviews: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result =
+        merger.merge_configurations(&global, None, Some(&team), &minimal_template_for_actions());
+
+    match result.unwrap_err() {
+        ConfigurationError::OverrideNotPermitted { setting, .. } => {
+            assert_eq!(
+                setting, "actions.can_approve_pull_request_reviews",
+                "error must reference the exact field path"
+            );
+        }
+        other => panic!("expected OverrideNotPermitted, got {other:?}"),
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Tier 3: Property-based tests -- precedence and override-policy invariants
+// ----------------------------------------------------------------------------
+
+mod actions_proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn global_with_can_approve(value: bool, override_allowed: bool) -> GlobalDefaults {
+        GlobalDefaults {
+            actions: Some(ActionSettings {
+                can_approve_pull_request_reviews: Some(OverridableValue::new(
+                    value,
+                    override_allowed,
+                )),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn team_with_can_approve(value: bool) -> TeamConfig {
+        TeamConfig {
+            actions: Some(ActionSettings {
+                can_approve_pull_request_reviews: Some(OverridableValue::allowed(value)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn access_level_strategy() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just("none".to_string()),
+            Just("organization".to_string()),
+            Just("enterprise".to_string()),
+        ]
+    }
+
+    fn patterns_strategy() -> impl Strategy<Value = Vec<String>> {
+        prop::collection::vec("[a-z]{3,6}/\\*", 0..4)
+    }
+
+    proptest! {
+        /// For any combination of a global `can_approve_pull_request_reviews`
+        /// policy and a team-level attempt to set it: the merge succeeds
+        /// whenever the global value allows override OR the team's value
+        /// matches the global value exactly, and fails with
+        /// `OverrideNotPermitted` in every other case.
+        #[test]
+        fn prop_can_approve_pull_request_reviews_override_enforcement_matches_policy(
+            global_value in any::<bool>(),
+            global_override_allowed in any::<bool>(),
+            team_value in any::<bool>(),
+        ) {
+            let merger = ConfigurationMerger::new();
+            let global = global_with_can_approve(global_value, global_override_allowed);
+            let team = team_with_can_approve(team_value);
+
+            let result = merger.merge_configurations(
+                &global,
+                None,
+                Some(&team),
+                &minimal_template_for_actions(),
+            );
+
+            let override_is_a_noop = global_value == team_value;
+            if global_override_allowed || override_is_a_noop {
+                let merged = result.expect("override should be permitted or a no-op");
+                prop_assert_eq!(
+                    merged.actions.can_approve_pull_request_reviews.map(|v| v.value),
+                    Some(team_value)
+                );
+            } else {
+                prop_assert!(result.is_err(), "non-matching override of a fixed policy must be rejected");
+            }
+        }
+
+        /// Precedence invariant: whichever of {template, team, repository_type,
+        /// global} is the highest-precedence level that actually sets
+        /// `access_level` (with `override_allowed = true` at every lower
+        /// level so no rejection occurs), that level's value is the one that
+        /// appears in the merged configuration, for any subset of levels
+        /// providing a value and any `access_level` string chosen.
+        #[test]
+        fn prop_access_level_highest_precedence_level_wins_for_any_subset_of_levels_present(
+            global_opt in proptest::option::of(access_level_strategy()),
+            repo_type_opt in proptest::option::of(access_level_strategy()),
+            team_opt in proptest::option::of(access_level_strategy()),
+            template_opt in proptest::option::of(access_level_strategy()),
+        ) {
+            let merger = ConfigurationMerger::new();
+
+            let global = GlobalDefaults {
+                actions: global_opt.clone().map(|v| ActionSettings {
+                    access_level: Some(OverridableValue::allowed(v)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let repo_type = repo_type_opt.clone().map(|v| RepositoryTypeConfig {
+                actions: Some(ActionSettings {
+                    access_level: Some(OverridableValue::allowed(v)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+            let team = team_opt.clone().map(|v| TeamConfig {
+                actions: Some(ActionSettings {
+                    access_level: Some(OverridableValue::allowed(v)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+            let template = NewTemplateConfig {
+                actions: template_opt.clone().map(|v| ActionSettings {
+                    access_level: Some(OverridableValue::allowed(v)),
+                    ..Default::default()
+                }),
+                ..minimal_template_for_actions()
+            };
+
+            let result = merger.merge_configurations(&global, repo_type.as_ref(), team.as_ref(), &template);
+            let merged = result.expect("all-overridable levels must never be rejected");
+
+            let expected = template_opt.or(team_opt).or(repo_type_opt).or(global_opt);
+
+            prop_assert_eq!(
+                merged.actions.access_level.map(|v| v.value),
+                expected
+            );
+        }
+
+        /// `patterns_allowed` has no `override_allowed` policy to violate, so
+        /// for any subset of levels providing a list, the merge must always
+        /// succeed and the highest-precedence level's *entire* list wins
+        /// (never unioned with any lower level's list).
+        #[test]
+        fn prop_patterns_allowed_highest_precedence_level_wins_for_any_subset_of_levels_present(
+            global_opt in proptest::option::of(patterns_strategy()),
+            team_opt in proptest::option::of(patterns_strategy()),
+            template_opt in proptest::option::of(patterns_strategy()),
+        ) {
+            let merger = ConfigurationMerger::new();
+
+            let global = GlobalDefaults {
+                actions: global_opt.clone().map(|v| ActionSettings {
+                    patterns_allowed: Some(v),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let team = team_opt.clone().map(|v| TeamConfig {
+                actions: Some(ActionSettings {
+                    patterns_allowed: Some(v),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+            let template = NewTemplateConfig {
+                actions: template_opt.clone().map(|v| ActionSettings {
+                    patterns_allowed: Some(v),
+                    ..Default::default()
+                }),
+                ..minimal_template_for_actions()
+            };
+
+            let result = merger.merge_configurations(&global, None, team.as_ref(), &template);
+            let merged = result.expect("patterns_allowed has no override policy to violate");
+
+            let expected = template_opt.or(team_opt).or(global_opt);
+
+            prop_assert_eq!(merged.actions.patterns_allowed, expected);
+        }
+    }
 }
