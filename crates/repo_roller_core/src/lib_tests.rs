@@ -276,6 +276,26 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         Ok(std::collections::HashMap::new())
     }
 
+    async fn set_actions_workflow_permissions(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _payload: &github_client::ActionsWorkflowPermissionsUpdate,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return success
+        Ok(())
+    }
+
+    async fn set_actions_access_level(
+        &self,
+        _owner: &str,
+        _repo: &str,
+        _payload: &github_client::ActionsAccessLevelUpdate,
+    ) -> Result<(), GitHubError> {
+        // Not implemented in test mock - return success
+        Ok(())
+    }
+
     async fn list_repository_labels(
         &self,
         _owner: &str,

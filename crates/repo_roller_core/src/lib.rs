@@ -128,6 +128,9 @@ mod content_providers;
 // Label management operations
 mod label_manager;
 
+// GitHub Actions settings application operations
+mod actions_manager;
+
 // Webhook management operations
 mod webhook_manager;
 
@@ -246,6 +249,8 @@ pub use content_providers::{
 };
 // Re-exported from label_manager module
 pub use label_manager::{ApplyLabelsResult, LabelManager};
+// Re-exported from actions_manager module
+pub use actions_manager::ActionsManager;
 // Re-exported from webhook_manager module
 pub use webhook_manager::{ApplyWebhooksResult, WebhookManager};
 // Re-exported from ruleset_manager module

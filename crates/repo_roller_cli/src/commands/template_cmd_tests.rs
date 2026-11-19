@@ -1582,8 +1582,8 @@ fn test_known_keys_sync_with_template_config() {
     // without updating TEMPLATE_CONFIG_KNOWN_KEYS, the serialised output will
     // contain a key not present in TEMPLATE_CONFIG_KNOWN_KEYS and this test fails.
     use config_manager::settings::{
-        ActionSettings, CreationCapabilitiesSettings, DefaultCollaboratorConfig,
-        DefaultTeamConfig, EnvironmentConfig, GitHubAppConfig, NotificationsConfig, RulesetConfig,
+        ActionSettings, CreationCapabilitiesSettings, DefaultCollaboratorConfig, DefaultTeamConfig,
+        EnvironmentConfig, GitHubAppConfig, NotificationsConfig, RulesetConfig,
         TemplatePermissionsConfig,
     };
     use config_manager::{

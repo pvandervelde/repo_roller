@@ -2125,6 +2125,114 @@ impl RepositoryClient for GitHubClient {
         }
     }
 
+    #[instrument(skip(self, payload))]
+    async fn set_actions_workflow_permissions(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &ActionsWorkflowPermissionsUpdate,
+    ) -> Result<(), Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            "Setting Actions workflow permissions on repository"
+        );
+
+        let path = format!("/repos/{owner}/{repo}/actions/permissions/workflow");
+
+        debug!("Making API call to: {}", path);
+        // Use Option<serde_json::Value> to handle 204 No Content responses
+        let response: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(path, Some(payload)).await;
+
+        match response {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Successfully set Actions workflow permissions on repository"
+                );
+                Ok(())
+            }
+            // GitHub returns 204 No Content on success — empty body, no JSON.
+            // octocrab tries to deserialise the body regardless of status code;
+            // an empty body produces `serde_json::Error::is_eof() == true`.
+            // Intercept that variant and treat it as success.
+            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Successfully set Actions workflow permissions on repository (204 No Content)"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!(
+                    owner = owner,
+                    repo = repo,
+                    "Failed to set Actions workflow permissions: {}",
+                    e
+                );
+                log_octocrab_error("Failed to set Actions workflow permissions", e);
+                Err(Error::ApiError())
+            }
+        }
+    }
+
+    #[instrument(skip(self, payload))]
+    async fn set_actions_access_level(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &ActionsAccessLevelUpdate,
+    ) -> Result<(), Error> {
+        info!(
+            owner = owner,
+            repo = repo,
+            "Setting Actions access level on repository"
+        );
+
+        let path = format!("/repos/{owner}/{repo}/actions/permissions/access");
+
+        debug!("Making API call to: {}", path);
+        // Use Option<serde_json::Value> to handle 204 No Content responses
+        let response: OctocrabResult<Option<serde_json::Value>> =
+            self.client.put(path, Some(payload)).await;
+
+        match response {
+            Ok(_) => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Successfully set Actions access level on repository"
+                );
+                Ok(())
+            }
+            // GitHub returns 204 No Content on success — empty body, no JSON.
+            // octocrab tries to deserialise the body regardless of status code;
+            // an empty body produces `serde_json::Error::is_eof() == true`.
+            // Intercept that variant and treat it as success.
+            Err(octocrab::Error::Json { source, .. }) if source.inner().is_eof() => {
+                info!(
+                    owner = owner,
+                    repo = repo,
+                    "Successfully set Actions access level on repository (204 No Content)"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!(
+                    owner = owner,
+                    repo = repo,
+                    "Failed to set Actions access level: {}",
+                    e
+                );
+                log_octocrab_error("Failed to set Actions access level", e);
+                Err(Error::ApiError())
+            }
+        }
+    }
+
     async fn search_repositories(&self, query: &str) -> Result<Vec<Repository>, Error> {
         info!(query = query, "Searching for repositories");
 
@@ -3045,6 +3153,33 @@ pub struct RepositoryCreatePayload {
 ///     Ok(())
 /// }
 /// ```
+/// Payload for updating a repository's default GitHub Actions workflow
+/// permissions (`PUT /repos/{owner}/{repo}/actions/permissions/workflow`).
+///
+/// Fields that are `None` are omitted from the serialized request body via
+/// `skip_serializing_if`, so callers only send the settings they actually
+/// want to change.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ActionsWorkflowPermissionsUpdate {
+    /// Default permissions granted to the `GITHUB_TOKEN` for workflows
+    /// ("read" or "write").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_workflow_permissions: Option<String>,
+
+    /// Whether GitHub Actions can approve pull request reviews.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_approve_pull_request_reviews: Option<bool>,
+}
+
+/// Payload for updating a repository's GitHub Actions access level
+/// (`PUT /repos/{owner}/{repo}/actions/permissions/access`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ActionsAccessLevelUpdate {
+    /// Actions access level for this repository ("none", "organization", or
+    /// "enterprise").
+    pub access_level: String,
+}
+
 #[async_trait]
 #[allow(clippy::double_must_use)]
 pub trait RepositoryClient: Send + Sync {
@@ -3212,6 +3347,64 @@ pub trait RepositoryClient: Send + Sync {
         owner: &str,
         repo: &str,
         payload: &CustomPropertiesPayload,
+    ) -> Result<(), Error>;
+
+    /// Sets the default GitHub Actions workflow permissions for a repository.
+    ///
+    /// Updates the permissions granted to the `GITHUB_TOKEN` for workflows
+    /// run in this repository, and/or whether workflows may approve pull
+    /// request reviews.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `payload` - The workflow permissions to set; unset fields are left
+    ///   unchanged on GitHub's side
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the workflow permissions were successfully updated.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if:
+    /// - The repository doesn't exist or is not accessible
+    /// - The authenticated app lacks permission to change Actions settings
+    /// - The GitHub API request fails
+    async fn set_actions_workflow_permissions(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &ActionsWorkflowPermissionsUpdate,
+    ) -> Result<(), Error>;
+
+    /// Sets the GitHub Actions access level for a repository.
+    ///
+    /// Controls which repositories may access this repository's workflows,
+    /// ranging from "none" to "organization" to "enterprise".
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name)
+    /// * `repo` - The name of the repository
+    /// * `payload` - The access level to set
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the access level was successfully updated.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if:
+    /// - The repository doesn't exist or is not accessible
+    /// - The authenticated app lacks permission to change Actions settings
+    /// - The GitHub API request fails
+    async fn set_actions_access_level(
+        &self,
+        owner: &str,
+        repo: &str,
+        payload: &ActionsAccessLevelUpdate,
     ) -> Result<(), Error>;
 
     /// Search for repositories matching a query.

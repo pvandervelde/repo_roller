@@ -51,7 +51,7 @@
 //! ```
 
 use crate::errors::{GitHubError, RepoRollerError, RepoRollerResult, SystemError};
-use crate::{LabelManager, RulesetManager, WebhookManager};
+use crate::{ActionsManager, LabelManager, RulesetManager, WebhookManager};
 use github_client::{GitHubClient, RepositoryClient};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -497,6 +497,22 @@ pub(crate) async fn apply_repository_configuration(
             "Successfully set {} custom properties",
             merged_config.custom_properties.len()
         );
+    }
+
+    // Apply GitHub Actions settings (workflow permissions / access level)
+    if merged_config.actions.default_workflow_permissions.is_some()
+        || merged_config
+            .actions
+            .can_approve_pull_request_reviews
+            .is_some()
+        || merged_config.actions.access_level.is_some()
+    {
+        let actions_manager = ActionsManager::new(Arc::clone(installation_repo_client));
+        actions_manager
+            .apply_action_settings(owner, repo_name, &merged_config.actions)
+            .await?;
+
+        info!("Successfully applied GitHub Actions settings");
     }
 
     Ok(())

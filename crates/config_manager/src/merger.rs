@@ -1277,10 +1277,7 @@ impl ConfigurationMerger {
                 )?;
             }
             target.default_workflow_permissions = Some(override_value.clone());
-            source_updates.push((
-                "actions.default_workflow_permissions".to_string(),
-                source,
-            ));
+            source_updates.push(("actions.default_workflow_permissions".to_string(), source));
         }
 
         if let Some(override_value) = &override_settings.can_approve_pull_request_reviews {
@@ -1300,11 +1297,7 @@ impl ConfigurationMerger {
 
         if let Some(override_value) = &override_settings.access_level {
             if let Some(base_value) = &base_settings.access_level {
-                self.validate_override(
-                    "actions.access_level",
-                    base_value,
-                    &override_value.value,
-                )?;
+                self.validate_override("actions.access_level", base_value, &override_value.value)?;
             }
             target.access_level = Some(override_value.clone());
             source_updates.push(("actions.access_level".to_string(), source));
@@ -1344,10 +1337,7 @@ impl ConfigurationMerger {
             source_updates.push(("actions.patterns_allowed".to_string(), source));
         }
         if settings.default_workflow_permissions.is_some() {
-            source_updates.push((
-                "actions.default_workflow_permissions".to_string(),
-                source,
-            ));
+            source_updates.push(("actions.default_workflow_permissions".to_string(), source));
         }
         if settings.can_approve_pull_request_reviews.is_some() {
             source_updates.push((
