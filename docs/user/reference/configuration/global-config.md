@@ -234,6 +234,9 @@ Controls GitHub Actions permissions for repositories.
 | `github_owned_allowed` | bool | `true` | `true` | Allow GitHub-owned actions when `allowed_actions = "selected"` |
 | `verified_allowed` | bool | `false` | `true` | Allow verified creator actions when `allowed_actions = "selected"` |
 | `patterns_allowed` | array of string | `[]` | — | List of allowed action patterns when `allowed_actions = "selected"` |
+| `default_workflow_permissions` | string | `"read"` | `true` | Default permissions granted to the `GITHUB_TOKEN` for workflow runs: `"read"` or `"write"`. Maps to `PUT /repos/{owner}/{repo}/actions/permissions/workflow`. |
+| `can_approve_pull_request_reviews` | bool | `false` | `true` | Whether workflows may approve pull request reviews. Maps to the same `PUT /repos/{owner}/{repo}/actions/permissions/workflow` call as `default_workflow_permissions`. |
+| `access_level` | string | `"none"` | `true` | Which other repositories in the organisation/enterprise may use this repository's reusable Actions workflows: `"none"`, `"organization"`, or `"enterprise"`. Maps to `PUT /repos/{owner}/{repo}/actions/permissions/access`. |
 
 ```toml
 [actions]
@@ -242,7 +245,17 @@ allowed_actions  = "selected"
 github_owned_allowed = true
 verified_allowed = false
 patterns_allowed = ["actions/*", "myorg/*"]
+default_workflow_permissions     = { value = "read", override_allowed = false }
+can_approve_pull_request_reviews = { value = false, override_allowed = true }
+access_level                     = { value = "organization", override_allowed = true }
 ```
+
+> **Note on `access_level`.** Setting `access_level = "organization"` or `"enterprise"` only
+> matters for repositories that themselves define reusable GitHub Actions workflows — it
+> controls which *other* repositories may call back into *this* one. It is most useful set on
+> a repository type or template specifically intended for building custom GitHub Actions
+> (e.g. a `github-action` repository type), not on ordinary application or service
+> repositories.
 
 ---
 

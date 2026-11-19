@@ -129,6 +129,26 @@ Identical fields to the global schema. See [global-config.md](global-config.md#p
 
 ---
 
+## `[actions]` — GitHub Actions settings override
+
+Identical fields to the global schema. See
+[global-config.md](global-config.md#actions--github-actions-settings). A template-level
+override is the highest-precedence level for these fields, same as for `[repository]` and
+`[pull_requests]`.
+
+`access_level = "organization"` or `"enterprise"` is most useful on templates specifically
+meant for building custom GitHub Actions, since that setting controls which other
+repositories may consume the action defined in repositories created from this template.
+
+```toml
+[actions]
+default_workflow_permissions     = { value = "read", override_allowed = false }
+can_approve_pull_request_reviews = { value = false, override_allowed = true }
+access_level                     = { value = "organization", override_allowed = true }
+```
+
+---
+
 ## `[variables]` — user-supplied variables
 
 Variables declared here are shown to users in the web UI and CLI at repository creation time.
