@@ -470,6 +470,7 @@ fn test_serialize_round_trip() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -506,6 +507,7 @@ fn test_clone_creates_independent_copy() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let cloned = config.clone();
@@ -540,6 +542,7 @@ fn test_debug_format() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let debug_str = format!("{:?}", config);
@@ -691,6 +694,7 @@ fn test_template_config_visibility_serialization() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -734,6 +738,7 @@ fn test_template_config_none_visibility_not_serialized() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -979,6 +984,7 @@ fn test_template_config_serialization_with_templating() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");

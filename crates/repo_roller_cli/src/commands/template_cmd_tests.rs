@@ -173,6 +173,7 @@ fn create_minimal_template_config(name: &str) -> TemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
@@ -234,6 +235,7 @@ fn create_full_template_config(name: &str) -> TemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
@@ -1580,8 +1582,8 @@ fn test_known_keys_sync_with_template_config() {
     // without updating TEMPLATE_CONFIG_KNOWN_KEYS, the serialised output will
     // contain a key not present in TEMPLATE_CONFIG_KNOWN_KEYS and this test fails.
     use config_manager::settings::{
-        CreationCapabilitiesSettings, DefaultCollaboratorConfig, DefaultTeamConfig,
-        EnvironmentConfig, GitHubAppConfig, NotificationsConfig, RulesetConfig,
+        ActionSettings, CreationCapabilitiesSettings, DefaultCollaboratorConfig,
+        DefaultTeamConfig, EnvironmentConfig, GitHubAppConfig, NotificationsConfig, RulesetConfig,
         TemplatePermissionsConfig,
     };
     use config_manager::{
@@ -1667,6 +1669,10 @@ fn test_known_keys_sync_with_template_config() {
         designation: Some(TemplateDesignation::Fork),
         creation_capabilities: Some(CreationCapabilitiesSettings {
             fork_enabled: Some(OverridableValue::allowed(true)),
+            ..Default::default()
+        }),
+        actions: Some(ActionSettings {
+            enabled: Some(OverridableValue::allowed(true)),
             ..Default::default()
         }),
     };

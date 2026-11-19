@@ -37,8 +37,8 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::{
-    BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty, EnvironmentConfig,
-    GitHubAppConfig, LabelConfig, NotificationsConfig, PullRequestSettings,
+    ActionSettings, BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty,
+    EnvironmentConfig, GitHubAppConfig, LabelConfig, NotificationsConfig, PullRequestSettings,
     RepositoryNamingRulesConfig, RepositorySettings, RulesetConfig, WebhookConfig,
 };
 use std::collections::HashMap;
@@ -165,6 +165,13 @@ pub struct MergedConfiguration {
     /// `docs/spec/interfaces/fork-mirror-operations.md` §2.
     pub creation_capabilities: CreationCapabilitiesSettings,
 
+    /// GitHub Actions settings resolved across the full hierarchy.
+    ///
+    /// Final resolved settings for GitHub Actions permissions and behavior
+    /// (enablement, allowed actions, workflow permissions, access level,
+    /// etc).
+    pub actions: ActionSettings,
+
     /// Source trace tracking which configuration source provided each setting.
     ///
     /// Used for auditing, debugging, and understanding configuration precedence.
@@ -202,6 +209,7 @@ impl MergedConfiguration {
             max_team_access_level: None,
             max_collaborator_access_level: None,
             creation_capabilities: CreationCapabilitiesSettings::default(),
+            actions: ActionSettings::default(),
             source_trace: ConfigurationSourceTrace::new(),
         }
     }

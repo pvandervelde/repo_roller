@@ -839,6 +839,7 @@ pub(crate) const TEMPLATE_CONFIG_KNOWN_KEYS: &[&str] = &[
     "naming_rules",
     "designation",
     "creation_capabilities",
+    "actions",
 ];
 
 /// Return `ValidationWarning`s for any top-level key in `.reporoller/template.toml` that is

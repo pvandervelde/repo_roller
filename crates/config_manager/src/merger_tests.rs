@@ -60,6 +60,7 @@ fn create_test_template() -> NewTemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
@@ -91,6 +92,7 @@ fn create_template_with_repository(repo_settings: RepositorySettings) -> NewTemp
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
@@ -224,6 +226,7 @@ fn test_merge_four_level_hierarchy() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -604,6 +607,7 @@ fn test_merge_with_empty_configurations() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -740,6 +744,7 @@ fn test_complex_merge_scenario() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -963,6 +968,7 @@ fn test_repository_type_settings_without_global_base() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);
@@ -1084,6 +1090,7 @@ fn test_template_settings_without_base() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -1173,6 +1180,7 @@ fn test_all_repository_settings_fields() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -1390,6 +1398,7 @@ fn test_naming_rules_merge_additively_from_repository_type_and_template() {
         labels: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);
@@ -1478,6 +1487,7 @@ fn test_naming_rules_accumulated_from_three_levels() {
         labels: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), None, &template);

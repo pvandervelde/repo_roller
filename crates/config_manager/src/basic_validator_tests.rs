@@ -876,6 +876,7 @@ async fn test_validate_template_config_integration() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = validator

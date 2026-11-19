@@ -59,9 +59,9 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::{
-    BranchProtectionSettings, CreationCapabilitiesSettings, EnvironmentConfig, GitHubAppConfig,
-    LabelConfig, NotificationsConfig, PullRequestSettings, RepositorySettings, RulesetConfig,
-    TemplatePermissionsConfig, WebhookConfig,
+    ActionSettings, BranchProtectionSettings, CreationCapabilitiesSettings, EnvironmentConfig,
+    GitHubAppConfig, LabelConfig, NotificationsConfig, PullRequestSettings, RepositorySettings,
+    RulesetConfig, TemplatePermissionsConfig, WebhookConfig,
 };
 use crate::visibility::RepositoryVisibility;
 use serde::{Deserialize, Serialize};
@@ -383,6 +383,15 @@ pub struct TemplateConfig {
     /// `docs/spec/interfaces/fork-mirror-operations.md` §2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creation_capabilities: Option<CreationCapabilitiesSettings>,
+
+    /// GitHub Actions settings contributed by this template level
+    /// (optional).
+    ///
+    /// Controls Actions permissions and behavior for repositories created
+    /// from this template. Combined with global, repository type, and team
+    /// levels using the standard override-policy precedence rules.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actions: Option<ActionSettings>,
 }
 
 /// Special role a template plays in repository creation, beyond ordinary

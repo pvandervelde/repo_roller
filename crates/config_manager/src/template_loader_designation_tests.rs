@@ -72,6 +72,7 @@ fn config_with(
         naming_rules: None,
         designation,
         creation_capabilities: None,
+        actions: None,
     }
 }
 

@@ -22,6 +22,17 @@ pub struct ActionSettings {
 
     /// List of allowed action patterns
     pub patterns_allowed: Option<Vec<String>>,
+
+    /// Default permissions granted to the `GITHUB_TOKEN` for workflows
+    /// ("read" or "write").
+    pub default_workflow_permissions: Option<OverridableValue<String>>,
+
+    /// Whether workflows can approve pull request reviews.
+    pub can_approve_pull_request_reviews: Option<OverridableValue<bool>>,
+
+    /// Actions access level for this repository ("none", "organization", or
+    /// "enterprise").
+    pub access_level: Option<OverridableValue<String>>,
 }
 
 #[cfg(test)]

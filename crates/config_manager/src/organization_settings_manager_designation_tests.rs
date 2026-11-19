@@ -160,6 +160,7 @@ impl TemplateRepository for DesignationTemplateRepository {
             naming_rules: None,
             designation,
             creation_capabilities: None,
+            actions: None,
         })
     }
 

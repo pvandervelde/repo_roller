@@ -688,6 +688,7 @@ async fn test_create_repository_type_conversion() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let metadata_provider = MockMetadataProvider::with_template(template_config);
@@ -1328,6 +1329,7 @@ fn minimal_template_config(
         naming_rules: None,
         designation,
         creation_capabilities: None,
+        actions: None,
     }
 }
 

@@ -51,6 +51,7 @@
 //!     naming_rules: None,
 //!     designation: None,
 //!     creation_capabilities: None,
+//!     actions: None,
 //! };
 //!
 //! // Merge configurations with precedence rules
@@ -71,9 +72,9 @@ use crate::{
     merged_config::{ConfigurationSource, MergedConfiguration},
     repository_type_config::RepositoryTypeConfig,
     settings::{
-        BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty, EnvironmentConfig,
-        GitHubAppConfig, NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig,
-        RepositorySettings, RulesetConfig, WebhookConfig,
+        ActionSettings, BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty,
+        EnvironmentConfig, GitHubAppConfig, NotificationsConfig, PullRequestSettings,
+        RepositoryNamingRulesConfig, RepositorySettings, RulesetConfig, WebhookConfig,
     },
     team_config::TeamConfig,
     template_config::TemplateConfig as NewTemplateConfig,
@@ -124,6 +125,7 @@ use crate::{
 ///     naming_rules: None,
 ///     designation: None,
 ///     creation_capabilities: None,
+///     actions: None,
 /// };
 ///
 /// // Merge with all configuration levels
@@ -212,6 +214,7 @@ impl ConfigurationMerger {
     ///     naming_rules: None,
     ///     designation: None,
     ///     creation_capabilities: None,
+    ///     actions: None,
     /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
@@ -359,6 +362,14 @@ impl ConfigurationMerger {
                 ConfigurationSource::Global,
             );
         }
+        if let Some(actions) = &global.actions {
+            merged.actions = actions.clone();
+            self.track_action_settings_sources(
+                &merged.actions,
+                source_updates,
+                ConfigurationSource::Global,
+            );
+        }
     }
 
     /// Applies repository type-specific overrides.
@@ -489,6 +500,23 @@ impl ConfigurationMerger {
                 );
             }
         }
+        if let Some(override_actions) = &repo_type.actions {
+            if let Some(base_actions) = &global.actions {
+                source_updates.extend(self.merge_action_settings(
+                    &mut merged.actions,
+                    override_actions,
+                    base_actions,
+                    ConfigurationSource::RepositoryType,
+                )?);
+            } else {
+                merged.actions = override_actions.clone();
+                self.track_action_settings_sources(
+                    &merged.actions,
+                    source_updates,
+                    ConfigurationSource::RepositoryType,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -524,6 +552,11 @@ impl ConfigurationMerger {
             .and_then(|rt| rt.creation_capabilities.as_ref())
             .or(global.creation_capabilities.as_ref())
             .unwrap_or(&default_caps);
+        let default_actions = ActionSettings::default();
+        let base_actions = repository_type
+            .and_then(|rt| rt.actions.as_ref())
+            .or(global.actions.as_ref())
+            .unwrap_or(&default_actions);
 
         // Merge settings with override validation
         if let Some(override_repo) = &team.repository {
@@ -609,6 +642,14 @@ impl ConfigurationMerger {
                 ConfigurationSource::Team,
             )?);
         }
+        if let Some(override_actions) = &team.actions {
+            source_updates.extend(self.merge_action_settings(
+                &mut merged.actions,
+                override_actions,
+                base_actions,
+                ConfigurationSource::Team,
+            )?);
+        }
 
         Ok(())
     }
@@ -649,6 +690,12 @@ impl ConfigurationMerger {
             .or(repository_type.and_then(|rt| rt.creation_capabilities.as_ref()))
             .or(global.creation_capabilities.as_ref())
             .unwrap_or(&default_caps);
+        let default_actions = ActionSettings::default();
+        let base_actions = team
+            .and_then(|t| t.actions.as_ref())
+            .or(repository_type.and_then(|rt| rt.actions.as_ref()))
+            .or(global.actions.as_ref())
+            .unwrap_or(&default_actions);
 
         // Merge settings with override validation
         if let Some(override_repo) = &template.repository {
@@ -724,6 +771,14 @@ impl ConfigurationMerger {
                 &mut merged.creation_capabilities,
                 override_caps,
                 base_caps,
+                ConfigurationSource::Template,
+            )?);
+        }
+        if let Some(override_actions) = &template.actions {
+            source_updates.extend(self.merge_action_settings(
+                &mut merged.actions,
+                override_actions,
+                base_actions,
                 ConfigurationSource::Template,
             )?);
         }
@@ -1144,6 +1199,165 @@ impl ConfigurationMerger {
             source_updates.push((FIELD_PATH.to_string(), source));
         }
         Ok(())
+    }
+
+    /// Merges GitHub Actions settings with override policy validation.
+    ///
+    /// Mirrors [`Self::merge_repository_settings`]'s field-by-field
+    /// precedence-and-override-enforcement pattern: each of the 7
+    /// `Option<OverridableValue<T>>` fields is merged independently (so an
+    /// override touching only one field never perturbs the others), while
+    /// `patterns_allowed` (a plain `Option<Vec<String>>` with no
+    /// `override_allowed` policy) is replaced wholesale whenever the
+    /// higher-precedence level sets it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::OverrideNotPermitted` if attempting to
+    /// override a setting that prohibits overrides.
+    fn merge_action_settings(
+        &self,
+        target: &mut ActionSettings,
+        override_settings: &ActionSettings,
+        base_settings: &ActionSettings,
+        source: ConfigurationSource,
+    ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
+        let mut source_updates = Vec::new();
+
+        if let Some(override_value) = &override_settings.enabled {
+            if let Some(base_value) = &base_settings.enabled {
+                self.validate_override("actions.enabled", base_value, &override_value.value)?;
+            }
+            target.enabled = Some(override_value.clone());
+            source_updates.push(("actions.enabled".to_string(), source));
+        }
+
+        if let Some(override_value) = &override_settings.allowed_actions {
+            if let Some(base_value) = &base_settings.allowed_actions {
+                self.validate_override(
+                    "actions.allowed_actions",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.allowed_actions = Some(override_value.clone());
+            source_updates.push(("actions.allowed_actions".to_string(), source));
+        }
+
+        if let Some(override_value) = &override_settings.github_owned_allowed {
+            if let Some(base_value) = &base_settings.github_owned_allowed {
+                self.validate_override(
+                    "actions.github_owned_allowed",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.github_owned_allowed = Some(override_value.clone());
+            source_updates.push(("actions.github_owned_allowed".to_string(), source));
+        }
+
+        if let Some(override_value) = &override_settings.verified_allowed {
+            if let Some(base_value) = &base_settings.verified_allowed {
+                self.validate_override(
+                    "actions.verified_allowed",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.verified_allowed = Some(override_value.clone());
+            source_updates.push(("actions.verified_allowed".to_string(), source));
+        }
+
+        if let Some(override_value) = &override_settings.default_workflow_permissions {
+            if let Some(base_value) = &base_settings.default_workflow_permissions {
+                self.validate_override(
+                    "actions.default_workflow_permissions",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.default_workflow_permissions = Some(override_value.clone());
+            source_updates.push((
+                "actions.default_workflow_permissions".to_string(),
+                source,
+            ));
+        }
+
+        if let Some(override_value) = &override_settings.can_approve_pull_request_reviews {
+            if let Some(base_value) = &base_settings.can_approve_pull_request_reviews {
+                self.validate_override(
+                    "actions.can_approve_pull_request_reviews",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.can_approve_pull_request_reviews = Some(override_value.clone());
+            source_updates.push((
+                "actions.can_approve_pull_request_reviews".to_string(),
+                source,
+            ));
+        }
+
+        if let Some(override_value) = &override_settings.access_level {
+            if let Some(base_value) = &base_settings.access_level {
+                self.validate_override(
+                    "actions.access_level",
+                    base_value,
+                    &override_value.value,
+                )?;
+            }
+            target.access_level = Some(override_value.clone());
+            source_updates.push(("actions.access_level".to_string(), source));
+        }
+
+        // `patterns_allowed` has no `override_allowed` policy: the
+        // highest-precedence level that sets it always wins, replacing the
+        // list wholesale rather than unioning it with lower levels.
+        if let Some(override_value) = &override_settings.patterns_allowed {
+            target.patterns_allowed = Some(override_value.clone());
+            source_updates.push(("actions.patterns_allowed".to_string(), source));
+        }
+
+        Ok(source_updates)
+    }
+
+    /// Tracks source for all non-None `ActionSettings` fields.
+    fn track_action_settings_sources(
+        &self,
+        settings: &ActionSettings,
+        source_updates: &mut Vec<(String, ConfigurationSource)>,
+        source: ConfigurationSource,
+    ) {
+        if settings.enabled.is_some() {
+            source_updates.push(("actions.enabled".to_string(), source));
+        }
+        if settings.allowed_actions.is_some() {
+            source_updates.push(("actions.allowed_actions".to_string(), source));
+        }
+        if settings.github_owned_allowed.is_some() {
+            source_updates.push(("actions.github_owned_allowed".to_string(), source));
+        }
+        if settings.verified_allowed.is_some() {
+            source_updates.push(("actions.verified_allowed".to_string(), source));
+        }
+        if settings.patterns_allowed.is_some() {
+            source_updates.push(("actions.patterns_allowed".to_string(), source));
+        }
+        if settings.default_workflow_permissions.is_some() {
+            source_updates.push((
+                "actions.default_workflow_permissions".to_string(),
+                source,
+            ));
+        }
+        if settings.can_approve_pull_request_reviews.is_some() {
+            source_updates.push((
+                "actions.can_approve_pull_request_reviews".to_string(),
+                source,
+            ));
+        }
+        if settings.access_level.is_some() {
+            source_updates.push(("actions.access_level".to_string(), source));
+        }
     }
 
     /// Merges webhook collections additively.

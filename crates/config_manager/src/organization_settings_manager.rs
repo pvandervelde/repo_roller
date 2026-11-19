@@ -361,6 +361,7 @@ impl OrganizationSettingsManager {
                 naming_rules: None,
                 designation: None,
                 creation_capabilities: None,
+                actions: None,
             }
         } else {
             match self

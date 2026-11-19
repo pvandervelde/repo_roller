@@ -36,6 +36,7 @@ fn empty_template() -> NewTemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
