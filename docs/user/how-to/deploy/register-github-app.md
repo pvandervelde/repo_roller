@@ -27,7 +27,8 @@ Under **Repository permissions**, grant:
 | Administration | Read & write |
 | Contents | Read & write |
 | Metadata | Read-only |
-| Pull requests | Read & write |
+
+If the App is already installed with **Pull requests: Read & write**, remove that permission (set it to **No access**) in the App's settings to reduce the installation token's scope.
 
 Under **Organization permissions**, grant:
 

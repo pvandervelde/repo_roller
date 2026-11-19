@@ -87,7 +87,6 @@ RepoRoller uses a GitHub App as its service identity for creating repositories.
    | Administration | Read & write |
    | Contents | Read & write |
    | Metadata | Read-only |
-   | Pull requests | Read & write |
 
 4. Under **Organization permissions**, set:
 
