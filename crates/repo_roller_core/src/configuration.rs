@@ -499,7 +499,15 @@ pub(crate) async fn apply_repository_configuration(
         );
     }
 
-    // Apply GitHub Actions settings (workflow permissions / access level)
+    // Apply GitHub Actions settings (workflow permissions / access level).
+    // Unlike the non-fatal `warn!`-and-continue handling used for team/
+    // collaborator permissions in `apply_post_creation_settings` (lib.rs),
+    // a failure here propagates via `?` and aborts repository creation —
+    // matching this function's own labels/webhooks/rulesets/custom-properties
+    // convention above. See `ActionsManager::apply_action_settings`'s
+    // `# Errors` section for the exact sequential-abort-on-first-failure
+    // semantics when both the workflow-permissions and access-level calls
+    // are applicable.
     if merged_config.actions.default_workflow_permissions.is_some()
         || merged_config
             .actions
