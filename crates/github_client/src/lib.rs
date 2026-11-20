@@ -1959,10 +1959,12 @@ impl GitHubClient {
     ///
     /// Not reused by the pre-existing, differently-shaped 204-tolerant call
     /// sites elsewhere in this file (e.g. team-repository-permission `PUT`,
-    /// which also logs `team_slug`/`repo_owner`/`permission` fields and has
-    /// its own `NOT_FOUND`-specific branch) — see
-    /// `.llm/findings/action-settings-permissions.md` for why that
-    /// broader consolidation was deferred rather than folded into this pass.
+    /// which also logs `team_slug`/`repo_owner`/`permission` fields, has its
+    /// own `NOT_FOUND`-specific branch, and maps the EOF case to `Ok(None)`
+    /// rather than `Ok(())`). Consolidating all such sites onto one helper
+    /// would need a success-value-mapping seam this pass didn't add, so it
+    /// was deferred as tech debt rather than folded in here — see the
+    /// discussion on PR #372 for the full rationale.
     async fn put_tolerating_204_no_content<T>(
         &self,
         path: String,
@@ -3125,6 +3127,33 @@ pub struct RepositoryCreatePayload {
     pub is_template: Option<bool>,
 }
 
+/// Payload for updating a repository's default GitHub Actions workflow
+/// permissions (`PUT /repos/{owner}/{repo}/actions/permissions/workflow`).
+///
+/// Fields that are `None` are omitted from the serialized request body via
+/// `skip_serializing_if`, so callers only send the settings they actually
+/// want to change.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ActionsWorkflowPermissionsUpdate {
+    /// Default permissions granted to the `GITHUB_TOKEN` for workflows
+    /// ("read" or "write").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_workflow_permissions: Option<String>,
+
+    /// Whether GitHub Actions can approve pull request reviews.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_approve_pull_request_reviews: Option<bool>,
+}
+
+/// Payload for updating a repository's GitHub Actions access level
+/// (`PUT /repos/{owner}/{repo}/actions/permissions/access`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ActionsAccessLevelUpdate {
+    /// Actions access level for this repository ("none", "organization", or
+    /// "enterprise").
+    pub access_level: String,
+}
+
 /// Trait for GitHub repository operations and management.
 ///
 /// This trait defines the interface for interacting with GitHub repositories,
@@ -3159,33 +3188,6 @@ pub struct RepositoryCreatePayload {
 ///     Ok(())
 /// }
 /// ```
-/// Payload for updating a repository's default GitHub Actions workflow
-/// permissions (`PUT /repos/{owner}/{repo}/actions/permissions/workflow`).
-///
-/// Fields that are `None` are omitted from the serialized request body via
-/// `skip_serializing_if`, so callers only send the settings they actually
-/// want to change.
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct ActionsWorkflowPermissionsUpdate {
-    /// Default permissions granted to the `GITHUB_TOKEN` for workflows
-    /// ("read" or "write").
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_workflow_permissions: Option<String>,
-
-    /// Whether GitHub Actions can approve pull request reviews.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub can_approve_pull_request_reviews: Option<bool>,
-}
-
-/// Payload for updating a repository's GitHub Actions access level
-/// (`PUT /repos/{owner}/{repo}/actions/permissions/access`).
-#[derive(Debug, Clone, Serialize)]
-pub struct ActionsAccessLevelUpdate {
-    /// Actions access level for this repository ("none", "organization", or
-    /// "enterprise").
-    pub access_level: String,
-}
-
 #[async_trait]
 #[allow(clippy::double_must_use)]
 pub trait RepositoryClient: Send + Sync {

@@ -256,6 +256,15 @@ access_level                     = { value = "organization", override_allowed = 
 > a repository type or template specifically intended for building custom GitHub Actions
 > (e.g. a `github-action` repository type), not on ordinary application or service
 > repositories.
+>
+> **Which `[actions]` fields currently take effect.** All eight fields above are resolved
+> across the Global → RepositoryType → Team → Template hierarchy and available in the
+> merged configuration, but only `default_workflow_permissions`,
+> `can_approve_pull_request_reviews`, and `access_level` are currently applied to a created
+> repository (via the two API calls noted in the table). `enabled`, `allowed_actions`,
+> `github_owned_allowed`, `verified_allowed`, and `patterns_allowed` are resolved and
+> available for a future applier but have no effect on a repository yet — setting them today
+> does not change the repository's Actions permissions.
 
 ---
 

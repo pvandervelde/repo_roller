@@ -43,6 +43,39 @@ fn test_default_all_eight_fields_are_none() {
     );
 }
 
+/// Exhaustiveness guard: the field-by-field merge in
+/// `ConfigurationMerger::merge_action_settings` and
+/// `track_action_settings_sources` (crates/config_manager/src/merger.rs)
+/// does NOT use struct destructuring, so the compiler cannot catch a future
+/// new `ActionSettings` field being forgotten in one or both of those
+/// functions (raised in PR #372 review). This destructuring, by contrast,
+/// has no `..` rest pattern, so adding a field to `ActionSettings` without
+/// updating this list breaks compilation here first -- a reminder to also
+/// update the merge/track functions, even though it can't enforce that by
+/// itself.
+#[test]
+fn test_action_settings_field_list_is_exhaustive() {
+    let ActionSettings {
+        enabled,
+        allowed_actions,
+        github_owned_allowed,
+        verified_allowed,
+        patterns_allowed,
+        default_workflow_permissions,
+        can_approve_pull_request_reviews,
+        access_level,
+    } = ActionSettings::default();
+
+    assert!(enabled.is_none());
+    assert!(allowed_actions.is_none());
+    assert!(github_owned_allowed.is_none());
+    assert!(verified_allowed.is_none());
+    assert!(patterns_allowed.is_none());
+    assert!(default_workflow_permissions.is_none());
+    assert!(can_approve_pull_request_reviews.is_none());
+    assert!(access_level.is_none());
+}
+
 #[test]
 fn test_default_workflow_permissions_holds_read_value() {
     let settings = ActionSettings {
