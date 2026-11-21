@@ -51,7 +51,7 @@
 //! ```
 
 use crate::errors::{GitHubError, RepoRollerError, RepoRollerResult, SystemError};
-use crate::{LabelManager, RulesetManager, WebhookManager};
+use crate::{ActionsManager, LabelManager, RulesetManager, WebhookManager};
 use github_client::{GitHubClient, RepositoryClient};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -497,6 +497,30 @@ pub(crate) async fn apply_repository_configuration(
             "Successfully set {} custom properties",
             merged_config.custom_properties.len()
         );
+    }
+
+    // Apply GitHub Actions settings (workflow permissions / access level).
+    // Unlike the non-fatal `warn!`-and-continue handling used for team/
+    // collaborator permissions in `apply_post_creation_settings` (lib.rs),
+    // a failure here propagates via `?` and aborts repository creation —
+    // matching this function's own labels/webhooks/rulesets/custom-properties
+    // convention above. See `ActionsManager::apply_action_settings`'s
+    // `# Errors` section for the exact sequential-abort-on-first-failure
+    // semantics when both the workflow-permissions and access-level calls
+    // are applicable.
+    if merged_config.actions.default_workflow_permissions.is_some()
+        || merged_config
+            .actions
+            .can_approve_pull_request_reviews
+            .is_some()
+        || merged_config.actions.access_level.is_some()
+    {
+        let actions_manager = ActionsManager::new(Arc::clone(installation_repo_client));
+        actions_manager
+            .apply_action_settings(owner, repo_name, &merged_config.actions)
+            .await?;
+
+        info!("Successfully applied GitHub Actions settings");
     }
 
     Ok(())

@@ -39,6 +39,7 @@ fn template_with_capabilities(
         naming_rules: None,
         designation: None,
         creation_capabilities,
+        actions: None,
     }
 }
 

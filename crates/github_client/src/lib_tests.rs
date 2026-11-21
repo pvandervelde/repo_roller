@@ -2927,3 +2927,470 @@ fn test_pull_request_create_payload_is_cloneable() {
     assert_eq!(cloned.title, payload.title);
     assert_eq!(cloned.draft, payload.draft);
 }
+
+// ============================================================================
+// Actions permissions / access level (#276 / #277)
+//
+// New `RepositoryClient` methods `set_actions_workflow_permissions` and
+// `set_actions_access_level`, mirroring `set_repository_custom_properties`'s
+// shape (PUT instead of PATCH; tolerate 204 No Content via
+// `Option<serde_json::Value>`; `log_octocrab_error` + `Error::ApiError()` on
+// failure).
+// ============================================================================
+
+// --- ActionsWorkflowPermissionsUpdate / ActionsAccessLevelUpdate payload
+//     serialization (Tier 1: pure unit tests, no HTTP) ----------------------
+
+/// Stub-killing: `Default` must leave both fields `None` so an
+/// `ActionsWorkflowPermissionsUpdate::default()` serializes to an empty JSON
+/// object (no accidental `false`/`""` sent to GitHub).
+#[test]
+fn test_actions_workflow_permissions_update_default_has_both_fields_none() {
+    let payload = ActionsWorkflowPermissionsUpdate::default();
+    assert!(payload.default_workflow_permissions.is_none());
+    assert!(payload.can_approve_pull_request_reviews.is_none());
+}
+
+#[test]
+fn test_actions_workflow_permissions_update_serializes_to_empty_object_when_both_fields_none() {
+    let payload = ActionsWorkflowPermissionsUpdate::default();
+    let value = serde_json::to_value(&payload).expect("serialize");
+    assert_eq!(value, json!({}));
+}
+
+#[test]
+fn test_actions_workflow_permissions_update_serializes_only_default_workflow_permissions_when_can_approve_is_none(
+) {
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("write".to_string()),
+        can_approve_pull_request_reviews: None,
+    };
+    let value = serde_json::to_value(&payload).expect("serialize");
+    assert_eq!(value, json!({ "default_workflow_permissions": "write" }));
+}
+
+#[test]
+fn test_actions_workflow_permissions_update_serializes_only_can_approve_when_permissions_is_none() {
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: None,
+        can_approve_pull_request_reviews: Some(true),
+    };
+    let value = serde_json::to_value(&payload).expect("serialize");
+    assert_eq!(value, json!({ "can_approve_pull_request_reviews": true }));
+}
+
+#[test]
+fn test_actions_workflow_permissions_update_serializes_both_fields_when_both_set() {
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("read".to_string()),
+        can_approve_pull_request_reviews: Some(false),
+    };
+    let value = serde_json::to_value(&payload).expect("serialize");
+    assert_eq!(
+        value,
+        json!({ "default_workflow_permissions": "read", "can_approve_pull_request_reviews": false })
+    );
+}
+
+#[test]
+fn test_actions_access_level_update_serializes_access_level_field() {
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "organization".to_string(),
+    };
+    let value = serde_json::to_value(&payload).expect("serialize");
+    assert_eq!(value, json!({ "access_level": "organization" }));
+}
+
+#[test]
+fn test_actions_access_level_update_is_cloneable() {
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "enterprise".to_string(),
+    };
+    let cloned = payload.clone();
+    assert_eq!(cloned.access_level, payload.access_level);
+}
+
+// --- set_actions_workflow_permissions (Tier 1/2/3: HTTP contract) ---------
+
+#[tokio::test]
+async fn test_set_actions_workflow_permissions_success() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("write".to_string()),
+        can_approve_pull_request_reviews: Some(true),
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/workflow"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "default_workflow_permissions": "write",
+            "can_approve_pull_request_reviews": true
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .set_actions_workflow_permissions(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Setting actions workflow permissions should succeed, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_set_actions_workflow_permissions_handles_204_no_content() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("read".to_string()),
+        can_approve_pull_request_reviews: None,
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/workflow"
+        )))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .set_actions_workflow_permissions(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "204 No Content must be tolerated as success, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_set_actions_workflow_permissions_api_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("write".to_string()),
+        can_approve_pull_request_reviews: None,
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/workflow"
+        )))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Validation failed"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .set_actions_workflow_permissions(owner, repo, &payload)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "A 422 response must surface as an error, not Ok(())"
+    );
+}
+
+#[tokio::test]
+async fn test_set_actions_workflow_permissions_permission_denied() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("write".to_string()),
+        can_approve_pull_request_reviews: None,
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/workflow"
+        )))
+        .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+            "message": "Resource not accessible by integration"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .set_actions_workflow_permissions(owner, repo, &payload)
+        .await;
+
+    assert!(result.is_err());
+}
+
+/// Stub-killing: the request must hit the `/actions/permissions/workflow`
+/// path specifically -- not, say, the plain repository PATCH path or the
+/// access-level path -- and must use PUT, not PATCH/POST. A mock scoped to
+/// the wrong method+path with `expect(1)` catches an implementation that
+/// reuses the wrong HTTP verb or endpoint.
+#[tokio::test]
+async fn test_set_actions_workflow_permissions_uses_put_on_the_workflow_permissions_path() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("write".to_string()),
+        can_approve_pull_request_reviews: None,
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/workflow"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .set_actions_workflow_permissions(owner, repo, &payload)
+        .await;
+
+    assert!(result.is_ok());
+    mock_server.verify().await;
+}
+
+/// Stub-killing: only the fields actually set on the payload must appear in
+/// the request body -- `can_approve_pull_request_reviews` must be entirely
+/// absent (not `null`) when the caller didn't set it, per
+/// `skip_serializing_if = "Option::is_none"`.
+#[tokio::test]
+async fn test_set_actions_workflow_permissions_omits_unset_fields_from_request_body() {
+    use wiremock::matchers::body_json;
+
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsWorkflowPermissionsUpdate {
+        default_workflow_permissions: Some("write".to_string()),
+        can_approve_pull_request_reviews: None,
+    };
+
+    // A mock that only matches the exact body (no `can_approve_pull_request_reviews`
+    // key at all) must be the one that is hit.
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/workflow"
+        )))
+        .and(body_json(
+            json!({ "default_workflow_permissions": "write" }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .set_actions_workflow_permissions(owner, repo, &payload)
+        .await;
+
+    assert!(result.is_ok(), "got: {result:?}");
+    mock_server.verify().await;
+}
+
+// --- set_actions_access_level (Tier 1/2/3: HTTP contract) -----------------
+
+#[tokio::test]
+async fn test_set_actions_access_level_success() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "organization".to_string(),
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/access"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "access_level": "organization"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.set_actions_access_level(owner, repo, &payload).await;
+
+    assert!(
+        result.is_ok(),
+        "Setting actions access level should succeed, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_set_actions_access_level_handles_204_no_content() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "none".to_string(),
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/access"
+        )))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.set_actions_access_level(owner, repo, &payload).await;
+
+    assert!(
+        result.is_ok(),
+        "204 No Content must be tolerated as success, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_set_actions_access_level_api_error() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "enterprise".to_string(),
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/access"
+        )))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Validation failed"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.set_actions_access_level(owner, repo, &payload).await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_set_actions_access_level_repo_not_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "nonexistent-repo";
+
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "organization".to_string(),
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/access"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.set_actions_access_level(owner, repo, &payload).await;
+
+    assert!(result.is_err());
+}
+
+/// Stub-killing: must hit `/actions/permissions/access`, not the workflow
+/// permissions path (easy to confuse/copy-paste between the two sibling
+/// methods) and not reuse the custom-properties PATCH path.
+#[tokio::test]
+async fn test_set_actions_access_level_uses_put_on_the_access_path_distinct_from_workflow_path() {
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "organization".to_string(),
+    };
+
+    // Only the access-level path is mocked; if the implementation
+    // mistakenly PUTs to the workflow-permissions path instead, this call
+    // will fail with a connection/404-style error since no mock covers it.
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/access"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.set_actions_access_level(owner, repo, &payload).await;
+
+    assert!(result.is_ok(), "got: {result:?}");
+    mock_server.verify().await;
+}
+
+/// Stub-killing: the request body must actually carry the configured
+/// `access_level` value, not a hardcoded default.
+#[tokio::test]
+async fn test_set_actions_access_level_sends_configured_value_in_request_body() {
+    use wiremock::matchers::body_json;
+
+    let mock_server = MockServer::start().await;
+    let owner = "test-org";
+    let repo = "test-repo";
+
+    let payload = ActionsAccessLevelUpdate {
+        access_level: "enterprise".to_string(),
+    };
+
+    Mock::given(method("PUT"))
+        .and(path(format!(
+            "/repos/{owner}/{repo}/actions/permissions/access"
+        )))
+        .and(body_json(json!({ "access_level": "enterprise" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.set_actions_access_level(owner, repo, &payload).await;
+
+    assert!(result.is_ok(), "got: {result:?}");
+    mock_server.verify().await;
+}

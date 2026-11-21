@@ -47,6 +47,7 @@ fn minimal_template() -> TemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 

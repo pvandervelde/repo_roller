@@ -168,27 +168,35 @@ Add to this whenever a reusable component becomes "the standard way".
   resolution again for any future capability-flag consumer.
 
 - **`ConfigurationMerger::merge_creation_capabilities_settings` /
-  `merge_capability_field` / `merge_allowed_source_owners_field`** —
-  field-by-field merge with override-policy validation and source tracking
-  for `CreationCapabilitiesSettings`
+  `merge_override_field` / `merge_allowed_source_owners_field`** —
+  field-by-field merge with override-policy validation and source tracking,
+  reused by both `CreationCapabilitiesSettings` and `ActionSettings`
   Location: `config_manager/src/merger.rs`
   Pattern: Mirrors `merge_repository_settings`'s per-field
   validate-then-assign-then-track shape (CRA-001/CRA-002), but factors the
-  per-field body into private helpers (REFACTOR pass) since
-  `CreationCapabilitiesSettings` has 3 fields of the same
-  `Option<OverridableValue<bool>>` shape (`merge_capability_field`) plus one
-  `Option<OverridableValue<Vec<String>>>` field (`merge_allowed_source_owners_field`,
-  added for the `allowed_source_owners` security fix — kept separate from
-  `merge_capability_field` because its value type isn't `bool`, and its
-  override-rejection path uses `ConfigurationMerger::validate_override_no_display`
-  instead of `validate_override`, since `Vec<String>` has no `Display` impl).
-  Call these helpers rather than re-inlining the validate/assign/track block
-  if a new capability/allow-list-shaped field is ever added. Note:
-  `merge_repository_settings` and its ~20 pre-existing sibling functions
-  (`merge_pull_request_settings`, etc.) still inline this shape per-field;
-  they were not touched by this extraction (out of scope — see
-  `.llm/findings/fork-mirror-operations.md` for the cross-cutting
-  observation).
+  per-field body into private helpers (REFACTOR pass) since several sibling
+  settings structs have multiple fields of the identical
+  `Option<OverridableValue<T>>` shape. `merge_override_field<T: Clone +
+  PartialEq + Display>` (originally `merge_capability_field`, hardcoded to
+  `bool` and used only by `merge_creation_capabilities_settings`'s 3
+  `fork_enabled`/`source_history_mirror_enabled`/`source_only_mirror_enabled`
+  calls — generalized over `T` during the #276/#277 REFACTOR pass so
+  `merge_action_settings`'s 7 `Option<OverridableValue<_>>` fields, 4 `bool`
+  + 3 `String`, could reuse it instead of re-inlining the shape a second
+  time per value type) handles any `T` with `Display`. One
+  `Option<OverridableValue<Vec<String>>>` field remains separate
+  (`merge_allowed_source_owners_field`, added for the `allowed_source_owners`
+  security fix) — kept apart from `merge_override_field` because `Vec<String>`
+  has no `Display` impl, so its override-rejection path uses
+  `ConfigurationMerger::validate_override_no_display` instead of
+  `validate_override`. Call these helpers rather than re-inlining the
+  validate/assign/track block for any new `Option<OverridableValue<T>>` field
+  on any settings struct. Note: `merge_repository_settings` and its ~20
+  pre-existing sibling functions (`merge_pull_request_settings`, etc.) still
+  inline this shape per-field; they were not touched by this extraction
+  (out of scope — see `.llm/findings/fork-mirror-operations.md` for the
+  original cross-cutting observation, and
+  `.llm/findings/action-settings-permissions.md` for this task's follow-up).
 
 - **`ConfigurationMerger::validate_override_no_display<T: PartialEq>`** —
   override-policy equality check for `OverridableValue<T>` fields whose `T`
@@ -284,6 +292,57 @@ Add to this whenever a reusable component becomes "the standard way".
   Err(e) => {...} }` mapping idiom — already used 50+ times in this file —
   do not introduce a new error-mapping pattern for future `RepositoryClient`
   methods.
+
+- **`GitHubClient::put_tolerating_204_no_content<T: Serialize + ?Sized>`**
+  (private) — sends a `PUT` and treats GitHub's `204 No Content` success
+  response (which octocrab surfaces as a `serde_json::Error` with
+  `is_eof() == true` rather than a real JSON parse error) as `Ok(())`
+  instead of propagating it as a failure
+  Location: `github_client/src/lib.rs`, inherent `impl GitHubClient` block
+  Use when: Adding a new `PUT`-based `RepositoryClient` method against a
+  GitHub endpoint that returns 204 on success — call this instead of
+  re-inlining the `Option<serde_json::Value>` + `Err(octocrab::Error::Json
+  { source, .. }) if source.inner().is_eof()` match arm
+  Used by: `set_actions_workflow_permissions` / `set_actions_access_level`
+  (extracted during the #276/#277 REFACTOR pass — both were
+  byte-for-byte identical aside from path and log text)
+  Payload types for those two methods: `ActionsWorkflowPermissionsUpdate`
+  (`default_workflow_permissions`, `can_approve_pull_request_reviews`, both
+  `Option` + `skip_serializing_if`), `ActionsAccessLevelUpdate`
+  (`access_level: String`, always sent)
+  Notes: **Not** reused by the 3 pre-existing 204-tolerant call sites
+  (`set_team_repository_permission`, `get_team_repository_permission`,
+  `get_repository_team_permission`) — those have extra log fields, a
+  `NOT_FOUND`-specific branch, and/or map the EOF case to `Ok(None)` rather
+  than `Ok(())`, so folding all 5 into one helper would need a
+  success-value-mapping seam this pass didn't add. See
+  `.llm/findings/action-settings-permissions.md` for the deferred
+  cross-scope consolidation.
+
+- **`repo_roller_core::ActionsManager::apply_action_settings`** — applies
+  the 3 new `ActionSettings` fields (`default_workflow_permissions`,
+  `can_approve_pull_request_reviews`, `access_level`) to a repository via
+  the two `RepositoryClient` methods above
+  Location: `repo_roller_core/src/actions_manager.rs`
+  Key exports: `ActionsManager::new(github_client)`, `apply_action_settings(owner,
+  repo, actions: &ActionSettings) -> RepoRollerResult<()>`
+  Use when: Mapping a merged `ActionSettings` value to GitHub's Actions
+  permission endpoints — mirrors the `LabelManager`/`WebhookManager`/
+  `RulesetManager` constructor/manager shape (none of which have their own
+  catalog entries either; this entry exists primarily to document the
+  intentional scope boundary below)
+  Notes: Only the 3 new fields are mapped. The 5 pre-existing `ActionSettings`
+  fields (`enabled`, `allowed_actions`, `github_owned_allowed`,
+  `verified_allowed`, `patterns_allowed`) are deliberately **not** applied
+  here — mapping those to `PUT .../actions/permissions` and
+  `PUT .../actions/permissions/selected-actions` is out of scope for
+  #276/#277 even though those fields are now fully merge-wired through the
+  4-level hierarchy (see `ConfigurationMerger::merge_action_settings`
+  below). The two calls are independent but sequential: if
+  `set_actions_workflow_permissions` fails, `set_actions_access_level` is
+  never attempted (errors propagate via `?`, not collected). Called from
+  `configuration::apply_repository_configuration` only when at least one of
+  the 3 new fields is `Some` on `merged_config.actions`.
 
 - **`repo_roller_core::git::mirror_clone` / `mirror_push` /
   `shallow_clone_working_tree` / `create_snapshot_branch`** — local-git

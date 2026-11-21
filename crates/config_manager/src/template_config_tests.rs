@@ -470,6 +470,7 @@ fn test_serialize_round_trip() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -506,6 +507,7 @@ fn test_clone_creates_independent_copy() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let cloned = config.clone();
@@ -540,6 +542,7 @@ fn test_debug_format() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let debug_str = format!("{:?}", config);
@@ -691,6 +694,7 @@ fn test_template_config_visibility_serialization() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -734,6 +738,7 @@ fn test_template_config_none_visibility_not_serialized() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize");
@@ -979,6 +984,7 @@ fn test_template_config_serialization_with_templating() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let toml = toml::to_string(&config).expect("Failed to serialize");
@@ -1128,4 +1134,152 @@ fn test_template_config_with_teams_and_other_sections() {
     let teams = config.teams.expect("teams present");
     assert_eq!(teams.len(), 1);
     assert_eq!(teams[0].slug, "dev-team");
+}
+
+// ── GitHub Actions settings field (#276/#277) ─────────────────────────────
+
+use crate::settings::ActionSettings;
+use crate::OverridableValue;
+
+fn template_with_actions(actions: Option<ActionSettings>) -> TemplateConfig {
+    TemplateConfig {
+        template: TemplateMetadata {
+            name: "t".to_string(),
+            description: "d".to_string(),
+            author: "a".to_string(),
+            tags: vec![],
+        },
+        repository_type: None,
+        variables: None,
+        repository: None,
+        pull_requests: None,
+        branch_protection: None,
+        labels: None,
+        webhooks: None,
+        environments: None,
+        github_apps: None,
+        rulesets: None,
+        default_visibility: None,
+        templating: None,
+        notifications: None,
+        permissions: None,
+        teams: None,
+        collaborators: None,
+        naming_rules: None,
+        designation: None,
+        creation_capabilities: None,
+        actions,
+    }
+}
+
+#[test]
+fn test_template_config_actions_defaults_to_none_when_absent_in_toml() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+        tags = []
+    "#;
+    let config: TemplateConfig = toml::from_str(toml).expect("parse");
+    assert!(config.actions.is_none());
+}
+
+#[test]
+fn test_template_config_actions_roundtrips_through_json() {
+    let config = template_with_actions(Some(ActionSettings {
+        can_approve_pull_request_reviews: Some(OverridableValue::allowed(true)),
+        access_level: Some(OverridableValue::allowed("enterprise".to_string())),
+        ..Default::default()
+    }));
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let roundtripped: TemplateConfig = serde_json::from_str(&json).expect("deserialize");
+
+    let actions = roundtripped.actions.expect("actions set");
+    assert_eq!(
+        actions.can_approve_pull_request_reviews.unwrap().value,
+        true
+    );
+    assert_eq!(actions.access_level.unwrap().value, "enterprise");
+}
+
+/// Verifies the flexible simple-value TOML deserialization applies to the 3
+/// new fields when embedded in a full template document (not just a bare
+/// `ActionSettings`/`RepositoryTypeConfig`).
+#[test]
+fn test_template_config_actions_parses_simple_toml_for_new_fields() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+        tags = []
+
+        [actions]
+        default_workflow_permissions = "write"
+        access_level = "organization"
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("parse");
+    let actions = config.actions.expect("actions set");
+
+    let permissions = actions
+        .default_workflow_permissions
+        .expect("default_workflow_permissions set");
+    assert_eq!(permissions.value, "write");
+    assert!(permissions.override_allowed);
+
+    let access_level = actions.access_level.expect("access_level set");
+    assert_eq!(access_level.value, "organization");
+    assert!(access_level.override_allowed);
+}
+
+#[test]
+fn test_template_config_actions_parses_explicit_toml_format() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+        tags = []
+
+        [actions]
+        can_approve_pull_request_reviews = { value = false, override_allowed = false }
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("parse");
+    let actions = config.actions.expect("actions set");
+    let value = actions
+        .can_approve_pull_request_reviews
+        .expect("can_approve_pull_request_reviews set");
+
+    assert_eq!(value.value, false);
+    assert!(!value.override_allowed);
+}
+
+/// Stub-killing: template-level `actions` must coexist with other
+/// template-level sections (e.g. `repository`) without one clobbering the
+/// other -- rules out an implementation that only wires one optional field
+/// at a time.
+#[test]
+fn test_template_config_actions_coexists_with_repository_section() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+        tags = []
+
+        [repository]
+        wiki = false
+
+        [actions]
+        enabled = true
+    "#;
+
+    let config: TemplateConfig = toml::from_str(toml).expect("parse");
+    assert!(config.repository.is_some());
+    let actions = config.actions.expect("actions set");
+    assert_eq!(actions.enabled.expect("enabled set").value, true);
 }

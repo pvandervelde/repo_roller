@@ -53,9 +53,9 @@
 //! See: specs/design/organization-repository-settings.md
 
 use crate::settings::{
-    BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig, LabelConfig,
-    NotificationsConfig, PullRequestSettings, RepositorySettings, RepositoryTypePermissionsConfig,
-    RulesetConfig, WebhookConfig,
+    ActionSettings, BranchProtectionSettings, CustomProperty, EnvironmentConfig, GitHubAppConfig,
+    LabelConfig, NotificationsConfig, PullRequestSettings, RepositorySettings,
+    RepositoryTypePermissionsConfig, RulesetConfig, WebhookConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -191,6 +191,15 @@ pub struct RepositoryTypeConfig {
     /// See `docs/spec/interfaces/fork-mirror-operations.md` §2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creation_capabilities: Option<crate::settings::CreationCapabilitiesSettings>,
+
+    /// GitHub Actions settings contributed at the repository-type level
+    /// (optional).
+    ///
+    /// Controls Actions permissions and behavior for repositories of this
+    /// type. Combined with global, team, and template levels using the
+    /// standard override-policy precedence rules.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actions: Option<ActionSettings>,
 }
 
 #[cfg(test)]

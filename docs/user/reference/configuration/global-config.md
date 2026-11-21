@@ -234,6 +234,9 @@ Controls GitHub Actions permissions for repositories.
 | `github_owned_allowed` | bool | `true` | `true` | Allow GitHub-owned actions when `allowed_actions = "selected"` |
 | `verified_allowed` | bool | `false` | `true` | Allow verified creator actions when `allowed_actions = "selected"` |
 | `patterns_allowed` | array of string | `[]` | — | List of allowed action patterns when `allowed_actions = "selected"` |
+| `default_workflow_permissions` | string | `"read"` | `true` | Default permissions granted to the `GITHUB_TOKEN` for workflow runs: `"read"` or `"write"`. Maps to `PUT /repos/{owner}/{repo}/actions/permissions/workflow`. |
+| `can_approve_pull_request_reviews` | bool | `false` | `true` | Whether workflows may approve pull request reviews. Maps to the same `PUT /repos/{owner}/{repo}/actions/permissions/workflow` call as `default_workflow_permissions`. |
+| `access_level` | string | `"none"` | `true` | Which other repositories in the organisation/enterprise may use this repository's reusable Actions workflows: `"none"`, `"organization"`, or `"enterprise"`. Maps to `PUT /repos/{owner}/{repo}/actions/permissions/access`. |
 
 ```toml
 [actions]
@@ -242,7 +245,35 @@ allowed_actions  = "selected"
 github_owned_allowed = true
 verified_allowed = false
 patterns_allowed = ["actions/*", "myorg/*"]
+default_workflow_permissions     = { value = "read", override_allowed = false }
+can_approve_pull_request_reviews = { value = false, override_allowed = true }
+access_level                     = { value = "organization", override_allowed = true }
 ```
+
+> **Note on `access_level`.** Setting `access_level = "organization"` or `"enterprise"` only
+> matters for repositories that themselves define reusable GitHub Actions workflows — it
+> controls which *other* repositories may call back into *this* one. It is most useful set on
+> a repository type or template specifically intended for building custom GitHub Actions
+> (e.g. a `github-action` repository type), not on ordinary application or service
+> repositories.
+>
+> **Which `[actions]` fields currently take effect.** All eight fields above are resolved
+> across the Global → RepositoryType → Team → Template hierarchy and available in the
+> merged configuration, but only `default_workflow_permissions`,
+> `can_approve_pull_request_reviews`, and `access_level` are currently applied to a created
+> repository (via the two API calls noted in the table). `enabled`, `allowed_actions`,
+> `github_owned_allowed`, `verified_allowed`, and `patterns_allowed` are resolved and
+> available for a future applier but have no effect on a repository yet — setting them today
+> does not change the repository's Actions permissions.
+>
+> ⚠️ **`access_level` has no organisation-wide ceiling yet.** Unlike team/collaborator access
+> (capped by `max_team_access_level`/`max_collaborator_access_level` under `[permissions]`,
+> above), nothing stops a repository type, team, or template from setting
+> `access_level = "enterprise"` — and the plain `access_level = "organization"` TOML form
+> **defaults `override_allowed` to `true`**, same as every other field in this file. If you
+> need to guarantee `access_level` cannot be widened below Global, set it with the explicit
+> form instead: `access_level = { value = "none", override_allowed = false }`. Tracked in
+> [#374](https://github.com/pvandervelde/repo_roller/issues/374).
 
 ---
 

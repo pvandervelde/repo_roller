@@ -34,6 +34,7 @@ fn create_test_template() -> NewTemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
@@ -220,6 +221,7 @@ fn test_merge_template_rulesets() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);
@@ -328,6 +330,7 @@ fn test_merge_all_levels_rulesets() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, Some(&repo_type), Some(&team), &template);
@@ -402,6 +405,7 @@ fn test_merge_empty_rulesets() {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     };
 
     let result = merger.merge_configurations(&global, None, None, &template);

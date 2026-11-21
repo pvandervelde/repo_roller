@@ -51,6 +51,7 @@
 //!     naming_rules: None,
 //!     designation: None,
 //!     creation_capabilities: None,
+//!     actions: None,
 //! };
 //!
 //! // Merge configurations with precedence rules
@@ -71,9 +72,9 @@ use crate::{
     merged_config::{ConfigurationSource, MergedConfiguration},
     repository_type_config::RepositoryTypeConfig,
     settings::{
-        BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty, EnvironmentConfig,
-        GitHubAppConfig, NotificationsConfig, PullRequestSettings, RepositoryNamingRulesConfig,
-        RepositorySettings, RulesetConfig, WebhookConfig,
+        ActionSettings, BranchProtectionSettings, CreationCapabilitiesSettings, CustomProperty,
+        EnvironmentConfig, GitHubAppConfig, NotificationsConfig, PullRequestSettings,
+        RepositoryNamingRulesConfig, RepositorySettings, RulesetConfig, WebhookConfig,
     },
     team_config::TeamConfig,
     template_config::TemplateConfig as NewTemplateConfig,
@@ -124,6 +125,7 @@ use crate::{
 ///     naming_rules: None,
 ///     designation: None,
 ///     creation_capabilities: None,
+///     actions: None,
 /// };
 ///
 /// // Merge with all configuration levels
@@ -212,6 +214,7 @@ impl ConfigurationMerger {
     ///     naming_rules: None,
     ///     designation: None,
     ///     creation_capabilities: None,
+    ///     actions: None,
     /// };
     ///
     /// let merged = merger.merge_configurations(&global, None, None, &template)?;
@@ -359,6 +362,14 @@ impl ConfigurationMerger {
                 ConfigurationSource::Global,
             );
         }
+        if let Some(actions) = &global.actions {
+            merged.actions = actions.clone();
+            self.track_action_settings_sources(
+                &merged.actions,
+                source_updates,
+                ConfigurationSource::Global,
+            );
+        }
     }
 
     /// Applies repository type-specific overrides.
@@ -489,6 +500,23 @@ impl ConfigurationMerger {
                 );
             }
         }
+        if let Some(override_actions) = &repo_type.actions {
+            if let Some(base_actions) = &global.actions {
+                source_updates.extend(self.merge_action_settings(
+                    &mut merged.actions,
+                    override_actions,
+                    base_actions,
+                    ConfigurationSource::RepositoryType,
+                )?);
+            } else {
+                merged.actions = override_actions.clone();
+                self.track_action_settings_sources(
+                    &merged.actions,
+                    source_updates,
+                    ConfigurationSource::RepositoryType,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -524,6 +552,11 @@ impl ConfigurationMerger {
             .and_then(|rt| rt.creation_capabilities.as_ref())
             .or(global.creation_capabilities.as_ref())
             .unwrap_or(&default_caps);
+        let default_actions = ActionSettings::default();
+        let base_actions = repository_type
+            .and_then(|rt| rt.actions.as_ref())
+            .or(global.actions.as_ref())
+            .unwrap_or(&default_actions);
 
         // Merge settings with override validation
         if let Some(override_repo) = &team.repository {
@@ -609,6 +642,14 @@ impl ConfigurationMerger {
                 ConfigurationSource::Team,
             )?);
         }
+        if let Some(override_actions) = &team.actions {
+            source_updates.extend(self.merge_action_settings(
+                &mut merged.actions,
+                override_actions,
+                base_actions,
+                ConfigurationSource::Team,
+            )?);
+        }
 
         Ok(())
     }
@@ -649,6 +690,12 @@ impl ConfigurationMerger {
             .or(repository_type.and_then(|rt| rt.creation_capabilities.as_ref()))
             .or(global.creation_capabilities.as_ref())
             .unwrap_or(&default_caps);
+        let default_actions = ActionSettings::default();
+        let base_actions = team
+            .and_then(|t| t.actions.as_ref())
+            .or(repository_type.and_then(|rt| rt.actions.as_ref()))
+            .or(global.actions.as_ref())
+            .unwrap_or(&default_actions);
 
         // Merge settings with override validation
         if let Some(override_repo) = &template.repository {
@@ -724,6 +771,14 @@ impl ConfigurationMerger {
                 &mut merged.creation_capabilities,
                 override_caps,
                 base_caps,
+                ConfigurationSource::Template,
+            )?);
+        }
+        if let Some(override_actions) = &template.actions {
+            source_updates.extend(self.merge_action_settings(
+                &mut merged.actions,
+                override_actions,
+                base_actions,
                 ConfigurationSource::Template,
             )?);
         }
@@ -1052,7 +1107,7 @@ impl ConfigurationMerger {
     ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
         let mut source_updates = Vec::new();
 
-        self.merge_capability_field(
+        self.merge_override_field(
             "creation_capabilities.fork_enabled",
             &mut target.fork_enabled,
             &override_settings.fork_enabled,
@@ -1061,7 +1116,7 @@ impl ConfigurationMerger {
             &mut source_updates,
         )?;
 
-        self.merge_capability_field(
+        self.merge_override_field(
             "creation_capabilities.source_history_mirror_enabled",
             &mut target.source_history_mirror_enabled,
             &override_settings.source_history_mirror_enabled,
@@ -1070,7 +1125,7 @@ impl ConfigurationMerger {
             &mut source_updates,
         )?;
 
-        self.merge_capability_field(
+        self.merge_override_field(
             "creation_capabilities.source_only_mirror_enabled",
             &mut target.source_only_mirror_enabled,
             &override_settings.source_only_mirror_enabled,
@@ -1090,20 +1145,26 @@ impl ConfigurationMerger {
         Ok(source_updates)
     }
 
-    /// Merges a single fork/mirror capability field with override-policy
-    /// validation and source tracking.
+    /// Merges a single `Option<OverridableValue<T>>` field with
+    /// override-policy validation and source tracking.
     ///
     /// Factored out of [`Self::merge_creation_capabilities_settings`], whose
-    /// three capability fields (`fork_enabled`, `source_history_mirror_enabled`,
-    /// `source_only_mirror_enabled`) otherwise repeat this exact
-    /// validate-then-assign-then-track shape.
+    /// three `bool` capability fields (`fork_enabled`,
+    /// `source_history_mirror_enabled`, `source_only_mirror_enabled`)
+    /// otherwise repeated this exact validate-then-assign-then-track shape.
+    /// Generalized over `T` (REFACTOR pass, #276/#277) so
+    /// [`Self::merge_action_settings`]'s 7 `Option<OverridableValue<_>>`
+    /// fields (4 `bool`, 3 `String`) reuse the same helper instead of
+    /// re-inlining the shape a second time per value type. Any future
+    /// `Option<OverridableValue<T>>` field with `T: Clone + PartialEq +
+    /// Display` should call this rather than inlining the block again.
     #[allow(clippy::too_many_arguments)]
-    fn merge_capability_field(
+    fn merge_override_field<T: Clone + PartialEq + std::fmt::Display>(
         &self,
         field_path: &str,
-        target: &mut Option<OverridableValue<bool>>,
-        override_value: &Option<OverridableValue<bool>>,
-        base_value: &Option<OverridableValue<bool>>,
+        target: &mut Option<OverridableValue<T>>,
+        override_value: &Option<OverridableValue<T>>,
+        base_value: &Option<OverridableValue<T>>,
         source: ConfigurationSource,
         source_updates: &mut Vec<(String, ConfigurationSource)>,
     ) -> ConfigurationResult<()> {
@@ -1120,13 +1181,14 @@ impl ConfigurationMerger {
     /// Merges the `allowed_source_owners` field with override-policy
     /// validation and source tracking.
     ///
-    /// Mirrors [`Self::merge_capability_field`]'s shape, but for
+    /// Mirrors [`Self::merge_override_field`]'s shape, but for
     /// `OverridableValue<Vec<String>>`: the allow-list is replaced wholesale
     /// by the highest-precedence level that sets it (NOT unioned across
     /// levels — see `docs/spec/interfaces/fork-mirror-operations.md` §2).
     /// Kept as a separate method (rather than reusing
-    /// [`Self::merge_capability_field`]) because its value type is
-    /// `Vec<String>`, not `bool`.
+    /// [`Self::merge_override_field`]) because `Vec<String>` has no
+    /// `Display` impl, so it needs `validate_override_no_display` instead of
+    /// `validate_override`.
     fn merge_allowed_source_owners_field(
         &self,
         target: &mut Option<OverridableValue<Vec<String>>>,
@@ -1144,6 +1206,141 @@ impl ConfigurationMerger {
             source_updates.push((FIELD_PATH.to_string(), source));
         }
         Ok(())
+    }
+
+    /// Merges GitHub Actions settings with override policy validation.
+    ///
+    /// Mirrors [`Self::merge_repository_settings`]'s field-by-field
+    /// precedence-and-override-enforcement pattern, but — since all 7
+    /// `Option<OverridableValue<T>>` fields share the identical
+    /// validate-then-assign-then-track shape (4 `bool`, 3 `String`) — each
+    /// delegates to [`Self::merge_override_field`] (REFACTOR pass,
+    /// #276/#277) rather than re-inlining the block 7 times. `patterns_allowed`
+    /// (a plain `Option<Vec<String>>` with no `override_allowed` policy) is
+    /// the one field with no override semantics, so it's replaced wholesale
+    /// inline whenever the higher-precedence level sets it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError::OverrideNotPermitted` if attempting to
+    /// override a setting that prohibits overrides.
+    fn merge_action_settings(
+        &self,
+        target: &mut ActionSettings,
+        override_settings: &ActionSettings,
+        base_settings: &ActionSettings,
+        source: ConfigurationSource,
+    ) -> ConfigurationResult<Vec<(String, ConfigurationSource)>> {
+        let mut source_updates = Vec::new();
+
+        self.merge_override_field(
+            "actions.enabled",
+            &mut target.enabled,
+            &override_settings.enabled,
+            &base_settings.enabled,
+            source,
+            &mut source_updates,
+        )?;
+
+        self.merge_override_field(
+            "actions.allowed_actions",
+            &mut target.allowed_actions,
+            &override_settings.allowed_actions,
+            &base_settings.allowed_actions,
+            source,
+            &mut source_updates,
+        )?;
+
+        self.merge_override_field(
+            "actions.github_owned_allowed",
+            &mut target.github_owned_allowed,
+            &override_settings.github_owned_allowed,
+            &base_settings.github_owned_allowed,
+            source,
+            &mut source_updates,
+        )?;
+
+        self.merge_override_field(
+            "actions.verified_allowed",
+            &mut target.verified_allowed,
+            &override_settings.verified_allowed,
+            &base_settings.verified_allowed,
+            source,
+            &mut source_updates,
+        )?;
+
+        self.merge_override_field(
+            "actions.default_workflow_permissions",
+            &mut target.default_workflow_permissions,
+            &override_settings.default_workflow_permissions,
+            &base_settings.default_workflow_permissions,
+            source,
+            &mut source_updates,
+        )?;
+
+        self.merge_override_field(
+            "actions.can_approve_pull_request_reviews",
+            &mut target.can_approve_pull_request_reviews,
+            &override_settings.can_approve_pull_request_reviews,
+            &base_settings.can_approve_pull_request_reviews,
+            source,
+            &mut source_updates,
+        )?;
+
+        self.merge_override_field(
+            "actions.access_level",
+            &mut target.access_level,
+            &override_settings.access_level,
+            &base_settings.access_level,
+            source,
+            &mut source_updates,
+        )?;
+
+        // `patterns_allowed` has no `override_allowed` policy: the
+        // highest-precedence level that sets it always wins, replacing the
+        // list wholesale rather than unioning it with lower levels.
+        if let Some(override_value) = &override_settings.patterns_allowed {
+            target.patterns_allowed = Some(override_value.clone());
+            source_updates.push(("actions.patterns_allowed".to_string(), source));
+        }
+
+        Ok(source_updates)
+    }
+
+    /// Tracks source for all non-None `ActionSettings` fields.
+    fn track_action_settings_sources(
+        &self,
+        settings: &ActionSettings,
+        source_updates: &mut Vec<(String, ConfigurationSource)>,
+        source: ConfigurationSource,
+    ) {
+        if settings.enabled.is_some() {
+            source_updates.push(("actions.enabled".to_string(), source));
+        }
+        if settings.allowed_actions.is_some() {
+            source_updates.push(("actions.allowed_actions".to_string(), source));
+        }
+        if settings.github_owned_allowed.is_some() {
+            source_updates.push(("actions.github_owned_allowed".to_string(), source));
+        }
+        if settings.verified_allowed.is_some() {
+            source_updates.push(("actions.verified_allowed".to_string(), source));
+        }
+        if settings.patterns_allowed.is_some() {
+            source_updates.push(("actions.patterns_allowed".to_string(), source));
+        }
+        if settings.default_workflow_permissions.is_some() {
+            source_updates.push(("actions.default_workflow_permissions".to_string(), source));
+        }
+        if settings.can_approve_pull_request_reviews.is_some() {
+            source_updates.push((
+                "actions.can_approve_pull_request_reviews".to_string(),
+                source,
+            ));
+        }
+        if settings.access_level.is_some() {
+            source_updates.push(("actions.access_level".to_string(), source));
+        }
     }
 
     /// Merges webhook collections additively.

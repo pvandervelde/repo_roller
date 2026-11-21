@@ -24,7 +24,7 @@ Repository type configuration supports the same sections as global configuration
 | `[repository]` | Yes | Overrides global defaults |
 | `[pull_requests]` | Yes | Overrides global defaults |
 | `[branch_protection]` | Yes | Overrides global defaults |
-| `[actions]` | No | Not available at type level |
+| `[actions]` | Yes | Overrides global defaults |
 | `[push]` | No | Not available at type level |
 | `[[labels]]` | Yes | **Additive** — combined with global labels |
 | `[[default_teams]]` | No | Not available at type level |

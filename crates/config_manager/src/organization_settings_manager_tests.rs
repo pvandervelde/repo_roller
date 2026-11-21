@@ -50,6 +50,7 @@ impl TemplateRepository for MockTemplateRepository {
             naming_rules: None,
             designation: None,
             creation_capabilities: None,
+            actions: None,
         })
     }
 
@@ -510,6 +511,7 @@ impl TemplateRepository for EmptySensitiveTemplateRepository {
             naming_rules: None,
             designation: None,
             creation_capabilities: None,
+            actions: None,
         })
     }
 
@@ -799,6 +801,7 @@ impl TemplateRepository for PermissionTestTemplateRepository {
             naming_rules: None,
             designation: None,
             creation_capabilities: None,
+            actions: None,
         })
     }
 

@@ -90,6 +90,7 @@ fn create_test_template_config(name: &str) -> TemplateConfig {
         naming_rules: None,
         designation: None,
         creation_capabilities: None,
+        actions: None,
     }
 }
 
