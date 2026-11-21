@@ -265,6 +265,15 @@ access_level                     = { value = "organization", override_allowed = 
 > `github_owned_allowed`, `verified_allowed`, and `patterns_allowed` are resolved and
 > available for a future applier but have no effect on a repository yet — setting them today
 > does not change the repository's Actions permissions.
+>
+> ⚠️ **`access_level` has no organisation-wide ceiling yet.** Unlike team/collaborator access
+> (capped by `max_team_access_level`/`max_collaborator_access_level` under `[permissions]`,
+> above), nothing stops a repository type, team, or template from setting
+> `access_level = "enterprise"` — and the plain `access_level = "organization"` TOML form
+> **defaults `override_allowed` to `true`**, same as every other field in this file. If you
+> need to guarantee `access_level` cannot be widened below Global, set it with the explicit
+> form instead: `access_level = { value = "none", override_allowed = false }`. Tracked in
+> [#374](https://github.com/pvandervelde/repo_roller/issues/374).
 
 ---
 
