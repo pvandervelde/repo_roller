@@ -1109,6 +1109,23 @@ async fn create_github_repository(
         .create_org_repository(request.owner.as_ref(), &payload)
         .await
         .map_err(|e| {
+            if matches!(e, github_client::Error::AlreadyExists) {
+                // Race-condition corollary (task #282): the pre-creation
+                // existence check passed, but a repository with this name
+                // was created by someone else before this call reached
+                // GitHub. Map to the same domain error the check-phase gate
+                // would have produced, so callers see one consistent
+                // "already exists" outcome regardless of which path caught
+                // it.
+                warn!(
+                    "Repository creation raced with a concurrent create: {}",
+                    e
+                );
+                return RepoRollerError::Repository(RepositoryError::AlreadyExists {
+                    org: request.owner.to_string(),
+                    name: request.name.to_string(),
+                });
+            }
             error!("Failed to create GitHub repository: {}", e);
             RepoRollerError::GitHub(GitHubError::NetworkError {
                 reason: format!("Failed to create repository: {}", e),
@@ -1318,6 +1335,43 @@ fn find_attribute(attributes: &[(&'static str, String)], key: &str) -> Option<St
         .map(|(_, value)| value.clone())
 }
 
+/// Authoritative pre-creation existence check (task #282 / GitHub issue #282:
+/// "repo-roller must guarantee it never mutates an existing repository").
+///
+/// Must be called exactly once, immediately before dispatching to any
+/// `CreationMode`-specific repository-mutating call, so that no mutation is
+/// ever attempted against a repository that already exists.
+///
+/// # Errors
+///
+/// - `RepoRollerError::Repository(RepositoryError::AlreadyExists{org,name})`
+///   if `owner`/`name` already identifies an existing repository.
+/// - `RepoRollerError::GitHub(GitHubError::NetworkError{..})` if the
+///   existence check itself fails for any reason other than a 404 (fails
+///   CLOSED: an inconclusive check must never be treated as "safe to
+///   proceed", since silently allowing creation on an ambiguous failure
+///   would defeat the entire guarantee this gate exists to provide).
+///
+/// Returns `Ok(())` only when `client.get_repository` reports
+/// `Err(github_client::Error::NotFound)`, i.e. the repository definitively
+/// does not exist.
+async fn ensure_repository_does_not_exist(
+    client: &dyn RepositoryClient,
+    owner: &str,
+    name: &str,
+) -> RepoRollerResult<()> {
+    match client.get_repository(owner, name).await {
+        Ok(_) => Err(RepoRollerError::Repository(RepositoryError::AlreadyExists {
+            org: owner.to_string(),
+            name: name.to_string(),
+        })),
+        Err(github_client::Error::NotFound) => Ok(()),
+        Err(e) => Err(RepoRollerError::GitHub(GitHubError::NetworkError {
+            reason: format!("Failed to check repository existence: {}", e),
+        })),
+    }
+}
+
 /// The actual repository-creation orchestration, run inside the
 /// [`observability::SPAN_REPOSITORY_CREATION`] span opened by
 /// [`create_repository`]. Each phase-boundary call below is wrapped in its
@@ -1367,6 +1421,17 @@ async fn create_repository_inner(
     // mutating calls, so this is the earliest point at which the gate can
     // run with the information it needs.
     validate_creation_mode_capability(&request, &merged_config, template.as_ref())?;
+
+    // Step 4d: Authoritative existence-check gate (task #282). Must run once,
+    // before dispatch, before any repository-mutating GitHub API call, for
+    // every `CreationMode` -- mirroring exactly how
+    // `validate_creation_mode_capability` is positioned above.
+    ensure_repository_does_not_exist(
+        &*clients.installation_repo_client,
+        request.owner.as_ref(),
+        request.name.as_ref(),
+    )
+    .await?;
 
     // Steps 5+: Dispatch repository creation based on `request.creation_mode`.
     let result = match request.creation_mode.clone() {

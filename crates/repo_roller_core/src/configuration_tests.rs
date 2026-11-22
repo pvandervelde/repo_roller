@@ -289,6 +289,13 @@ impl RepositoryClient for MockActionsRepoClient {
         ))
     }
 
+    async fn get_repository(&self, _owner: &str, _repo: &str) -> Result<Repository, GHError> {
+        // Not exercised by the `apply_repository_configuration` test suite --
+        // default to "does not exist", matching every other mock's unused
+        // default in this module.
+        Err(GHError::NotFound)
+    }
+
     async fn create_user_repository(
         &self,
         _payload: &RepositoryCreatePayload,
