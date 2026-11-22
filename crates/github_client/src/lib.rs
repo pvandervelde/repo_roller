@@ -76,6 +76,14 @@ mod tests;
 #[path = "span_hierarchy_tests.rs"]
 mod span_hierarchy_tests;
 
+// Property-based (Tier 3) tests for the `create_org_repository` 422
+// "already exists" detection heuristic (task #282). See module docs in
+// `lib_proptests.rs` for why this lives in a separate file/module from
+// `lib_tests.rs`.
+#[cfg(test)]
+#[path = "lib_proptests.rs"]
+mod proptests;
+
 /// A client for interacting with the GitHub API, authenticated as a GitHub App.
 ///
 /// This struct provides a high-level interface for GitHub API operations using

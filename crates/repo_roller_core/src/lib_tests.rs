@@ -175,6 +175,61 @@ impl GitHubEnvironmentDetector for MockEnvironmentDetector {
     }
 }
 
+/// Shared call-tracking log used by [`ConfigurableMockRepoClient`] to record,
+/// in invocation order, the name of every trait method actually called.
+///
+/// This gives adversarial tests a direct, structural way to assert "zero
+/// mutation calls were made" (task #282 acceptance criterion 5): rather than
+/// inferring the absence of a call from an `Ok`/`Err` result shape (which a
+/// lazy/stubbed implementation could fake), the test inspects exactly which
+/// methods were invoked and in what order.
+type CallLog = Arc<Mutex<Vec<&'static str>>>;
+
+/// Behavior for [`ConfigurableMockRepoClient::get_repository`], mirroring the
+/// three outcomes `ensure_repository_does_not_exist` must distinguish
+/// (task #282 interface contract):
+/// - the repository exists (`Ok(repo)`),
+/// - it does not exist (`Err(github_client::Error::NotFound)`), or
+/// - the check itself failed ambiguously (any other `github_client::Error`).
+#[derive(Clone)]
+enum MockGetRepositoryBehavior {
+    /// `get_repository` returns `Ok(repo)` — the repository already exists.
+    Exists,
+    /// `get_repository` returns `Err(github_client::Error::NotFound)`.
+    NotFound,
+    /// `get_repository` returns the given ambiguous (non-404) error.
+    Error(MockGetRepositoryErrorKind),
+}
+
+/// Distinct non-`NotFound` `github_client::Error` shapes used to prove the
+/// fail-closed gate does not special-case a single error variant.
+///
+/// `github_client::Error` does not derive `Clone` (it wraps non-`Clone`
+/// sources such as `serde_json::Error`), so this crate-local, `Clone`-able
+/// descriptor is constructed into a fresh `github_client::Error` value at
+/// call time instead of storing the error itself in the `Clone`-derived
+/// [`MockRepoClientConfig`].
+#[derive(Clone, Copy)]
+enum MockGetRepositoryErrorKind {
+    ApiError,
+    AuthError,
+    InvalidResponse,
+    RateLimitExceeded,
+}
+
+impl MockGetRepositoryErrorKind {
+    fn into_error(self) -> GitHubError {
+        match self {
+            MockGetRepositoryErrorKind::ApiError => GitHubError::ApiError(),
+            MockGetRepositoryErrorKind::AuthError => {
+                GitHubError::AuthError("mock ambiguous auth failure".to_string())
+            }
+            MockGetRepositoryErrorKind::InvalidResponse => GitHubError::InvalidResponse,
+            MockGetRepositoryErrorKind::RateLimitExceeded => GitHubError::RateLimitExceeded,
+        }
+    }
+}
+
 /// Configurable mock repository client that eliminates code duplication
 struct ConfigurableMockRepoClient {
     config: MockRepoClientConfig,
@@ -197,16 +252,49 @@ impl ConfigurableMockRepoClient {
             false,
         )
     }
+
+    /// Records `method_name` on the configured call log, if any. Tests that
+    /// don't care about call tracking simply never configure a log, so this
+    /// is a no-op for them.
+    fn track(&self, method_name: &'static str) {
+        if let Some(log) = &self.config.call_log {
+            log.lock().unwrap().push(method_name);
+        }
+    }
 }
 
 #[async_trait]
 impl RepositoryClient for ConfigurableMockRepoClient {
+    async fn get_repository(
+        &self,
+        _owner: &str,
+        repo: &str,
+    ) -> Result<github_client::Repository, GitHubError> {
+        self.track("get_repository");
+        match &self.config.get_repository_behavior {
+            MockGetRepositoryBehavior::Exists => Ok(github_client::Repository::new(
+                repo.to_string(),
+                format!("test-org/{repo}"),
+                "MDEwOlJlcG9zaXRvcnkx_EXISTING".to_string(),
+                false,
+            )),
+            MockGetRepositoryBehavior::NotFound => Err(GitHubError::NotFound),
+            MockGetRepositoryBehavior::Error(kind) => Err(kind.into_error()),
+        }
+    }
+
     async fn create_org_repository(
         &self,
         _owner: &str,
         payload: &github_client::RepositoryCreatePayload,
     ) -> Result<github_client::Repository, GitHubError> {
-        Ok(self.create_successful_repository(payload))
+        self.track("create_org_repository");
+        match &self.config.create_org_repository_behavior {
+            MockCreateOrgRepositoryBehavior::Success => {
+                Ok(self.create_successful_repository(payload))
+            }
+            MockCreateOrgRepositoryBehavior::Error(kind) => Err(kind.clone().into_error()),
+        }
     }
 
     async fn create_user_repository(
@@ -452,6 +540,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         source_repo: &str,
         target_owner: Option<&str>,
     ) -> Result<github_client::Repository, GitHubError> {
+        self.track("create_fork");
         // Not exercised by the existing create_repository test suite - return a
         // minimal success value so the mock satisfies the widened trait.
         let owner = target_owner.unwrap_or("mock-owner");
@@ -542,6 +631,16 @@ struct MockRepoClientConfig {
     token_call_tracker: Option<Arc<Mutex<bool>>>,
     /// Default branch to return from get_organization_default_branch
     default_branch: String,
+    /// Behavior for `get_repository` -- drives the existence-check gate
+    /// (task #282).
+    get_repository_behavior: MockGetRepositoryBehavior,
+    /// Behavior for `create_org_repository` -- used to simulate the
+    /// race-condition corollary (task #282) where the authoritative
+    /// pre-check passed but the create call itself reports a conflict.
+    create_org_repository_behavior: MockCreateOrgRepositoryBehavior,
+    /// Optional shared call log; every tracked trait method pushes its name
+    /// here when invoked, in order.
+    call_log: Option<CallLog>,
 }
 
 impl Default for MockRepoClientConfig {
@@ -550,6 +649,9 @@ impl Default for MockRepoClientConfig {
             token_behavior: MockTokenBehavior::Success("ghs_mock_token".to_string()),
             token_call_tracker: None,
             default_branch: "main".to_string(),
+            get_repository_behavior: MockGetRepositoryBehavior::NotFound,
+            create_org_repository_behavior: MockCreateOrgRepositoryBehavior::Success,
+            call_log: None,
         }
     }
 }
@@ -562,11 +664,100 @@ impl MockRepoClientConfig {
             token_behavior: MockTokenBehavior::Success(format!("ghs_mock_token_for_{}", org_name)),
             token_call_tracker: None,
             default_branch: "main".to_string(),
+            get_repository_behavior: MockGetRepositoryBehavior::NotFound,
+            create_org_repository_behavior: MockCreateOrgRepositoryBehavior::Success,
+            call_log: None,
+        }
+    }
+
+    /// Config whose `get_repository` reports that the target repository
+    /// already exists, with call tracking enabled via `log`.
+    fn repository_exists(log: CallLog) -> Self {
+        Self {
+            get_repository_behavior: MockGetRepositoryBehavior::Exists,
+            call_log: Some(log),
+            ..Self::default()
+        }
+    }
+
+    /// Config whose `get_repository` reports that the target repository does
+    /// not exist (404), with call tracking enabled via `log`.
+    fn repository_not_found(log: CallLog) -> Self {
+        Self {
+            get_repository_behavior: MockGetRepositoryBehavior::NotFound,
+            call_log: Some(log),
+            ..Self::default()
+        }
+    }
+
+    /// Config whose `get_repository` fails ambiguously (not 404, not 200),
+    /// with call tracking enabled via `log`.
+    fn repository_check_ambiguous_error(kind: MockGetRepositoryErrorKind, log: CallLog) -> Self {
+        Self {
+            get_repository_behavior: MockGetRepositoryBehavior::Error(kind),
+            call_log: Some(log),
+            ..Self::default()
+        }
+    }
+
+    /// Config whose `create_org_repository` simulates the race-condition
+    /// corollary: the GitHub create call itself reports "already exists".
+    fn create_org_repository_already_exists() -> Self {
+        Self {
+            create_org_repository_behavior: MockCreateOrgRepositoryBehavior::Error(
+                MockCreateOrgRepositoryErrorKind::AlreadyExists,
+            ),
+            ..Self::default()
+        }
+    }
+
+    /// Config whose `create_org_repository` fails with an unrelated error,
+    /// used as a regression guard that only `Error::AlreadyExists`
+    /// triggers the new `RepositoryError::AlreadyExists` mapping.
+    fn create_org_repository_other_error() -> Self {
+        Self {
+            create_org_repository_behavior: MockCreateOrgRepositoryBehavior::Error(
+                MockCreateOrgRepositoryErrorKind::ApiError,
+            ),
+            ..Self::default()
         }
     }
 }
 
 // --- MOCK ENUMS (ALPHABETICALLY ORDERED) ---
+
+/// Behavior for [`ConfigurableMockRepoClient::create_org_repository`].
+#[derive(Clone)]
+enum MockCreateOrgRepositoryBehavior {
+    /// Returns a successful `Repository`, as today.
+    Success,
+    /// Returns the given error, used to simulate the race-condition
+    /// corollary (task #282) and regression-guard unrelated failures.
+    Error(MockCreateOrgRepositoryErrorKind),
+}
+
+/// Distinct `github_client::Error` shapes `create_org_repository` may be
+/// configured to return.
+#[derive(Clone, Copy)]
+enum MockCreateOrgRepositoryErrorKind {
+    /// Simulates GitHub's own "already exists" 422 response being correctly
+    /// classified by `github_client::create_org_repository` as
+    /// `Error::AlreadyExists` (task #282 race-condition corollary).
+    AlreadyExists,
+    /// An unrelated failure, used to prove only `Error::AlreadyExists`
+    /// triggers the new `RepositoryError::AlreadyExists` mapping in
+    /// `create_github_repository`.
+    ApiError,
+}
+
+impl MockCreateOrgRepositoryErrorKind {
+    fn into_error(self) -> GitHubError {
+        match self {
+            MockCreateOrgRepositoryErrorKind::AlreadyExists => GitHubError::AlreadyExists,
+            MockCreateOrgRepositoryErrorKind::ApiError => GitHubError::ApiError(),
+        }
+    }
+}
 
 /// Configuration for mock repository client behavior
 #[derive(Clone)]
@@ -2073,4 +2264,650 @@ fn test_history_mirror_default_branch_update_does_not_set_unrelated_fields() {
     assert_eq!(settings.has_issues, None);
     assert_eq!(settings.has_projects, None);
     assert_eq!(settings.has_wiki, None);
+}
+
+// ============================================================================
+// ensure_repository_does_not_exist Tests (RED: task #282 / GitHub issue #282
+// -- "repo-roller must guarantee it never mutates an existing repository")
+// ============================================================================
+//
+// `ensure_repository_does_not_exist` is the new private, authoritative
+// existence-check gate the interface contract requires `create_repository_inner`
+// to call once, immediately after `validate_creation_mode_capability` and
+// before dispatching on `request.creation_mode`, for every `CreationMode`
+// variant. It takes `&dyn RepositoryClient` directly (no network/auth setup
+// required), so it is fully exercised here through `ConfigurableMockRepoClient`.
+//
+// Contract (per the Relevant Assertions / Interface Contract):
+//   Ok(repo)                  => Err(RepositoryError::AlreadyExists{org,name})
+//   Err(Error::NotFound)      => Ok(())
+//   Err(other)                => Err(GitHubError::NetworkError{..})  (fail CLOSED)
+
+/// Builds a fresh, empty call log for a single test.
+fn new_call_log() -> CallLog {
+    Arc::new(Mutex::new(Vec::new()))
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_repo_exists_returns_already_exists_error() {
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(new_call_log()));
+
+    let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    match result {
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { org, name })) => {
+            assert_eq!(org, "my-org");
+            assert_eq!(name, "my-repo");
+        }
+        other => panic!("expected RepositoryError::AlreadyExists, got {other:?}"),
+    }
+}
+
+/// Stub-killing: an implementation that hardcodes the org/name in the
+/// constructed error (e.g. leftover copy-pasted literals from another code
+/// path) would fail this test, since the owner/name used here are
+/// deliberately unusual and do not match any plausible hardcoded default.
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_error_echoes_caller_supplied_owner_and_name() {
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(new_call_log()));
+
+    let result =
+        ensure_repository_does_not_exist(&client, "unusual-owner-xyz", "unusual-repo-abc").await;
+
+    match result {
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { org, name })) => {
+            assert_eq!(org, "unusual-owner-xyz");
+            assert_eq!(name, "unusual-repo-abc");
+        }
+        other => panic!("expected RepositoryError::AlreadyExists, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_repo_not_found_returns_ok() {
+    let client = ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_not_found(
+        new_call_log(),
+    ));
+
+    let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert!(
+        result.is_ok(),
+        "expected Ok(()) when the repository does not exist, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_ambiguous_api_error_fails_closed() {
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::repository_check_ambiguous_error(
+            MockGetRepositoryErrorKind::ApiError,
+            new_call_log(),
+        ),
+    );
+
+    let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+        ),
+        "an ambiguous existence-check failure must fail closed as GitHubError::NetworkError, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_auth_error_fails_closed() {
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::repository_check_ambiguous_error(
+            MockGetRepositoryErrorKind::AuthError,
+            new_call_log(),
+        ),
+    );
+
+    let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+        ),
+        "an auth failure during the existence check must still fail closed, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_rate_limit_error_fails_closed() {
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::repository_check_ambiguous_error(
+            MockGetRepositoryErrorKind::RateLimitExceeded,
+            new_call_log(),
+        ),
+    );
+
+    let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+        ),
+        "a rate-limit failure during the existence check must still fail closed, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_invalid_response_error_fails_closed() {
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::repository_check_ambiguous_error(
+            MockGetRepositoryErrorKind::InvalidResponse,
+            new_call_log(),
+        ),
+    );
+
+    let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+        ),
+        "an invalid-response failure during the existence check must still fail closed, got {result:?}"
+    );
+}
+
+/// Stub-killing: an implementation that defaults to "proceed" (`Ok(())`)
+/// whenever `get_repository` fails for any reason other than `NotFound`
+/// would violate the fail-closed security requirement. Exercises all four
+/// distinct ambiguous-error kinds to rule out a partial fix that only
+/// special-cases one of them.
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_never_returns_ok_for_any_ambiguous_error_kind() {
+    for kind in [
+        MockGetRepositoryErrorKind::ApiError,
+        MockGetRepositoryErrorKind::AuthError,
+        MockGetRepositoryErrorKind::RateLimitExceeded,
+        MockGetRepositoryErrorKind::InvalidResponse,
+    ] {
+        let client = ConfigurableMockRepoClient::new(
+            MockRepoClientConfig::repository_check_ambiguous_error(kind, new_call_log()),
+        );
+
+        let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+        assert!(
+            result.is_err(),
+            "ambiguous existence-check error must never be treated as 'safe to proceed'"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_exists_path_calls_only_get_repository() {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(log.clone()));
+
+    let _ = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert_eq!(
+        &*log.lock().unwrap(),
+        &["get_repository"],
+        "the existence check itself must never invoke any mutating GitHub API call"
+    );
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_not_found_path_calls_only_get_repository() {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_not_found(log.clone()));
+
+    let _ = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert_eq!(&*log.lock().unwrap(), &["get_repository"]);
+}
+
+#[tokio::test]
+async fn test_ensure_repository_does_not_exist_ambiguous_error_path_calls_only_get_repository() {
+    let log = new_call_log();
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::repository_check_ambiguous_error(
+            MockGetRepositoryErrorKind::ApiError,
+            log.clone(),
+        ),
+    );
+
+    let _ = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
+
+    assert_eq!(&*log.lock().unwrap(), &["get_repository"]);
+}
+
+// ============================================================================
+// create_github_repository Race-Condition Mapping Tests (RED: task #282
+// race-condition corollary -- GitHub's own "already exists" response from
+// `create_org_repository` must map to the SAME `RepositoryError::AlreadyExists`
+// domain error as the pre-check gate, not a generic `GitHubError::NetworkError`.)
+// ============================================================================
+
+/// Builds a minimal `Standard`-mode `RepositoryCreationRequest` for
+/// `create_github_repository` tests, which only need `owner`/`name`.
+fn standard_request_for(owner: &str, name: &str) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(name).unwrap(),
+        OrganizationName::new(owner).unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .build()
+}
+
+#[tokio::test]
+async fn test_create_github_repository_maps_race_condition_conflict_to_repository_already_exists()
+{
+    let request = standard_request_for("race-org", "race-repo");
+    let merged_config = config_manager::MergedConfiguration::new();
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::create_org_repository_already_exists(),
+    );
+
+    let result = create_github_repository(
+        &request,
+        &merged_config,
+        &client,
+        visibility::RepositoryVisibility::Private,
+    )
+    .await;
+
+    match result {
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { org, name })) => {
+            assert_eq!(org, "race-org");
+            assert_eq!(name, "race-repo");
+        }
+        Ok(_) => panic!("expected the race-condition 422 to map to RepositoryError::AlreadyExists, got Ok"),
+        Err(other) => panic!(
+            "expected the race-condition 422 to map to RepositoryError::AlreadyExists, got {other:?}"
+        ),
+    }
+}
+
+/// Stub-killing: an implementation that hardcodes "race-org"/"race-repo"
+/// (copy-pasted from a fixture) rather than reading `request.owner`/
+/// `request.name` would fail this test.
+#[tokio::test]
+async fn test_create_github_repository_race_condition_error_uses_request_owner_and_name() {
+    let request = standard_request_for("totally-different-owner", "totally-different-repo");
+    let merged_config = config_manager::MergedConfiguration::new();
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::create_org_repository_already_exists(),
+    );
+
+    let result = create_github_repository(
+        &request,
+        &merged_config,
+        &client,
+        visibility::RepositoryVisibility::Private,
+    )
+    .await;
+
+    match result {
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { org, name })) => {
+            assert_eq!(org, "totally-different-owner");
+            assert_eq!(name, "totally-different-repo");
+        }
+        Ok(_) => panic!("expected RepositoryError::AlreadyExists, got Ok"),
+        Err(other) => panic!("expected RepositoryError::AlreadyExists, got {other:?}"),
+    }
+}
+
+/// Regression guard: only `github_client::Error::AlreadyExists` gets the new
+/// mapping -- every other error variant must continue to map to
+/// `GitHubError::NetworkError` exactly as before this change.
+#[tokio::test]
+async fn test_create_github_repository_unrelated_github_error_still_maps_to_network_error() {
+    let request = standard_request_for("some-org", "some-repo");
+    let merged_config = config_manager::MergedConfiguration::new();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::create_org_repository_other_error());
+
+    let result = create_github_repository(
+        &request,
+        &merged_config,
+        &client,
+        visibility::RepositoryVisibility::Private,
+    )
+    .await;
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+        ),
+        "an unrelated create_org_repository failure must keep mapping to GitHubError::NetworkError, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// Stub-killing: an implementation that forgets to add the new match arm
+/// (and so still routes `Error::AlreadyExists` through the catch-all
+/// `GitHubError::NetworkError` mapping) would fail this precise
+/// variant-exclusion assertion, even though `result.is_err()` alone would
+/// not catch it.
+#[tokio::test]
+async fn test_create_github_repository_already_exists_is_not_mapped_to_network_error_variant() {
+    let request = standard_request_for("variant-org", "variant-repo");
+    let merged_config = config_manager::MergedConfiguration::new();
+    let client = ConfigurableMockRepoClient::new(
+        MockRepoClientConfig::create_org_repository_already_exists(),
+    );
+
+    let result = create_github_repository(
+        &request,
+        &merged_config,
+        &client,
+        visibility::RepositoryVisibility::Private,
+    )
+    .await;
+
+    assert!(
+        !matches!(result, Err(RepoRollerError::GitHub(_))),
+        "AlreadyExists must map to RepoRollerError::Repository, not RepoRollerError::GitHub, got {:?}",
+        result.as_ref().err()
+    );
+    assert!(matches!(
+        result,
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+    ));
+}
+
+/// Regression guard: the happy path (repository does not exist, create
+/// succeeds) must be completely unaffected by the new mapping branch.
+#[tokio::test]
+async fn test_create_github_repository_success_path_unaffected_by_new_error_mapping() {
+    let request = standard_request_for("ok-org", "ok-repo");
+    let merged_config = config_manager::MergedConfiguration::new();
+    let client = ConfigurableMockRepoClient::new(MockRepoClientConfig::default());
+
+    let result = create_github_repository(
+        &request,
+        &merged_config,
+        &client,
+        visibility::RepositoryVisibility::Private,
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "expected success, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+// ============================================================================
+// Gate-Blocks-Dispatch Pattern Tests, per CreationMode (Tier 2 adversarial;
+// task #282 acceptance criteria 1, 3, 5)
+// ============================================================================
+//
+// `create_repository_inner` always constructs its own, real-network-bound
+// `CreationClients` via `setup_github_clients` (installation-token auth ->
+// `github_client::create_token_client`, which has no test-only base-URL
+// override seam). This means the exact call site inside
+// `create_repository_inner` cannot be exercised with a mock/wiremock client
+// without either live GitHub credentials or a production-code change to add
+// a dependency-injection seam -- neither of which is available to this test
+// suite (see the Tester's report for this documented as a spec/architecture
+// gap).
+//
+// These tests instead reproduce, verbatim, the exact control-flow contract
+// the interface spec requires `create_repository_inner` to implement for
+// every `CreationMode` ("call the gate once, before the dispatch match;
+// only proceed to the mutating dispatch call if the gate returns `Ok(())`"),
+// using the same `&dyn RepositoryClient` mock the gate itself is unit-tested
+// against. Each test proves that -- under this required control flow --
+// zero mutation calls are made to the mock when the repository already
+// exists, for the specific first mutating call each `CreationMode`'s
+// dispatch path would otherwise make.
+
+#[tokio::test]
+async fn test_gate_blocks_standard_mode_create_org_repository_when_repository_already_exists() {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(log.clone()));
+
+    let gate_result = ensure_repository_does_not_exist(&client, "gate-org", "gate-repo").await;
+    if gate_result.is_ok() {
+        // Standard mode's first mutating call (via create_standard_repository
+        // -> create_github_repository) -- must never be reached.
+        client
+            .create_org_repository(
+                "gate-org",
+                &github_client::RepositoryCreatePayload::default(),
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(matches!(
+        gate_result,
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+    ));
+    assert_eq!(
+        &*log.lock().unwrap(),
+        &["get_repository"],
+        "Standard creation must make zero mutation calls when the target repository already exists"
+    );
+}
+
+#[tokio::test]
+async fn test_gate_blocks_fork_mode_create_fork_when_repository_already_exists() {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(log.clone()));
+
+    let gate_result = ensure_repository_does_not_exist(&client, "gate-org", "gate-repo").await;
+    if gate_result.is_ok() {
+        // Fork mode's first (and only) repository-creation mutating call --
+        // must never be reached.
+        client
+            .create_fork("source-org", "source-repo", Some("gate-org"))
+            .await
+            .unwrap();
+    }
+
+    assert!(matches!(
+        gate_result,
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+    ));
+    assert_eq!(
+        &*log.lock().unwrap(),
+        &["get_repository"],
+        "Fork creation must make zero mutation calls when the target repository already exists"
+    );
+}
+
+#[tokio::test]
+async fn test_gate_blocks_history_mirror_mode_create_org_repository_when_repository_already_exists(
+) {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(log.clone()));
+
+    let gate_result = ensure_repository_does_not_exist(&client, "gate-org", "gate-repo").await;
+    if gate_result.is_ok() {
+        // History-mirror mode's first mutating call (before the
+        // git::mirror_clone/mirror_push network steps) -- must never be
+        // reached.
+        client
+            .create_org_repository(
+                "gate-org",
+                &github_client::RepositoryCreatePayload::default(),
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(matches!(
+        gate_result,
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+    ));
+    assert_eq!(
+        &*log.lock().unwrap(),
+        &["get_repository"],
+        "History-mirror creation must make zero mutation calls when the target repository already exists"
+    );
+}
+
+#[tokio::test]
+async fn test_gate_blocks_source_only_mirror_mode_create_org_repository_when_repository_already_exists(
+) {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(log.clone()));
+
+    let gate_result = ensure_repository_does_not_exist(&client, "gate-org", "gate-repo").await;
+    if gate_result.is_ok() {
+        // Source-only-mirror mode's first mutating GitHub API call (local git
+        // init/commit happen first but involve no RepositoryClient calls) --
+        // must never be reached.
+        client
+            .create_org_repository(
+                "gate-org",
+                &github_client::RepositoryCreatePayload::default(),
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(matches!(
+        gate_result,
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+    ));
+    assert_eq!(
+        &*log.lock().unwrap(),
+        &["get_repository"],
+        "Source-only-mirror creation must make zero mutation calls when the target repository already exists"
+    );
+}
+
+/// Regression guard, paired with the four gate-blocks-dispatch tests above:
+/// when the repository does NOT exist, the gate must allow the dispatch call
+/// to proceed (i.e. must not itself block the happy path).
+#[tokio::test]
+async fn test_gate_allows_dispatch_to_proceed_when_repository_does_not_exist() {
+    let log = new_call_log();
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_not_found(log.clone()));
+
+    let gate_result = ensure_repository_does_not_exist(&client, "gate-org", "gate-repo").await;
+    if gate_result.is_ok() {
+        client
+            .create_org_repository(
+                "gate-org",
+                &github_client::RepositoryCreatePayload::default(),
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(gate_result.is_ok());
+    assert_eq!(
+        &*log.lock().unwrap(),
+        &["get_repository", "create_org_repository"],
+        "when the repository does not exist, creation must proceed exactly as before"
+    );
+}
+
+// ============================================================================
+// Property-Based Tests (Tier 3): ensure_repository_does_not_exist invariants
+// ============================================================================
+//
+// These use `tokio::runtime::Runtime::block_on` to drive the async gate
+// function from inside a synchronous `proptest!` body, following the only
+// available pattern for property-testing async code in this crate (no
+// existing async-proptest precedent to follow; documented as such).
+
+proptest::proptest! {
+    /// Invariant: for ANY of the four ambiguous (non-NotFound,
+    /// non-success) `github_client::Error` kinds the mock can produce,
+    /// combined with ANY non-empty owner/name pair, the gate must fail
+    /// closed (never `Ok(())`). This generalises the fixed-case tests above
+    /// across the full owner/name input space.
+    #[test]
+    fn prop_ensure_repository_does_not_exist_always_fails_closed_on_ambiguous_error(
+        owner in "[a-zA-Z0-9][a-zA-Z0-9-]{0,30}",
+        name in "[a-zA-Z0-9][a-zA-Z0-9._-]{0,30}",
+        kind_index in 0u8..4,
+    ) {
+        let kind = match kind_index {
+            0 => MockGetRepositoryErrorKind::ApiError,
+            1 => MockGetRepositoryErrorKind::AuthError,
+            2 => MockGetRepositoryErrorKind::RateLimitExceeded,
+            _ => MockGetRepositoryErrorKind::InvalidResponse,
+        };
+        let client = ConfigurableMockRepoClient::new(
+            MockRepoClientConfig::repository_check_ambiguous_error(kind, new_call_log()),
+        );
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(ensure_repository_does_not_exist(&client, &owner, &name));
+
+        proptest::prop_assert!(
+            matches!(result, Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))),
+            "expected fail-closed GitHubError::NetworkError for owner={owner:?} name={name:?}, got {result:?}"
+        );
+    }
+
+    /// Invariant: whenever the repository exists, the produced
+    /// `RepositoryError::AlreadyExists{org,name}` always echoes back
+    /// EXACTLY the owner/name supplied by the caller -- across the full
+    /// generated input space, not just the fixed examples above. Kills any
+    /// hardcoded-literal or off-by-one (e.g. swapped org/name) stub.
+    #[test]
+    fn prop_ensure_repository_does_not_exist_already_exists_error_echoes_inputs_exactly(
+        owner in "[a-zA-Z0-9][a-zA-Z0-9-]{0,30}",
+        name in "[a-zA-Z0-9][a-zA-Z0-9._-]{0,30}",
+    ) {
+        let client = ConfigurableMockRepoClient::new(
+            MockRepoClientConfig::repository_exists(new_call_log()),
+        );
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(ensure_repository_does_not_exist(&client, &owner, &name));
+
+        match result {
+            Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { org, name: got_name })) => {
+                proptest::prop_assert_eq!(org, owner);
+                proptest::prop_assert_eq!(got_name, name);
+            }
+            other => proptest::prop_assert!(false, "expected AlreadyExists, got {other:?}"),
+        }
+    }
+
+    /// Invariant: the existence check never makes more than the single
+    /// `get_repository` call, regardless of which outcome is configured or
+    /// what owner/name is used -- i.e. it is read-only no matter the result.
+    #[test]
+    fn prop_ensure_repository_does_not_exist_is_always_read_only(
+        owner in "[a-zA-Z0-9][a-zA-Z0-9-]{0,30}",
+        name in "[a-zA-Z0-9][a-zA-Z0-9._-]{0,30}",
+        outcome_index in 0u8..3,
+    ) {
+        let log = new_call_log();
+        let config = match outcome_index {
+            0 => MockRepoClientConfig::repository_exists(log.clone()),
+            1 => MockRepoClientConfig::repository_not_found(log.clone()),
+            _ => MockRepoClientConfig::repository_check_ambiguous_error(
+                MockGetRepositoryErrorKind::ApiError,
+                log.clone(),
+            ),
+        };
+        let client = ConfigurableMockRepoClient::new(config);
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _ = rt.block_on(ensure_repository_does_not_exist(&client, &owner, &name));
+
+        proptest::prop_assert_eq!(&*log.lock().unwrap(), &["get_repository"]);
+    }
 }

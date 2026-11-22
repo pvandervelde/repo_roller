@@ -29,6 +29,15 @@ impl GitHubMockServer {
         self.server.uri()
     }
 
+    /// Exposes the underlying [`wiremock::MockServer`] so callers (notably
+    /// tests in `crates/integration_tests/tests/`) can mount additional
+    /// one-off mocks -- e.g. an `.expect(0)` assertion proving a mutating
+    /// endpoint was never called -- without `GitHubMockServer` needing a
+    /// dedicated helper for every such assertion.
+    pub fn mock_server(&self) -> &MockServer {
+        &self.server
+    }
+
     /// Mock a rate limit exceeded response.
     pub async fn mock_rate_limit_exceeded(&self) {
         Mock::given(method("GET"))
@@ -43,6 +52,35 @@ impl GitHubMockServer {
                     .insert_header("X-RateLimit-Remaining", "0")
                     .insert_header("X-RateLimit-Reset", "1640000000"),
             )
+            .mount(&self.server)
+            .await;
+    }
+
+    /// Mock a repository that already exists (200 OK on `GET
+    /// /repos/{owner}/{repo}`).
+    ///
+    /// Added for task #282 (GitHub issue #282): repo-roller's authoritative
+    /// pre-creation existence check (`RepositoryClient::get_repository`)
+    /// must be able to observe "this repository already exists" via a
+    /// network-free mock, the mirror image of
+    /// [`Self::mock_repository_not_found`].
+    pub async fn mock_repository_exists(&self, owner: &str, repo: &str) {
+        Mock::given(method("GET"))
+            .and(path(format!("/repos/{}/{}", owner, repo)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": 555000111,
+                "node_id": "MDEwOlJlcG9zaXRvcnk1NTUwMDAxMTE=",
+                "name": repo,
+                "full_name": format!("{}/{}", owner, repo),
+                "private": false,
+                "owner": {
+                    "login": owner,
+                    "id": 987654321,
+                    "type": "Organization"
+                },
+                "html_url": format!("https://github.com/{}/{}", owner, repo),
+                "default_branch": "main"
+            })))
             .mount(&self.server)
             .await;
     }
@@ -310,6 +348,54 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn test_mock_repository_exists() {
+        let server = GitHubMockServer::new().await.unwrap();
+        server
+            .mock_repository_exists("test-org", "test-repo")
+            .await;
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("{}/repos/test-org/test-repo", server.uri()))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["full_name"], "test-org/test-repo");
+    }
+
+    /// Stub-killing: `mock_repository_exists` and `mock_repository_not_found`
+    /// must register distinct responses, not the same one -- a lazy
+    /// implementation that copy-pasted one into the other would fail
+    /// whichever assertion (200 vs 404) doesn't match its hardcoded status.
+    #[tokio::test]
+    async fn test_mock_repository_exists_and_not_found_are_distinct_for_different_repos() {
+        let server = GitHubMockServer::new().await.unwrap();
+        server.mock_repository_exists("test-org", "existing-repo").await;
+        server
+            .mock_repository_not_found("test-org", "missing-repo")
+            .await;
+
+        let client = reqwest::Client::new();
+
+        let existing = client
+            .get(format!("{}/repos/test-org/existing-repo", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(existing.status(), 200);
+
+        let missing = client
+            .get(format!("{}/repos/test-org/missing-repo", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), 404);
     }
 
     #[tokio::test]

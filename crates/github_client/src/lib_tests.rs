@@ -3394,3 +3394,287 @@ async fn test_set_actions_access_level_sends_configured_value_in_request_body() 
     assert!(result.is_ok(), "got: {result:?}");
     mock_server.verify().await;
 }
+
+// ============================================================================
+// create_org_repository 422 "already exists" Detection Tests (RED: task #282
+// / GitHub issue #282 -- the race-condition corollary requires GitHub's own
+// "name already exists" 422 response to be distinguished from every other
+// create_org_repository failure, mirroring the existing
+// `is_label_already_exists_error` detection heuristic (~line 4289) but
+// applied to the repository-creation response.)
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_org_repository_already_exists_422_with_already_exists_wording_maps_to_already_exists_error(
+) {
+    let mock_server = MockServer::start().await;
+    let org_name = "test-org";
+    let payload = RepositoryCreatePayload {
+        name: "taken-repo".to_string(),
+        ..Default::default()
+    };
+
+    Mock::given(method("POST"))
+        .and(path(format!("/orgs/{org_name}/repos")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Repository creation failed.",
+            "errors": [
+                {
+                    "resource": "Repository",
+                    "code": "custom",
+                    "field": "name",
+                    "message": "name already exists on this account"
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.create_org_repository(org_name, &payload).await;
+
+    assert!(
+        matches!(result, Err(Error::AlreadyExists)),
+        "expected Error::AlreadyExists for a 422 'already exists' response, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// GitHub's validation-error wording sometimes uses the underscored form
+/// `already_exists` rather than the spaced `already exists`; the detection
+/// heuristic (mirroring `is_label_already_exists_error`) must recognise both.
+#[tokio::test]
+async fn test_create_org_repository_already_exists_422_with_underscored_wording_maps_to_already_exists_error(
+) {
+    let mock_server = MockServer::start().await;
+    let org_name = "test-org";
+    let payload = RepositoryCreatePayload {
+        name: "taken-repo".to_string(),
+        ..Default::default()
+    };
+
+    Mock::given(method("POST"))
+        .and(path(format!("/orgs/{org_name}/repos")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Validation Failed: name already_exists for this organization"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.create_org_repository(org_name, &payload).await;
+
+    assert!(
+        matches!(result, Err(Error::AlreadyExists)),
+        "expected Error::AlreadyExists for the underscored wording, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// Adversarial / stub-killing: a 422 response that does NOT mention
+/// "already exists" at all (e.g. an unrelated validation failure) must NOT
+/// be misclassified as `Error::AlreadyExists` -- an over-broad detection
+/// heuristic (e.g. "any 422 is AlreadyExists") would wrongly turn unrelated
+/// naming-rule or quota failures into false "repository already exists"
+/// responses.
+#[tokio::test]
+async fn test_create_org_repository_422_without_already_exists_wording_does_not_map_to_already_exists_error(
+) {
+    let mock_server = MockServer::start().await;
+    let org_name = "test-org";
+    let payload = RepositoryCreatePayload {
+        name: "bad name with spaces".to_string(),
+        ..Default::default()
+    };
+
+    Mock::given(method("POST"))
+        .and(path(format!("/orgs/{org_name}/repos")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Validation Failed",
+            "errors": [
+                {
+                    "resource": "Repository",
+                    "code": "custom",
+                    "field": "name",
+                    "message": "name can only contain alphanumeric characters, hyphens, and underscores"
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.create_org_repository(org_name, &payload).await;
+
+    assert!(
+        result.is_err(),
+        "an invalid-name 422 must still be an error, got {:?}",
+        result.as_ref().err()
+    );
+    assert!(
+        !matches!(result, Err(Error::AlreadyExists)),
+        "an unrelated 422 validation failure must NOT be misclassified as Error::AlreadyExists, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// Regression guard: non-422 failures (e.g. 500, 403) must keep mapping to
+/// `Error::InvalidResponse` exactly as before this change -- the new 422
+/// detection branch must not widen to catch unrelated status codes.
+#[tokio::test]
+async fn test_create_org_repository_non_422_error_still_maps_to_invalid_response() {
+    let mock_server = MockServer::start().await;
+    let org_name = "test-org";
+    let payload = RepositoryCreatePayload {
+        name: "whatever-repo".to_string(),
+        ..Default::default()
+    };
+
+    Mock::given(method("POST"))
+        .and(path(format!("/orgs/{org_name}/repos")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.create_org_repository(org_name, &payload).await;
+
+    assert!(
+        matches!(result, Err(Error::InvalidResponse)),
+        "a 500 failure must map to Error::InvalidResponse, not Error::AlreadyExists, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// Regression guard: the happy path (201 Created) must be completely
+/// unaffected by the new 422-detection branch.
+#[tokio::test]
+async fn test_create_org_repository_success_still_returns_ok_after_422_detection_added() {
+    let mock_server = MockServer::start().await;
+    let org_name = "test-org";
+    let payload = RepositoryCreatePayload {
+        name: "new-repo".to_string(),
+        ..Default::default()
+    };
+
+    Mock::given(method("POST"))
+        .and(path(format!("/orgs/{org_name}/repos")))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "id": 42,
+            "name": payload.name,
+            "node_id": "MDEwOlJlcG9zaXRvcnk0Mg==",
+            "full_name": format!("{org_name}/{}", payload.name),
+            "private": false
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client.create_org_repository(org_name, &payload).await;
+
+    assert!(
+        result.is_ok(),
+        "expected success, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+// ============================================================================
+// RepositoryClient::get_repository Trait-Level Contract Tests (RED: task #282
+// -- `get_repository` is a NEW `RepositoryClient` trait method that must
+// delegate to `GitHubClient`'s existing inherent method of the same name,
+// now reachable through `&dyn RepositoryClient`.)
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_repository_trait_method_returns_repository_when_it_exists() {
+    let mock_server = MockServer::start().await;
+    let owner = "trait-owner";
+    let repo = "trait-repo";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 1,
+            "name": repo,
+            "full_name": format!("{owner}/{repo}"),
+            "node_id": "MDEwOlJlcG9zaXRvcnkx",
+            "private": false
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let as_trait: &dyn RepositoryClient = &client;
+
+    let result = as_trait.get_repository(owner, repo).await;
+
+    assert!(
+        result.is_ok(),
+        "expected Ok(repo) via the trait method, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+#[tokio::test]
+async fn test_get_repository_trait_method_returns_not_found_for_404() {
+    let mock_server = MockServer::start().await;
+    let owner = "trait-owner";
+    let repo = "missing-repo";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let as_trait: &dyn RepositoryClient = &client;
+
+    let result = as_trait.get_repository(owner, repo).await;
+
+    assert!(
+        matches!(result, Err(Error::NotFound)),
+        "expected Error::NotFound for a 404 via the trait method, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// Stub-killing: a trait-method shim that unconditionally returns `NotFound`
+/// (ignoring the actual response) would pass the 404 test above but fail
+/// this one, since the mocked response here is a non-404 failure.
+#[tokio::test]
+async fn test_get_repository_trait_method_distinguishes_non_404_failures_from_not_found() {
+    let mock_server = MockServer::start().await;
+    let owner = "trait-owner";
+    let repo = "errored-repo";
+
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{owner}/{repo}")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+    let as_trait: &dyn RepositoryClient = &client;
+
+    let result = as_trait.get_repository(owner, repo).await;
+
+    assert!(
+        !matches!(result, Err(Error::NotFound)),
+        "a non-404 failure must not be reported as Error::NotFound, got {:?}",
+        result.as_ref().err()
+    );
+    assert!(result.is_err());
+}
