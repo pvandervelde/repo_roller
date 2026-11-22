@@ -51,7 +51,7 @@ pub struct Organization {
 /// println!("Is private: {}", repo.is_private());
 /// println!("Clone URL: {}", repo.url());
 /// ```
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Repository {
     /// The full name of the repository (owner/name)
     full_name: String,

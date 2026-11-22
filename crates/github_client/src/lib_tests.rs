@@ -3570,7 +3570,8 @@ async fn test_create_org_repository_success_still_returns_ok_after_422_detection
             "name": payload.name,
             "node_id": "MDEwOlJlcG9zaXRvcnk0Mg==",
             "full_name": format!("{org_name}/{}", payload.name),
-            "private": false
+            "private": false,
+            "url": format!("https://api.github.com/repos/{org_name}/{}", payload.name)
         })))
         .mount(&mock_server)
         .await;
@@ -3606,7 +3607,8 @@ async fn test_get_repository_trait_method_returns_repository_when_it_exists() {
             "name": repo,
             "full_name": format!("{owner}/{repo}"),
             "node_id": "MDEwOlJlcG9zaXRvcnkx",
-            "private": false
+            "private": false,
+            "url": format!("https://api.github.com/repos/{owner}/{repo}")
         })))
         .mount(&mock_server)
         .await;

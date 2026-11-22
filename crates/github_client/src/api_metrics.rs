@@ -27,7 +27,8 @@
 // (which may embed upstream GitHub API response fragments).
 
 /// Bounded set of status categories usable as a Prometheus label value.
-pub const KNOWN_STATUS_CATEGORIES: [&str; 8] = [
+pub const KNOWN_STATUS_CATEGORIES: [&str; 9] = [
+    "already_exists",
     "api_error",
     "auth_error",
     "deserialization",
@@ -65,6 +66,7 @@ const UNSEEDED_SENTINEL: &str = "\u{10FFFF}";
 /// silently falling through to a catch-all.
 pub fn status_category(err: &crate::errors::Error) -> &'static str {
     match err {
+        crate::errors::Error::AlreadyExists => "already_exists",
         crate::errors::Error::ApiError() => "api_error",
         crate::errors::Error::AuthError(_) => "auth_error",
         crate::errors::Error::Deserialization(_) => "deserialization",

@@ -30,6 +30,18 @@ mod tests;
 /// ```
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A repository (or other named resource) with the requested name already
+    /// exists.
+    ///
+    /// This error occurs when `create_org_repository` detects GitHub's own
+    /// "name already exists" 422 response. It is distinct from the generic
+    /// [`Error::InvalidResponse`], which every other `create_org_repository`
+    /// failure maps to, so callers can specifically handle the race-condition
+    /// case where a repository was created by someone else between an
+    /// existence check and the create call.
+    #[error("Repository already exists")]
+    AlreadyExists,
+
     /// A generic API request failure.
     ///
     /// This error occurs when a GitHub API request fails for unspecified reasons.
