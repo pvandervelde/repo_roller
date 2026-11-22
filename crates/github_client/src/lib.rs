@@ -4342,11 +4342,13 @@ fn contains_already_exists_phrase(text: &str) -> bool {
 /// Checks if an octocrab error indicates that `create_org_repository`'s
 /// target repository name already exists (HTTP 422 Unprocessable Entity).
 ///
-/// Mirrors [`is_label_already_exists_error`]'s detection heuristic, but
-/// additionally inspects the structured `errors` array GitHub often nests
-/// the actual "name already exists" message inside (the top-level
-/// `message` field is frequently just a generic "Repository creation
-/// failed." in that case).
+/// Shares its message-matching with [`is_label_already_exists_error`] via
+/// [`contains_already_exists_phrase`], but additionally inspects the
+/// structured `errors` array GitHub often nests the actual "name already
+/// exists" message inside (the top-level `message` field is frequently just
+/// a generic "Repository creation failed." in that case) -- a check the
+/// label variant doesn't need, since label-creation errors always surface
+/// "already exists" in `message` directly.
 fn is_repository_already_exists_error(e: &octocrab::Error) -> bool {
     match e {
         octocrab::Error::GitHub { source, .. } => {
@@ -4358,10 +4360,11 @@ fn is_repository_already_exists_error(e: &octocrab::Error) -> bool {
                 return true;
             }
 
-            source
-                .errors
-                .as_ref()
-                .is_some_and(|errors| errors.iter().any(|e| contains_already_exists_phrase(&e.to_string())))
+            source.errors.as_ref().is_some_and(|errors| {
+                errors
+                    .iter()
+                    .any(|e| contains_already_exists_phrase(&e.to_string()))
+            })
         }
         _ => false,
     }
@@ -4374,11 +4377,10 @@ fn is_label_already_exists_error(e: &octocrab::Error) -> bool {
             // GitHub returns 422 Unprocessable Entity when a label with the same name already exists
             // Check both status code and error message
             let is_422 = source.status_code == http::StatusCode::UNPROCESSABLE_ENTITY;
-            let msg_lower = source.message.to_lowercase();
-            let has_already_exists =
-                msg_lower.contains("already exists") || msg_lower.contains("already_exists");
+            let has_already_exists = contains_already_exists_phrase(&source.message);
 
             // Also check for common validation error patterns from GitHub
+            let msg_lower = source.message.to_lowercase();
             let has_validation_error = msg_lower.contains("validation failed")
                 && (msg_lower.contains("label") || msg_lower.contains("name"));
 
