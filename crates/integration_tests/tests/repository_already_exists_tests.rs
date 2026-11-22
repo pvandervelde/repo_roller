@@ -209,7 +209,8 @@ async fn test_check_then_create_pattern_proceeds_to_create_when_repository_does_
             "name": "proceed-repo",
             "node_id": "MDEwOlJlcG9zaXRvcnkx",
             "full_name": "proceed-org/proceed-repo",
-            "private": false
+            "private": false,
+            "url": "https://api.github.com/repos/proceed-org/proceed-repo"
         })))
         .expect(1)
         .mount(server.mock_server())

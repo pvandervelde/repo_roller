@@ -73,11 +73,12 @@ impl GitHubMockServer {
                 "name": repo,
                 "full_name": format!("{}/{}", owner, repo),
                 "private": false,
-                "owner": {
-                    "login": owner,
-                    "id": 987654321,
-                    "type": "Organization"
-                },
+                // Deliberately omits `owner`: octocrab's `Author` model
+                // requires ~15 further mandatory fields (avatar_url,
+                // gravatar_id, html_url, followers_url, ...) when present,
+                // none of which this fixture needs to exercise the
+                // existence-check contract.
+                "url": format!("https://api.github.com/repos/{}/{}", owner, repo),
                 "html_url": format!("https://github.com/{}/{}", owner, repo),
                 "default_branch": "main"
             })))
