@@ -1818,6 +1818,191 @@ fn test_validate_creation_mode_capability_standard_mode_bypasses_allow_list_enti
 }
 
 // ============================================================================
+// FORK TARGET NAME MATCH GUARD TESTS (CRITICAL finding, remediation on top of
+// task #282)
+// ============================================================================
+//
+// GitHub's fork-creation API cannot rename a repository on creation: the
+// created fork is always named after `source.name`, never `request.name`.
+// Since `request.name` is an independently caller-supplied field, a mismatch
+// would cause the task #282 existence-check gate (`ensure_repository_does_not_exist`)
+// to check the wrong identifier, bypassing the invariant that task exists to
+// enforce. `validate_fork_target_name_matches_source` rejects such requests
+// outright, at validation time, before any GitHub API call.
+//
+// Like `validate_creation_mode_capability` above, this is a pure, synchronous
+// function that takes no client — it is exercised directly here without any
+// mock `RepositoryClient`, which also proves the "no GitHub API call before
+// rejection" property structurally (there is no client in scope to call).
+
+/// Builds a Fork-mode request with independently specified target name and
+/// owner, and source owner/name — so tests can construct matching or
+/// mismatched name pairs without the `fork_request_with_source` helper's
+/// fixed "new-repo"/"source-repo" values.
+fn fork_request_with_names(
+    request_name: &str,
+    request_owner: &str,
+    source_owner: &str,
+    source_name: &str,
+) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(request_name).unwrap(),
+        OrganizationName::new(request_owner).unwrap(),
+    )
+    .creation_mode(CreationMode::Fork {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new(source_owner).unwrap(),
+            name: RepositoryName::new(source_name).unwrap(),
+        },
+    })
+    .build()
+}
+
+fn mirror_request_with_names(
+    request_name: &str,
+    request_owner: &str,
+    source_owner: &str,
+    source_name: &str,
+    preserve_history: bool,
+) -> RepositoryCreationRequest {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new(request_name).unwrap(),
+        OrganizationName::new(request_owner).unwrap(),
+    )
+    .creation_mode(CreationMode::Mirror {
+        source: SourceRepositoryReference {
+            owner: OrganizationName::new(source_owner).unwrap(),
+            name: RepositoryName::new(source_name).unwrap(),
+        },
+        preserve_history,
+    })
+    .build()
+}
+
+#[test]
+fn test_validate_fork_target_name_matches_source_allows_fork_when_names_match() {
+    let request = fork_request_with_names("project", "test-org", "upstream-org", "project");
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    assert!(
+        result.is_ok(),
+        "expected Ok when names match, got {result:?}"
+    );
+}
+
+/// Reproduces the exact attack scenario from the security finding: caller
+/// submits `name="decoy"` while `creation_mode.source.name="project"`.
+#[test]
+fn test_validate_fork_target_name_matches_source_rejects_fork_when_names_mismatch() {
+    let request = fork_request_with_names("decoy", "test-org", "upstream-org", "project");
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
+            requested,
+            source,
+        })) => {
+            assert_eq!(requested, "decoy");
+            assert_eq!(source, "project");
+        }
+        other => panic!("expected ForkTargetNameMismatch, got {other:?}"),
+    }
+}
+
+/// Stub-killing: a completely different pair of mismatched names, disjoint
+/// from the "decoy"/"project" fixture above, must still echo the *actual*
+/// field values — rules out a hardcoded `Err` with fixed strings.
+#[test]
+fn test_validate_fork_target_name_matches_source_mismatch_echoes_different_name_pair() {
+    let request = fork_request_with_names("alpha-target", "some-org", "other-org", "beta-source");
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    match result {
+        Err(RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
+            requested,
+            source,
+        })) => {
+            assert_eq!(requested, "alpha-target");
+            assert_eq!(source, "beta-source");
+        }
+        other => panic!("expected ForkTargetNameMismatch, got {other:?}"),
+    }
+}
+
+/// Name comparison must be exact (case-sensitive): `RepositoryName` preserves
+/// case and does not normalize, so differing case counts as a mismatch —
+/// rules out an implementation that lowercases before comparing.
+#[test]
+fn test_validate_fork_target_name_matches_source_rejects_case_only_difference() {
+    let request = fork_request_with_names("Project", "test-org", "upstream-org", "project");
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::Configuration(
+                ConfigurationError::ForkTargetNameMismatch { .. }
+            ))
+        ),
+        "a case-only difference must still be rejected as a mismatch, got {result:?}"
+    );
+}
+
+/// Regression guard: `CreationMode::Standard` has no `source` at all and
+/// must bypass this guard entirely (there is nothing to compare against).
+#[test]
+fn test_validate_fork_target_name_matches_source_standard_mode_is_always_ok() {
+    let request = RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("whatever-name").unwrap(),
+        OrganizationName::new("test-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+    .build();
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    assert!(
+        result.is_ok(),
+        "Standard mode must bypass the fork-name-match guard entirely: {result:?}"
+    );
+}
+
+/// Mirror modes legitimately create an independently-named repository (this
+/// guard is Fork-only, since only Fork's creation API lacks a rename
+/// parameter) — a history-preserving mirror with mismatched names must still
+/// pass.
+#[test]
+fn test_validate_fork_target_name_matches_source_history_mirror_mode_is_always_ok_even_when_mismatched(
+) {
+    let request = mirror_request_with_names("decoy", "test-org", "upstream-org", "project", true);
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    assert!(
+        result.is_ok(),
+        "Mirror{{preserve_history: true}} must bypass this Fork-only guard: {result:?}"
+    );
+}
+
+/// Symmetric case for the source-only mirror mode.
+#[test]
+fn test_validate_fork_target_name_matches_source_source_only_mirror_mode_is_always_ok_even_when_mismatched(
+) {
+    let request = mirror_request_with_names("decoy", "test-org", "upstream-org", "project", false);
+
+    let result = validate_fork_target_name_matches_source(&request);
+
+    assert!(
+        result.is_ok(),
+        "Mirror{{preserve_history: false}} must bypass this Fork-only guard: {result:?}"
+    );
+}
+
+// ============================================================================
 // Fork/Mirror Dispatch Function Tests
 // ============================================================================
 //

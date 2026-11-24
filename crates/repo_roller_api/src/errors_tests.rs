@@ -328,3 +328,88 @@ fn test_system_error_filesystem_returns_500() {
     let response = api_error.into_response();
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
+
+// ============================================================================
+// ConfigurationError::ForkTargetNameMismatch conversion tests
+//
+// Remediates a CRITICAL security finding on top of task #282: GitHub's
+// fork-creation API cannot rename a repository, so a `CreationMode::Fork`
+// request whose `request.name` differs from `source.name` would cause the
+// task #282 existence-check gate to check the wrong identifier. This is a
+// client input error (same status class as `TemplateNotDesignated`), not an
+// authorization or not-found error, so it maps to 400 Bad Request.
+// ============================================================================
+
+#[test]
+fn test_configuration_error_fork_target_name_mismatch_maps_to_bad_request() {
+    use config_manager::ConfigurationError;
+    let error = ConfigurationError::ForkTargetNameMismatch {
+        requested: "decoy".to_string(),
+        source: "project".to_string(),
+    };
+    let (status, response) = convert_configuration_error(&error);
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(response.error.code, "ForkTargetNameMismatch");
+}
+
+#[test]
+fn test_configuration_error_fork_target_name_mismatch_message_contains_both_names() {
+    use config_manager::ConfigurationError;
+    let error = ConfigurationError::ForkTargetNameMismatch {
+        requested: "decoy".to_string(),
+        source: "project".to_string(),
+    };
+    let (_, response) = convert_configuration_error(&error);
+
+    assert!(
+        response.error.message.contains("decoy"),
+        "message should contain the requested name, got: {}",
+        response.error.message
+    );
+    assert!(
+        response.error.message.contains("project"),
+        "message should contain the source name, got: {}",
+        response.error.message
+    );
+}
+
+/// Stub-killing: a *different* pair of names must surface those exact names
+/// in the message — rules out a hardcoded/templated message that always
+/// embeds "decoy"/"project" regardless of the error's actual field values.
+#[test]
+fn test_configuration_error_fork_target_name_mismatch_message_reflects_actual_field_values() {
+    use config_manager::ConfigurationError;
+    let error = ConfigurationError::ForkTargetNameMismatch {
+        requested: "alpha-target".to_string(),
+        source: "beta-source".to_string(),
+    };
+    let (_, response) = convert_configuration_error(&error);
+
+    assert!(
+        response.error.message.contains("alpha-target"),
+        "got: {}",
+        response.error.message
+    );
+    assert!(
+        response.error.message.contains("beta-source"),
+        "got: {}",
+        response.error.message
+    );
+}
+
+/// End-to-end path through `RepoRollerError` -> `ApiError` -> HTTP response,
+/// mirroring `test_configuration_error_invalid_returns_400` above, proving
+/// the new variant is reachable through the full conversion chain the API
+/// handlers actually use (not just the inner `convert_configuration_error`).
+#[test]
+fn test_reporoller_error_configuration_fork_target_name_mismatch_returns_400() {
+    use config_manager::ConfigurationError;
+    let error = RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
+        requested: "decoy".to_string(),
+        source: "project".to_string(),
+    });
+    let api_error = ApiError::from(error);
+    let response = api_error.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}

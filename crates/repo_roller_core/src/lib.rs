@@ -332,6 +332,13 @@ mod tests;
 #[path = "lib_span_tests.rs"]
 mod span_tests;
 
+// Property-based tests for `validate_fork_target_name_matches_source`
+// (CRITICAL finding remediation on top of task #282). See
+// fork_target_name_proptests.rs module docs for scope.
+#[cfg(test)]
+#[path = "fork_target_name_proptests.rs"]
+mod fork_target_name_proptests;
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /// GitHub clients created during the authentication step.
