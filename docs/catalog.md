@@ -248,6 +248,13 @@ Add to this whenever a reusable component becomes "the standard way".
   Pattern: `validate_creation_mode_capability` (capability + designation gate,
   RCF-005/RCF-006) runs once, before the dispatch, for every non-`Standard`
   mode — before any GitHub-mutating call. Immediately after it,
+  `validate_fork_target_name_matches_source` (CRITICAL finding remediation on
+  top of task #282) rejects any `CreationMode::Fork` request whose
+  `request.name` differs from `source.name` — GitHub's fork-creation API
+  cannot rename a repository on creation, so an unmatched name would
+  otherwise cause the next gate to validate the wrong identifier; it is a
+  no-op for `Standard` and both `Mirror` variants, which legitimately create
+  an independently-named repository. Immediately after that,
   `ensure_repository_does_not_exist(&*clients.installation_repo_client,
   owner, name)` (task #282) runs unconditionally for every `CreationMode` —
   this is the established placement for a "pre-dispatch invariant gate": a

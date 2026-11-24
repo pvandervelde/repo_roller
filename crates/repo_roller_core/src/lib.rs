@@ -1683,14 +1683,12 @@ fn validate_fork_target_name_matches_source(
     request: &RepositoryCreationRequest,
 ) -> RepoRollerResult<()> {
     match &request.creation_mode {
-        CreationMode::Fork { source } if source.name.as_ref() != request.name.as_ref() => {
-            Err(RepoRollerError::Configuration(
-                ConfigurationError::ForkTargetNameMismatch {
-                    requested: request.name.to_string(),
-                    source: source.name.to_string(),
-                },
-            ))
-        }
+        CreationMode::Fork { source } if source.name.as_ref() != request.name.as_ref() => Err(
+            RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
+                requested: request.name.to_string(),
+                source: source.name.to_string(),
+            }),
+        ),
         _ => Ok(()),
     }
 }
