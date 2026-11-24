@@ -1429,6 +1429,13 @@ async fn create_repository_inner(
     // run with the information it needs.
     validate_creation_mode_capability(&request, &merged_config, template.as_ref())?;
 
+    // Step 4c-ii: Fork target-name match gate (CRITICAL finding remediation
+    // on top of task #282). GitHub's fork-creation API cannot rename a
+    // repository on creation, so this must run before the existence-check
+    // gate below, which otherwise would validate the wrong identifier for a
+    // mismatched Fork request.
+    validate_fork_target_name_matches_source(&request)?;
+
     // Step 4d: Authoritative existence-check gate (task #282). Must run once,
     // before dispatch, before any repository-mutating GitHub API call, for
     // every `CreationMode` -- mirroring exactly how
@@ -1648,6 +1655,44 @@ fn validate_creation_mode_capability(
     }
 
     Ok(())
+}
+
+/// Rejects `CreationMode::Fork` requests whose `request.name` does not
+/// match `source.name`.
+///
+/// GitHub's fork-creation API cannot rename a repository on creation: the
+/// created fork is always named after `source.name`, never `request.name`.
+/// Since `request.name` is an independently caller-supplied field, a
+/// mismatch here would cause the authoritative existence-check gate (task
+/// #282, `ensure_repository_does_not_exist`) to check the wrong identifier,
+/// bypassing the invariant that gate exists to enforce. This function
+/// rejects such requests outright, at validation time, before any GitHub
+/// API call.
+///
+/// Returns `Ok(())` for `CreationMode::Standard` and both
+/// `CreationMode::Mirror` variants, which legitimately create an
+/// independently-named repository and are unaffected by this guard.
+///
+/// # Errors
+///
+/// - `RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch)`
+///   when `request.creation_mode` is `CreationMode::Fork` and
+///   `request.name` does not exactly (case-sensitively) match
+///   `source.name`.
+fn validate_fork_target_name_matches_source(
+    request: &RepositoryCreationRequest,
+) -> RepoRollerResult<()> {
+    match &request.creation_mode {
+        CreationMode::Fork { source } if source.name.as_ref() != request.name.as_ref() => {
+            Err(RepoRollerError::Configuration(
+                ConfigurationError::ForkTargetNameMismatch {
+                    requested: request.name.to_string(),
+                    source: source.name.to_string(),
+                },
+            ))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Builds the `https://github.com/{owner}/{name}.git` clone URL for a

@@ -586,6 +586,15 @@ fn convert_configuration_error(
                 owner, capability
             ),
         ),
+        ConfigurationError::ForkTargetNameMismatch { requested, source } => (
+            StatusCode::BAD_REQUEST,
+            "ForkTargetNameMismatch",
+            format!(
+                "Requested repository name '{}' does not match source repository name '{}'; \
+                 fork creation cannot rename the repository",
+                requested, source
+            ),
+        ),
     };
 
     (
