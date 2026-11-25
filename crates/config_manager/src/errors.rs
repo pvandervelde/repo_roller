@@ -151,20 +151,12 @@ pub enum ConfigurationError {
     /// gate (task #282) to check the wrong identifier. Returned at
     /// validation time, before any GitHub API call.
     ///
-    /// Note: the second field is declared as the raw identifier `r#source`
-    /// to opt out of `thiserror`'s name-based auto-detection of a field
-    /// literally named `source` as the `Error::source()` chain (which would
-    /// otherwise require `String` to implement `std::error::Error`). This
-    /// is purely a declaration-site escape: `r#source` and `source` name
-    /// the exact same field, so every other use site (construction, pattern
-    /// matching, including in the already-committed tests) refers to it as
-    /// plain `source`.
-    #[error("Fork target name '{requested}' does not match source repository name '{source}'; GitHub cannot rename a repository on fork creation")]
+    #[error("Fork target name '{requested}' does not match source repository name '{source_name}'; GitHub cannot rename a repository on fork creation")]
     ForkTargetNameMismatch {
         /// The `request.name` the caller supplied.
         requested: String,
         /// The actual `source.name` the fork will be created under.
-        r#source: String,
+        source_name: String,
     },
 }
 

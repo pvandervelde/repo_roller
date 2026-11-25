@@ -345,7 +345,7 @@ fn test_configuration_error_fork_target_name_mismatch_maps_to_bad_request() {
     use config_manager::ConfigurationError;
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let (status, response) = convert_configuration_error(&error);
 
@@ -358,7 +358,7 @@ fn test_configuration_error_fork_target_name_mismatch_message_contains_both_name
     use config_manager::ConfigurationError;
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let (_, response) = convert_configuration_error(&error);
 
@@ -382,7 +382,7 @@ fn test_configuration_error_fork_target_name_mismatch_message_reflects_actual_fi
     use config_manager::ConfigurationError;
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "alpha-target".to_string(),
-        source: "beta-source".to_string(),
+        source_name: "beta-source".to_string(),
     };
     let (_, response) = convert_configuration_error(&error);
 
@@ -407,7 +407,7 @@ fn test_reporoller_error_configuration_fork_target_name_mismatch_returns_400() {
     use config_manager::ConfigurationError;
     let error = RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     });
     let api_error = ApiError::from(error);
     let response = api_error.into_response();

@@ -66,10 +66,10 @@ proptest! {
             match result {
                 Err(RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
                     requested,
-                    source,
+                    source_name,
                 })) => {
                     prop_assert_eq!(requested, request_name_str.clone());
-                    prop_assert_eq!(source, source_name_str.clone());
+                    prop_assert_eq!(source_name, source_name_str.clone());
                 }
                 other => prop_assert!(
                     false,

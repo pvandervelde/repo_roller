@@ -1360,8 +1360,14 @@ fn find_attribute(attributes: &[(&'static str, String)], key: &str) -> Option<St
 ///   would defeat the entire guarantee this gate exists to provide).
 ///
 /// Returns `Ok(())` only when `client.get_repository` reports
-/// `Err(github_client::Error::NotFound)`, i.e. the repository definitively
-/// does not exist.
+/// `Err(github_client::Error::NotFound)` — which means either the repository
+/// does not exist, or it exists but is not visible to this installation
+/// token (e.g. a private repository the GitHub App has no access to; GitHub
+/// returns 404 for both cases indistinguishably). In the latter case this
+/// gate cannot block creation on its own: GitHub's own name-collision 422 on
+/// the subsequent create call is the backstop that prevents mutation (see
+/// the `github_client::Error::AlreadyExists` race-condition mapping in
+/// `create_github_repository`/`create_fork_repository`), not this check.
 async fn ensure_repository_does_not_exist(
     client: &dyn RepositoryClient,
     owner: &str,
@@ -1679,6 +1685,14 @@ fn validate_creation_mode_capability(
 ///   when `request.creation_mode` is `CreationMode::Fork` and
 ///   `request.name` does not exactly (case-sensitively) match
 ///   `source.name`.
+///
+/// The comparison is deliberately case-SENSITIVE even though GitHub
+/// repository-name uniqueness is case-insensitive in practice (e.g. `Foo`
+/// and `foo` collide on GitHub). This is the stricter, fail-safe direction —
+/// it rejects a few more requests than GitHub itself would need to reject —
+/// rather than the lenient direction, which would additionally require the
+/// existence check to key on `source.name` (the identifier GitHub actually
+/// assigns the fork) rather than the caller's `request.name`.
 fn validate_fork_target_name_matches_source(
     request: &RepositoryCreationRequest,
 ) -> RepoRollerResult<()> {
@@ -1686,7 +1700,7 @@ fn validate_fork_target_name_matches_source(
         CreationMode::Fork { source } if source.name.as_ref() != request.name.as_ref() => Err(
             RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
                 requested: request.name.to_string(),
-                source: source.name.to_string(),
+                source_name: source.name.to_string(),
             }),
         ),
         _ => Ok(()),

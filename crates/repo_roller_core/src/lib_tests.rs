@@ -1949,10 +1949,10 @@ fn test_validate_fork_target_name_matches_source_rejects_fork_when_names_mismatc
     match result {
         Err(RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
             requested,
-            source,
+            source_name,
         })) => {
             assert_eq!(requested, "decoy");
-            assert_eq!(source, "project");
+            assert_eq!(source_name, "project");
         }
         other => panic!("expected ForkTargetNameMismatch, got {other:?}"),
     }
@@ -1970,10 +1970,10 @@ fn test_validate_fork_target_name_matches_source_mismatch_echoes_different_name_
     match result {
         Err(RepoRollerError::Configuration(ConfigurationError::ForkTargetNameMismatch {
             requested,
-            source,
+            source_name,
         })) => {
             assert_eq!(requested, "alpha-target");
-            assert_eq!(source, "beta-source");
+            assert_eq!(source_name, "beta-source");
         }
         other => panic!("expected ForkTargetNameMismatch, got {other:?}"),
     }

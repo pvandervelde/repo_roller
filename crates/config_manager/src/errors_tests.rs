@@ -253,7 +253,7 @@ fn test_template_not_designated_message_does_not_leak_internal_structure() {
 fn test_fork_target_name_mismatch_display_names_requested_name() {
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let message = error.to_string();
     assert!(
@@ -266,7 +266,7 @@ fn test_fork_target_name_mismatch_display_names_requested_name() {
 fn test_fork_target_name_mismatch_display_names_source_name() {
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let message = error.to_string();
     assert!(
@@ -282,7 +282,7 @@ fn test_fork_target_name_mismatch_display_names_source_name() {
 fn test_fork_target_name_mismatch_display_reflects_actual_field_values_not_hardcoded() {
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "alpha-target".to_string(),
-        source: "beta-source".to_string(),
+        source_name: "beta-source".to_string(),
     };
     let message = error.to_string();
     assert!(message.contains("alpha-target"), "got: {message}");
@@ -304,11 +304,11 @@ fn test_fork_target_name_mismatch_display_reflects_actual_field_values_not_hardc
 fn test_fork_target_name_mismatch_errors_for_different_requested_are_not_equal() {
     let decoy = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let other = ConfigurationError::ForkTargetNameMismatch {
         requested: "other-decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     assert_ne!(decoy, other);
 }
@@ -319,11 +319,11 @@ fn test_fork_target_name_mismatch_errors_for_different_requested_are_not_equal()
 fn test_fork_target_name_mismatch_errors_for_different_source_are_not_equal() {
     let decoy = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let other = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "other-project".to_string(),
+        source_name: "other-project".to_string(),
     };
     assert_ne!(decoy, other);
 }
@@ -332,7 +332,7 @@ fn test_fork_target_name_mismatch_errors_for_different_source_are_not_equal() {
 fn test_fork_target_name_mismatch_is_cloneable() {
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let cloned = error.clone();
     assert_eq!(error, cloned);
@@ -345,7 +345,7 @@ fn test_fork_target_name_mismatch_is_cloneable() {
 fn test_fork_target_name_mismatch_display_is_distinct_from_sibling_variants() {
     let mismatch = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     }
     .to_string();
     let capability_disabled = ConfigurationError::CapabilityDisabled {
@@ -368,7 +368,7 @@ fn test_fork_target_name_mismatch_display_is_distinct_from_sibling_variants() {
 fn test_fork_target_name_mismatch_message_does_not_leak_internal_structure() {
     let error = ConfigurationError::ForkTargetNameMismatch {
         requested: "decoy".to_string(),
-        source: "project".to_string(),
+        source_name: "project".to_string(),
     };
     let message = error.to_string();
     for forbidden in ["override_allowed", "OverridableValue", "token", "secret"] {
