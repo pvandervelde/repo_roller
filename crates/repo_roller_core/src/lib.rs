@@ -1818,6 +1818,24 @@ async fn create_fork_repository(
         )
         .await
         .map_err(|e| {
+            if matches!(e, github_client::Error::AlreadyExists) {
+                // Race-condition corollary (task #282 follow-up): the
+                // pre-creation existence check passed, but a repository
+                // with this name was created by someone else before this
+                // fork call reached GitHub. Map to the same domain error
+                // the Standard/Mirror path (`create_github_repository`)
+                // already produces for this exact race, so callers see one
+                // consistent "already exists" outcome regardless of
+                // creation mode.
+                warn!(
+                    "Fork creation raced with a concurrent create: {}",
+                    e
+                );
+                return RepoRollerError::Repository(RepositoryError::AlreadyExists {
+                    org: request.owner.to_string(),
+                    name: request.name.to_string(),
+                });
+            }
             error!("Failed to create fork: {}", e);
             RepoRollerError::GitHub(GitHubError::NetworkError {
                 reason: format!("Failed to create fork: {}", e),

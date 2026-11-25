@@ -2977,6 +2977,10 @@ impl RepositoryClient for GitHubClient {
         match response {
             Ok(r) => Ok(r),
             Err(e) => {
+                if is_repository_already_exists_error(&e) {
+                    log_octocrab_error("Repository already exists for fork target", e);
+                    return Err(Error::AlreadyExists);
+                }
                 log_octocrab_error("Failed to create fork", e);
                 Err(Error::InvalidResponse)
             }

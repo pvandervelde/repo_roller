@@ -541,15 +541,18 @@ impl RepositoryClient for ConfigurableMockRepoClient {
         target_owner: Option<&str>,
     ) -> Result<github_client::Repository, GitHubError> {
         self.track("create_fork");
-        // Not exercised by the existing create_repository test suite - return a
-        // minimal success value so the mock satisfies the widened trait.
-        let owner = target_owner.unwrap_or("mock-owner");
-        Ok(github_client::Repository::new(
-            source_repo.to_string(),
-            format!("{owner}/{source_repo}"),
-            "MOCK_NODE_ID".to_string(),
-            false,
-        ))
+        match &self.config.create_fork_behavior {
+            MockCreateForkBehavior::Success => {
+                let owner = target_owner.unwrap_or("mock-owner");
+                Ok(github_client::Repository::new(
+                    source_repo.to_string(),
+                    format!("{owner}/{source_repo}"),
+                    "MOCK_NODE_ID".to_string(),
+                    false,
+                ))
+            }
+            MockCreateForkBehavior::Error(kind) => Err(kind.clone().into_error()),
+        }
     }
 
     async fn create_pull_request(
@@ -638,6 +641,10 @@ struct MockRepoClientConfig {
     /// race-condition corollary (task #282) where the authoritative
     /// pre-check passed but the create call itself reports a conflict.
     create_org_repository_behavior: MockCreateOrgRepositoryBehavior,
+    /// Behavior for `create_fork` -- used to simulate the race-condition
+    /// corollary (task #282 follow-up) for `CreationMode::Fork`, mirroring
+    /// `create_org_repository_behavior` above.
+    create_fork_behavior: MockCreateForkBehavior,
     /// Optional shared call log; every tracked trait method pushes its name
     /// here when invoked, in order.
     call_log: Option<CallLog>,
@@ -651,6 +658,7 @@ impl Default for MockRepoClientConfig {
             default_branch: "main".to_string(),
             get_repository_behavior: MockGetRepositoryBehavior::NotFound,
             create_org_repository_behavior: MockCreateOrgRepositoryBehavior::Success,
+            create_fork_behavior: MockCreateForkBehavior::Success,
             call_log: None,
         }
     }
@@ -666,6 +674,7 @@ impl MockRepoClientConfig {
             default_branch: "main".to_string(),
             get_repository_behavior: MockGetRepositoryBehavior::NotFound,
             create_org_repository_behavior: MockCreateOrgRepositoryBehavior::Success,
+            create_fork_behavior: MockCreateForkBehavior::Success,
             call_log: None,
         }
     }
@@ -722,9 +731,47 @@ impl MockRepoClientConfig {
             ..Self::default()
         }
     }
+
+    /// Config whose `create_fork` simulates the race-condition corollary
+    /// for `CreationMode::Fork` (task #282 follow-up): the GitHub
+    /// fork-creation call itself reports "already exists".
+    fn create_fork_already_exists() -> Self {
+        Self {
+            create_fork_behavior: MockCreateForkBehavior::Error(
+                MockCreateOrgRepositoryErrorKind::AlreadyExists,
+            ),
+            ..Self::default()
+        }
+    }
+
+    /// Config whose `create_fork` fails with an unrelated error, used as a
+    /// regression guard that only `Error::AlreadyExists` triggers the new
+    /// `RepositoryError::AlreadyExists` mapping in `create_fork_repository`.
+    fn create_fork_other_error() -> Self {
+        Self {
+            create_fork_behavior: MockCreateForkBehavior::Error(
+                MockCreateOrgRepositoryErrorKind::ApiError,
+            ),
+            ..Self::default()
+        }
+    }
 }
 
 // --- MOCK ENUMS (ALPHABETICALLY ORDERED) ---
+
+/// Behavior for [`ConfigurableMockRepoClient::create_fork`].
+#[derive(Clone)]
+enum MockCreateForkBehavior {
+    /// Returns a successful `Repository`, as today.
+    Success,
+    /// Returns the given error, used to simulate the race-condition
+    /// corollary (task #282 follow-up, `CreationMode::Fork`) and
+    /// regression-guard unrelated failures. Reuses
+    /// `MockCreateOrgRepositoryErrorKind` since `create_fork` is subject to
+    /// the exact same two `github_client::Error` shapes as
+    /// `create_org_repository`.
+    Error(MockCreateOrgRepositoryErrorKind),
+}
 
 /// Behavior for [`ConfigurableMockRepoClient::create_org_repository`].
 #[derive(Clone)]
@@ -2126,6 +2173,107 @@ async fn test_create_fork_repository_success_path_reaches_fork_and_default_branc
     );
 
     server.verify().await; // wiremock asserts both expect(1) calls were satisfied
+}
+
+// ============================================================================
+// create_fork_repository Race-Condition Mapping Tests (RED: task #282
+// follow-up -- the race-condition corollary applied to `create_org_repository`/
+// `create_github_repository` above was never applied to `create_fork`/
+// `create_fork_repository`, so a Fork-mode race surfaced as a generic
+// `GitHubError::NetworkError` instead of `RepositoryError::AlreadyExists`.
+// Unlike the dispatch test above, these use `ConfigurableMockRepoClient`
+// (wrapped in `Arc<dyn RepositoryClient>`, which `CreationClients.
+// installation_repo_client` accepts) rather than a wiremock-backed
+// `GitHubClient`, mirroring how `create_github_repository`'s equivalent
+// race-mapping tests are written.
+// ============================================================================
+
+/// Race-condition corollary for `CreationMode::Fork`: GitHub's own "already
+/// exists" response from `create_fork` must map to the SAME
+/// `RepositoryError::AlreadyExists` domain error as the Standard/Mirror path,
+/// not a generic `GitHubError::NetworkError`.
+#[tokio::test]
+async fn test_create_fork_repository_already_exists_is_not_mapped_to_network_error_variant() {
+    let request = fork_request_with_source("source-org");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: Arc::new(ConfigurableMockRepoClient::new(
+            MockRepoClientConfig::create_fork_already_exists(),
+        )),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result = create_fork_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        "test-user",
+    )
+    .await;
+
+    assert!(
+        !matches!(result, Err(RepoRollerError::GitHub(_))),
+        "AlreadyExists must map to RepoRollerError::Repository, not RepoRollerError::GitHub, got {:?}",
+        result.as_ref().err()
+    );
+    match result {
+        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { org, name })) => {
+            assert_eq!(org, "test-org");
+            assert_eq!(name, "new-repo");
+        }
+        Ok(_) => panic!(
+            "expected the race-condition fork-creation conflict to map to RepositoryError::AlreadyExists, got Ok"
+        ),
+        Err(other) => panic!(
+            "expected RepositoryError::AlreadyExists, got {other:?}"
+        ),
+    }
+}
+
+/// Regression guard: only `github_client::Error::AlreadyExists` gets the new
+/// mapping -- every other `create_fork` error variant must continue to map
+/// to `GitHubError::NetworkError` exactly as before this change.
+#[tokio::test]
+async fn test_create_fork_repository_unrelated_github_error_still_maps_to_network_error() {
+    let request = fork_request_with_source("source-org");
+    let source = SourceRepositoryReference {
+        owner: OrganizationName::new("source-org").unwrap(),
+        name: RepositoryName::new("source-repo").unwrap(),
+    };
+    let merged_config = config_manager::MergedConfiguration::new();
+    let clients = CreationClients {
+        installation_token: "test-token".to_string(),
+        installation_repo_client: Arc::new(ConfigurableMockRepoClient::new(
+            MockRepoClientConfig::create_fork_other_error(),
+        )),
+        template_fetcher: template_engine::GitHubTemplateFetcher::new(),
+    };
+
+    let result = create_fork_repository(
+        &request,
+        &source,
+        None,
+        &merged_config,
+        &clients,
+        "test-user",
+    )
+    .await;
+
+    assert!(
+        matches!(
+            result,
+            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+        ),
+        "an unrelated create_fork failure must keep mapping to GitHubError::NetworkError, got {:?}",
+        result.as_ref().err()
+    );
 }
 
 /// `create_history_mirror_repository` must resolve visibility, then call

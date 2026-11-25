@@ -2709,6 +2709,78 @@ async fn test_create_fork_name_conflict_at_target_owner_returns_error() {
     assert!(result.is_err());
 }
 
+/// Race-condition corollary (task #282 follow-up): GitHub's own "already
+/// exists" 422 response from the fork-creation endpoint must be
+/// distinguished from every other `create_fork` failure, mirroring the
+/// `is_repository_already_exists_error` detection already applied to
+/// `create_org_repository`.
+#[tokio::test]
+async fn test_create_fork_already_exists_422_with_already_exists_wording_maps_to_already_exists_error(
+) {
+    let mock_server = MockServer::start().await;
+    let source_owner = "upstream-org";
+    let source_repo = "upstream-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{source_owner}/{source_repo}/forks")))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "message": "Repository creation failed.",
+            "errors": [
+                {
+                    "resource": "Repository",
+                    "code": "custom",
+                    "field": "name",
+                    "message": "name already exists on this account"
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .create_fork(source_owner, source_repo, Some("fork-owner"))
+        .await;
+
+    assert!(
+        matches!(result, Err(Error::AlreadyExists)),
+        "expected Error::AlreadyExists for a 422 'already exists' fork response, got {:?}",
+        result.as_ref().err()
+    );
+}
+
+/// Regression guard: a fork-creation failure unrelated to "already exists"
+/// (e.g. the source repository not found, a 500, or a 422 that doesn't
+/// mention "already exists") must keep mapping to `Error::InvalidResponse`
+/// exactly as before the 422-detection branch was added.
+#[tokio::test]
+async fn test_create_fork_unrelated_error_still_maps_to_invalid_response() {
+    let mock_server = MockServer::start().await;
+    let source_owner = "upstream-org";
+    let source_repo = "upstream-repo";
+
+    Mock::given(method("POST"))
+        .and(path(format!("/repos/{source_owner}/{source_repo}/forks")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "message": "Internal Server Error"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = test_client(&mock_server);
+
+    let result = client
+        .create_fork(source_owner, source_repo, Some("fork-owner"))
+        .await;
+
+    assert!(
+        matches!(result, Err(Error::InvalidResponse)),
+        "an unrelated fork-creation failure must map to Error::InvalidResponse, not Error::AlreadyExists, got {:?}",
+        result.as_ref().err()
+    );
+}
+
 // --- create_pull_request --------------------------------------------------
 
 #[tokio::test]
