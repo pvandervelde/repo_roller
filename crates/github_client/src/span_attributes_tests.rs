@@ -116,26 +116,39 @@ fn test_sanitize_span_attribute_value_secret_shape_embedded_inside_longer_org_na
 #[test]
 fn test_sanitize_span_attribute_value_never_panics_on_pathologically_long_input() {
     let raw: String = std::iter::repeat('x').take(50_000).collect();
-    let _ = sanitize_span_attribute_value(&raw);
+    assert_eq!(
+        sanitize_span_attribute_value(&raw),
+        "x".repeat(MAX_SPAN_ATTRIBUTE_LEN)
+    );
+    assert_eq!(
+        sanitize_span_attribute_value(&format!("{raw}ghp_{}", "a".repeat(20))),
+        SPAN_ATTRIBUTE_REDACTED_MARKER
+    );
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_scales_linearly_not_pathologically_on_extreme_input() {
-    // Adversarial/performance: `SecretShapeScanner` documents an O(n)
-    // backward run-length precomputation specifically to avoid quadratic
-    // blowup on long input. Confirm a 1,000,000-char adversarial input
-    // (repeated char, worst case for run-length propagation) completes
-    // comfortably fast -- a quadratic-time regression here (e.g. an
-    // accidentally-reintroduced O(n^2) substring scan) would take seconds
-    // to minutes instead of milliseconds at this size.
-    let raw: String = std::iter::repeat('a').take(1_000_000).collect();
-    let start = std::time::Instant::now();
-    let _ = sanitize_span_attribute_value(&raw);
-    let elapsed = start.elapsed();
+    // Compare 10x input sizes rather than relying on a machine-dependent
+    // absolute time limit, which is especially sensitive to coverage builds.
+    let small = "a".repeat(100_000);
+    let large = "a".repeat(1_000_000);
+    let _ = sanitize_span_attribute_value(&small);
+
+    let measure = |raw: &str| {
+        let start = std::time::Instant::now();
+        let result = sanitize_span_attribute_value(raw);
+        let elapsed = start.elapsed();
+        assert_eq!(result, "a".repeat(MAX_SPAN_ATTRIBUTE_LEN));
+        elapsed
+    };
+    // Allow for transient scheduling noise without imposing a throughput
+    // requirement: linear scaling is roughly 10x, quadratic roughly 100x.
+    let elapsed_small = measure(&small).max(measure(&small));
+    let elapsed_large = measure(&large).min(measure(&large));
     assert!(
-        elapsed < std::time::Duration::from_secs(2),
-        "sanitize_span_attribute_value took {elapsed:?} for a 1,000,000-char input -- \
-         expected sub-second, this suggests a non-linear time regression"
+        elapsed_large <= elapsed_small.saturating_mul(30),
+        "sanitize_span_attribute_value took {elapsed_small:?} for a 100,000-char input \
+         and {elapsed_large:?} for a 1,000,000-char input, suggesting non-linear scaling"
     );
 }
 
