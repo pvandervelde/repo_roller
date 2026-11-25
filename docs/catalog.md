@@ -322,8 +322,9 @@ Add to this whenever a reusable component becomes "the standard way".
   shared, case-insensitive check for GitHub's "already exists" /
   "already_exists" wording in any message string. Both
   `is_repository_already_exists_error` (feeds `Error::AlreadyExists` from
-  `create_org_repository`, used by `repo_roller_core`'s task #282
-  existence-check/race-condition handling) and `is_label_already_exists_error`
+  both `create_org_repository` and `create_fork`, used by
+  `repo_roller_core`'s task #282 existence-check/race-condition handling for
+  every `CreationMode`) and `is_label_already_exists_error`
   call it against `source.message` on an `octocrab::Error::GitHub{source,..}`
   with `source.status_code == 422 UNPROCESSABLE_ENTITY`, then each layers its
   own additional heuristic on top: the repository variant also scans the
