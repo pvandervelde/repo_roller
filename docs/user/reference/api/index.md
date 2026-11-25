@@ -61,10 +61,23 @@ Common error codes:
 | `INVALID_REQUEST` | 400 | Malformed JSON or missing required field |
 | `VALIDATION_ERROR` | 400 | Field value fails validation rules |
 | `UNAUTHORIZED` | 401 | Invalid, expired, or absent token |
-| `REPOSITORY_ALREADY_EXISTS` | 409 | A repository with that name already exists in the org |
+| `RepositoryAlreadyExists` | 409 | A repository with that `organization`/`name` already exists. Enforced authoritatively, immediately before repository creation, for every `creationMode` — independent of what `POST /repositories/validate-name` reported earlier. |
+| `ForkTargetNameMismatch` | 400 | `creationMode.type` is `"fork"` and the request's `name` does not match `creationMode.source.name` (GitHub cannot rename a repository on fork) |
 | `TEMPLATE_NOT_FOUND` | 404 | Template repository not found or not accessible |
 | `CONFIGURATION_ERROR` | 400/500 | Problem loading or parsing configuration |
 | `GITHUB_API_ERROR` | 502 | GitHub API returned an unexpected error |
+
+<!-- TODO(docs-owner): the error codes in this table use a mix of conventions —
+some (`INVALID_REQUEST`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `TEMPLATE_NOT_FOUND`,
+`CONFIGURATION_ERROR`, `GITHUB_API_ERROR`) are written in SCREAMING_SNAKE_CASE, but the
+actual `code` field emitted by `repo_roller_api::errors` (see `crates/repo_roller_api/src/errors.rs`)
+uses PascalCase throughout (e.g. `ValidationError`, `AuthenticationError`,
+`RepositoryAlreadyExists`). `RepositoryAlreadyExists` and `ForkTargetNameMismatch` above
+have been corrected to match the real wire value as part of task #282; the remaining
+SCREAMING_SNAKE_CASE entries in this table predate that task and were not touched here —
+flagging so the docs owner can decide whether to correct them for the whole table in a
+follow-up, and so client code is not implemented against a code string that does not
+actually appear on the wire. -->
 
 ## Request tracing
 

@@ -136,14 +136,19 @@ All errors follow the same format:
 ```json
 {
   "error": "Repository already exists",
-  "code": "REPOSITORY_EXISTS",
+  "code": "RepositoryAlreadyExists",
   "details": "A repository named payment-service already exists in myorg"
 }
 ```
 
+> Validating the name first (above) does not guarantee it is still free when you call
+> `POST /repositories` — treat `409` as something you must always handle, even after a
+> successful `validate-name` call. The create endpoint re-checks authoritatively,
+> immediately before creating anything, regardless of what the earlier check reported.
+
 | HTTP status | Meaning |
 |---|---|
-| 400 | Validation error (bad name, missing required field) |
+| 400 | Validation error (bad name, missing required field, or — for a fork `creationMode` — a `name` that doesn't match the source repository's name) |
 | 401 | Invalid or missing token |
 | 404 | Template or organisation not found |
 | 409 | Repository already exists |

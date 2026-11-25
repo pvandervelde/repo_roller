@@ -111,10 +111,15 @@ The API returns structured JSON errors:
 ```json
 {
   "error": "Repository already exists",
-  "code": "REPOSITORY_ALREADY_EXISTS",
+  "code": "RepositoryAlreadyExists",
   "details": "myorg/payment-service"
 }
 ```
+
+This `409` is enforced authoritatively on the server, immediately before any repository
+is created or mutated — it does not depend on whether you called
+`POST /repositories/validate-name` first, or what that call reported. Always handle it,
+even if an earlier validation call said the name was available.
 
 Common HTTP status codes:
 
@@ -122,7 +127,7 @@ Common HTTP status codes:
 |---|---|
 | `201` | Repository created |
 | `200` | Validation passed |
-| `400` | Invalid request (missing field, bad name format) |
+| `400` | Invalid request (missing field, bad name format, or — for a fork `creationMode` — a `name` that doesn't match the source repository's name) |
 | `401` | Invalid or expired token |
 | `409` | Repository with that name already exists |
 | `502` | GitHub API error |

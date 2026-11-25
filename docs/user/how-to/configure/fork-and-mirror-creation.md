@@ -211,6 +211,16 @@ fork server-side, so the new repository joins GitHub's fork network with full hi
 `--fork-from` cannot be combined with `--mirror-from`, `--empty`, `--init-readme`, or
 `--init-gitignore` — the CLI rejects the combination before any GitHub API call.
 
+> **`--repo` must equal the source repository's name.** GitHub's fork-creation API cannot
+> rename a repository when forking it, so the fork is always created with the same name as
+> the source (`payment-service` in the example above, matching `upstream-org/payment-service`).
+> If `--repo` names anything else, the request is rejected before any GitHub API call is
+> made. This is a known rough edge in the current flag shape, tracked by
+> [issue #378](https://github.com/pvandervelde/repo_roller/issues/378) — a future change may
+> drop `--repo` for fork requests entirely and derive the name from `--fork-from` instead.
+> This constraint does not apply to `--mirror-from`, which creates an independently-named
+> repository.
+
 ### Fork (REST API)
 
 ```bash
@@ -227,6 +237,11 @@ curl -X POST https://reporoller.myorg.example/api/v1/repositories \
     "description": "Fork of upstream-org/payment-service"
   }'
 ```
+
+The same name constraint applies here: top-level `name` must equal
+`creationMode.source.name` (`payment-service` in both places above). A mismatch is
+rejected with `400 ForkTargetNameMismatch` before any GitHub API call — see
+[Repositories API: Creation modes](../../reference/api/repositories.md#creation-modes-fork-and-mirror).
 
 ### Mirror with full history (CLI)
 
@@ -317,6 +332,8 @@ Equivalently, omit `preserveHistory` entirely — it defaults to `false`.
 | CLI rejects `--fork-from`/`--mirror-from` together with `--empty`/`--init-readme`/`--init-gitignore` | These flags are mutually exclusive — pick one content/creation strategy per request. |
 | API returns `400 VALIDATION_ERROR` on `content_strategy` alongside `creationMode` | Omit `contentStrategy` entirely when `creationMode.type` is `"fork"` or `"mirror"` — it is only meaningful for `"standard"` creation. |
 | `--mirror-from` request produced a pull request instead of pushing directly | Expected for a source-only mirror (`--mirror-history` not set, or `preserveHistory: false`). Add `--mirror-history` / `preserveHistory: true` for a direct-push, full-history mirror instead. |
+| CLI/API rejects a fork request with "Fork target name ... does not match source repository name ..." (`ForkTargetNameMismatch`, 400) | `--repo`/`name` must be identical to the source repository's name for a fork — GitHub cannot rename a repository when forking it. Set `--repo`/`name` to match `--fork-from`/`creationMode.source.name` exactly. Tracked as a known rough edge by [issue #378](https://github.com/pvandervelde/repo_roller/issues/378). |
+| Repository creation fails with "Repository ... already exists" (`RepositoryAlreadyExists`, 409) even though you never called `validate-name`, or it previously reported the name as available | Expected — the server always re-checks authoritatively immediately before creating anything, for every creation mode, regardless of whether a client-side or `validate-name` check was performed first. Choose a different name, or confirm whether the existing repository is the one you intended to create. |
 | Web UI's Review step shows "This creation mode is disabled for this organization." | The capability was enabled when the wizard loaded but was turned off before the request was submitted. Reload the wizard to pick up the current capability state. |
 | Web UI's Review step names a source owner as not allowed | The typed owner isn't on the resolved `allowed_source_owners` list. This is the same server-side check described above — the wizard's earlier advisory note is non-blocking, but the server still enforces it at submission. |
 | Web UI's Review step shows "No settings template is designated for this creation mode." | The organisation enabled the mode without designating a settings template, and one is required — see step 3 above. |

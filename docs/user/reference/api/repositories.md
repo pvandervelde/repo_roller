@@ -74,6 +74,19 @@ Sending an explicit, non-default `contentStrategy` together with a `"fork"`/`"mi
 `source.owner`/`source.name` are validated the same way as the top-level `organization`/
 `name` fields; a malformed value is also rejected with `400 VALIDATION_ERROR`.
 
+**Fork mode requires `name == creationMode.source.name`.** GitHub's fork-creation API
+cannot rename a repository when forking it — the fork is always created with the same
+name as the source repository. Because this request's top-level `name` field is supplied
+independently of `creationMode.source.name`, a request where the two differ is rejected
+with `400 ForkTargetNameMismatch` before any GitHub API call is made, rather than silently
+forking under one name while the rest of the request (settings, template) targets another.
+This does not apply to `"mirror"` mode, which legitimately creates an independently-named
+repository. This is a known rough edge in the request shape — a future change
+([issue #378](https://github.com/pvandervelde/repo_roller/issues/378)) is expected to stop
+exposing `name` as an independent field for fork requests at all, so this constraint cannot
+be violated by construction. Until then, always set `name` equal to `creationMode.source.name`
+when `creationMode.type` is `"fork"`.
+
 ### Content strategy examples
 
 **Template:**
@@ -176,7 +189,8 @@ Sending an explicit, non-default `contentStrategy` together with a `"fork"`/`"mi
 | 403 | `CapabilityDisabled` | The requested `creationMode` (`fork_enabled`/`source_history_mirror_enabled`/`source_only_mirror_enabled`) is disabled by configuration |
 | 403 | `SourceOwnerNotAllowed` | `creationMode.source.owner` is not on the resolved `allowed_source_owners` allow-list |
 | 404 | `TEMPLATE_NOT_FOUND` | Template repository does not exist or is not accessible |
-| 409 | `REPOSITORY_ALREADY_EXISTS` | Repository with that name already exists in the org |
+| 400 | `ForkTargetNameMismatch` | `creationMode.type` is `"fork"` and `name` does not match `creationMode.source.name` |
+| 409 | `RepositoryAlreadyExists` | A repository with that `organization`/`name` already exists. This is enforced authoritatively by the server, immediately before the GitHub-mutating call, for every `creationMode` — it does not depend on whether `POST /repositories/validate-name` was called first or what it reported (see the note on that endpoint below). |
 | 502 | `GITHUB_API_ERROR` | GitHub API returned an unexpected error |
 
 ---
@@ -210,6 +224,13 @@ Checks whether a repository name satisfies GitHub naming rules.
   "messages": null
 }
 ```
+
+> **This is a best-effort, advisory check, not a guarantee.** `available: true` reflects
+> the name's state at the moment this endpoint was called — it does not reserve the name,
+> and GitHub state can change (including via a concurrent request) before you call
+> `POST /api/v1/repositories`. The create endpoint always re-checks authoritatively and is
+> the only reliable source of truth; a client must handle `409 RepositoryAlreadyExists`
+> from the create endpoint even after a successful `available: true` result here.
 
 On invalid name:
 

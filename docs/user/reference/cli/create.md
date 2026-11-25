@@ -64,6 +64,16 @@ enabled and the source owner to be allow-listed — see
 | Mirror (source + history) | `--mirror-from <OWNER/REPO> --mirror-history` | Create an independent copy of the source repository with full commit history, `HEAD` set to the source's default branch. Pushed directly. |
 | Mirror (source only) | `--mirror-from <OWNER/REPO>` | Create an independent repository seeded from the source's current files only (no history), delivered via a pull request for review. |
 
+**With `--fork-from`, `--repo` must equal the source repository's name.** GitHub's
+fork-creation API cannot rename a repository on creation — the fork is always created
+under the source's name. `--repo payment-service --fork-from upstream-org/payment-service`
+is valid; `--repo renamed-fork --fork-from upstream-org/payment-service` is rejected before
+any GitHub API call is made. This constraint is specific to `--fork-from` — `--mirror-from`
+legitimately creates an independently-named repository and is unaffected. See
+[Configure fork and mirror repository creation](../../how-to/configure/fork-and-mirror-creation.md)
+for the full picture, including the tracking issue for removing this constraint by
+construction.
+
 ## Examples
 
 ### Create from a template
