@@ -40,6 +40,13 @@ pub const DEFAULT_WINDOW_SECS: u64 = 60;
 /// All such principals share one bucket rather than bypassing the limiter.
 pub const UNKNOWN_USER_KEY: &str = "<unknown-user>";
 
+/// Default maximum token-exchange requests per client address per window.
+pub const DEFAULT_AUTH_MAX_REQUESTS: u32 = 20;
+/// Default token-exchange window length in seconds.
+pub const DEFAULT_AUTH_WINDOW_SECS: u64 = 60;
+/// Key used for token-exchange requests that carry no `ConnectInfo`.
+pub const NO_CLIENT_ADDR_KEY: &str = "addr:none";
+
 /// Expired entries are swept every this many checks.
 const EVICT_EVERY_N_CHECKS: u64 = 256;
 /// When the tracked-key count reaches this, expired entries are swept before
@@ -90,6 +97,18 @@ impl RateLimitConfig {
             .filter(|n| *n >= 1)
             .unwrap_or(DEFAULT_WINDOW_SECS);
         Self::new(enabled, max_requests, window_secs)
+    }
+
+    /// Config for the token-exchange (public) limiter. Reads
+    /// `RATE_LIMIT_ENABLED`, `RATE_LIMIT_AUTH_REQUESTS`,
+    /// `RATE_LIMIT_AUTH_WINDOW_SECS`. STUB (TDD red).
+    pub fn auth_from_env_vars(_lookup: impl Fn(&str) -> Option<String>) -> Self {
+        Self::default()
+    }
+
+    /// Token-exchange config from the process environment.
+    pub fn auth_from_env() -> Self {
+        Self::auth_from_env_vars(|k| std::env::var(k).ok())
     }
 
     /// Build from the process environment.
@@ -244,6 +263,29 @@ impl RateLimiter {
     }
 }
 
+/// Limiter key for an authenticated principal, or `None` when the context
+/// carries no stable identifier (the request must then be rejected).
+///
+/// STUB (TDD red).
+pub fn principal_key(ctx: &AuthContext) -> Option<String> {
+    ctx.user_login.clone()
+}
+
+/// Limiter key for the client of a public request, derived from the
+/// connection address only. STUB (TDD red).
+pub fn client_key(_request: &Request) -> String {
+    NO_CLIENT_ADDR_KEY.to_string()
+}
+
+/// Per-client-address limiter for `POST /api/v1/auth/token`. STUB (TDD red).
+pub async fn auth_rate_limit_middleware(
+    State(_state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    next.run(request).await
+}
+
 /// Axum middleware enforcing the limit (must run after `auth_middleware`).
 ///
 /// Only `POST` requests are limited. The bucket key is the authenticated
@@ -293,6 +335,10 @@ pub async fn rate_limit_middleware(
 #[cfg(test)]
 #[path = "rate_limit_tests.rs"]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "rate_limit_auth_tests.rs"]
+mod auth_tests;
 
 #[cfg(test)]
 #[path = "rate_limit_proptests.rs"]

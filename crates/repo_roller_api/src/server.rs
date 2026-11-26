@@ -45,6 +45,17 @@ impl ApiServer {
         routes::create_router(self.state.clone())
     }
 
+    /// Serve on an already-bound listener until `shutdown` resolves, exposing
+    /// the peer `SocketAddr` to handlers/middleware as `ConnectInfo`.
+    /// `serve` delegates to this. STUB (TDD red).
+    pub async fn serve_with_listener(
+        self,
+        _listener: TcpListener,
+        _shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+    ) -> anyhow::Result<()> {
+        Err(anyhow::anyhow!("not implemented"))
+    }
+
     /// Start the server and listen for requests.
     ///
     /// This method blocks until the server is shut down gracefully via

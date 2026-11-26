@@ -195,6 +195,7 @@ async fn test_expired_jwt_rejected() {
     let past = 1_000_000usize;
     let claims = Claims {
         sub: "alice".to_string(),
+        pid: None,
         iat: past,
         exp: past + 3600,
     };

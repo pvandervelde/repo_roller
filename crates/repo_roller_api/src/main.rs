@@ -170,6 +170,8 @@ pub struct AppState {
     pub(crate) jwt_secret: secrecy::SecretString,
     /// Per-user rate limiter shared by all requests (Task #284).
     pub(crate) rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    /// Per-client-address limiter for the public token-exchange endpoint.
+    pub(crate) auth_rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
     /// Counter of requests rejected by the rate limiter, registered against
     /// `metrics_registry` as `rate_limit_rejections_total`.
     pub(crate) rate_limit_rejections: prometheus::IntCounter,
@@ -219,10 +221,29 @@ impl AppState {
             rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
                 crate::rate_limit::RateLimitConfig::from_env(),
             )),
+            auth_rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+                crate::rate_limit::RateLimitConfig::auth_from_env(),
+            )),
             rate_limit_rejections,
             #[cfg(test)]
             mock_installation_token: None,
         }
+    }
+
+    /// Replace the token-exchange limiter's configuration (fresh limiter).
+    pub fn with_auth_rate_limit_config(self, config: crate::rate_limit::RateLimitConfig) -> Self {
+        self.with_auth_rate_limiter(std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+            config,
+        )))
+    }
+
+    /// Replace the token-exchange limiter (e.g. one with an injected clock).
+    pub fn with_auth_rate_limiter(
+        mut self,
+        limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    ) -> Self {
+        self.auth_rate_limiter = limiter;
+        self
     }
 
     /// Replace the rate limiter's configuration (fresh, empty limiter).
@@ -320,6 +341,13 @@ impl Default for AppState {
             jwt_secret: secrecy::SecretString::from(TEST_JWT_SECRET.to_string()),
             rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
                 crate::rate_limit::RateLimitConfig::default(),
+            )),
+            auth_rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+                crate::rate_limit::RateLimitConfig::new(
+                    true,
+                    crate::rate_limit::DEFAULT_AUTH_MAX_REQUESTS,
+                    crate::rate_limit::DEFAULT_AUTH_WINDOW_SECS,
+                ),
             )),
             rate_limit_rejections,
             mock_installation_token: None,

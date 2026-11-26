@@ -41,6 +41,11 @@ pub(crate) const JWT_EXPIRY_SECS: u64 = 8 * 3600; // 8 hours
 pub(crate) struct Claims {
     /// GitHub login of the authenticated user.
     pub sub: String,
+    /// Stable opaque principal identifier, present only for principals with
+    /// no resolvable GitHub login (e.g. installation tokens). Absent for
+    /// ordinary user tokens and for tokens issued before this claim existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<String>,
     /// Issued-at timestamp (seconds since UNIX epoch).
     pub iat: usize,
     /// Expiry timestamp (seconds since UNIX epoch).
@@ -64,6 +69,7 @@ pub(crate) fn generate_backend_jwt(user_login: &str, secret: &str) -> Result<Str
 
     let claims = Claims {
         sub: user_login.to_string(),
+        pid: None,
         iat: now as usize,
         exp: (now + JWT_EXPIRY_SECS) as usize,
     };
@@ -125,6 +131,26 @@ pub struct AuthContext {
     /// `None` only when the JWT was issued without a resolvable GitHub login
     /// (e.g. the GitHub `/user` call failed during token exchange).
     pub user_login: Option<String>,
+    /// Stable opaque principal identifier from the validated JWT `pid` claim.
+    /// `Some` only for loginless principals.
+    pub principal_id: Option<String>,
+}
+
+/// Issue a backend JWT for a principal with no resolvable login.
+///
+/// STUB (TDD red): see `middleware_principal_tests.rs` for the contract.
+pub(crate) fn generate_loginless_backend_jwt(
+    _principal_id: &str,
+    secret: &str,
+) -> Result<String, AuthError> {
+    generate_backend_jwt("unknown", secret)
+}
+
+/// Derive a stable opaque principal id from a GitHub token (never the token).
+///
+/// STUB (TDD red).
+pub(crate) fn principal_id_for_token(_token: &str) -> String {
+    String::new()
 }
 
 impl AuthContext {
@@ -134,7 +160,10 @@ impl AuthContext {
     /// inside `auth_middleware` after JWT validation.
     #[cfg(test)]
     pub fn new() -> Self {
-        Self { user_login: None }
+        Self {
+            user_login: None,
+            principal_id: None,
+        }
     }
 }
 
@@ -181,6 +210,7 @@ pub async fn auth_middleware(
 
     let auth_context = AuthContext {
         user_login: Some(claims.sub),
+        principal_id: None,
     };
 
     request.extensions_mut().insert(auth_context);
@@ -485,6 +515,10 @@ impl IntoResponse for AuthError {
 #[cfg(test)]
 #[path = "middleware_test_support.rs"]
 mod test_support;
+
+#[cfg(test)]
+#[path = "middleware_principal_tests.rs"]
+mod principal_tests;
 
 #[cfg(test)]
 #[path = "middleware_tests.rs"]
