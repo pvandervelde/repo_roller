@@ -317,3 +317,7 @@ fn organization_routes_without_auth() -> Router<AppState> {
 #[cfg(test)]
 #[path = "routes_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "routes_rate_limit_tests.rs"]
+mod rate_limit_tests;

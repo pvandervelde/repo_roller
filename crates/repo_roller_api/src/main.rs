@@ -28,6 +28,7 @@ mod http_metrics;
 mod logging;
 mod middleware;
 mod models;
+mod rate_limit;
 mod routes;
 mod sanitizing_writer;
 mod server;
@@ -155,6 +156,8 @@ pub struct AppState {
     /// Loaded from the `JWT_SECRET` environment variable at startup.
     /// Must be at least 32 bytes.  Never logged.
     pub(crate) jwt_secret: secrecy::SecretString,
+    /// Per-user rate limiter shared by all requests (Task #284).
+    pub(crate) rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling
@@ -197,9 +200,29 @@ impl AppState {
                 github_app_private_key,
             )),
             jwt_secret: secrecy::SecretString::from(jwt_secret.into()),
+            rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+                // TDD stub: Coder must switch this to `RateLimitConfig::from_env()`
+                // once `from_env_vars` is implemented.
+                crate::rate_limit::RateLimitConfig::default(),
+            )),
             #[cfg(test)]
             mock_installation_token: None,
         }
+    }
+
+    /// Replace the rate limiter's configuration (fresh, empty limiter).
+    pub fn with_rate_limit_config(mut self, config: crate::rate_limit::RateLimitConfig) -> Self {
+        self.rate_limiter = std::sync::Arc::new(crate::rate_limit::RateLimiter::new(config));
+        self
+    }
+
+    /// Replace the rate limiter (e.g. one with an injected clock).
+    pub fn with_rate_limiter(
+        mut self,
+        limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    ) -> Self {
+        self.rate_limiter = limiter;
+        self
     }
 
     /// Override the GitHub API base URL.
@@ -278,6 +301,9 @@ impl Default for AppState {
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
             jwt_secret: secrecy::SecretString::from(TEST_JWT_SECRET.to_string()),
+            rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+                crate::rate_limit::RateLimitConfig::default(),
+            )),
             mock_installation_token: None,
         }
     }
