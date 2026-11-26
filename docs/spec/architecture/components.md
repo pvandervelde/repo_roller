@@ -271,18 +271,24 @@ GET  /api/v1/user/permissions      # User permission information
     tokens with no identifier are rejected with `401`. Each principal has an independent budget.
     Defaults: 10 requests per 60 seconds (`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS`)
   - `auth_ip` scope: the public `POST /api/v1/auth/token`. Key is the client connection address
-    only; `X-Forwarded-*` headers are ignored, so behind a reverse proxy all clients share the
+    only (IPv6 keyed by /64 prefix, `addr:v6/<16 hex>`); `X-Forwarded-*` headers are ignored, so behind a reverse proxy all clients share the
     proxy IP's bucket and operators should raise the limit. Defaults: 20 requests per 60 seconds
     (`RATE_LIMIT_AUTH_REQUESTS`, `RATE_LIMIT_AUTH_WINDOW_SECS`)
   - `RATE_LIMIT_ENABLED` governs both limiters; invalid values fall back to defaults
+  - Hard cap of 10,000 tracked keys per limiter; expired keys are reclaimed in amortised O(1) from an
+    expiry-ordered queue (no periodic full sweep). At the cap the `user` limiter evicts the key with
+    the oldest window start; the `auth_ip` limiter fails closed (new keys get `429`, nothing
+    inserted). Tracked key counts are exported as the gauge `rate_limit_tracked_keys{scope}`
   - Rejection: `429 Too Many Requests` with a `Retry-After` header (seconds) and JSON error code
     `RateLimitExceeded`; logged at WARN ("Rate limit exceeded", without user identity) and counted in
     the Prometheus counter `rate_limit_rejections_total` with label `scope` in `{user, auth_ip}`
   - Not limited: `GET` and other non-`POST` methods, health, `/metrics`
   - Known limitations: the fixed window allows up to 2x the limit in a burst straddling a window
     boundary; state is in-memory and per process, so effective limits scale with the number of
-    replicas and reset on restart. Expired keys are evicted to bound memory.
-- **Request Logging**: Comprehensive request/response logging
+    replicas and reset on restart.
+- **Request Logging**: Comprehensive request/response logging; request headers and query strings are
+  never recorded (the trace span carries method, path and version only) and `cookie` is on the
+  log-redaction deny-list
 - **Error Handling**: Standardized error response formatting
 
 ## Deployment Components

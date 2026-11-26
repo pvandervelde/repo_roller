@@ -622,7 +622,8 @@ Add to this whenever a reusable component becomes "the standard way".
 - **`repo_roller_api::rate_limit::RateLimitConfig`** — rate-limit settings (`enabled`, `max_requests`, `window`)
   Use when: Configuring the limiter; `from_env()`/`from_env_vars()` read `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS` (invalid values fall back to defaults 10 / 60s, never panic)
 - **`repo_roller_api::rate_limit::RateLimiter`** — per-key fixed-window limiter
-  Use when: Deciding whether a keyed request may proceed; `check(key) -> RateLimitDecision`, bounded memory via eviction
+  Use when: Deciding whether a keyed request may proceed; `check(key) -> RateLimitDecision`. Hard cap on tracked keys (`DEFAULT_MAX_TRACKED_KEYS` = 10,000, `with_max_keys`), expired keys reclaimed in amortised O(1) from an expiry-ordered queue; `new_fail_closed` for attacker-keyed scopes. `max_check_work()`/`total_check_work()` expose per-check work for tests
+- **`repo_roller_api::rate_limit::FullPolicy`** — behaviour at the key cap: `EvictOldest` (drop the key with the oldest window start, admit the new one; user limiter) / `FailClosed` (reject the new key with `Limited`, never insert; token-endpoint limiter)
 - **`repo_roller_api::rate_limit::Clock`** — monotonic time source trait (`SystemClock` in production)
   Use when: Injecting deterministic time in tests via `RateLimiter::with_clock`
 - **`repo_roller_api::rate_limit::RateLimitDecision`** — `Allowed { remaining }` / `Limited { retry_after_secs }`
@@ -630,13 +631,14 @@ Add to this whenever a reusable component becomes "the standard way".
 - **`repo_roller_api::rate_limit::principal_key`** — `Option<String>` limiter key: `login:<lowercased>` / `sub:<principal id>`; `None` when no identifier
   Use when: Keying any per-principal limiter; namespaces prevent login/pid collisions
 - **`repo_roller_api::rate_limit::auth_rate_limit_middleware`** — axum middleware for the public `POST /api/v1/auth/token`; own limiter (`AppState.auth_rate_limiter`) keyed by `client_key`; 429 counted under `scope="auth_ip"`
-- **`repo_roller_api::rate_limit::client_key`** — limiter key from `ConnectInfo<SocketAddr>` peer IP only (IPv4-mapped IPv6 canonicalised); forwarding headers ignored; missing ConnectInfo -> `NO_CLIENT_ADDR_KEY` (`addr:none`)
+- **`repo_roller_api::rate_limit::client_key`** — limiter key from `ConnectInfo<SocketAddr>` peer IP only: IPv4 `ip:a.b.c.d` (IPv4-mapped IPv6 canonicalised), IPv6 by /64 prefix `addr:v6/<16 hex digits>`; forwarding headers ignored; missing ConnectInfo -> `NO_CLIENT_ADDR_KEY` (`addr:none`)
 - **`RateLimitConfig::auth_from_env_vars` / `auth_from_env`** — token-endpoint limiter config from `RATE_LIMIT_ENABLED`, `RATE_LIMIT_AUTH_REQUESTS`, `RATE_LIMIT_AUTH_WINDOW_SECS` (defaults 20 / 60s)
 - **`repo_roller_api::middleware::generate_loginless_backend_jwt` / `principal_id_for_token`** — issue a JWT with a `pid` claim for principals with no resolvable login; `principal_id_for_token` = SHA-256 hex of the GitHub token (never embeds it). `AuthContext.principal_id` carries it
 - **`ApiServer::serve_with_listener`** — serves with `into_make_service_with_connect_info::<SocketAddr>()` so `ConnectInfo` is available; `serve` delegates to it
   Notes: Layered inside `auth_middleware` in `routes::create_router`
 - **`AppState.rate_limiter`** — `Arc<RateLimiter>` shared state; override with `AppState::with_rate_limit_config` / `with_rate_limiter`
 - **`rate_limit_rejections_total`** — Prometheus `IntCounterVec` (`AppState.rate_limit_rejections`), label `scope` in {`user`, `auth_ip`} (both pre-seeded), counting 429 rejections
+- **`rate_limit_tracked_keys`** — Prometheus `IntGaugeVec` (`AppState.rate_limit_tracked_keys`), label `scope` in {`user`, `auth_ip`} (pre-seeded at 0), refreshed from `RateLimiter::tracked_keys()` at each `/metrics` scrape; never carries identities
 
 ### Caching
 

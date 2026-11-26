@@ -89,7 +89,7 @@ Two independent fixed-window limiters apply to `POST` requests:
 | Scope | Applies to | Keyed by | Default |
 |---|---|---|---|
 | `user` | `POST` requests to authenticated endpoints | The authenticated user: the lowercased login, or a stable principal id for tokens whose login could not be resolved. Tokens with no identifier at all receive `401`. | 10 requests per 60 seconds |
-| `auth_ip` | The public `POST /api/v1/auth/token` | The client IP address of the connection (`X-Forwarded-*` headers are ignored) | 20 requests per 60 seconds |
+| `auth_ip` | The public `POST /api/v1/auth/token` | The client IP address of the connection; IPv6 clients are keyed by their /64 prefix (`X-Forwarded-*` headers are ignored) | 20 requests per 60 seconds |
 
 Each user has an independent budget; user keys are namespaced so they cannot collide with client IP
 keys. `GET` requests, `/health` and `/metrics` are not limited.
@@ -110,7 +110,13 @@ with `RATE_LIMIT_ENABLED` (governs both limiters), `RATE_LIMIT_REQUESTS`, `RATE_
 `RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS` (see
 [Environment variables](../environment-variables.md)). Rejections are logged at WARN
 ("Rate limit exceeded", without the user identity) and counted by the Prometheus counter
-`rate_limit_rejections_total`, labelled `scope` = `user` or `auth_ip`.
+`rate_limit_rejections_total`, labelled `scope` = `user` or `auth_ip`; the gauge
+`rate_limit_tracked_keys{scope}` reports how many keys each limiter currently tracks.
+
+Each limiter tracks at most 10,000 keys. If that cap is reached and no expired key can be
+reclaimed, the `user` limiter evicts the key with the oldest window (that user gets a fresh budget)
+while the `auth_ip` limiter fails closed: requests from new client addresses receive `429` until a
+window expires, and clients already tracked keep their budgets.
 
 ## Known limitations
 
@@ -122,6 +128,8 @@ with `RATE_LIMIT_ENABLED` (governs both limiters), `RATE_LIMIT_REQUESTS`, `RATE_
 - The `POST /auth/token` limiter keys on the connection address only and ignores `X-Forwarded-For`
   and other `X-Forwarded-*` headers. Behind a reverse proxy or load balancer all clients share the
   proxy's bucket; raise `RATE_LIMIT_AUTH_REQUESTS` accordingly.
+- IPv6 clients share one budget per /64 prefix, so hosts in the same /64 are limited together.
+- Request headers (including `Authorization` and `Cookie`) are not written to server logs.
 
 ## Request tracing
 

@@ -807,6 +807,7 @@ http_requests_total{method="POST",route="/api/v1/repositories",status_code="201"
 | `github_api_errors_total` | Counter | `operation`, `status_category` | `github_client::api_metrics` |
 | `github_api_rate_limit_remaining` | Gauge | - | `github_client::api_metrics` |
 | `rate_limit_rejections_total` | Counter | `scope` (`user`, `auth_ip`) | `rate_limit` middleware |
+| `rate_limit_tracked_keys` | Gauge | `scope` (`user`, `auth_ip`) | `rate_limit` (refreshed at scrape) |
 | `http_requests_total` | Counter | `method`, `route`, `status_code` | `http_metrics` middleware |
 | `http_request_duration_seconds` | Histogram | `method`, `route` | `http_metrics` middleware |
 
@@ -1405,11 +1406,19 @@ Many Requests` with a `Retry-After` header and error code `RateLimitExceeded`.
   for tokens whose login could not be resolved; tokens with no identifier get `401`). Defaults:
   10 requests per 60 seconds.
 - **`auth_ip` scope** - the public `POST /api/v1/auth/token`, keyed by the client connection
-  address (`X-Forwarded-*` is ignored). Defaults: 20 requests per 60 seconds.
+  address (`X-Forwarded-*` is ignored); IPv6 clients are keyed by their /64 prefix, since one
+  subscriber typically controls a whole /64. Defaults: 20 requests per 60 seconds.
+
+Each limiter tracks at most 10,000 keys. Expired keys are reclaimed incrementally. When the cap
+is reached with no expired key to reclaim, the `user` limiter evicts the key whose window started
+earliest (that user simply gets a fresh budget), while the `auth_ip` limiter **fails closed**:
+new client addresses receive `429` until a window expires, and existing clients' budgets are never
+disturbed by a flood of new addresses.
 
 Configure with `RATE_LIMIT_ENABLED` (governs both), `RATE_LIMIT_REQUESTS`,
 `RATE_LIMIT_WINDOW_SECS`, `RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS`.
-Rejections increment `rate_limit_rejections_total{scope}`.
+Rejections increment `rate_limit_rejections_total{scope}`; `rate_limit_tracked_keys{scope}` reports
+how many keys each limiter currently tracks.
 
 **Known limitations**: only `POST` is limited; the fixed window allows up to 2x the limit in a
 burst at a window boundary; state is in memory per process (scales with replicas, resets on
