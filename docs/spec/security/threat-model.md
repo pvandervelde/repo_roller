@@ -184,6 +184,25 @@ RepoRoller operates as a GitHub App that creates and configures repositories bas
 - Regular security updates and patch management
 - Isolated execution environments for external content processing
 
+#### T3.3: Repository Mutation via Name Collision / TOCTOU
+
+**Threat**: A repository-creation request reaches a mutating GitHub API call (settings, labels, rulesets, webhooks, custom properties, permissions, pull requests) against a repository that already existed before the request was made, instead of the newly-created repository the requester intended.
+
+**Attack Vectors:**
+
+- A pre-creation name-availability check is skipped, stale, or degraded (the `/validate-name` endpoint's check is deliberately best-effort and fails open for UX reasons — it is never the authorization boundary)
+- Time-of-check-to-time-of-use (TOCTOU): a repository with the target name is created by a third party in the window between an existence check and the request's own create call
+- For fork-mode creation specifically: GitHub's fork API cannot rename a repository on creation (the fork is always named after the source repository), so a caller-supplied target name that doesn't match the source lets the wrong identifier get checked while the actual mutating call targets a different, potentially pre-existing, repository
+
+**Impact**: Unauthorized mutation of settings, branch protection, webhooks, custom properties, team/collaborator permissions, or pull requests on a repository the requester does not own and never intended to modify; the requester's attempted "create" silently becomes a "modify" of someone else's repository
+
+**Mitigations:**
+
+- An authoritative, fail-closed existence check (`repo_roller_core::ensure_repository_does_not_exist`) runs exactly once, immediately before any repository-mutating call, for every `CreationMode` — placed before the `CreationMode` dispatch so no mutating code path can run ahead of it. Any ambiguous check failure (not a 404, not a successful lookup) blocks creation rather than proceeding; this check queries with the same installation-token-authenticated client already used for the mutating calls, so it cannot be bypassed by a stale or degraded client-side check
+- The TOCTOU race is independently closed: if the create call itself races against a concurrent creation and GitHub returns its own "name already exists" response, that response is detected and mapped to the same deterministic `AlreadyExists` domain error (HTTP 409) rather than a generic failure, for every `CreationMode` including Fork
+- Fork-mode's name-coupling to its source is enforced directly: a request whose target name does not match the fork source's name is rejected at validation time, before any GitHub API call, rather than allowing the existence check to validate the wrong identifier
+- Known residual limitation: the existence check cannot distinguish "repository does not exist" from "repository exists but is not visible to this installation token" (GitHub returns 404 for both) — the TOCTOU-race mitigation above (detecting the create call's own 422 response) is what actually prevents mutation in that case, not the pre-check itself
+
 ### T4: Data Protection and Privacy Threats
 
 #### T4.1: Sensitive Data Exposure

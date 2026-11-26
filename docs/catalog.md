@@ -247,14 +247,34 @@ Add to this whenever a reusable component becomes "the standard way".
   Location: `repo_roller_core/src/lib.rs`
   Pattern: `validate_creation_mode_capability` (capability + designation gate,
   RCF-005/RCF-006) runs once, before the dispatch, for every non-`Standard`
-  mode — before any GitHub-mutating call. Each arm ends by building its
-  `RepositoryCreationResult` via the shared `build_creation_result(&repo,
-  default_branch)` helper (REFACTOR pass — the four arms previously repeated
-  the same four-field struct literal verbatim).
+  mode — before any GitHub-mutating call. Immediately after it,
+  `validate_fork_target_name_matches_source` (CRITICAL finding remediation on
+  top of task #282) rejects any `CreationMode::Fork` request whose
+  `request.name` differs from `source.name` — GitHub's fork-creation API
+  cannot rename a repository on creation, so an unmatched name would
+  otherwise cause the next gate to validate the wrong identifier; it is a
+  no-op for `Standard` and both `Mirror` variants, which legitimately create
+  an independently-named repository. Immediately after that,
+  `ensure_repository_does_not_exist(&*clients.installation_repo_client,
+  owner, name)` (task #282) runs unconditionally for every `CreationMode` —
+  this is the established placement for a "pre-dispatch invariant gate": a
+  check that must run exactly once, before any dispatch arm, regardless of
+  mode, and that fails CLOSED (an inconclusive/ambiguous check result is
+  treated as a failure, never as "safe to proceed"). A future gate of this
+  shape should be added as its own `ensure_*`/`validate_*` function called
+  from `create_repository_inner` in this same spot, rather than being
+  threaded into each `create_*_repository` arm individually. Each arm ends
+  by building its `RepositoryCreationResult` via the shared
+  `build_creation_result(&repo, default_branch)` helper (REFACTOR pass — the
+  four arms previously repeated the same four-field struct literal
+  verbatim).
   Use when: Adding a fifth `CreationMode` variant — add a new dispatch arm
   calling a new `create_*_repository` function, and reuse
   `build_creation_result`/`build_github_https_url` rather than re-inlining
-  their logic.
+  their logic. Adding a new cross-mode precondition — add a new pre-dispatch
+  gate function alongside `validate_creation_mode_capability` /
+  `ensure_repository_does_not_exist` rather than duplicating the check inside
+  each arm.
   Notes: `initialize_git_repository` and `create_github_repository` take
   `&dyn RepositoryClient` (widened from `&GitHubClient` for unit-test
   mockability); `apply_post_creation_settings` /
@@ -292,6 +312,31 @@ Add to this whenever a reusable component becomes "the standard way".
   Err(e) => {...} }` mapping idiom — already used 50+ times in this file —
   do not introduce a new error-mapping pattern for future `RepositoryClient`
   methods.
+
+- **`github_client::contains_already_exists_phrase` /
+  `is_repository_already_exists_error` / `is_label_already_exists_error`**
+  — detecting GitHub's 422 "name already exists" response and mapping it to
+  a specific `Error` variant rather than a generic failure
+  Location: `github_client/src/lib.rs` (private free functions)
+  Pattern: `contains_already_exists_phrase(text: &str) -> bool` is the
+  shared, case-insensitive check for GitHub's "already exists" /
+  "already_exists" wording in any message string. Both
+  `is_repository_already_exists_error` (feeds `Error::AlreadyExists` from
+  both `create_org_repository` and `create_fork`, used by
+  `repo_roller_core`'s task #282 existence-check/race-condition handling for
+  every `CreationMode`) and `is_label_already_exists_error`
+  call it against `source.message` on an `octocrab::Error::GitHub{source,..}`
+  with `source.status_code == 422 UNPROCESSABLE_ENTITY`, then each layers its
+  own additional heuristic on top: the repository variant also scans the
+  structured `errors` array (GitHub often nests the real message there,
+  leaving `message` as a generic "Repository creation failed."); the label
+  variant also accepts a generic "validation failed" + label/name mention.
+  Use when: Adding a new "detect this specific 422 message and map it to its
+  own `Error` variant" need — call `contains_already_exists_phrase` (or add
+  a sibling `contains_*_phrase` helper for a different fixed phrase) inside
+  a new `is_*_error(e: &octocrab::Error) -> bool` function following this
+  same `match e { octocrab::Error::GitHub { source, .. } => ..., _ => false
+  }` shape, rather than re-deriving the lowercase/`contains` check inline.
 
 - **`GitHubClient::put_tolerating_204_no_content<T: Serialize + ?Sized>`**
   (private) — sends a `PUT` and treats GitHub's `204 No Content` success

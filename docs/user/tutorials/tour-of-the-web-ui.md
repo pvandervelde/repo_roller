@@ -178,6 +178,13 @@ template-based creation, with two differences, both on Review and create:
 3. Set visibility if the field is editable.
 4. Click **Next** to proceed.
 
+> **If you chose Fork on Step 1:** the repository name you type here must be identical to
+> the repository name you typed in the `owner/repo` source field on Step 1 (for example,
+> `payment-service` for a source of `upstream-org/payment-service`). GitHub cannot rename a
+> repository when forking it, so a different name here is rejected on the Review step before
+> anything is created — see the error table below. This constraint does not apply to Mirror,
+> which creates an independently-named repository.
+
 ### Step 3 of 4: Variables
 
 This step only appears if the template you chose declares at least one variable; otherwise the
@@ -281,6 +288,7 @@ click **Create Repository** again without re-entering anything.
 | "This creation mode is disabled for this organization." | Fork or Mirror was enabled when you loaded the page but was turned off before you submitted | Reload the page to see the organisation's current creation-mode options, or contact your platform team |
 | A message naming the source repository's owner as not allowed | The source repository's owner is not on the organisation's allow-list of permitted source owners | Double-check the `owner/repo` value for typos, or ask your platform team to add that owner to the allow-list |
 | "No settings template is designated for this creation mode." | The organisation enabled Fork or Mirror but hasn't designated a settings template, and one is required | Contact your platform team to designate a settings-only template for this mode |
+| A message saying the repository name does not match the source repository's name (Fork only) | The **Repository name** you typed on Step 2 differs from the repository name in the `owner/repo` source field on Step 1. GitHub cannot rename a repository when forking it. | Go back to Step 2 and set **Repository name** to the exact same name as the source repository (e.g. `payment-service` for a source of `upstream-org/payment-service`). |
 
 If the page itself shows a banner naming two templates both claiming the same designation (for
 example, two templates both marked as the organisation's Fork settings template) immediately

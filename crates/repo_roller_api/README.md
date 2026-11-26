@@ -984,6 +984,23 @@ propagation is free to support even when this process's own span export is disab
 - `INVALID_TEMPLATE` - Template validation failure
 - `MISSING_REQUIRED_FIELD` - Required field not provided
 - `INVALID_REPOSITORY_TYPE` - Repository type validation failure
+- `ForkTargetNameMismatch` - `creationMode.type: "fork"` request's `name` does not match
+  `creationMode.source.name`. GitHub's fork-creation API cannot rename a repository on
+  creation, so this is rejected at validation time, before any GitHub API call (task #282).
+  Does not apply to `"mirror"`, which legitimately creates an independently-named
+  repository. Tracked for removal-by-construction in
+  [issue #378](https://github.com/pvandervelde/repo_roller/issues/378).
+
+**Resource Conflict Errors** (409):
+
+- `RepositoryAlreadyExists` - A repository with the requested `organization`/`name` already
+  exists. As of task #282, this is enforced by an **authoritative** server-side existence
+  check performed immediately before any repository-mutating GitHub API call, for every
+  `creationMode` — it fires regardless of what `POST /repositories/validate-name` reported
+  earlier (that endpoint remains a best-effort, fail-open UX helper, not the source of
+  truth), and also fires if a repository is created by someone else in the window between
+  the check and this request's own create call (detected via GitHub's own 422 response and
+  mapped to the same error).
 
 **Authentication Errors** (401):
 
@@ -1076,6 +1093,13 @@ struct DomainType {
 - Not idempotent by design
 - Each call creates a new repository
 - Client responsible for deduplication
+- **Never mutates an existing repository** (task #282): immediately before any
+  repository-mutating GitHub call, for every `creationMode`, the domain layer authoritatively
+  re-checks whether the target `{organization}/{name}` already exists and fails the request
+  with `409 RepositoryAlreadyExists` if so — regardless of retries, a skipped or
+  stale-by-the-time-of-use `validate-name` pre-check, or a repository created concurrently by
+  another caller (the latter is detected via GitHub's own "already exists" response and
+  mapped to the same error). See [Error Code Taxonomy](#error-code-taxonomy) above.
 
 **Validation Endpoints**:
 

@@ -107,6 +107,13 @@ impl RepositoryClient for MockRepositoryClient {
         ))
     }
 
+    async fn get_repository(&self, _owner: &str, _repo: &str) -> Result<Repository, GHError> {
+        // Not exercised by the ActionsManager test suite (scope is the two
+        // Actions-settings calls) -- default to "does not exist" since that
+        // is the only outcome these tests rely on implicitly never checking.
+        Err(GHError::NotFound)
+    }
+
     async fn create_user_repository(
         &self,
         _payload: &RepositoryCreatePayload,

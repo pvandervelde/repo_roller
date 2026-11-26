@@ -76,6 +76,14 @@ mod tests;
 #[path = "span_hierarchy_tests.rs"]
 mod span_hierarchy_tests;
 
+// Property-based (Tier 3) tests for the `create_org_repository` 422
+// "already exists" detection heuristic (task #282). See module docs in
+// `lib_proptests.rs` for why this lives in a separate file/module from
+// `lib_tests.rs`.
+#[cfg(test)]
+#[path = "lib_proptests.rs"]
+mod proptests;
+
 /// A client for interacting with the GitHub API, authenticated as a GitHub App.
 ///
 /// This struct provides a high-level interface for GitHub API operations using
@@ -2032,10 +2040,22 @@ impl RepositoryClient for GitHubClient {
         match response {
             Ok(r) => Ok(Repository::from(r)),
             Err(e) => {
+                if is_repository_already_exists_error(&e) {
+                    log_octocrab_error("Repository already exists for organisation", e);
+                    return Err(Error::AlreadyExists);
+                }
                 log_octocrab_error("Failed to create repository for organisation", e);
                 return Err(Error::InvalidResponse);
             }
         }
+    }
+
+    /// Fetches details for a specific repository via the `RepositoryClient`
+    /// trait, delegating to `GitHubClient`'s existing inherent method of the
+    /// same name, which already correctly distinguishes a 404 response
+    /// (`Error::NotFound`) from every other failure.
+    async fn get_repository(&self, owner: &str, repo: &str) -> Result<Repository, Error> {
+        GitHubClient::get_repository(self, owner, repo).await
     }
 
     /// Creates a new repository for the authenticated user (GitHub App) using the REST API directly.
@@ -2957,6 +2977,10 @@ impl RepositoryClient for GitHubClient {
         match response {
             Ok(r) => Ok(r),
             Err(e) => {
+                if is_repository_already_exists_error(&e) {
+                    log_octocrab_error("Repository already exists for fork target", e);
+                    return Err(Error::AlreadyExists);
+                }
                 log_octocrab_error("Failed to create fork", e);
                 Err(Error::InvalidResponse)
             }
@@ -3219,6 +3243,29 @@ pub trait RepositoryClient: Send + Sync {
         owner: &str,
         payload: &RepositoryCreatePayload,
     ) -> Result<Repository, Error>;
+
+    /// Fetches details for a specific repository.
+    ///
+    /// This is the authoritative way to determine whether a repository
+    /// already exists, used by `repo_roller_core`'s pre-creation existence
+    /// check (task #282 -- "never mutate an existing repository").
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner of the repository (user or organization name).
+    /// * `repo` - The name of the repository.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the `Repository` on success.
+    ///
+    /// # Errors
+    ///
+    /// - `Error::NotFound` if the repository does not exist or is not
+    ///   accessible with the current authentication.
+    /// - Any other `Error` variant for ambiguous failures (network, auth,
+    ///   rate limiting, etc.) that must NOT be treated as "does not exist".
+    async fn get_repository(&self, owner: &str, repo: &str) -> Result<Repository, Error>;
 
     /// Creates a new repository for the authenticated user.
     ///
@@ -4286,6 +4333,47 @@ fn log_octocrab_error(message: &str, e: octocrab::Error) {
     };
 }
 
+/// Checks whether `text` (already expected to be from a GitHub API error
+/// payload) contains GitHub's "already exists" wording, in either its
+/// spaced (`already exists`) or underscored (`already_exists`) form.
+/// Case-insensitive, mirroring GitHub's own inconsistent casing across
+/// endpoints/error codes.
+fn contains_already_exists_phrase(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("already exists") || lower.contains("already_exists")
+}
+
+/// Checks if an octocrab error indicates that `create_org_repository`'s
+/// target repository name already exists (HTTP 422 Unprocessable Entity).
+///
+/// Shares its message-matching with [`is_label_already_exists_error`] via
+/// [`contains_already_exists_phrase`], but additionally inspects the
+/// structured `errors` array GitHub often nests the actual "name already
+/// exists" message inside (the top-level `message` field is frequently just
+/// a generic "Repository creation failed." in that case) -- a check the
+/// label variant doesn't need, since label-creation errors always surface
+/// "already exists" in `message` directly.
+fn is_repository_already_exists_error(e: &octocrab::Error) -> bool {
+    match e {
+        octocrab::Error::GitHub { source, .. } => {
+            if source.status_code != http::StatusCode::UNPROCESSABLE_ENTITY {
+                return false;
+            }
+
+            if contains_already_exists_phrase(&source.message) {
+                return true;
+            }
+
+            source.errors.as_ref().is_some_and(|errors| {
+                errors
+                    .iter()
+                    .any(|e| contains_already_exists_phrase(&e.to_string()))
+            })
+        }
+        _ => false,
+    }
+}
+
 /// Checks if an octocrab error indicates a label already exists (HTTP 422 with specific message).
 fn is_label_already_exists_error(e: &octocrab::Error) -> bool {
     match e {
@@ -4293,11 +4381,10 @@ fn is_label_already_exists_error(e: &octocrab::Error) -> bool {
             // GitHub returns 422 Unprocessable Entity when a label with the same name already exists
             // Check both status code and error message
             let is_422 = source.status_code == http::StatusCode::UNPROCESSABLE_ENTITY;
-            let msg_lower = source.message.to_lowercase();
-            let has_already_exists =
-                msg_lower.contains("already exists") || msg_lower.contains("already_exists");
+            let has_already_exists = contains_already_exists_phrase(&source.message);
 
             // Also check for common validation error patterns from GitHub
+            let msg_lower = source.message.to_lowercase();
             let has_validation_error = msg_lower.contains("validation failed")
                 && (msg_lower.contains("label") || msg_lower.contains("name"));
 

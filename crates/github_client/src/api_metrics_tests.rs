@@ -319,6 +319,7 @@ mod status_category_tests {
     #[test]
     fn test_status_category_is_within_known_bounded_set_for_every_variant() {
         let samples: Vec<Error> = vec![
+            Error::AlreadyExists,
             Error::ApiError(),
             Error::AuthError("token invalid".into()),
             Error::FailedToCreateAccessToken("owner".into(), "repo".into(), 42),
@@ -381,6 +382,7 @@ mod status_category_tests {
             .into();
 
         let cases: Vec<(Error, &str)> = vec![
+            (Error::AlreadyExists, "already_exists"),
             (Error::ApiError(), "api_error"),
             (Error::AuthError("bad token".into()), "auth_error"),
             (deserialization_err, "deserialization"),

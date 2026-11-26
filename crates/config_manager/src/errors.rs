@@ -143,6 +143,21 @@ pub enum ConfigurationError {
         /// or `"source_only_mirror"`.
         capability: String,
     },
+
+    /// A `CreationMode::Fork` request's `request.name` does not match
+    /// `source.name`. GitHub's fork-creation API cannot rename a repository
+    /// on creation -- the created fork is always named after `source.name`
+    /// -- so a mismatch here would cause the authoritative existence-check
+    /// gate (task #282) to check the wrong identifier. Returned at
+    /// validation time, before any GitHub API call.
+    ///
+    #[error("Fork target name '{requested}' does not match source repository name '{source_name}'; GitHub cannot rename a repository on fork creation")]
+    ForkTargetNameMismatch {
+        /// The `request.name` the caller supplied.
+        requested: String,
+        /// The actual `source.name` the fork will be created under.
+        source_name: String,
+    },
 }
 
 /// Result type alias for configuration operations.
