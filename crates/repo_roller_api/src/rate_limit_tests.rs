@@ -564,4 +564,28 @@ mod auto_eviction_tests {
         assert_eq!(l.evict_expired(), 2);
         assert_eq!(l.tracked_keys(), 0);
     }
+
+    #[test]
+    fn from_env_reads_process_environment() {
+        // Sole test touching these process-wide variables.
+        std::env::set_var("RATE_LIMIT_ENABLED", "false");
+        std::env::set_var("RATE_LIMIT_REQUESTS", "7");
+        std::env::set_var("RATE_LIMIT_WINDOW_SECS", "45");
+        let c = RateLimitConfig::from_env();
+        std::env::remove_var("RATE_LIMIT_ENABLED");
+        std::env::remove_var("RATE_LIMIT_REQUESTS");
+        std::env::remove_var("RATE_LIMIT_WINDOW_SECS");
+        assert_eq!(c, RateLimitConfig::new(false, 7, 45));
+        assert_eq!(RateLimitConfig::from_env(), RateLimitConfig::default());
+    }
+
+    #[test]
+    fn system_clock_is_monotonic_and_advances() {
+        let clock = SystemClock;
+        let a = clock.now();
+        std::thread::sleep(Duration::from_millis(30));
+        let b = clock.now();
+        assert!(b >= a + Duration::from_millis(30));
+        assert!(b > Duration::ZERO);
+    }
 }
