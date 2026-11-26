@@ -11,16 +11,21 @@
 //! * `Limited.retry_after_secs` = ceil(seconds until window end), minimum 1.
 //! * Config env vars: `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`,
 //!   `RATE_LIMIT_WINDOW_SECS`. Invalid values fall back to defaults (never panic).
-//! * Middleware runs after auth, keyed by `AuthContext::user_login`, applies to
+//! * Middleware runs after auth, keyed by [`principal_key`], applies to
 //!   POST requests only, answers 429 + `Retry-After` + JSON `ErrorResponse`
-//!   with code `RateLimitExceeded`.
+//!   with code `RateLimitExceeded`. Requests with no principal identifier are
+//!   rejected (401), never pooled.
+//! * The public token endpoint has its own limiter keyed by client IP
+//!   (`auth_rate_limit_middleware`); env vars `RATE_LIMIT_AUTH_REQUESTS`,
+//!   `RATE_LIMIT_AUTH_WINDOW_SECS`.
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use axum::{
-    extract::{Request, State},
+    extract::{ConnectInfo, Request, State},
     http::{header, HeaderValue, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -28,7 +33,7 @@ use axum::{
 };
 
 use crate::errors::{ErrorDetails, ErrorResponse};
-use crate::middleware::AuthContext;
+use crate::middleware::{AuthContext, AuthError};
 use crate::AppState;
 
 /// Default maximum requests per window.
@@ -36,16 +41,17 @@ pub const DEFAULT_MAX_REQUESTS: u32 = 10;
 /// Default window length in seconds.
 pub const DEFAULT_WINDOW_SECS: u64 = 60;
 
-/// Fixed key used when the authenticated principal has no resolvable login.
-/// All such principals share one bucket rather than bypassing the limiter.
-pub const UNKNOWN_USER_KEY: &str = "<unknown-user>";
-
 /// Default maximum token-exchange requests per client address per window.
 pub const DEFAULT_AUTH_MAX_REQUESTS: u32 = 20;
 /// Default token-exchange window length in seconds.
 pub const DEFAULT_AUTH_WINDOW_SECS: u64 = 60;
 /// Key used for token-exchange requests that carry no `ConnectInfo`.
 pub const NO_CLIENT_ADDR_KEY: &str = "addr:none";
+
+/// `scope` label value for rejections by the per-user limiter.
+pub const SCOPE_USER: &str = "user";
+/// `scope` label value for rejections by the token-endpoint (client IP) limiter.
+pub const SCOPE_AUTH_IP: &str = "auth_ip";
 
 /// Expired entries are swept every this many checks.
 const EVICT_EVERY_N_CHECKS: u64 = 256;
@@ -81,13 +87,7 @@ impl RateLimitConfig {
     /// anything else fails closed to enabled. `RATE_LIMIT_REQUESTS` and
     /// `RATE_LIMIT_WINDOW_SECS` must be positive integers.
     pub fn from_env_vars(lookup: impl Fn(&str) -> Option<String>) -> Self {
-        let enabled = match lookup("RATE_LIMIT_ENABLED") {
-            Some(v) => {
-                let v = v.trim();
-                !(v.eq_ignore_ascii_case("false") || v == "0")
-            }
-            None => true,
-        };
+        let enabled = Self::parse_enabled(&lookup);
         let max_requests = lookup("RATE_LIMIT_REQUESTS")
             .and_then(|v| v.trim().parse::<u32>().ok())
             .filter(|n| *n >= 1)
@@ -101,9 +101,32 @@ impl RateLimitConfig {
 
     /// Config for the token-exchange (public) limiter. Reads
     /// `RATE_LIMIT_ENABLED`, `RATE_LIMIT_AUTH_REQUESTS`,
-    /// `RATE_LIMIT_AUTH_WINDOW_SECS`. STUB (TDD red).
-    pub fn auth_from_env_vars(_lookup: impl Fn(&str) -> Option<String>) -> Self {
-        Self::default()
+    /// `RATE_LIMIT_AUTH_WINDOW_SECS`. Same parsing rules as
+    /// [`from_env_vars`](Self::from_env_vars); defaults are
+    /// `DEFAULT_AUTH_MAX_REQUESTS` / `DEFAULT_AUTH_WINDOW_SECS`.
+    pub fn auth_from_env_vars(lookup: impl Fn(&str) -> Option<String>) -> Self {
+        let enabled = Self::parse_enabled(&lookup);
+        let max_requests = lookup("RATE_LIMIT_AUTH_REQUESTS")
+            .and_then(|v| v.trim().parse::<u32>().ok())
+            .filter(|n| *n >= 1)
+            .unwrap_or(DEFAULT_AUTH_MAX_REQUESTS);
+        let window_secs = lookup("RATE_LIMIT_AUTH_WINDOW_SECS")
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|n| *n >= 1)
+            .unwrap_or(DEFAULT_AUTH_WINDOW_SECS);
+        Self::new(enabled, max_requests, window_secs)
+    }
+
+    /// `RATE_LIMIT_ENABLED` only disables on `false`/`0` (case-insensitive);
+    /// anything else fails closed to enabled.
+    fn parse_enabled(lookup: &impl Fn(&str) -> Option<String>) -> bool {
+        match lookup("RATE_LIMIT_ENABLED") {
+            Some(v) => {
+                let v = v.trim();
+                !(v.eq_ignore_ascii_case("false") || v == "0")
+            }
+            None => true,
+        }
     }
 
     /// Token-exchange config from the process environment.
@@ -266,33 +289,91 @@ impl RateLimiter {
 /// Limiter key for an authenticated principal, or `None` when the context
 /// carries no stable identifier (the request must then be rejected).
 ///
-/// STUB (TDD red).
+/// Keys are namespaced so a login can never collide with a principal id:
+/// `login:<lowercased login>` for users (GitHub logins are case-insensitive)
+/// and `sub:<principal id>` for loginless principals. An empty login is not an
+/// identifier.
 pub fn principal_key(ctx: &AuthContext) -> Option<String> {
-    ctx.user_login.clone()
+    if let Some(login) = ctx.user_login.as_deref().filter(|l| !l.is_empty()) {
+        return Some(format!("login:{}", login.to_lowercase()));
+    }
+    ctx.principal_id
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .map(|p| format!("sub:{p}"))
 }
 
 /// Limiter key for the client of a public request, derived from the
-/// connection address only. STUB (TDD red).
-pub fn client_key(_request: &Request) -> String {
-    NO_CLIENT_ADDR_KEY.to_string()
+/// connection address only.
+///
+/// Uses the peer IP from `ConnectInfo<SocketAddr>` (port dropped, IPv4-mapped
+/// IPv6 canonicalised to IPv4). Forwarding headers (`X-Forwarded-For`, ...)
+/// are deliberately never consulted: they are client-controlled and would let
+/// an attacker evade the limit or exhaust another client's budget. Requests
+/// without `ConnectInfo` share the fail-closed `NO_CLIENT_ADDR_KEY` bucket.
+pub fn client_key(request: &Request) -> String {
+    match request.extensions().get::<ConnectInfo<SocketAddr>>() {
+        Some(ConnectInfo(addr)) => format!("ip:{}", addr.ip().to_canonical()),
+        None => NO_CLIENT_ADDR_KEY.to_string(),
+    }
 }
 
-/// Per-client-address limiter for `POST /api/v1/auth/token`. STUB (TDD red).
+/// Build the standard `429` response and count the rejection under `scope`.
+fn reject(state: &AppState, scope: &str, retry_after_secs: u64) -> Response {
+    state
+        .rate_limit_rejections
+        .with_label_values(&[scope])
+        .inc();
+    tracing::warn!(
+        scope,
+        retry_after_secs,
+        "Rate limit exceeded; rejecting request with 429"
+    );
+    let body = ErrorResponse {
+        error: ErrorDetails {
+            code: "RateLimitExceeded".to_string(),
+            message: format!("Too many requests. Retry after {retry_after_secs} seconds."),
+            details: None,
+        },
+    };
+    let mut response = (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
+    response
+        .headers_mut()
+        .insert(header::RETRY_AFTER, HeaderValue::from(retry_after_secs));
+    response
+}
+
+/// Per-client-address limiter for the public `POST /api/v1/auth/token`.
+///
+/// Only `POST` requests are limited. The bucket key is [`client_key`]; a
+/// rejection is a `429` (see [`rate_limit_middleware`]) counted under
+/// `scope="auth_ip"`. Uses its own limiter (`AppState::auth_rate_limiter`),
+/// separate from the per-user budget.
 pub async fn auth_rate_limit_middleware(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     request: Request,
     next: Next,
 ) -> Response {
-    next.run(request).await
+    if request.method() != Method::POST {
+        return next.run(request).await;
+    }
+    match state.auth_rate_limiter.check(&client_key(&request)) {
+        RateLimitDecision::Allowed { .. } => next.run(request).await,
+        RateLimitDecision::Limited { retry_after_secs } => {
+            reject(&state, SCOPE_AUTH_IP, retry_after_secs)
+        }
+    }
 }
 
-/// Axum middleware enforcing the limit (must run after `auth_middleware`).
+/// Axum middleware enforcing the per-user limit (must run after
+/// `auth_middleware`).
 ///
-/// Only `POST` requests are limited. The bucket key is the authenticated
-/// user's login (`AuthContext::user_login`); principals without a login share
-/// the fixed `UNKNOWN_USER_KEY` bucket. Rejections return `429` with a
-/// `Retry-After` header and the standard JSON error body, are logged at WARN
-/// (without the user identity) and counted in `rate_limit_rejections_total`.
+/// Only `POST` requests are limited. The bucket key is [`principal_key`].
+/// A request whose context carries no identifier (or no `AuthContext` at all)
+/// is rejected with `401` instead of being pooled into a shared bucket.
+/// Rejections return `429` with a `Retry-After` header and the standard JSON
+/// error body, are logged at WARN (without the user identity) and counted in
+/// `rate_limit_rejections_total{scope="user"}`.
 pub async fn rate_limit_middleware(
     State(state): State<AppState>,
     request: Request,
@@ -302,32 +383,19 @@ pub async fn rate_limit_middleware(
         return next.run(request).await;
     }
 
-    let key = request
+    let Some(key) = request
         .extensions()
         .get::<AuthContext>()
-        .and_then(|ctx| ctx.user_login.as_deref())
-        .unwrap_or(UNKNOWN_USER_KEY);
+        .and_then(principal_key)
+    else {
+        tracing::warn!("Authenticated request has no principal identifier; rejecting");
+        return AuthError::MissingToken.into_response();
+    };
 
-    match state.rate_limiter.check(key) {
+    match state.rate_limiter.check(&key) {
         RateLimitDecision::Allowed { .. } => next.run(request).await,
         RateLimitDecision::Limited { retry_after_secs } => {
-            state.rate_limit_rejections.inc();
-            tracing::warn!(
-                retry_after_secs,
-                "Rate limit exceeded; rejecting request with 429"
-            );
-            let body = ErrorResponse {
-                error: ErrorDetails {
-                    code: "RateLimitExceeded".to_string(),
-                    message: format!("Too many requests. Retry after {retry_after_secs} seconds."),
-                    details: None,
-                },
-            };
-            let mut response = (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
-            response
-                .headers_mut()
-                .insert(header::RETRY_AFTER, HeaderValue::from(retry_after_secs));
-            response
+            reject(&state, SCOPE_USER, retry_after_secs)
         }
     }
 }

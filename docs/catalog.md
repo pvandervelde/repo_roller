@@ -626,10 +626,17 @@ Add to this whenever a reusable component becomes "the standard way".
 - **`repo_roller_api::rate_limit::Clock`** — monotonic time source trait (`SystemClock` in production)
   Use when: Injecting deterministic time in tests via `RateLimiter::with_clock`
 - **`repo_roller_api::rate_limit::RateLimitDecision`** — `Allowed { remaining }` / `Limited { retry_after_secs }`
-- **`repo_roller_api::rate_limit::rate_limit_middleware`** — axum middleware; POST only, keyed by `AuthContext::user_login`, returns 429 + `Retry-After` + `ErrorResponse` code `RateLimitExceeded`
+- **`repo_roller_api::rate_limit::rate_limit_middleware`** — axum middleware; POST only, keyed by `principal_key(&AuthContext)`, returns 429 + `Retry-After` + `ErrorResponse` code `RateLimitExceeded`; rejects 401 when the context has no identifier (never pooled)
+- **`repo_roller_api::rate_limit::principal_key`** — `Option<String>` limiter key: `login:<lowercased>` / `sub:<principal id>`; `None` when no identifier
+  Use when: Keying any per-principal limiter; namespaces prevent login/pid collisions
+- **`repo_roller_api::rate_limit::auth_rate_limit_middleware`** — axum middleware for the public `POST /api/v1/auth/token`; own limiter (`AppState.auth_rate_limiter`) keyed by `client_key`; 429 counted under `scope="auth_ip"`
+- **`repo_roller_api::rate_limit::client_key`** — limiter key from `ConnectInfo<SocketAddr>` peer IP only (IPv4-mapped IPv6 canonicalised); forwarding headers ignored; missing ConnectInfo -> `NO_CLIENT_ADDR_KEY` (`addr:none`)
+- **`RateLimitConfig::auth_from_env_vars` / `auth_from_env`** — token-endpoint limiter config from `RATE_LIMIT_ENABLED`, `RATE_LIMIT_AUTH_REQUESTS`, `RATE_LIMIT_AUTH_WINDOW_SECS` (defaults 20 / 60s)
+- **`repo_roller_api::middleware::generate_loginless_backend_jwt` / `principal_id_for_token`** — issue a JWT with a `pid` claim for principals with no resolvable login; `principal_id_for_token` = SHA-256 hex of the GitHub token (never embeds it). `AuthContext.principal_id` carries it
+- **`ApiServer::serve_with_listener`** — serves with `into_make_service_with_connect_info::<SocketAddr>()` so `ConnectInfo` is available; `serve` delegates to it
   Notes: Layered inside `auth_middleware` in `routes::create_router`
 - **`AppState.rate_limiter`** — `Arc<RateLimiter>` shared state; override with `AppState::with_rate_limit_config` / `with_rate_limiter`
-- **`rate_limit_rejections_total`** — unlabelled Prometheus `IntCounter` (`AppState.rate_limit_rejections`) counting 429 rejections
+- **`rate_limit_rejections_total`** — Prometheus `IntCounterVec` (`AppState.rate_limit_rejections`), label `scope` in {`user`, `auth_ip`} (both pre-seeded), counting 429 rejections
 
 ### Caching
 

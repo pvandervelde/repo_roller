@@ -133,7 +133,15 @@ pub fn create_router(state: AppState) -> Router {
     let api_v1 = Router::new()
         .merge(protected_routes)
         // Public routes (no authentication required)
-        .route("/auth/token", post(handlers::exchange_github_token))
+        // Per-client-IP limiter: this route is unauthenticated, so the
+        // per-user limiter cannot protect it.
+        .route(
+            "/auth/token",
+            post(handlers::exchange_github_token).route_layer(middleware::from_fn_with_state(
+                state.clone(),
+                crate::rate_limit::auth_rate_limit_middleware,
+            )),
+        )
         .route("/health", get(handlers::health_check))
         // Add remaining middleware layers
         .layer(middleware::from_fn(api_middleware::tracing_middleware))

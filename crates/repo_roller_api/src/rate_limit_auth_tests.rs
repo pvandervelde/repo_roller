@@ -63,7 +63,10 @@ fn auth_values_are_parsed_from_dedicated_variables() {
 
 #[test]
 fn auth_config_ignores_the_per_user_variables() {
-    let c = cfg(&[("RATE_LIMIT_REQUESTS", "3"), ("RATE_LIMIT_WINDOW_SECS", "7")]);
+    let c = cfg(&[
+        ("RATE_LIMIT_REQUESTS", "3"),
+        ("RATE_LIMIT_WINDOW_SECS", "7"),
+    ]);
     assert_eq!(c.max_requests, 20);
     assert_eq!(c.window, Duration::from_secs(60));
 }

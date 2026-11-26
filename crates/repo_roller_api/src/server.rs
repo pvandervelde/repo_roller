@@ -47,13 +47,26 @@ impl ApiServer {
 
     /// Serve on an already-bound listener until `shutdown` resolves, exposing
     /// the peer `SocketAddr` to handlers/middleware as `ConnectInfo`.
-    /// `serve` delegates to this. STUB (TDD red).
+    /// `serve` delegates to this.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying server fails.
     pub async fn serve_with_listener(
         self,
-        _listener: TcpListener,
-        _shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+        listener: TcpListener,
+        shutdown: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> anyhow::Result<()> {
-        Err(anyhow::anyhow!("not implemented"))
+        let app = self.router();
+
+        // `ConnectInfo` is required by the token-endpoint IP rate limiter.
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown)
+        .await
+        .map_err(|e| anyhow::anyhow!("Server error: {}", e))
     }
 
     /// Start the server and listen for requests.
@@ -73,13 +86,8 @@ impl ApiServer {
         tracing::info!("Starting API server on {}", addr);
 
         let listener = TcpListener::bind(addr).await?;
-        let app = self.router();
-
-        // Serve with graceful shutdown
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
-            .await
-            .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+        self.serve_with_listener(listener, shutdown_signal())
+            .await?;
 
         tracing::info!("Server shutdown complete");
 

@@ -62,14 +62,41 @@ pub(crate) struct Claims {
 ///
 /// Returns `AuthError` if JWT encoding fails (e.g. invalid secret).
 pub(crate) fn generate_backend_jwt(user_login: &str, secret: &str) -> Result<String, AuthError> {
+    sign_claims(user_login, None, secret)
+}
+
+/// Placeholder `sub` for loginless principals. Never interpreted as a login:
+/// `auth_middleware` ignores `sub` whenever a `pid` claim is present.
+const LOGINLESS_SUBJECT: &str = "unknown";
+
+/// Issue a backend JWT for a principal with no resolvable login (for example a
+/// GitHub App installation token).
+///
+/// The token carries `principal_id` in the `pid` claim. `auth_middleware`
+/// then exposes an `AuthContext` with no `user_login` and
+/// `principal_id = Some(principal_id)`, which the rate limiter keys on so
+/// distinct principals never share a bucket.
+///
+/// # Errors
+///
+/// Returns `AuthError` if JWT encoding fails (e.g. invalid secret).
+pub(crate) fn generate_loginless_backend_jwt(
+    principal_id: &str,
+    secret: &str,
+) -> Result<String, AuthError> {
+    sign_claims(LOGINLESS_SUBJECT, Some(principal_id), secret)
+}
+
+/// Sign HS256 claims for `sub` and the optional `pid`.
+fn sign_claims(sub: &str, pid: Option<&str>, secret: &str) -> Result<String, AuthError> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
     let claims = Claims {
-        sub: user_login.to_string(),
-        pid: None,
+        sub: sub.to_string(),
+        pid: pid.map(str::to_string),
         iat: now as usize,
         exp: (now + JWT_EXPIRY_SECS) as usize,
     };
@@ -136,21 +163,14 @@ pub struct AuthContext {
     pub principal_id: Option<String>,
 }
 
-/// Issue a backend JWT for a principal with no resolvable login.
+/// Derive a stable opaque principal id from a GitHub token.
 ///
-/// STUB (TDD red): see `middleware_principal_tests.rs` for the contract.
-pub(crate) fn generate_loginless_backend_jwt(
-    _principal_id: &str,
-    secret: &str,
-) -> Result<String, AuthError> {
-    generate_backend_jwt("unknown", secret)
-}
-
-/// Derive a stable opaque principal id from a GitHub token (never the token).
-///
-/// STUB (TDD red).
-pub(crate) fn principal_id_for_token(_token: &str) -> String {
-    String::new()
+/// Returns the lowercase hex SHA-256 digest of the token. The digest is
+/// one-way, so the id never embeds or reveals the token, yet is identical for
+/// every request made with the same token.
+pub(crate) fn principal_id_for_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 impl AuthContext {
@@ -208,9 +228,17 @@ pub async fn auth_middleware(
 
     tracing::debug!(user_login = %claims.sub, "Backend JWT validated");
 
-    let auth_context = AuthContext {
-        user_login: Some(claims.sub),
-        principal_id: None,
+    // A `pid` claim marks a loginless principal: `sub` is then only a
+    // placeholder and must not be mistaken for a real GitHub login.
+    let auth_context = match claims.pid.filter(|p| !p.is_empty()) {
+        Some(pid) => AuthContext {
+            user_login: None,
+            principal_id: Some(pid),
+        },
+        None => AuthContext {
+            user_login: Some(claims.sub),
+            principal_id: None,
+        },
     };
 
     request.extensions_mut().insert(auth_context);

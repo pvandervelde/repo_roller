@@ -55,7 +55,7 @@ struct MetricsBundle {
         std::sync::Arc<dyn repo_roller_core::repository_metrics::RepositoryCreationMetrics>,
     http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics>,
     github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics>,
-    rate_limit_rejections: prometheus::IntCounter,
+    rate_limit_rejections: prometheus::IntCounterVec,
 }
 
 impl MetricsBundle {
@@ -83,15 +83,26 @@ impl MetricsBundle {
         let github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics> =
             std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
 
-        // Unlabelled on purpose: no user identity or other unbounded values.
-        let rate_limit_rejections = prometheus::IntCounter::new(
-            "rate_limit_rejections_total",
-            "Total requests rejected by the application-level rate limiter",
+        // Labelled by `scope` only (a closed set: "user", "auth_ip"); never by
+        // user identity or client address, which would be unbounded.
+        let rate_limit_rejections = prometheus::IntCounterVec::new(
+            prometheus::Opts::new(
+                "rate_limit_rejections_total",
+                "Total requests rejected by the application-level rate limiters",
+            ),
+            &["scope"],
         )
         .expect("Failed to create rate limit rejections counter");
         registry
             .register(Box::new(rate_limit_rejections.clone()))
             .expect("Failed to register rate limit rejections counter");
+        // Pre-seed both scopes so each series is exported at 0 from startup.
+        for scope in [
+            crate::rate_limit::SCOPE_USER,
+            crate::rate_limit::SCOPE_AUTH_IP,
+        ] {
+            rate_limit_rejections.with_label_values(&[scope]);
+        }
 
         Self {
             registry: std::sync::Arc::new(registry),
@@ -174,7 +185,7 @@ pub struct AppState {
     pub(crate) auth_rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
     /// Counter of requests rejected by the rate limiter, registered against
     /// `metrics_registry` as `rate_limit_rejections_total`.
-    pub(crate) rate_limit_rejections: prometheus::IntCounter,
+    pub(crate) rate_limit_rejections: prometheus::IntCounterVec,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling

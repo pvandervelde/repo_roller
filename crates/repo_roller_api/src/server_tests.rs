@@ -37,7 +37,10 @@ fn test_server_router_uses_state() {
 }
 
 /// Sends one raw HTTP/1.1 POST to the token endpoint and returns the status code.
-async fn raw_token_post(local: Option<std::net::SocketAddr>, to: std::net::SocketAddr) -> Option<u16> {
+async fn raw_token_post(
+    local: Option<std::net::SocketAddr>,
+    to: std::net::SocketAddr,
+) -> Option<u16> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let sock = tokio::net::TcpSocket::new_v4().ok()?;
     if let Some(l) = local {
@@ -81,10 +84,18 @@ async fn serve_with_listener_keys_token_limiter_by_peer_ip() {
     });
 
     let t = std::time::Duration::from_secs(10);
-    let first = tokio::time::timeout(t, raw_token_post(None, addr)).await.unwrap();
-    let second = tokio::time::timeout(t, raw_token_post(None, addr)).await.unwrap();
+    let first = tokio::time::timeout(t, raw_token_post(None, addr))
+        .await
+        .unwrap();
+    let second = tokio::time::timeout(t, raw_token_post(None, addr))
+        .await
+        .unwrap();
     assert_eq!(first, Some(401), "first request reaches the handler");
-    assert_eq!(second, Some(429), "second request from same peer is limited");
+    assert_eq!(
+        second,
+        Some(429),
+        "second request from same peer is limited"
+    );
 
     // A different peer IP must have its own budget (skipped where the OS
     // cannot bind a second loopback address).
@@ -99,5 +110,8 @@ async fn serve_with_listener_keys_token_limiter_by_peer_ip() {
 
     let _ = tx.send(());
     let res = tokio::time::timeout(t, handle).await.unwrap().unwrap();
-    assert!(res.is_ok(), "serve_with_listener must shut down cleanly: {res:?}");
+    assert!(
+        res.is_ok(),
+        "serve_with_listener must shut down cleanly: {res:?}"
+    );
 }

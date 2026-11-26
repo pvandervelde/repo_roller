@@ -109,14 +109,20 @@ async fn token_endpoint_allows_n_requests_then_429() {
     for _ in 0..4 {
         out.push(st(&router, auth_req(Some(IP_A), &[])).await);
     }
-    assert!(out[..3].iter().all(|s| *s == StatusCode::UNAUTHORIZED), "{out:?}");
+    assert!(
+        out[..3].iter().all(|s| *s == StatusCode::UNAUTHORIZED),
+        "{out:?}"
+    );
     assert_eq!(out[3], StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[tokio::test]
 async fn token_endpoint_limit_of_one_rejects_the_second_request() {
     let router = auth_router(1, 60);
-    assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        st(&router, auth_req(Some(IP_A), &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
     assert_eq!(
         st(&router, auth_req(Some(IP_A), &[])).await,
         StatusCode::TOO_MANY_REQUESTS
@@ -159,7 +165,10 @@ async fn different_client_ips_have_isolated_budgets() {
         st(&router, auth_req(Some(IP_A), &[])).await,
         StatusCode::TOO_MANY_REQUESTS
     );
-    assert_eq!(st(&router, auth_req(Some(IP_B), &[])).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        st(&router, auth_req(Some(IP_B), &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
     assert_eq!(
         st(&router, auth_req(Some(IP_B), &[])).await,
         StatusCode::TOO_MANY_REQUESTS
@@ -179,11 +188,19 @@ async fn same_ip_different_source_ports_share_one_budget() {
 #[tokio::test]
 async fn rotating_x_forwarded_for_does_not_evade_the_limit() {
     let router = auth_router(1, 60);
-    st(&router, auth_req(Some(IP_A), &[("x-forwarded-for", "198.51.100.1")])).await;
+    st(
+        &router,
+        auth_req(Some(IP_A), &[("x-forwarded-for", "198.51.100.1")]),
+    )
+    .await;
     for i in 2..6 {
         let spoof = format!("198.51.100.{i}");
         assert_eq!(
-            st(&router, auth_req(Some(IP_A), &[("x-forwarded-for", &spoof)])).await,
+            st(
+                &router,
+                auth_req(Some(IP_A), &[("x-forwarded-for", &spoof)])
+            )
+            .await,
             StatusCode::TOO_MANY_REQUESTS,
             "spoofed XFF {spoof} must not grant a fresh budget"
         );
@@ -231,7 +248,11 @@ async fn limiter_tracks_connection_addresses_not_header_values() {
     let (router, _clock, limiter) = clocked_auth_router(100, 60);
     for i in 0..5 {
         let spoof = format!("198.51.100.{i}");
-        st(&router, auth_req(Some(IP_A), &[("x-forwarded-for", &spoof)])).await;
+        st(
+            &router,
+            auth_req(Some(IP_A), &[("x-forwarded-for", &spoof)]),
+        )
+        .await;
     }
     assert_eq!(limiter.tracked_keys(), 1);
     st(&router, auth_req(Some(IP_B), &[])).await;
@@ -241,9 +262,16 @@ async fn limiter_tracks_connection_addresses_not_header_values() {
 #[tokio::test]
 async fn missing_connect_info_is_handled_without_panic_and_shares_the_fallback_bucket() {
     let router = auth_router(1, 60);
-    assert_eq!(st(&router, auth_req(None, &[])).await, StatusCode::UNAUTHORIZED);
     assert_eq!(
-        st(&router, auth_req(None, &[("x-forwarded-for", "198.51.100.7")])).await,
+        st(&router, auth_req(None, &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        st(
+            &router,
+            auth_req(None, &[("x-forwarded-for", "198.51.100.7")])
+        )
+        .await,
         StatusCode::TOO_MANY_REQUESTS,
         "requests with no peer address share one fail-closed bucket"
     );
@@ -254,14 +282,21 @@ async fn fallback_bucket_exhaustion_does_not_affect_real_clients() {
     let router = auth_router(1, 60);
     st(&router, auth_req(None, &[])).await;
     st(&router, auth_req(None, &[])).await;
-    assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        st(&router, auth_req(Some(IP_A), &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]
 async fn token_endpoint_429_has_integer_retry_after_within_window() {
     let router = auth_router(1, 60);
     st(&router, auth_req(Some(IP_A), &[])).await;
-    let resp = router.clone().oneshot(auth_req(Some(IP_A), &[])).await.unwrap();
+    let resp = router
+        .clone()
+        .oneshot(auth_req(Some(IP_A), &[]))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
     let secs: u64 = resp
         .headers()
@@ -279,35 +314,62 @@ async fn token_endpoint_retry_after_reflects_remaining_window() {
     let (router, clock, _l) = clocked_auth_router(1, 60);
     st(&router, auth_req(Some(IP_A), &[])).await;
     clock.advance(Duration::from_secs(45));
-    let resp = router.clone().oneshot(auth_req(Some(IP_A), &[])).await.unwrap();
+    let resp = router
+        .clone()
+        .oneshot(auth_req(Some(IP_A), &[]))
+        .await
+        .unwrap();
     assert_eq!(resp.headers().get(header::RETRY_AFTER).unwrap(), "15");
 }
 
 #[tokio::test]
 async fn token_endpoint_non_429_carries_no_retry_after() {
     let router = auth_router(5, 60);
-    let resp = router.clone().oneshot(auth_req(Some(IP_A), &[])).await.unwrap();
+    let resp = router
+        .clone()
+        .oneshot(auth_req(Some(IP_A), &[]))
+        .await
+        .unwrap();
     assert!(resp.headers().get(header::RETRY_AFTER).is_none());
 }
 
 #[tokio::test]
 async fn token_endpoint_429_body_is_standard_json_error_without_leaks() {
     let router = auth_router(1, 60);
-    st(&router, auth_req(Some(IP_A), &[("x-forwarded-for", "198.51.100.77")])).await;
+    st(
+        &router,
+        auth_req(Some(IP_A), &[("x-forwarded-for", "198.51.100.77")]),
+    )
+    .await;
     let resp = router
         .clone()
-        .oneshot(auth_req(Some(IP_A), &[("x-forwarded-for", "198.51.100.77")]))
+        .oneshot(auth_req(
+            Some(IP_A),
+            &[("x-forwarded-for", "198.51.100.77")],
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
-    let ct = resp.headers().get(header::CONTENT_TYPE).unwrap().to_str().unwrap().to_string();
+    let ct = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     assert!(ct.starts_with("application/json"), "{ct}");
     let body = body_text(resp).await;
     let v: serde_json::Value = serde_json::from_str(&body).expect("json");
     assert_eq!(v["error"]["code"], "RateLimitExceeded");
     assert!(!v["error"]["message"].as_str().unwrap_or("").is_empty());
-    assert!(!body.contains("203.0.113.10"), "body leaks client ip: {body}");
-    assert!(!body.contains("198.51.100.77"), "body leaks header ip: {body}");
+    assert!(
+        !body.contains("203.0.113.10"),
+        "body leaks client ip: {body}"
+    );
+    assert!(
+        !body.contains("198.51.100.77"),
+        "body leaks header ip: {body}"
+    );
     for needle in ["Mutex", "HashMap", "RateLimiter", "panicked"] {
         assert!(!body.contains(needle), "{needle}: {body}");
     }
@@ -322,7 +384,10 @@ async fn token_endpoint_budget_resets_after_window() {
         StatusCode::TOO_MANY_REQUESTS
     );
     clock.advance(Duration::from_secs(60));
-    assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        st(&router, auth_req(Some(IP_A), &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]
@@ -331,7 +396,10 @@ async fn disabled_config_never_limits_the_token_endpoint() {
         AppState::default().with_auth_rate_limit_config(RateLimitConfig::new(false, 1, 60)),
     );
     for _ in 0..10 {
-        assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            st(&router, auth_req(Some(IP_A), &[])).await,
+            StatusCode::UNAUTHORIZED
+        );
     }
 }
 
@@ -344,7 +412,10 @@ async fn only_post_is_limited_on_the_token_route_and_gets_do_not_consume_budget(
             .insert(ConnectInfo(IP_A.parse::<SocketAddr>().unwrap()));
         assert_ne!(st(&router, r).await, StatusCode::TOO_MANY_REQUESTS);
     }
-    assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        st(&router, auth_req(Some(IP_A), &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]
@@ -354,7 +425,11 @@ async fn auth_limiter_memory_is_bounded_by_eviction_of_expired_clients() {
     for i in 0..300 {
         st(&router, auth_req(Some(&addr(i)), &[])).await;
     }
-    assert_eq!(limiter.tracked_keys(), 300, "one key per distinct client ip");
+    assert_eq!(
+        limiter.tracked_keys(),
+        300,
+        "one key per distinct client ip"
+    );
     clock.advance(Duration::from_secs(61));
     for i in 300..600 {
         st(&router, auth_req(Some(&addr(i)), &[])).await;
@@ -375,10 +450,19 @@ async fn auth_limiter_is_separate_from_the_per_user_limiter() {
         .with_auth_rate_limit_config(RateLimitConfig::new(true, 1, 60));
     let router = create_router(state);
     let t = user_token("alice-sep-user");
-    assert_ne!(st(&router, repos_post(&t)).await, StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(st(&router, repos_post(&t)).await, StatusCode::TOO_MANY_REQUESTS);
+    assert_ne!(
+        st(&router, repos_post(&t)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        st(&router, repos_post(&t)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
     // User budget exhausted, token endpoint budget untouched.
-    assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        st(&router, auth_req(Some(IP_A), &[])).await,
+        StatusCode::UNAUTHORIZED
+    );
     assert_eq!(
         st(&router, auth_req(Some(IP_A), &[])).await,
         StatusCode::TOO_MANY_REQUESTS
@@ -396,7 +480,10 @@ async fn per_user_config_change_does_not_alter_the_auth_limiter() {
         AppState::default().with_rate_limit_config(RateLimitConfig::new(true, 1, 60)),
     );
     for _ in 0..5 {
-        assert_eq!(st(&router, auth_req(Some(IP_A), &[])).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            st(&router, auth_req(Some(IP_A), &[])).await,
+            StatusCode::UNAUTHORIZED
+        );
     }
 }
 
@@ -436,7 +523,14 @@ fn value(line: &str) -> f64 {
 }
 
 async fn metrics_body(router: &Router) -> String {
-    body_text(router.clone().oneshot(plain(Method::GET, "/metrics")).await.unwrap()).await
+    body_text(
+        router
+            .clone()
+            .oneshot(plain(Method::GET, "/metrics"))
+            .await
+            .unwrap(),
+    )
+    .await
 }
 
 #[tokio::test]
@@ -446,7 +540,10 @@ async fn token_rejections_are_counted_under_scope_auth_ip() {
         st(&router, auth_req(Some(IP_A), &[])).await; // 1 allowed, 2 rejected
     }
     let lines = metric_lines(&metrics_body(&router).await, "rate_limit_rejections_total");
-    let auth: Vec<_> = lines.iter().filter(|l| l.contains("scope=\"auth_ip\"")).collect();
+    let auth: Vec<_> = lines
+        .iter()
+        .filter(|l| l.contains("scope=\"auth_ip\""))
+        .collect();
     assert_eq!(auth.len(), 1, "{lines:?}");
     assert_eq!(value(auth[0]), 2.0);
 }
@@ -486,8 +583,14 @@ async fn rejection_metric_has_bounded_cardinality_and_no_client_ip() {
     let body = metrics_body(&router).await;
     let lines = metric_lines(&body, "rate_limit_rejections_total");
     assert!(!lines.is_empty());
-    assert!(lines.len() <= 2, "series must not scale with clients: {lines:?}");
-    assert!(!body.contains("203.0.113."), "client ip leaked into /metrics");
+    assert!(
+        lines.len() <= 2,
+        "series must not scale with clients: {lines:?}"
+    );
+    assert!(
+        !body.contains("203.0.113."),
+        "client ip leaked into /metrics"
+    );
 }
 
 #[derive(Clone, Default)]
@@ -526,12 +629,7 @@ async fn token_rejection_is_logged_at_warn_without_the_bearer_secret() {
     let (buf, _g) = warn_capture();
     let router = auth_router(1, 60);
     let secret = "ghp_supersecrettokenvalue123";
-    let with_secret = |ip| {
-        auth_req(
-            Some(ip),
-            &[("authorization", &format!("Bearer {secret}"))],
-        )
-    };
+    let with_secret = |ip| auth_req(Some(ip), &[("authorization", &format!("Bearer {secret}"))]);
     st(&router, with_secret(IP_A)).await;
     st(&router, with_secret(IP_A)).await;
     let out = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
@@ -540,7 +638,10 @@ async fn token_rejection_is_logged_at_warn_without_the_bearer_secret() {
             .any(|l| l.contains("WARN") && l.to_lowercase().contains("rate limit")),
         "expected WARN mentioning rate limit:\n{out}"
     );
-    assert!(!out.contains("supersecrettoken"), "secret leaked into logs:\n{out}");
+    assert!(
+        !out.contains("supersecrettoken"),
+        "secret leaked into logs:\n{out}"
+    );
 }
 
 #[tokio::test]
@@ -566,8 +667,14 @@ async fn distinct_loginless_principals_have_independent_budgets() {
     let router = user_router(1);
     let a = loginless_token("inst-aaaaaaaaaaaaaaaa");
     let b = loginless_token("inst-bbbbbbbbbbbbbbbb");
-    assert_ne!(st(&router, repos_post(&a)).await, StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(st(&router, repos_post(&a)).await, StatusCode::TOO_MANY_REQUESTS);
+    assert_ne!(
+        st(&router, repos_post(&a)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        st(&router, repos_post(&a)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
     assert_ne!(
         st(&router, repos_post(&b)).await,
         StatusCode::TOO_MANY_REQUESTS,
@@ -581,7 +688,10 @@ async fn same_loginless_principal_shares_one_budget_across_tokens() {
     let t1 = loginless_token("inst-aaaaaaaaaaaaaaaa");
     let t2 = loginless_token("inst-aaaaaaaaaaaaaaaa");
     st(&router, repos_post(&t1)).await;
-    assert_eq!(st(&router, repos_post(&t2)).await, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        st(&router, repos_post(&t2)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
 }
 
 #[tokio::test]
@@ -589,7 +699,10 @@ async fn user_named_unknown_is_not_throttled_by_a_loginless_principal() {
     let router = user_router(1);
     let loginless = loginless_token("unknown");
     st(&router, repos_post(&loginless)).await;
-    assert_eq!(st(&router, repos_post(&loginless)).await, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        st(&router, repos_post(&loginless)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
     assert_ne!(
         st(&router, repos_post(&user_token("unknown"))).await,
         StatusCode::TOO_MANY_REQUESTS,
@@ -602,7 +715,10 @@ async fn loginless_principal_is_not_throttled_by_a_user_named_unknown() {
     let router = user_router(1);
     let u = user_token("unknown");
     st(&router, repos_post(&u)).await;
-    assert_eq!(st(&router, repos_post(&u)).await, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        st(&router, repos_post(&u)).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
     assert_ne!(
         st(&router, repos_post(&loginless_token("unknown"))).await,
         StatusCode::TOO_MANY_REQUESTS
@@ -625,19 +741,23 @@ async fn login_keys_are_case_insensitive_end_to_end() {
 async fn loginless_and_login_principals_are_tracked_as_separate_keys() {
     let limiter = Arc::new(RateLimiter::new(RateLimitConfig::new(true, 5, 60)));
     let router = create_router(AppState::default().with_rate_limiter(limiter.clone()));
-    st(&router, repos_post(&loginless_token("inst-aaaaaaaaaaaaaaaa"))).await;
-    st(&router, repos_post(&loginless_token("inst-bbbbbbbbbbbbbbbb"))).await;
+    st(
+        &router,
+        repos_post(&loginless_token("inst-aaaaaaaaaaaaaaaa")),
+    )
+    .await;
+    st(
+        &router,
+        repos_post(&loginless_token("inst-bbbbbbbbbbbbbbbb")),
+    )
+    .await;
     st(&router, repos_post(&user_token("unknown"))).await;
     assert_eq!(limiter.tracked_keys(), 3);
 }
 
 /// Direct middleware harness: injects an arbitrary (or no) `AuthContext`
 /// ahead of `rate_limit_middleware`.
-fn mw_router(
-    state: AppState,
-    ctx: Option<AuthContext>,
-    reached: Arc<AtomicBool>,
-) -> Router {
+fn mw_router(state: AppState, ctx: Option<AuthContext>, reached: Arc<AtomicBool>) -> Router {
     Router::new()
         .route(
             "/x",
