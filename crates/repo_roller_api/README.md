@@ -806,6 +806,7 @@ http_requests_total{method="POST",route="/api/v1/repositories",status_code="201"
 | `github_api_calls_total` | Counter | `operation` | `github_client::api_metrics` |
 | `github_api_errors_total` | Counter | `operation`, `status_category` | `github_client::api_metrics` |
 | `github_api_rate_limit_remaining` | Gauge | - | `github_client::api_metrics` |
+| `rate_limit_rejections_total` | Counter | `scope` (`user`, `auth_ip`) | `rate_limit` middleware |
 | `http_requests_total` | Counter | `method`, `route`, `status_code` | `http_metrics` middleware |
 | `http_request_duration_seconds` | Histogram | `method`, `route` | `http_metrics` middleware |
 
@@ -1199,6 +1200,11 @@ FROM alpine:3.20
 - `METADATA_REPOSITORY_NAME` - Metadata repo name (default: ".reporoller")
 - `OTEL_TRACES_ENABLED` - Enable OpenTelemetry span export (default: `false`, fail-safe-off; set to `true` or `1`)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP collector endpoint (default: `http://localhost:4317`; use `https://` for TLS)
+- `RATE_LIMIT_ENABLED` - Enable `POST` rate limiting for both limiters (default: `true`; `false`/`0` disables)
+- `RATE_LIMIT_REQUESTS` - Per-user `POST` requests per window (default: 10)
+- `RATE_LIMIT_WINDOW_SECS` - Per-user window length in seconds (default: 60)
+- `RATE_LIMIT_AUTH_REQUESTS` - `POST /api/v1/auth/token` requests per client IP per window (default: 20)
+- `RATE_LIMIT_AUTH_WINDOW_SECS` - Token-endpoint window length in seconds (default: 60)
 - `OTEL_SERVICE_NAME` - Service name on exported span resource attributes (default: `repo-roller-api`)
 
 **Health Check**:
@@ -1390,11 +1396,28 @@ CorsLayer::new()
     .allow_credentials(true)
 ```
 
-### Rate Limiting (Future)
+### Rate Limiting
+
+Two independent fixed-window limiters apply to `POST` requests; exceeding either returns `429 Too
+Many Requests` with a `Retry-After` header and error code `RateLimitExceeded`.
+
+- **`user` scope** - authenticated routes, keyed by the lowercased login (or a stable principal id
+  for tokens whose login could not be resolved; tokens with no identifier get `401`). Defaults:
+  10 requests per 60 seconds.
+- **`auth_ip` scope** - the public `POST /api/v1/auth/token`, keyed by the client connection
+  address (`X-Forwarded-*` is ignored). Defaults: 20 requests per 60 seconds.
+
+Configure with `RATE_LIMIT_ENABLED` (governs both), `RATE_LIMIT_REQUESTS`,
+`RATE_LIMIT_WINDOW_SECS`, `RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS`.
+Rejections increment `rate_limit_rejections_total{scope}`.
+
+**Known limitations**: only `POST` is limited; the fixed window allows up to 2x the limit in a
+burst at a window boundary; state is in memory per process (scales with replicas, resets on
+restart); behind a reverse proxy all clients share the proxy IP's token-endpoint bucket, so raise
+`RATE_LIMIT_AUTH_REQUESTS`.
 
 **Planned**:
 
-- Per-IP rate limiting
 - Per-organization rate limiting
 - GitHub API rate limit awareness
 - Backoff and retry logic

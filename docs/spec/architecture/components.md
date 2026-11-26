@@ -264,17 +264,24 @@ GET  /api/v1/user/permissions      # User permission information
 **Middleware Stack:**
 
 - **Authentication Middleware**: Token validation and user context
-- **Rate Limiting** (implemented, #284): Per-authenticated-user fixed-window limiter in
-  `repo_roller_api::rate_limit`, applied to `POST` requests on protected routes after authentication
-  - Key: authenticated user identity (JWT `sub`); each user has an independent budget
-  - Defaults: 10 requests per 60 seconds; configured via `RATE_LIMIT_ENABLED`,
-    `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS` (invalid values fall back to defaults)
+- **Rate Limiting** (implemented, #284): Two fixed-window limiters in `repo_roller_api::rate_limit`,
+  both applied to `POST` requests only
+  - `user` scope: protected routes, applied after authentication. Key is the namespaced principal:
+    the lowercased login, or the stable principal id for tokens whose login could not be resolved;
+    tokens with no identifier are rejected with `401`. Each principal has an independent budget.
+    Defaults: 10 requests per 60 seconds (`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS`)
+  - `auth_ip` scope: the public `POST /api/v1/auth/token`. Key is the client connection address
+    only; `X-Forwarded-*` headers are ignored, so behind a reverse proxy all clients share the
+    proxy IP's bucket and operators should raise the limit. Defaults: 20 requests per 60 seconds
+    (`RATE_LIMIT_AUTH_REQUESTS`, `RATE_LIMIT_AUTH_WINDOW_SECS`)
+  - `RATE_LIMIT_ENABLED` governs both limiters; invalid values fall back to defaults
   - Rejection: `429 Too Many Requests` with a `Retry-After` header (seconds) and JSON error code
     `RateLimitExceeded`; logged at WARN ("Rate limit exceeded", without user identity) and counted in
-    the unlabelled Prometheus counter `rate_limit_rejections_total`
-  - Not limited: `GET` requests, unauthenticated routes (`/auth/token`, health, `/metrics`)
-  - State is in-memory and per process: effective limits scale with the number of replicas and reset
-    on restart. Expired keys are evicted to bound memory.
+    the Prometheus counter `rate_limit_rejections_total` with label `scope` in `{user, auth_ip}`
+  - Not limited: `GET` and other non-`POST` methods, health, `/metrics`
+  - Known limitations: the fixed window allows up to 2x the limit in a burst straddling a window
+    boundary; state is in-memory and per process, so effective limits scale with the number of
+    replicas and reset on restart. Expired keys are evicted to bound memory.
 - **Request Logging**: Comprehensive request/response logging
 - **Error Handling**: Standardized error response formatting
 

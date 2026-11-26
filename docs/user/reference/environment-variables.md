@@ -22,13 +22,18 @@ type: "reference"
 | `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off: only the case-insensitive literal values `true` or `1` enable export; any other value (unset, empty, `false`, `0`, garbage) leaves tracing disabled with no background exporter and no network I/O. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint spans are exported to when tracing is enabled. Use an `https://` URL to export over TLS (supported via the `tls-aws-lc` exporter feature). Ignored when `OTEL_TRACES_ENABLED` is not `true`/`1`. |
 | `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to every exported span's resource attributes. Set a distinct value per environment (e.g. `repo-roller-api-staging`) when multiple deployments share one tracing backend. |
-| `RATE_LIMIT_ENABLED` | No | `true` | Enables per-user rate limiting of `POST` requests. Set to `false` or `0` to disable. |
+| `RATE_LIMIT_ENABLED` | No | `true` | Enables rate limiting of `POST` requests: both the per-user limiter and the `POST /auth/token` per-IP limiter. Set to `false` or `0` to disable both. |
 | `RATE_LIMIT_REQUESTS` | No | `10` | Maximum `POST` requests each authenticated user may make per window. Invalid values fall back to the default. |
-| `RATE_LIMIT_WINDOW_SECS` | No | `60` | Length of the rate-limit window in seconds. Invalid values fall back to the default. |
+| `RATE_LIMIT_WINDOW_SECS` | No | `60` | Length of the per-user rate-limit window in seconds. Invalid values fall back to the default. |
+| `RATE_LIMIT_AUTH_REQUESTS` | No | `20` | Maximum `POST /api/v1/auth/token` requests each client IP may make per window. Invalid values fall back to the default. |
+| `RATE_LIMIT_AUTH_WINDOW_SECS` | No | `60` | Length of the token-endpoint rate-limit window in seconds. Invalid values fall back to the default. |
 
 Rate-limit state is held in memory per process. With multiple replicas each replica enforces the
 limit independently (the effective limit is roughly `RATE_LIMIT_REQUESTS` times the replica count),
-and counters reset when a replica restarts. See [Rate limiting](../reference/api/index.md#rate-limiting).
+and counters reset when a replica restarts. The token-endpoint limiter keys on the connection
+address and ignores `X-Forwarded-*` headers, so behind a reverse proxy all clients share the proxy
+IP's bucket: raise `RATE_LIMIT_AUTH_REQUESTS` accordingly. See
+[Rate limiting](../reference/api/index.md#rate-limiting).
 
 ### Secret resolver variables
 

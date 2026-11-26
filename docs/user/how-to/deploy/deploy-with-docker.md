@@ -87,6 +87,11 @@ networks:
 | `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off — only `true`/`1` enables it. See [Distributed Tracing](#distributed-tracing-jaeger) below. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint. Use `https://` for TLS. |
 | `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to exported spans' resource attributes. |
+| `RATE_LIMIT_ENABLED` | No | `true` | Enables rate limiting of `POST` requests (per-user and `POST /auth/token` per-IP limiters). `false` or `0` disables both. |
+| `RATE_LIMIT_REQUESTS` | No | `10` | Maximum `POST` requests per user per window. |
+| `RATE_LIMIT_WINDOW_SECS` | No | `60` | Per-user window length in seconds. |
+| `RATE_LIMIT_AUTH_REQUESTS` | No | `20` | Maximum `POST /api/v1/auth/token` requests per client IP per window. Behind a reverse proxy all clients share the proxy IP's bucket, so raise this. |
+| `RATE_LIMIT_AUTH_WINDOW_SECS` | No | `60` | Token-endpoint window length in seconds. |
 
 ### Frontend environment variables
 
@@ -218,7 +223,7 @@ curl http://backend:8080/metrics
 
 You should see Prometheus text-format output, including families such as
 `repository_creation_requests_total`, `github_api_calls_total`, `http_requests_total`, and
-`rate_limit_rejections_total` (unlabelled count of requests rejected with 429 by per-user rate limiting). See
+`rate_limit_rejections_total` (count of requests rejected with 429 by rate limiting, labelled `scope` = `user` or `auth_ip`). See
 the [`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#metrics) for
 the full list of exposed metrics and their labels.
 

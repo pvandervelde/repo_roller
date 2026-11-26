@@ -48,9 +48,11 @@ All error responses use a consistent JSON structure:
 
 ```json
 {
-  "error": "Human-readable error description",
-  "code": "MACHINE_READABLE_ERROR_CODE",
-  "details": "Additional context (optional)"
+  "error": {
+    "code": "MachineReadableErrorCode",
+    "message": "Human-readable error description",
+    "details": "Additional context (optional, omitted when absent; type varies by error)"
+  }
 }
 ```
 
@@ -66,7 +68,7 @@ Common error codes:
 | `TEMPLATE_NOT_FOUND` | 404 | Template repository not found or not accessible |
 | `CONFIGURATION_ERROR` | 400/500 | Problem loading or parsing configuration |
 | `GITHUB_API_ERROR` | 502 | GitHub API returned an unexpected error |
-| `RateLimitExceeded` | 429 | The authenticated user exceeded the `POST` rate limit. See [Rate limiting](#rate-limiting). |
+| `RateLimitExceeded` | 429 | A `POST` rate limit was exceeded: per user on authenticated endpoints, or per client IP on `POST /auth/token`. See [Rate limiting](#rate-limiting). |
 
 <!-- TODO(docs-owner): the error codes in this table use a mix of conventions —
 some (`INVALID_REQUEST`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `TEMPLATE_NOT_FOUND`,
@@ -82,9 +84,15 @@ actually appear on the wire. -->
 
 ## Rate limiting
 
-`POST` requests to authenticated endpoints are limited per user (identified by the token's `sub`
-claim) using a fixed window. By default each user may make 10 `POST` requests per 60 seconds.
-`GET` requests, `POST /auth/token`, `/health` and `/metrics` are not limited.
+Two independent fixed-window limiters apply to `POST` requests:
+
+| Scope | Applies to | Keyed by | Default |
+|---|---|---|---|
+| `user` | `POST` requests to authenticated endpoints | The authenticated user: the lowercased login, or a stable principal id for tokens whose login could not be resolved. Tokens with no identifier at all receive `401`. | 10 requests per 60 seconds |
+| `auth_ip` | The public `POST /api/v1/auth/token` | The client IP address of the connection (`X-Forwarded-*` headers are ignored) | 20 requests per 60 seconds |
+
+Each user has an independent budget; user keys are namespaced so they cannot collide with client IP
+keys. `GET` requests, `/health` and `/metrics` are not limited.
 
 When the limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header
 (whole seconds until the window resets) and the standard error body:
@@ -94,15 +102,26 @@ HTTP/1.1 429 Too Many Requests
 Retry-After: 42
 Content-Type: application/json
 
-{"error": {"code": "RateLimitExceeded", "message": "Too many requests. Retry after 42 seconds."}}
+{"error":{"code":"RateLimitExceeded","message":"Too many requests. Retry after 42 seconds."}}
 ```
 
-Clients should wait at least `Retry-After` seconds before retrying. Operators configure the limit
-with `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW_SECS` (see
-[Environment variables](../environment-variables.md)). Limits are tracked in memory per process, so
-they scale with the number of replicas and reset on restart. Rejections are logged at WARN
+Clients should wait at least `Retry-After` seconds before retrying. Operators configure the limits
+with `RATE_LIMIT_ENABLED` (governs both limiters), `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS`,
+`RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS` (see
+[Environment variables](../environment-variables.md)). Rejections are logged at WARN
 ("Rate limit exceeded", without the user identity) and counted by the Prometheus counter
-`rate_limit_rejections_total`.
+`rate_limit_rejections_total`, labelled `scope` = `user` or `auth_ip`.
+
+## Known limitations
+
+- Only `POST` requests are limited; `GET` and other methods are not.
+- The window is fixed, not sliding: a client can send up to twice the limit in a short burst that
+  straddles a window boundary (the end of one window and the start of the next).
+- State is in memory per process, so effective limits scale with the number of replicas and reset
+  on restart.
+- The `POST /auth/token` limiter keys on the connection address only and ignores `X-Forwarded-For`
+  and other `X-Forwarded-*` headers. Behind a reverse proxy or load balancer all clients share the
+  proxy's bucket; raise `RATE_LIMIT_AUTH_REQUESTS` accordingly.
 
 ## Request tracing
 
@@ -156,7 +175,7 @@ attributes.
 ## Metrics
 
 `GET /metrics` returns Prometheus-format metrics (request rates, latencies, repository-creation
-outcomes, GitHub API call counts, and `rate_limit_rejections_total` for requests rejected by rate limiting). It is mounted at the server root — **not** under `/api/v1` —
+outcomes, GitHub API call counts, and `rate_limit_rejections_total{scope}` for requests rejected by rate limiting). It is mounted at the server root — **not** under `/api/v1` —
 and is unauthenticated, intended for scraping by a Prometheus server on a private network. See
 [Deploy with Docker Compose: Metrics (Prometheus)](../../how-to/deploy/deploy-with-docker.md#metrics-prometheus)
 for scrape configuration and the operator security note.
