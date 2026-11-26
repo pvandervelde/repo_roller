@@ -1124,10 +1124,7 @@ async fn create_github_repository(
                 // would have produced, so callers see one consistent
                 // "already exists" outcome regardless of which path caught
                 // it.
-                warn!(
-                    "Repository creation raced with a concurrent create: {}",
-                    e
-                );
+                warn!("Repository creation raced with a concurrent create: {}", e);
                 return RepoRollerError::Repository(RepositoryError::AlreadyExists {
                     org: request.owner.to_string(),
                     name: request.name.to_string(),
@@ -1374,10 +1371,12 @@ async fn ensure_repository_does_not_exist(
     name: &str,
 ) -> RepoRollerResult<()> {
     match client.get_repository(owner, name).await {
-        Ok(_) => Err(RepoRollerError::Repository(RepositoryError::AlreadyExists {
-            org: owner.to_string(),
-            name: name.to_string(),
-        })),
+        Ok(_) => Err(RepoRollerError::Repository(
+            RepositoryError::AlreadyExists {
+                org: owner.to_string(),
+                name: name.to_string(),
+            },
+        )),
         Err(github_client::Error::NotFound) => Ok(()),
         Err(e) => Err(RepoRollerError::GitHub(GitHubError::NetworkError {
             reason: format!("Failed to check repository existence: {}", e),
@@ -1841,10 +1840,7 @@ async fn create_fork_repository(
                 // already produces for this exact race, so callers see one
                 // consistent "already exists" outcome regardless of
                 // creation mode.
-                warn!(
-                    "Fork creation raced with a concurrent create: {}",
-                    e
-                );
+                warn!("Fork creation raced with a concurrent create: {}", e);
                 return RepoRollerError::Repository(RepositoryError::AlreadyExists {
                     org: request.owner.to_string(),
                     name: request.name.to_string(),

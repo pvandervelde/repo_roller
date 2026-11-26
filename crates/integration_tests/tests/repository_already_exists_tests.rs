@@ -57,9 +57,7 @@ fn client_for(server: &GitHubMockServer) -> GitHubClient {
 /// server has a 200 response registered for the target repository.
 #[tokio::test]
 async fn test_get_repository_contract_reports_existing_repository() {
-    let server = GitHubMockServer::new()
-        .await
-        .expect("mock server starts");
+    let server = GitHubMockServer::new().await.expect("mock server starts");
     server
         .mock_repository_exists("contract-org", "contract-repo")
         .await;
@@ -67,7 +65,9 @@ async fn test_get_repository_contract_reports_existing_repository() {
     let client = client_for(&server);
     let as_trait: &dyn RepositoryClient = &client;
 
-    let result = as_trait.get_repository("contract-org", "contract-repo").await;
+    let result = as_trait
+        .get_repository("contract-org", "contract-repo")
+        .await;
 
     assert!(
         result.is_ok(),
@@ -81,9 +81,7 @@ async fn test_get_repository_contract_reports_existing_repository() {
 /// gate's "safe to proceed" branch depends on.
 #[tokio::test]
 async fn test_get_repository_contract_reports_not_found_for_missing_repository() {
-    let server = GitHubMockServer::new()
-        .await
-        .expect("mock server starts");
+    let server = GitHubMockServer::new().await.expect("mock server starts");
     server
         .mock_repository_not_found("contract-org", "missing-repo")
         .await;
@@ -91,7 +89,9 @@ async fn test_get_repository_contract_reports_not_found_for_missing_repository()
     let client = client_for(&server);
     let as_trait: &dyn RepositoryClient = &client;
 
-    let result = as_trait.get_repository("contract-org", "missing-repo").await;
+    let result = as_trait
+        .get_repository("contract-org", "missing-repo")
+        .await;
 
     assert!(
         matches!(result, Err(github_client::Error::NotFound)),
@@ -109,9 +109,7 @@ async fn test_get_repository_contract_reports_not_found_for_missing_repository()
 /// path).
 #[tokio::test]
 async fn test_create_org_repository_contract_maps_race_condition_conflict_to_already_exists() {
-    let server = GitHubMockServer::new()
-        .await
-        .expect("mock server starts");
+    let server = GitHubMockServer::new().await.expect("mock server starts");
     server
         .mock_repository_already_exists("race-org", "race-repo")
         .await;
@@ -149,9 +147,7 @@ async fn test_create_org_repository_contract_maps_race_condition_conflict_to_alr
 #[tokio::test]
 async fn test_check_then_create_pattern_makes_zero_repository_creation_calls_when_repository_exists(
 ) {
-    let server = GitHubMockServer::new()
-        .await
-        .expect("mock server starts");
+    let server = GitHubMockServer::new().await.expect("mock server starts");
     server
         .mock_repository_exists("zero-mutation-org", "zero-mutation-repo")
         .await;
@@ -195,9 +191,7 @@ async fn test_check_then_create_pattern_makes_zero_repository_creation_calls_whe
 /// still reach the creation endpoint exactly once.
 #[tokio::test]
 async fn test_check_then_create_pattern_proceeds_to_create_when_repository_does_not_exist() {
-    let server = GitHubMockServer::new()
-        .await
-        .expect("mock server starts");
+    let server = GitHubMockServer::new().await.expect("mock server starts");
     server
         .mock_repository_not_found("proceed-org", "proceed-repo")
         .await;
@@ -226,7 +220,11 @@ async fn test_check_then_create_pattern_proceeds_to_create_when_repository_does_
             ..Default::default()
         };
         let create_result = client.create_org_repository("proceed-org", &payload).await;
-        assert!(create_result.is_ok(), "got {:?}", create_result.as_ref().err());
+        assert!(
+            create_result.is_ok(),
+            "got {:?}",
+            create_result.as_ref().err()
+        );
     } else {
         panic!("expected the existence check to report NotFound");
     }

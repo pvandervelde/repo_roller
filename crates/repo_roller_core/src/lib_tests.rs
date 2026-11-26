@@ -2269,7 +2269,9 @@ async fn test_create_fork_repository_unrelated_github_error_still_maps_to_networ
     assert!(
         matches!(
             result,
-            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+            Err(RepoRollerError::GitHub(
+                crate::GitHubError::NetworkError { .. }
+            ))
         ),
         "an unrelated create_fork failure must keep mapping to GitHubError::NetworkError, got {:?}",
         result.as_ref().err()
@@ -2660,9 +2662,8 @@ async fn test_ensure_repository_does_not_exist_error_echoes_caller_supplied_owne
 
 #[tokio::test]
 async fn test_ensure_repository_does_not_exist_repo_not_found_returns_ok() {
-    let client = ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_not_found(
-        new_call_log(),
-    ));
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_not_found(new_call_log()));
 
     let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
 
@@ -2674,12 +2675,11 @@ async fn test_ensure_repository_does_not_exist_repo_not_found_returns_ok() {
 
 #[tokio::test]
 async fn test_ensure_repository_does_not_exist_ambiguous_api_error_fails_closed() {
-    let client = ConfigurableMockRepoClient::new(
-        MockRepoClientConfig::repository_check_ambiguous_error(
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_check_ambiguous_error(
             MockGetRepositoryErrorKind::ApiError,
             new_call_log(),
-        ),
-    );
+        ));
 
     let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
 
@@ -2694,19 +2694,20 @@ async fn test_ensure_repository_does_not_exist_ambiguous_api_error_fails_closed(
 
 #[tokio::test]
 async fn test_ensure_repository_does_not_exist_auth_error_fails_closed() {
-    let client = ConfigurableMockRepoClient::new(
-        MockRepoClientConfig::repository_check_ambiguous_error(
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_check_ambiguous_error(
             MockGetRepositoryErrorKind::AuthError,
             new_call_log(),
-        ),
-    );
+        ));
 
     let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
 
     assert!(
         matches!(
             result,
-            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+            Err(RepoRollerError::GitHub(
+                crate::GitHubError::NetworkError { .. }
+            ))
         ),
         "an auth failure during the existence check must still fail closed, got {result:?}"
     );
@@ -2714,19 +2715,20 @@ async fn test_ensure_repository_does_not_exist_auth_error_fails_closed() {
 
 #[tokio::test]
 async fn test_ensure_repository_does_not_exist_rate_limit_error_fails_closed() {
-    let client = ConfigurableMockRepoClient::new(
-        MockRepoClientConfig::repository_check_ambiguous_error(
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_check_ambiguous_error(
             MockGetRepositoryErrorKind::RateLimitExceeded,
             new_call_log(),
-        ),
-    );
+        ));
 
     let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
 
     assert!(
         matches!(
             result,
-            Err(RepoRollerError::GitHub(crate::GitHubError::NetworkError { .. }))
+            Err(RepoRollerError::GitHub(
+                crate::GitHubError::NetworkError { .. }
+            ))
         ),
         "a rate-limit failure during the existence check must still fail closed, got {result:?}"
     );
@@ -2734,12 +2736,11 @@ async fn test_ensure_repository_does_not_exist_rate_limit_error_fails_closed() {
 
 #[tokio::test]
 async fn test_ensure_repository_does_not_exist_invalid_response_error_fails_closed() {
-    let client = ConfigurableMockRepoClient::new(
-        MockRepoClientConfig::repository_check_ambiguous_error(
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_check_ambiguous_error(
             MockGetRepositoryErrorKind::InvalidResponse,
             new_call_log(),
-        ),
-    );
+        ));
 
     let result = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
 
@@ -2807,12 +2808,11 @@ async fn test_ensure_repository_does_not_exist_not_found_path_calls_only_get_rep
 #[tokio::test]
 async fn test_ensure_repository_does_not_exist_ambiguous_error_path_calls_only_get_repository() {
     let log = new_call_log();
-    let client = ConfigurableMockRepoClient::new(
-        MockRepoClientConfig::repository_check_ambiguous_error(
+    let client =
+        ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_check_ambiguous_error(
             MockGetRepositoryErrorKind::ApiError,
             log.clone(),
-        ),
-    );
+        ));
 
     let _ = ensure_repository_does_not_exist(&client, "my-org", "my-repo").await;
 
@@ -2838,8 +2838,7 @@ fn standard_request_for(owner: &str, name: &str) -> RepositoryCreationRequest {
 }
 
 #[tokio::test]
-async fn test_create_github_repository_maps_race_condition_conflict_to_repository_already_exists()
-{
+async fn test_create_github_repository_maps_race_condition_conflict_to_repository_already_exists() {
     let request = standard_request_for("race-org", "race-repo");
     let merged_config = config_manager::MergedConfiguration::new();
     let client = ConfigurableMockRepoClient::new(
@@ -2951,7 +2950,9 @@ async fn test_create_github_repository_already_exists_is_not_mapped_to_network_e
     );
     assert!(matches!(
         result,
-        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+        Err(RepoRollerError::Repository(
+            RepositoryError::AlreadyExists { .. }
+        ))
     ));
 }
 
@@ -3024,7 +3025,9 @@ async fn test_gate_blocks_standard_mode_create_org_repository_when_repository_al
 
     assert!(matches!(
         gate_result,
-        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+        Err(RepoRollerError::Repository(
+            RepositoryError::AlreadyExists { .. }
+        ))
     ));
     assert_eq!(
         &*log.lock().unwrap(),
@@ -3051,7 +3054,9 @@ async fn test_gate_blocks_fork_mode_create_fork_when_repository_already_exists()
 
     assert!(matches!(
         gate_result,
-        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+        Err(RepoRollerError::Repository(
+            RepositoryError::AlreadyExists { .. }
+        ))
     ));
     assert_eq!(
         &*log.lock().unwrap(),
@@ -3061,8 +3066,8 @@ async fn test_gate_blocks_fork_mode_create_fork_when_repository_already_exists()
 }
 
 #[tokio::test]
-async fn test_gate_blocks_history_mirror_mode_create_org_repository_when_repository_already_exists(
-) {
+async fn test_gate_blocks_history_mirror_mode_create_org_repository_when_repository_already_exists()
+{
     let log = new_call_log();
     let client =
         ConfigurableMockRepoClient::new(MockRepoClientConfig::repository_exists(log.clone()));
@@ -3083,7 +3088,9 @@ async fn test_gate_blocks_history_mirror_mode_create_org_repository_when_reposit
 
     assert!(matches!(
         gate_result,
-        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+        Err(RepoRollerError::Repository(
+            RepositoryError::AlreadyExists { .. }
+        ))
     ));
     assert_eq!(
         &*log.lock().unwrap(),
@@ -3115,7 +3122,9 @@ async fn test_gate_blocks_source_only_mirror_mode_create_org_repository_when_rep
 
     assert!(matches!(
         gate_result,
-        Err(RepoRollerError::Repository(RepositoryError::AlreadyExists { .. }))
+        Err(RepoRollerError::Repository(
+            RepositoryError::AlreadyExists { .. }
+        ))
     ));
     assert_eq!(
         &*log.lock().unwrap(),

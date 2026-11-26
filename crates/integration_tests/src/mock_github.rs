@@ -354,9 +354,7 @@ mod tests {
     #[tokio::test]
     async fn test_mock_repository_exists() {
         let server = GitHubMockServer::new().await.unwrap();
-        server
-            .mock_repository_exists("test-org", "test-repo")
-            .await;
+        server.mock_repository_exists("test-org", "test-repo").await;
 
         let client = reqwest::Client::new();
         let response = client
@@ -377,7 +375,9 @@ mod tests {
     #[tokio::test]
     async fn test_mock_repository_exists_and_not_found_are_distinct_for_different_repos() {
         let server = GitHubMockServer::new().await.unwrap();
-        server.mock_repository_exists("test-org", "existing-repo").await;
+        server
+            .mock_repository_exists("test-org", "existing-repo")
+            .await;
         server
             .mock_repository_not_found("test-org", "missing-repo")
             .await;
