@@ -66,6 +66,7 @@ Common error codes:
 | `TEMPLATE_NOT_FOUND` | 404 | Template repository not found or not accessible |
 | `CONFIGURATION_ERROR` | 400/500 | Problem loading or parsing configuration |
 | `GITHUB_API_ERROR` | 502 | GitHub API returned an unexpected error |
+| `RateLimitExceeded` | 429 | The authenticated user exceeded the `POST` rate limit. See [Rate limiting](#rate-limiting). |
 
 <!-- TODO(docs-owner): the error codes in this table use a mix of conventions —
 some (`INVALID_REQUEST`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `TEMPLATE_NOT_FOUND`,
@@ -78,6 +79,30 @@ SCREAMING_SNAKE_CASE entries in this table predate that task and were not touche
 flagging so the docs owner can decide whether to correct them for the whole table in a
 follow-up, and so client code is not implemented against a code string that does not
 actually appear on the wire. -->
+
+## Rate limiting
+
+`POST` requests to authenticated endpoints are limited per user (identified by the token's `sub`
+claim) using a fixed window. By default each user may make 10 `POST` requests per 60 seconds.
+`GET` requests, `POST /auth/token`, `/health` and `/metrics` are not limited.
+
+When the limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header
+(whole seconds until the window resets) and the standard error body:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+Content-Type: application/json
+
+{"error": {"code": "RateLimitExceeded", "message": "Too many requests. Retry after 42 seconds."}}
+```
+
+Clients should wait at least `Retry-After` seconds before retrying. Operators configure the limit
+with `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW_SECS` (see
+[Environment variables](../environment-variables.md)). Limits are tracked in memory per process, so
+they scale with the number of replicas and reset on restart. Rejections are logged at WARN
+("Rate limit exceeded", without the user identity) and counted by the Prometheus counter
+`rate_limit_rejections_total`.
 
 ## Request tracing
 
@@ -131,7 +156,7 @@ attributes.
 ## Metrics
 
 `GET /metrics` returns Prometheus-format metrics (request rates, latencies, repository-creation
-outcomes, GitHub API call counts). It is mounted at the server root — **not** under `/api/v1` —
+outcomes, GitHub API call counts, and `rate_limit_rejections_total` for requests rejected by rate limiting). It is mounted at the server root — **not** under `/api/v1` —
 and is unauthenticated, intended for scraping by a Prometheus server on a private network. See
 [Deploy with Docker Compose: Metrics (Prometheus)](../../how-to/deploy/deploy-with-docker.md#metrics-prometheus)
 for scrape configuration and the operator security note.

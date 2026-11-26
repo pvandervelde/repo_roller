@@ -217,7 +217,8 @@ curl http://backend:8080/metrics
 ```
 
 You should see Prometheus text-format output, including families such as
-`repository_creation_requests_total`, `github_api_calls_total`, and `http_requests_total`. See
+`repository_creation_requests_total`, `github_api_calls_total`, `http_requests_total`, and
+`rate_limit_rejections_total` (unlabelled count of requests rejected with 429 by per-user rate limiting). See
 the [`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#metrics) for
 the full list of exposed metrics and their labels.
 

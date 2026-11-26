@@ -264,7 +264,17 @@ GET  /api/v1/user/permissions      # User permission information
 **Middleware Stack:**
 
 - **Authentication Middleware**: Token validation and user context
-- **Rate Limiting**: Request rate limiting per user/organization
+- **Rate Limiting** (implemented, #284): Per-authenticated-user fixed-window limiter in
+  `repo_roller_api::rate_limit`, applied to `POST` requests on protected routes after authentication
+  - Key: authenticated user identity (JWT `sub`); each user has an independent budget
+  - Defaults: 10 requests per 60 seconds; configured via `RATE_LIMIT_ENABLED`,
+    `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS` (invalid values fall back to defaults)
+  - Rejection: `429 Too Many Requests` with a `Retry-After` header (seconds) and JSON error code
+    `RateLimitExceeded`; logged at WARN ("Rate limit exceeded", without user identity) and counted in
+    the unlabelled Prometheus counter `rate_limit_rejections_total`
+  - Not limited: `GET` requests, unauthenticated routes (`/auth/token`, health, `/metrics`)
+  - State is in-memory and per process: effective limits scale with the number of replicas and reset
+    on restart. Expired keys are evicted to bound memory.
 - **Request Logging**: Comprehensive request/response logging
 - **Error Handling**: Standardized error response formatting
 
