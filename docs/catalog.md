@@ -617,6 +617,20 @@ Add to this whenever a reusable component becomes "the standard way".
   with `parse_source_repository_reference` above before constructing
   `CreationMode::Fork`/`CreationMode::Mirror`
 
+### API Rate Limiting (#284)
+
+- **`repo_roller_api::rate_limit::RateLimitConfig`** — rate-limit settings (`enabled`, `max_requests`, `window`)
+  Use when: Configuring the limiter; `from_env()`/`from_env_vars()` read `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS` (invalid values fall back to defaults 10 / 60s, never panic)
+- **`repo_roller_api::rate_limit::RateLimiter`** — per-key fixed-window limiter
+  Use when: Deciding whether a keyed request may proceed; `check(key) -> RateLimitDecision`, bounded memory via eviction
+- **`repo_roller_api::rate_limit::Clock`** — monotonic time source trait (`SystemClock` in production)
+  Use when: Injecting deterministic time in tests via `RateLimiter::with_clock`
+- **`repo_roller_api::rate_limit::RateLimitDecision`** — `Allowed { remaining }` / `Limited { retry_after_secs }`
+- **`repo_roller_api::rate_limit::rate_limit_middleware`** — axum middleware; POST only, keyed by `AuthContext::user_login`, returns 429 + `Retry-After` + `ErrorResponse` code `RateLimitExceeded`
+  Notes: Layered inside `auth_middleware` in `routes::create_router`
+- **`AppState.rate_limiter`** — `Arc<RateLimiter>` shared state; override with `AppState::with_rate_limit_config` / `with_rate_limiter`
+- **`rate_limit_rejections_total`** — unlabelled Prometheus `IntCounter` (`AppState.rate_limit_rejections`) counting 429 rejections
+
 ### Caching
 
 - **Policy cache** — In-memory cache with TTL

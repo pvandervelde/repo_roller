@@ -227,8 +227,9 @@ impl AppState {
 
     /// Replace the rate limiter's configuration (fresh, empty limiter).
     pub fn with_rate_limit_config(mut self, config: crate::rate_limit::RateLimitConfig) -> Self {
-        self.rate_limiter = std::sync::Arc::new(crate::rate_limit::RateLimiter::new(config));
-        self
+        self.with_rate_limiter(std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+            config,
+        )))
     }
 
     /// Replace the rate limiter (e.g. one with an injected clock).
