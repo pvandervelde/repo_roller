@@ -1648,3 +1648,72 @@ fn test_looks_like_secret_value_jwt_shape_requires_literal_second_dot_separator(
         "a space where the second '.' separator belongs must not be treated as JWT-shaped: {value:?}"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Cookie headers are sensitive — Tier 1 / Tier 2
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_deny_list_contains_cookie() {
+    assert!(SENSITIVE_FIELD_NAMES.contains(&"cookie"));
+}
+
+#[test]
+fn test_is_sensitive_field_name_matches_cookie_variants() {
+    for name in [
+        "cookie",
+        "Cookie",
+        "COOKIE",
+        "set-cookie",
+        "Set-Cookie",
+        "x-cookie-jar",
+    ] {
+        assert!(is_sensitive_field_name(name), "{name} must be sensitive");
+    }
+}
+
+#[test]
+fn test_redact_sensitive_fields_redacts_cookie_and_set_cookie_keys() {
+    let line = r#"{"fields":{"cookie":"session=SUPER-SECRET-COOKIE","Set-Cookie":"sid=ANOTHER-SECRET-COOKIE; HttpOnly","status":200}}"#;
+    let out = redact_sensitive_fields(line);
+    assert!(!out.contains("SUPER-SECRET-COOKIE"), "{out}");
+    assert!(!out.contains("ANOTHER-SECRET-COOKIE"), "{out}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["fields"]["cookie"], REDACTED_MARKER);
+    assert_eq!(v["fields"]["Set-Cookie"], REDACTED_MARKER);
+    assert_eq!(v["fields"]["status"], 200, "non-sensitive field untouched");
+}
+
+#[test]
+fn test_redact_sensitive_fields_redacts_cookie_nested_in_span_headers() {
+    let line = r#"{"span":{"headers":{"cookie":"session=NESTED-COOKIE-SECRET","accept":"*/*"},"name":"request"}}"#;
+    let out = redact_sensitive_fields(line);
+    assert!(!out.contains("NESTED-COOKIE-SECRET"), "{out}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["span"]["headers"]["cookie"], REDACTED_MARKER);
+    assert_eq!(v["span"]["headers"]["accept"], "*/*");
+}
+
+#[test]
+fn test_sanitizing_subscriber_redacts_a_cookie_field_end_to_end() {
+    #[derive(Clone, Default)]
+    struct Buf(Arc<Mutex<Vec<u8>>>);
+    impl Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let buf = Buf::default();
+    let w = buf.clone();
+    let sub = build_sanitizing_json_subscriber(move || w.clone());
+    tracing::subscriber::with_default(sub, || {
+        tracing::info!(cookie = "session=E2E-COOKIE-SECRET", "request seen");
+    });
+    let out = String::from_utf8_lossy(&buf.0.lock().unwrap()).into_owned();
+    assert!(out.contains("request seen"), "capture live: {out}");
+    assert!(!out.contains("E2E-COOKIE-SECRET"), "{out}");
+}

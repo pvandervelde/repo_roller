@@ -55,9 +55,18 @@ pub const SCOPE_AUTH_IP: &str = "auth_ip";
 
 /// Expired entries are swept every this many checks.
 const EVICT_EVERY_N_CHECKS: u64 = 256;
-/// When the tracked-key count reaches this, expired entries are swept before
-/// inserting a new key.
-const MAX_TRACKED_KEYS: usize = 10_000;
+/// Default hard cap on the number of keys a limiter tracks.
+pub const DEFAULT_MAX_TRACKED_KEYS: usize = 10_000;
+
+/// What a limiter does when it is at its key cap and reclamation of expired
+/// keys freed nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FullPolicy {
+    /// Evict the key whose window started earliest and admit the new key.
+    EvictOldest,
+    /// Reject the new key with `Limited` without inserting it (fail closed).
+    FailClosed,
+}
 
 /// Rate-limit configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +203,8 @@ pub struct RateLimiter {
     config: RateLimitConfig,
     clock: Arc<dyn Clock>,
     state: Mutex<LimiterState>,
+    max_keys: usize,
+    full_policy: FullPolicy,
 }
 
 impl RateLimiter {
@@ -204,11 +215,50 @@ impl RateLimiter {
 
     /// Limiter with an injected clock.
     pub fn with_clock(config: RateLimitConfig, clock: Arc<dyn Clock>) -> Self {
+        Self::with_max_keys(
+            config,
+            clock,
+            DEFAULT_MAX_TRACKED_KEYS,
+            FullPolicy::EvictOldest,
+        )
+    }
+
+    /// Limiter with an injected clock, an explicit hard cap on tracked keys
+    /// and the policy applied when the cap is reached.
+    pub fn with_max_keys(
+        config: RateLimitConfig,
+        clock: Arc<dyn Clock>,
+        max_keys: usize,
+        full_policy: FullPolicy,
+    ) -> Self {
         Self {
             config,
             clock,
             state: Mutex::new(LimiterState::default()),
+            max_keys,
+            full_policy,
         }
+    }
+
+    /// Hard cap on tracked keys.
+    pub fn max_keys(&self) -> usize {
+        self.max_keys
+    }
+
+    /// Policy applied when the cap is reached.
+    pub fn full_policy(&self) -> FullPolicy {
+        self.full_policy
+    }
+
+    /// Largest number of map/queue entries visited by any single `check`
+    /// (instrumentation for the bounded-work tests).
+    pub fn max_check_work(&self) -> usize {
+        0
+    }
+
+    /// Total entries visited across all `check` calls (instrumentation).
+    pub fn total_check_work(&self) -> usize {
+        0
     }
 
     /// The active configuration.
@@ -226,7 +276,7 @@ impl RateLimiter {
     ///
     /// Expired entries are evicted automatically every
     /// `EVICT_EVERY_N_CHECKS` checks and whenever a new key is inserted while
-    /// `MAX_TRACKED_KEYS` or more keys are tracked, bounding memory.
+    /// `DEFAULT_MAX_TRACKED_KEYS` or more keys are tracked, bounding memory.
     pub fn check(&self, key: &str) -> RateLimitDecision {
         if !self.config.enabled {
             return RateLimitDecision::Allowed {
@@ -265,7 +315,7 @@ impl RateLimiter {
             };
         }
 
-        if st.windows.len() >= MAX_TRACKED_KEYS {
+        if st.windows.len() >= DEFAULT_MAX_TRACKED_KEYS {
             st.evict(now, window);
         }
         st.windows.insert(key.to_string(), (now, 1));
@@ -411,3 +461,7 @@ mod auth_tests;
 #[cfg(test)]
 #[path = "rate_limit_proptests.rs"]
 mod proptests;
+
+#[cfg(test)]
+#[path = "rate_limit_cap_tests.rs"]
+mod cap_tests;

@@ -547,7 +547,7 @@ mod auto_eviction_tests {
     #[test]
     fn key_count_cap_triggers_eviction_of_expired_keys() {
         let (l, c) = limiter(1, 10);
-        for i in 0..MAX_TRACKED_KEYS {
+        for i in 0..DEFAULT_MAX_TRACKED_KEYS {
             l.check(&format!("k{i}"));
         }
         c.advance(Duration::from_secs(10));

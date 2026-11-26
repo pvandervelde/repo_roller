@@ -144,7 +144,7 @@ fn different_ips_yield_different_keys() {
 fn different_ipv6_addresses_yield_different_keys() {
     assert_ne!(
         client_key(&req(Some("[2001:db8::1]:443"), &[])),
-        client_key(&req(Some("[2001:db8::2]:443"), &[]))
+        client_key(&req(Some("[2001:db8:0:1::2]:443"), &[]))
     );
 }
 
@@ -335,4 +335,117 @@ mod proptests {
             prop_assert_ne!(ka, kb);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// IPv6 clients are keyed by /64 prefix
+// ---------------------------------------------------------------------------
+
+fn key_for(addr: &str) -> String {
+    client_key(&req(Some(addr), &[]))
+}
+
+#[test]
+fn ipv6_addresses_in_the_same_slash_64_share_a_key() {
+    assert_eq!(
+        key_for("[2001:db8:1:2::1]:443"),
+        key_for("[2001:db8:1:2:dead:beef:cafe:f00d]:443")
+    );
+}
+
+#[test]
+fn ipv6_addresses_differing_only_in_the_interface_id_share_a_key() {
+    assert_eq!(
+        key_for("[2001:db8:1:2:0:0:0:1]:1"),
+        key_for("[2001:db8:1:2:ffff:ffff:ffff:ffff]:2")
+    );
+}
+
+#[test]
+fn ipv6_addresses_in_different_slash_64_get_different_keys() {
+    assert_ne!(
+        key_for("[2001:db8:1:2::1]:443"),
+        key_for("[2001:db8:1:3::1]:443")
+    );
+}
+
+#[test]
+fn ipv6_addresses_differing_in_the_last_bit_of_the_prefix_get_different_keys() {
+    assert_ne!(
+        key_for("[2001:db8:1:2::1]:443"),
+        key_for("[2001:db8:1:3::1]:443"),
+        "4th group differs by one bit"
+    );
+    assert_ne!(
+        key_for("[2001:db8:1:0::1]:443"),
+        key_for("[2001:db8:1:1::1]:443")
+    );
+}
+
+#[test]
+fn ipv6_key_uses_the_v6_prefix_namespace() {
+    assert!(
+        key_for("[2001:db8:1:2::1]:443").starts_with("addr:v6/"),
+        "got {}",
+        key_for("[2001:db8:1:2::1]:443")
+    );
+}
+
+#[test]
+fn ipv6_key_does_not_embed_the_interface_identifier() {
+    let k = key_for("[2001:db8:1:2:dead:beef:cafe:f00d]:443");
+    assert!(!k.contains("dead"), "{k}");
+    assert!(!k.contains("beef"), "{k}");
+    assert!(!k.contains("f00d"), "{k}");
+}
+
+#[test]
+fn ipv6_key_contains_the_hex_of_the_slash_64_prefix() {
+    let k = key_for("[2001:db8:1:2::1]:443");
+    assert!(
+        k.to_lowercase().contains("20010db800010002"),
+        "key must carry the /64 prefix hex (zero padded to 16 digits): {k}"
+    );
+}
+
+#[test]
+fn ipv4_key_format_is_unchanged() {
+    assert_eq!(key_for("203.0.113.7:1111"), "ip:203.0.113.7");
+}
+
+#[test]
+fn ipv4_mapped_ipv6_is_still_canonicalised_to_ipv4_key() {
+    assert_eq!(key_for("[::ffff:203.0.113.7]:80"), "ip:203.0.113.7");
+}
+
+#[test]
+fn ipv4_never_collides_with_an_ipv6_slash_64_key() {
+    assert_ne!(key_for("0.0.0.1:1"), key_for("[::1]:1"));
+    assert_ne!(key_for("203.0.113.7:1"), key_for("[2001:db8::7]:1"));
+}
+
+#[test]
+fn ipv6_loopback_and_unspecified_are_keyed_without_panicking_and_differ_from_none() {
+    for a in [
+        "[::1]:1",
+        "[::]:1",
+        "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:1",
+    ] {
+        let k = key_for(a);
+        assert!(k.starts_with("addr:v6/"), "{a} -> {k}");
+        assert_ne!(k, NO_CLIENT_ADDR_KEY);
+    }
+}
+
+#[test]
+fn ipv6_key_ignores_port_and_forwarding_headers() {
+    let base = key_for("[2001:db8:1:2::1]:1111");
+    assert_eq!(base, key_for("[2001:db8:1:2::1]:2222"));
+    assert_eq!(
+        base,
+        client_key(&req(
+            Some("[2001:db8:1:2::1]:1111"),
+            &[("x-forwarded-for", "198.51.100.9")]
+        ))
+    );
 }
