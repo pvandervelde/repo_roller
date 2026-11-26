@@ -1469,6 +1469,9 @@ pub async fn metrics_handler(
     use axum::response::IntoResponse;
     use prometheus::{Encoder, TextEncoder};
 
+    // Refresh the tracked-key gauges so the scrape reflects current state.
+    state.update_rate_limit_tracked_keys();
+
     let metric_families = state.metrics_registry.gather();
     let encoder = TextEncoder::new();
     let mut buffer = Vec::new();

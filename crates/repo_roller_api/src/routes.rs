@@ -33,10 +33,29 @@ use std::time::Duration;
 use tower_http::{
     cors::CorsLayer,
     timeout::TimeoutLayer,
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    trace::{DefaultOnResponse, TraceLayer},
 };
 
 use crate::{handlers, middleware as api_middleware, AppState};
+
+/// Builds the per-request tracing span: method, full request path (the
+/// pre-`nest` path via `OriginalUri`, so `/api/v1/...` rather than the stripped
+/// route) and HTTP version.
+///
+/// Neither headers nor the query string are recorded: headers carry
+/// `Authorization`/`Cookie` values and query strings can carry credentials.
+fn request_span<B>(request: &axum::http::Request<B>) -> tracing::Span {
+    let path = request
+        .extensions()
+        .get::<axum::extract::OriginalUri>()
+        .map_or_else(|| request.uri().path(), |original| original.0.path());
+    tracing::debug_span!(
+        "request",
+        method = %request.method(),
+        uri = %path,
+        version = ?request.version(),
+    )
+}
 
 /// Build a CORS layer restricted to the origin specified by the `FRONTEND_ORIGIN`
 /// environment variable.
@@ -93,9 +112,11 @@ pub fn create_router(state: AppState) -> Router {
     let cors = build_cors_layer();
 
     // Configure request tracing
+    // Headers are deliberately NOT recorded: they carry Authorization and
+    // Cookie values that must never reach the logs.
     let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().include_headers(true))
-        .on_response(DefaultOnResponse::new().include_headers(true));
+        .make_span_with(request_span::<axum::body::Body>)
+        .on_response(DefaultOnResponse::new());
 
     // Configure request timeout (30 seconds)
     let timeout_layer =
@@ -241,7 +262,7 @@ pub fn create_router_without_auth(state: AppState) -> Router {
     use tower_http::{
         cors::CorsLayer,
         timeout::TimeoutLayer,
-        trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+        trace::{DefaultOnResponse, TraceLayer},
     };
 
     // Test router: CORS wildcard is acceptable here because this router is
@@ -260,9 +281,11 @@ pub fn create_router_without_auth(state: AppState) -> Router {
         .max_age(Duration::from_secs(3600));
 
     // Configure request tracing
+    // Headers are deliberately NOT recorded: they carry Authorization and
+    // Cookie values that must never reach the logs.
     let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().include_headers(true))
-        .on_response(DefaultOnResponse::new().include_headers(true));
+        .make_span_with(request_span::<axum::body::Body>)
+        .on_response(DefaultOnResponse::new());
 
     // Configure request timeout (30 seconds)
     let timeout_layer =

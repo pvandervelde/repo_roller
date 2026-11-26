@@ -56,6 +56,7 @@ struct MetricsBundle {
     http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics>,
     github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics>,
     rate_limit_rejections: prometheus::IntCounterVec,
+    rate_limit_tracked_keys: prometheus::IntGaugeVec,
 }
 
 impl MetricsBundle {
@@ -104,6 +105,26 @@ impl MetricsBundle {
             rate_limit_rejections.with_label_values(&[scope]);
         }
 
+        // Current number of keys each limiter tracks (bounded by the key cap).
+        // Labelled by `scope` only; never exposes identities or addresses.
+        let rate_limit_tracked_keys = prometheus::IntGaugeVec::new(
+            prometheus::Opts::new(
+                "rate_limit_tracked_keys",
+                "Number of keys currently tracked by the application-level rate limiters",
+            ),
+            &["scope"],
+        )
+        .expect("Failed to create rate limit tracked keys gauge");
+        registry
+            .register(Box::new(rate_limit_tracked_keys.clone()))
+            .expect("Failed to register rate limit tracked keys gauge");
+        for scope in [
+            crate::rate_limit::SCOPE_USER,
+            crate::rate_limit::SCOPE_AUTH_IP,
+        ] {
+            rate_limit_tracked_keys.with_label_values(&[scope]).set(0);
+        }
+
         Self {
             registry: std::sync::Arc::new(registry),
             event_metrics,
@@ -111,6 +132,7 @@ impl MetricsBundle {
             http_metrics,
             github_api_metrics,
             rate_limit_rejections,
+            rate_limit_tracked_keys,
         }
     }
 }
@@ -186,6 +208,9 @@ pub struct AppState {
     /// Counter of requests rejected by the rate limiter, registered against
     /// `metrics_registry` as `rate_limit_rejections_total`.
     pub(crate) rate_limit_rejections: prometheus::IntCounterVec,
+    /// Gauge of keys tracked per limiter scope, refreshed at scrape time and
+    /// registered as `rate_limit_tracked_keys`.
+    pub(crate) rate_limit_tracked_keys: prometheus::IntGaugeVec,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling
@@ -215,6 +240,7 @@ impl AppState {
             http_metrics,
             github_api_metrics,
             rate_limit_rejections,
+            rate_limit_tracked_keys,
         } = MetricsBundle::new();
         Self {
             metadata_repository_name: metadata_repository_name.into(),
@@ -232,20 +258,25 @@ impl AppState {
             rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
                 crate::rate_limit::RateLimitConfig::from_env(),
             )),
-            auth_rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
-                crate::rate_limit::RateLimitConfig::auth_from_env(),
-            )),
+            auth_rate_limiter: std::sync::Arc::new(
+                crate::rate_limit::RateLimiter::new_fail_closed(
+                    crate::rate_limit::RateLimitConfig::auth_from_env(),
+                ),
+            ),
             rate_limit_rejections,
+            rate_limit_tracked_keys,
             #[cfg(test)]
             mock_installation_token: None,
         }
     }
 
     /// Replace the token-exchange limiter's configuration (fresh limiter).
+    ///
+    /// The token-exchange limiter fails closed when its key cap is reached.
     pub fn with_auth_rate_limit_config(self, config: crate::rate_limit::RateLimitConfig) -> Self {
-        self.with_auth_rate_limiter(std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
-            config,
-        )))
+        self.with_auth_rate_limiter(std::sync::Arc::new(
+            crate::rate_limit::RateLimiter::new_fail_closed(config),
+        ))
     }
 
     /// Replace the token-exchange limiter (e.g. one with an injected clock).
@@ -262,6 +293,19 @@ impl AppState {
         self.with_rate_limiter(std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
             config,
         )))
+    }
+
+    /// Copy each limiter's current key count into the
+    /// `rate_limit_tracked_keys{scope}` gauge.
+    pub(crate) fn update_rate_limit_tracked_keys(&self) {
+        for (scope, limiter) in [
+            (crate::rate_limit::SCOPE_USER, &self.rate_limiter),
+            (crate::rate_limit::SCOPE_AUTH_IP, &self.auth_rate_limiter),
+        ] {
+            self.rate_limit_tracked_keys
+                .with_label_values(&[scope])
+                .set(i64::try_from(limiter.tracked_keys()).unwrap_or(i64::MAX));
+        }
     }
 
     /// Replace the rate limiter (e.g. one with an injected clock).
@@ -339,6 +383,7 @@ impl Default for AppState {
             http_metrics,
             github_api_metrics,
             rate_limit_rejections,
+            rate_limit_tracked_keys,
         } = MetricsBundle::new();
         Self {
             metadata_repository_name: ".reporoller".to_string(),
@@ -353,14 +398,17 @@ impl Default for AppState {
             rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
                 crate::rate_limit::RateLimitConfig::default(),
             )),
-            auth_rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
-                crate::rate_limit::RateLimitConfig::new(
-                    true,
-                    crate::rate_limit::DEFAULT_AUTH_MAX_REQUESTS,
-                    crate::rate_limit::DEFAULT_AUTH_WINDOW_SECS,
+            auth_rate_limiter: std::sync::Arc::new(
+                crate::rate_limit::RateLimiter::new_fail_closed(
+                    crate::rate_limit::RateLimitConfig::new(
+                        true,
+                        crate::rate_limit::DEFAULT_AUTH_MAX_REQUESTS,
+                        crate::rate_limit::DEFAULT_AUTH_WINDOW_SECS,
+                    ),
                 ),
-            )),
+            ),
             rate_limit_rejections,
+            rate_limit_tracked_keys,
             mock_installation_token: None,
         }
     }

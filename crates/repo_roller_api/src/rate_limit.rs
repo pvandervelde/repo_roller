@@ -15,12 +15,14 @@
 //!   POST requests only, answers 429 + `Retry-After` + JSON `ErrorResponse`
 //!   with code `RateLimitExceeded`. Requests with no principal identifier are
 //!   rejected (401), never pooled.
+//! * Each limiter tracks at most a fixed number of keys (default
+//!   [`DEFAULT_MAX_TRACKED_KEYS`]); see [`FullPolicy`] for what happens at the cap.
 //! * The public token endpoint has its own limiter keyed by client IP
 //!   (`auth_rate_limit_middleware`); env vars `RATE_LIMIT_AUTH_REQUESTS`,
 //!   `RATE_LIMIT_AUTH_WINDOW_SECS`.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::collections::{HashMap, VecDeque};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -53,7 +55,9 @@ pub const SCOPE_USER: &str = "user";
 /// `scope` label value for rejections by the token-endpoint (client IP) limiter.
 pub const SCOPE_AUTH_IP: &str = "auth_ip";
 
-/// Expired entries are swept every this many checks.
+/// Legacy sweep interval, kept only for the sweep tests: expired keys are now
+/// reclaimed incrementally on every check, which is at least as eager.
+#[cfg(test)]
 const EVICT_EVERY_N_CHECKS: u64 = 256;
 /// Default hard cap on the number of keys a limiter tracks.
 pub const DEFAULT_MAX_TRACKED_KEYS: usize = 10_000;
@@ -181,24 +185,84 @@ pub enum RateLimitDecision {
 }
 
 /// Mutable limiter state guarded by one mutex.
+///
+/// Invariant: every key in `windows` has exactly one entry in `expiry` whose
+/// start equals the key's current window start. `expiry` is ordered by window
+/// start (the clock is monotonic, so entries are pushed in non-decreasing
+/// order). Entries whose start differs from the key's current start (or whose
+/// key is gone) are stale and are skipped when popped.
 #[derive(Default)]
 struct LimiterState {
     /// key -> (window start, requests allowed in window)
-    windows: HashMap<String, (Duration, u32)>,
-    /// Checks performed; drives periodic eviction.
-    checks: u64,
+    windows: HashMap<Arc<str>, (Duration, u32)>,
+    /// Window starts in insertion (= expiry) order.
+    expiry: VecDeque<(Duration, Arc<str>)>,
+    /// Entries visited by the costliest single `check`.
+    max_work: usize,
+    /// Entries visited across all `check` calls.
+    total_work: usize,
 }
 
 impl LimiterState {
-    fn evict(&mut self, now: Duration, window: Duration) -> usize {
-        let before = self.windows.len();
-        self.windows
-            .retain(|_, (start, _)| now.saturating_sub(*start) < window);
-        before - self.windows.len()
+    /// Pop the front expiry entry. Returns `None` when the queue is empty,
+    /// otherwise whether the entry was current (and its key was removed from
+    /// `windows`) as opposed to stale.
+    fn pop_front_entry(&mut self) -> Option<bool> {
+        let (start, key) = self.expiry.pop_front()?;
+        let current = self.windows.get(&key).is_some_and(|(s, _)| *s == start);
+        if current {
+            self.windows.remove(&key);
+        }
+        Some(current)
+    }
+
+    /// Reclaim every key whose window has ended. Amortised O(1) per check:
+    /// each window start is pushed and popped once. Returns
+    /// `(keys removed, entries visited)`.
+    fn reclaim_expired(&mut self, now: Duration, window: Duration) -> (usize, usize) {
+        let mut removed = 0;
+        let mut visited = 0;
+        while let Some((start, _)) = self.expiry.front() {
+            if now.saturating_sub(*start) < window {
+                break;
+            }
+            visited += 1;
+            if self.pop_front_entry() == Some(true) {
+                removed += 1;
+            }
+        }
+        (removed, visited)
+    }
+
+    /// Evict the key with the oldest current window start, skipping stale
+    /// entries. Returns entries visited.
+    fn evict_oldest(&mut self) -> usize {
+        let mut visited = 0;
+        while let Some(current) = self.pop_front_entry() {
+            visited += 1;
+            if current {
+                break;
+            }
+        }
+        visited
+    }
+
+    /// Whole seconds (>= 1) until the earliest-ending live window ends.
+    fn retry_after_for_full(&self, now: Duration, window: Duration) -> u64 {
+        let remaining = self
+            .expiry
+            .front()
+            .map_or(window, |(start, _)| (*start + window).saturating_sub(now));
+        ceil_secs(remaining)
     }
 }
 
-/// Per-key fixed-window limiter.
+/// Ceiling of `d` in whole seconds, minimum 1.
+fn ceil_secs(d: Duration) -> u64 {
+    (d.as_secs() + u64::from(d.subsec_nanos() > 0)).max(1)
+}
+
+/// Per-key fixed-window limiter with a hard cap on tracked keys.
 pub struct RateLimiter {
     config: RateLimitConfig,
     clock: Arc<dyn Clock>,
@@ -213,7 +277,19 @@ impl RateLimiter {
         Self::with_clock(config, Arc::new(SystemClock))
     }
 
-    /// Limiter with an injected clock.
+    /// Limiter using the system clock, the default key cap and
+    /// [`FullPolicy::FailClosed`] (for unauthenticated, attacker-keyed scopes).
+    pub fn new_fail_closed(config: RateLimitConfig) -> Self {
+        Self::with_max_keys(
+            config,
+            Arc::new(SystemClock),
+            DEFAULT_MAX_TRACKED_KEYS,
+            FullPolicy::FailClosed,
+        )
+    }
+
+    /// Limiter with an injected clock, the default key cap and
+    /// [`FullPolicy::EvictOldest`].
     pub fn with_clock(config: RateLimitConfig, clock: Arc<dyn Clock>) -> Self {
         Self::with_max_keys(
             config,
@@ -224,7 +300,7 @@ impl RateLimiter {
     }
 
     /// Limiter with an injected clock, an explicit hard cap on tracked keys
-    /// and the policy applied when the cap is reached.
+    /// (clamped to at least 1) and the policy applied when the cap is reached.
     pub fn with_max_keys(
         config: RateLimitConfig,
         clock: Arc<dyn Clock>,
@@ -235,7 +311,7 @@ impl RateLimiter {
             config,
             clock,
             state: Mutex::new(LimiterState::default()),
-            max_keys,
+            max_keys: max_keys.max(1),
             full_policy,
         }
     }
@@ -253,12 +329,12 @@ impl RateLimiter {
     /// Largest number of map/queue entries visited by any single `check`
     /// (instrumentation for the bounded-work tests).
     pub fn max_check_work(&self) -> usize {
-        0
+        self.lock().max_work
     }
 
     /// Total entries visited across all `check` calls (instrumentation).
     pub fn total_check_work(&self) -> usize {
-        0
+        self.lock().total_work
     }
 
     /// The active configuration.
@@ -274,9 +350,13 @@ impl RateLimiter {
 
     /// Record one request for `key` and decide. Always `Allowed` if disabled.
     ///
-    /// Expired entries are evicted automatically every
-    /// `EVICT_EVERY_N_CHECKS` checks and whenever a new key is inserted while
-    /// `DEFAULT_MAX_TRACKED_KEYS` or more keys are tracked, bounding memory.
+    /// Memory is bounded by the key cap (`max_keys`). Each check first
+    /// reclaims expired keys from the front of an expiry-ordered queue
+    /// (amortised O(1): every window start is queued and dequeued once). A new
+    /// key arriving at a full limiter, after reclamation, is handled per
+    /// [`FullPolicy`]: `EvictOldest` drops the key with the oldest window start
+    /// and admits it; `FailClosed` answers `Limited` (retry-after = time until
+    /// the earliest window ends, >= 1) without inserting it.
     pub fn check(&self, key: &str) -> RateLimitDecision {
         if !self.config.enabled {
             return RateLimitDecision::Allowed {
@@ -284,29 +364,32 @@ impl RateLimiter {
             };
         }
         let now = self.clock.now();
-        let window = self.config.window;
-        let max = self.config.max_requests;
         let mut st = self.lock();
 
-        st.checks = st.checks.wrapping_add(1);
-        if st.checks.is_multiple_of(EVICT_EVERY_N_CHECKS) {
-            st.evict(now, window);
-        }
+        // One unit for the map lookup, plus queue entries visited.
+        let (_, reclaimed_visits) = st.reclaim_expired(now, self.config.window);
+        let mut work = 1 + reclaimed_visits;
+        let decision = self.decide(&mut st, key, now, &mut work);
+        st.max_work = st.max_work.max(work);
+        st.total_work = st.total_work.saturating_add(work);
+        decision
+    }
+
+    fn decide(
+        &self,
+        st: &mut LimiterState,
+        key: &str,
+        now: Duration,
+        work: &mut usize,
+    ) -> RateLimitDecision {
+        let window = self.config.window;
+        let max = self.config.max_requests;
 
         if let Some((start, count)) = st.windows.get_mut(key) {
-            let elapsed = now.saturating_sub(*start);
-            if elapsed >= window {
-                *start = now;
-                *count = 1;
-                return RateLimitDecision::Allowed {
-                    remaining: max.saturating_sub(1),
-                };
-            }
+            // Expired windows were reclaimed above, so this window is live.
             if *count >= max {
-                let remaining = window - elapsed;
-                let secs = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
                 return RateLimitDecision::Limited {
-                    retry_after_secs: secs.max(1),
+                    retry_after_secs: ceil_secs((*start + window).saturating_sub(now)),
                 };
             }
             *count += 1;
@@ -315,10 +398,29 @@ impl RateLimiter {
             };
         }
 
-        if st.windows.len() >= DEFAULT_MAX_TRACKED_KEYS {
-            st.evict(now, window);
+        if st.windows.len() >= self.max_keys {
+            match self.full_policy {
+                FullPolicy::FailClosed => {
+                    return RateLimitDecision::Limited {
+                        retry_after_secs: st.retry_after_for_full(now, window),
+                    };
+                }
+                FullPolicy::EvictOldest => {
+                    *work += st.evict_oldest();
+                    if st.windows.len() >= self.max_keys {
+                        // Unreachable while the queue invariant holds; never
+                        // exceed the cap regardless.
+                        return RateLimitDecision::Limited {
+                            retry_after_secs: ceil_secs(window),
+                        };
+                    }
+                }
+            }
         }
-        st.windows.insert(key.to_string(), (now, 1));
+
+        let key: Arc<str> = Arc::from(key);
+        st.windows.insert(Arc::clone(&key), (now, 1));
+        st.expiry.push_back((now, key));
         RateLimitDecision::Allowed {
             remaining: max.saturating_sub(1),
         }
@@ -327,7 +429,7 @@ impl RateLimiter {
     /// Drop every key whose window has ended. Returns number removed.
     pub fn evict_expired(&self) -> usize {
         let now = self.clock.now();
-        self.lock().evict(now, self.config.window)
+        self.lock().reclaim_expired(now, self.config.window).0
     }
 
     /// Number of keys currently tracked.
@@ -357,13 +459,23 @@ pub fn principal_key(ctx: &AuthContext) -> Option<String> {
 /// connection address only.
 ///
 /// Uses the peer IP from `ConnectInfo<SocketAddr>` (port dropped, IPv4-mapped
-/// IPv6 canonicalised to IPv4). Forwarding headers (`X-Forwarded-For`, ...)
+/// IPv6 canonicalised to IPv4). IPv4 clients are keyed `ip:a.b.c.d`; IPv6
+/// clients by their /64 prefix, `addr:v6/<16 hex digits>`, because a single
+/// subscriber typically controls a whole /64 and could otherwise mint
+/// unlimited keys. Forwarding headers (`X-Forwarded-For`, ...)
 /// are deliberately never consulted: they are client-controlled and would let
 /// an attacker evade the limit or exhaust another client's budget. Requests
 /// without `ConnectInfo` share the fail-closed `NO_CLIENT_ADDR_KEY` bucket.
 pub fn client_key(request: &Request) -> String {
     match request.extensions().get::<ConnectInfo<SocketAddr>>() {
-        Some(ConnectInfo(addr)) => format!("ip:{}", addr.ip().to_canonical()),
+        Some(ConnectInfo(addr)) => match addr.ip().to_canonical() {
+            IpAddr::V4(v4) => format!("ip:{v4}"),
+            IpAddr::V6(v6) => {
+                let o = v6.octets();
+                let prefix = u64::from_be_bytes([o[0], o[1], o[2], o[3], o[4], o[5], o[6], o[7]]);
+                format!("addr:v6/{prefix:016x}")
+            }
+        },
         None => NO_CLIENT_ADDR_KEY.to_string(),
     }
 }
