@@ -55,6 +55,7 @@ struct MetricsBundle {
         std::sync::Arc<dyn repo_roller_core::repository_metrics::RepositoryCreationMetrics>,
     http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics>,
     github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics>,
+    rate_limit_rejections: prometheus::IntCounter,
 }
 
 impl MetricsBundle {
@@ -82,12 +83,23 @@ impl MetricsBundle {
         let github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics> =
             std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
 
+        // Unlabelled on purpose: no user identity or other unbounded values.
+        let rate_limit_rejections = prometheus::IntCounter::new(
+            "rate_limit_rejections_total",
+            "Total requests rejected by the application-level rate limiter",
+        )
+        .expect("Failed to create rate limit rejections counter");
+        registry
+            .register(Box::new(rate_limit_rejections.clone()))
+            .expect("Failed to register rate limit rejections counter");
+
         Self {
             registry: std::sync::Arc::new(registry),
             event_metrics,
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
+            rate_limit_rejections,
         }
     }
 }
@@ -158,6 +170,9 @@ pub struct AppState {
     pub(crate) jwt_secret: secrecy::SecretString,
     /// Per-user rate limiter shared by all requests (Task #284).
     pub(crate) rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    /// Counter of requests rejected by the rate limiter, registered against
+    /// `metrics_registry` as `rate_limit_rejections_total`.
+    pub(crate) rate_limit_rejections: prometheus::IntCounter,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling
@@ -186,6 +201,7 @@ impl AppState {
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
+            rate_limit_rejections,
         } = MetricsBundle::new();
         Self {
             metadata_repository_name: metadata_repository_name.into(),
@@ -201,10 +217,9 @@ impl AppState {
             )),
             jwt_secret: secrecy::SecretString::from(jwt_secret.into()),
             rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
-                // TDD stub: Coder must switch this to `RateLimitConfig::from_env()`
-                // once `from_env_vars` is implemented.
-                crate::rate_limit::RateLimitConfig::default(),
+                crate::rate_limit::RateLimitConfig::from_env(),
             )),
+            rate_limit_rejections,
             #[cfg(test)]
             mock_installation_token: None,
         }
@@ -290,6 +305,7 @@ impl Default for AppState {
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
+            rate_limit_rejections,
         } = MetricsBundle::new();
         Self {
             metadata_repository_name: ".reporoller".to_string(),
@@ -304,6 +320,7 @@ impl Default for AppState {
             rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
                 crate::rate_limit::RateLimitConfig::default(),
             )),
+            rate_limit_rejections,
             mock_installation_token: None,
         }
     }

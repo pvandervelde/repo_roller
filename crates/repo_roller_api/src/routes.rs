@@ -115,6 +115,13 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Organization-specific routes
         .nest("/orgs/{org}", organization_routes())
+        // Rate limiting is added first so it sits *inside* auth (the last
+        // route_layer is outermost): it runs only for authenticated requests
+        // and can key on `AuthContext`.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::rate_limit::rate_limit_middleware,
+        ))
         // Auth middleware reads jwt_secret from AppState; from_fn_with_state
         // supplies the state to the middleware function.
         .route_layer(middleware::from_fn_with_state(

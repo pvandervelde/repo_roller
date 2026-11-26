@@ -510,3 +510,58 @@ mod eviction_tests {
         assert_eq!(l.tracked_keys(), 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Automatic eviction (bounded memory)
+// ---------------------------------------------------------------------------
+
+mod auto_eviction_tests {
+    use super::*;
+
+    #[test]
+    fn periodic_sweep_removes_expired_keys_without_explicit_call() {
+        let (l, c) = limiter(1, 10);
+        for i in 0..100 {
+            l.check(&format!("old-{i}"));
+        }
+        assert_eq!(l.tracked_keys(), 100);
+        c.advance(Duration::from_secs(10));
+        // Enough further checks on one live key to trigger the periodic sweep.
+        for _ in 0..(EVICT_EVERY_N_CHECKS * 2) {
+            l.check("live");
+        }
+        assert_eq!(l.tracked_keys(), 1, "expired keys must be swept");
+    }
+
+    #[test]
+    fn live_keys_survive_the_sweep_and_keep_limiting() {
+        let (l, c) = limiter(1, 60);
+        l.check("live");
+        c.advance(Duration::from_secs(30));
+        for _ in 0..(EVICT_EVERY_N_CHECKS * 2) {
+            l.check("other-live-spammer");
+        }
+        assert!(!is_allowed(l.check("live")));
+    }
+
+    #[test]
+    fn key_count_cap_triggers_eviction_of_expired_keys() {
+        let (l, c) = limiter(1, 10);
+        for i in 0..MAX_TRACKED_KEYS {
+            l.check(&format!("k{i}"));
+        }
+        c.advance(Duration::from_secs(10));
+        l.check("fresh");
+        assert_eq!(l.tracked_keys(), 1);
+    }
+
+    #[test]
+    fn evict_expired_reports_removed_count() {
+        let (l, c) = limiter(1, 10);
+        l.check("a");
+        l.check("b");
+        c.advance(Duration::from_secs(10));
+        assert_eq!(l.evict_expired(), 2);
+        assert_eq!(l.tracked_keys(), 0);
+    }
+}
