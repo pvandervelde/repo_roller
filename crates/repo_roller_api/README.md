@@ -1416,7 +1416,9 @@ Each limiter tracks at most 10,000 keys. Expired keys are reclaimed incrementall
 is reached with no expired key to reclaim, the `user` limiter evicts the key whose window started
 earliest (that user simply gets a fresh budget), while the `auth_ip` limiter **fails closed**:
 new client addresses receive `429` until a window expires, and existing clients' budgets are never
-disturbed by a flood of new addresses.
+disturbed by a flood of new addresses. The consequence is that once the cap is reached (a botnet,
+or many IPv6 /64 prefixes) the `auth_ip` limiter acts as a login lockout for new addresses until a
+window expires. Alert on `rate_limit_tracked_keys{scope="auth_ip"}` approaching 10,000.
 
 Configure with `RATE_LIMIT_ENABLED` (governs both), `RATE_LIMIT_REQUESTS`,
 `RATE_LIMIT_WINDOW_SECS`, `RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS`.

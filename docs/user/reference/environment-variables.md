@@ -40,7 +40,9 @@ Rate-limit state is held in memory per process. With multiple replicas each repl
 limit independently (the effective limit is roughly `RATE_LIMIT_REQUESTS` times the replica count),
 and counters reset when a replica restarts. Each limiter tracks at most 10,000 keys: the per-user
 limiter evicts the oldest key at the cap, while the token-endpoint limiter fails closed (new client
-addresses get `429` until a window expires). The token-endpoint limiter keys on the connection
+addresses get `429` until a window expires, so once the cap is reached, for example by a botnet or
+many IPv6 /64 prefixes, it acts as a login lockout for new addresses: alert on
+`rate_limit_tracked_keys{scope="auth_ip"}` approaching 10,000). The token-endpoint limiter keys on the connection
 address (IPv6 by /64 prefix) and ignores `X-Forwarded-*` headers, so behind a reverse proxy all clients share the proxy
 IP's bucket: raise `RATE_LIMIT_AUTH_REQUESTS` accordingly. See
 [Rate limiting](../reference/api/index.md#rate-limiting).

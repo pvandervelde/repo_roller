@@ -240,6 +240,13 @@ You should see Prometheus text-format output, including families such as
 the [`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#metrics) for
 the full list of exposed metrics and their labels.
 
+**Alert on the token-endpoint limiter filling up.** The `auth_ip` limiter tracks at most 10,000
+client addresses and fails closed. If the cap is reached (for example by a botnet or by traffic from
+many IPv6 /64 prefixes) it acts as a login lockout: new client addresses, including legitimate
+users, receive `429` on `POST /api/v1/auth/token` until a window expires. Alert when
+`rate_limit_tracked_keys{scope="auth_ip"}` approaches 10,000 (for example above 8,000) so you can
+react before sign-in is affected.
+
 ## Distributed tracing (Jaeger)
 
 The backend can export OpenTelemetry traces over OTLP for the full repository-creation flow

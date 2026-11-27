@@ -19,7 +19,8 @@ the only caller of `/auth/token`, so the backend sees one IP and all users share
 
 Each limiter tracks at most 10,000 keys (new `rate_limit_tracked_keys{scope}` gauge). At the cap the
 per-user limiter evicts the key with the oldest window; the token-endpoint limiter fails closed,
-rejecting new client addresses with `429`. IPv6 clients are keyed by /64 prefix. Request headers
+rejecting new client addresses with `429`. Once the cap is reached (botnet, many /64s) this acts as a
+login lockout, so alert on `rate_limit_tracked_keys{scope="auth_ip"}` approaching 10,000. IPv6 clients are keyed by /64 prefix. Request headers
 (`Authorization`, `Cookie`, ...) are no longer written to trace logs.
 
 Configure with `RATE_LIMIT_ENABLED` (`false`/`0` disables both limiters), `RATE_LIMIT_REQUESTS`,

@@ -41,7 +41,9 @@ Two fixed-window limiters live in `repo_roller_api::rate_limit`, held in memory 
    incrementally. At the cap the per-user limiter evicts the key with the oldest window (that
    principal gets a fresh budget; keys are authenticated, so flooding them is not free). The
    token-endpoint limiter **fails closed**: new addresses get 429 until a window expires, so an
-   attacker rotating source addresses cannot evict honest clients' budgets.
+   attacker rotating source addresses cannot evict honest clients' budgets. The trade-off is that a botnet or many IPv6 /64 prefixes can fill the cap
+   and turn the limiter into a login lockout for new addresses; operators should alert on
+   `rate_limit_tracked_keys{scope="auth_ip"}` approaching 10,000.
 
 Rejections return `429` with `Retry-After` and error code `RateLimitExceeded`, are logged at WARN
 without identity, and increment `rate_limit_rejections_total{scope}`;
