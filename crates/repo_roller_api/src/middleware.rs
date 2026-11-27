@@ -196,6 +196,7 @@ impl AuthContext {
 /// - Header format is not `Bearer <token>`
 /// - JWT signature is invalid
 /// - JWT is expired
+/// - JWT carries neither a non-empty `pid` nor a non-empty `sub` (code `MissingPrincipal`)
 ///
 /// # Example
 ///
