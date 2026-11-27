@@ -4245,6 +4245,27 @@ pub fn create_token_client(token: &str) -> Result<Octocrab, Error> {
         .map_err(|_| Error::ApiError())
 }
 
+/// Creates an [`Octocrab`] client from a personal access token with automatic
+/// retries disabled.
+///
+/// Intended for latency- and amplification-sensitive callers (for example the
+/// public token exchange endpoint), where retrying 5xx responses would multiply
+/// upstream calls per inbound request. `base_url` overrides the default
+/// `https://api.github.com` (GitHub Enterprise or a mock server in tests).
+///
+/// # Errors
+///
+/// Returns [`Error::ApiError`] if `base_url` is invalid or the client cannot be built.
+pub fn create_no_retry_client(token: &str, base_url: Option<&str>) -> Result<Octocrab, Error> {
+    let mut builder = Octocrab::builder()
+        .personal_token(token.to_string())
+        .add_retry_config(octocrab::service::middleware::retry::RetryConfig::None);
+    if let Some(url) = base_url {
+        builder = builder.base_uri(url).map_err(|_| Error::ApiError())?;
+    }
+    builder.build().map_err(|_| Error::ApiError())
+}
+
 /// Creates an [`Octocrab`] client from a personal access token.
 ///
 /// The optional `base_url` parameter overrides the default GitHub API base URL
