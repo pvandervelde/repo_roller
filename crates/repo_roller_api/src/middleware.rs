@@ -226,17 +226,22 @@ pub async fn auth_middleware(
 
     tracing::debug!("Backend JWT validated");
 
-    // A `pid` claim marks a loginless principal: `sub` is then only a
-    // placeholder and must not be mistaken for a real GitHub login.
-    let auth_context = match claims.pid.filter(|p| !p.is_empty()) {
-        Some(pid) => AuthContext {
+    // Precedence: a non-empty `pid` claim (loginless principal) wins over
+    // `sub`. A token with neither a usable `pid` nor a usable `sub` identifies
+    // no principal and is rejected.
+    let auth_context = match (
+        claims.pid.filter(|p| !p.is_empty()),
+        claims.sub.filter(|s| !s.is_empty()),
+    ) {
+        (Some(pid), _) => AuthContext {
             user_login: None,
             principal_id: Some(pid),
         },
-        None => AuthContext {
-            user_login: Some(claims.sub.ok_or(AuthError::MissingToken)?),
+        (None, Some(login)) => AuthContext {
+            user_login: Some(login),
             principal_id: None,
         },
+        (None, None) => return Err(AuthError::MissingPrincipalIdentifier),
     };
 
     request.extensions_mut().insert(auth_context);
@@ -290,7 +295,8 @@ pub(crate) async fn validate_github_token(token: &str) -> Result<(), AuthError> 
 ///
 /// Calls `GET /user`.  Succeeds for PAT and OAuth tokens; fails silently for
 /// installation tokens (which are not scoped to a user).  Failure is
-/// non-fatal — the exchange endpoint falls back to `"unknown"`.
+/// non-fatal — the exchange endpoint then issues a loginless token that
+/// carries only a `pid` claim.
 pub(crate) async fn try_get_user_login(token: &str) -> Option<String> {
     let octocrab = github_client::create_token_client(token).ok()?;
     match octocrab.current().user().await {
@@ -484,7 +490,14 @@ impl From<AuthenticationError> for AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, code, message, details) = match self {
-            AuthError::MissingToken | AuthError::MissingPrincipalIdentifier => (
+            AuthError::MissingPrincipalIdentifier => (
+                StatusCode::UNAUTHORIZED,
+                "MissingPrincipal",
+                "The token does not identify a principal; re-authenticate via POST /api/v1/auth/token."
+                    .to_string(),
+                None,
+            ),
+            AuthError::MissingToken => (
                 StatusCode::UNAUTHORIZED,
                 "AuthenticationError",
                 "Authentication required. Provide a valid Bearer token in the Authorization header."

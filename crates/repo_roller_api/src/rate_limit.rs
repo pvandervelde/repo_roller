@@ -1,6 +1,7 @@
 //! Application-level rate limiting (Task #284).
 //!
-//! Per-user fixed-window rate limiting for state-changing (POST) requests.
+//! Per-user fixed-window rate limiting for all requests except the safe
+//! methods `GET`, `HEAD` and `OPTIONS`.
 //!
 //! # Contract
 //!
@@ -12,7 +13,7 @@
 //! * Config env vars: `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`,
 //!   `RATE_LIMIT_WINDOW_SECS`. Invalid values fall back to defaults (never panic).
 //! * Middleware runs after auth, keyed by [`principal_key`], applies to
-//!   POST requests only, answers 429 + `Retry-After` + JSON `ErrorResponse`
+//!   every method except GET/HEAD/OPTIONS, answers 429 + `Retry-After` + JSON `ErrorResponse`
 //!   with code `RateLimitExceeded`. Requests with no principal identifier are
 //!   rejected (401), never pooled.
 //! * Each limiter tracks at most a fixed number of keys (default
@@ -527,10 +528,16 @@ pub async fn auth_rate_limit_middleware(
     }
 }
 
+/// `true` for the methods that never consume rate-limit budget.
+fn is_safe_method(method: &Method) -> bool {
+    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
+}
+
 /// Axum middleware enforcing the per-user limit (must run after
 /// `auth_middleware`).
 ///
-/// Only `POST` requests are limited. The bucket key is [`principal_key`].
+/// Every method except `GET`, `HEAD` and `OPTIONS` is limited (see
+/// [`is_safe_method`]). The bucket key is [`principal_key`].
 /// A request whose context carries no identifier (or no `AuthContext` at all)
 /// is rejected with `401` instead of being pooled into a shared bucket.
 /// Rejections return `429` with a `Retry-After` header and the standard JSON
@@ -541,17 +548,17 @@ pub async fn rate_limit_middleware(
     request: Request,
     next: Next,
 ) -> Response {
-    if request.method() != Method::POST {
+    if is_safe_method(request.method()) {
         return next.run(request).await;
     }
 
-    let Some(key) = request
-        .extensions()
-        .get::<AuthContext>()
-        .and_then(principal_key)
-    else {
-        tracing::warn!("Authenticated request has no principal identifier; rejecting");
+    let Some(ctx) = request.extensions().get::<AuthContext>() else {
+        tracing::warn!("Rate limiter reached without an AuthContext; rejecting");
         return AuthError::MissingToken.into_response();
+    };
+    let Some(key) = principal_key(ctx) else {
+        tracing::warn!("Authenticated request has no principal identifier; rejecting");
+        return AuthError::MissingPrincipalIdentifier.into_response();
     };
 
     match state.rate_limiter.check(&key) {
