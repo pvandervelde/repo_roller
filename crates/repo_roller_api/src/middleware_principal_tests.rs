@@ -223,13 +223,19 @@ fn loginless_jwt_decodes_with_sub_none() {
 fn handlers_source_contains_no_unknown_placeholder_literal() {
     // exchange_github_token must not emit or document an "unknown" login.
     let src = include_str!("handlers.rs");
-    assert!(!src.contains("\"unknown\""), "handlers.rs references \"unknown\"");
+    assert!(
+        !src.contains("\"unknown\""),
+        "handlers.rs references \"unknown\""
+    );
 }
 
 #[test]
 fn middleware_source_contains_no_unknown_placeholder_literal_or_constant() {
     let src = include_str!("middleware.rs");
-    assert!(!src.contains("\"unknown\""), "middleware.rs references \"unknown\"");
+    assert!(
+        !src.contains("\"unknown\""),
+        "middleware.rs references \"unknown\""
+    );
     assert!(!src.contains("LOGINLESS_SUBJECT"));
 }
 

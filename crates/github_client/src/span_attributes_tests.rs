@@ -37,26 +37,20 @@ fn test_sanitize_span_attribute_value_short_plain_template_name_passes_through_u
 
 #[test]
 fn test_sanitize_span_attribute_value_value_at_exactly_max_len_is_unchanged() {
-    let value: String = std::iter::repeat('a')
-        .take(MAX_SPAN_ATTRIBUTE_LEN)
-        .collect();
+    let value: String = std::iter::repeat_n('a', MAX_SPAN_ATTRIBUTE_LEN).collect();
     assert_eq!(sanitize_span_attribute_value(&value), value);
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_value_one_over_max_len_is_truncated_to_max_len() {
-    let value: String = std::iter::repeat('a')
-        .take(MAX_SPAN_ATTRIBUTE_LEN + 1)
-        .collect();
+    let value: String = std::iter::repeat_n('a', MAX_SPAN_ATTRIBUTE_LEN + 1).collect();
     let result = sanitize_span_attribute_value(&value);
     assert_eq!(result.chars().count(), MAX_SPAN_ATTRIBUTE_LEN);
 }
 
 #[test]
 fn test_sanitize_span_attribute_value_value_one_under_max_len_is_unchanged() {
-    let value: String = std::iter::repeat('a')
-        .take(MAX_SPAN_ATTRIBUTE_LEN - 1)
-        .collect();
+    let value: String = std::iter::repeat_n('a', MAX_SPAN_ATTRIBUTE_LEN - 1).collect();
     assert_eq!(sanitize_span_attribute_value(&value), value);
 }
 
@@ -115,7 +109,7 @@ fn test_sanitize_span_attribute_value_secret_shape_embedded_inside_longer_org_na
 
 #[test]
 fn test_sanitize_span_attribute_value_never_panics_on_pathologically_long_input() {
-    let raw: String = std::iter::repeat('x').take(50_000).collect();
+    let raw: String = std::iter::repeat_n('x', 50_000).collect();
     assert_eq!(
         sanitize_span_attribute_value(&raw),
         "x".repeat(MAX_SPAN_ATTRIBUTE_LEN)
@@ -222,7 +216,7 @@ fn test_sanitize_span_attribute_value_truncation_never_splits_a_multibyte_char()
     // 200 repetitions of a 4-byte emoji: any naive byte-based truncation at
     // MAX_SPAN_ATTRIBUTE_LEN *bytes* would split a code point and panic (or
     // produce invalid UTF-8). Truncation must be char-based.
-    let raw: String = std::iter::repeat('🚀').take(200).collect();
+    let raw: String = std::iter::repeat_n('🚀', 200).collect();
     let result = sanitize_span_attribute_value(&raw);
     // Must be valid UTF-8 by construction (String), and must not exceed the
     // char-count bound.
@@ -247,7 +241,7 @@ fn test_sanitize_span_attribute_value_is_idempotent_for_secret_shaped_value() {
 
 #[test]
 fn test_sanitize_span_attribute_value_is_idempotent_for_truncated_value() {
-    let raw: String = std::iter::repeat('a').take(500).collect();
+    let raw: String = std::iter::repeat_n('a', 500).collect();
     let once = sanitize_span_attribute_value(&raw);
     let twice = sanitize_span_attribute_value(&once);
     assert_eq!(once, twice);

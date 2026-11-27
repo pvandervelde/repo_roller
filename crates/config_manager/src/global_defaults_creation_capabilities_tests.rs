@@ -30,15 +30,9 @@ fn test_global_defaults_creation_capabilities_roundtrips_through_json() {
     let capabilities = roundtripped
         .creation_capabilities
         .expect("creation_capabilities present");
-    assert_eq!(capabilities.fork_enabled.unwrap().value, true);
-    assert_eq!(
-        capabilities.source_history_mirror_enabled.unwrap().value,
-        false
-    );
-    assert_eq!(
-        capabilities.source_only_mirror_enabled.unwrap().value,
-        false
-    );
+    assert!(capabilities.fork_enabled.unwrap().value);
+    assert!(!capabilities.source_history_mirror_enabled.unwrap().value);
+    assert!(!capabilities.source_only_mirror_enabled.unwrap().value);
 }
 
 #[test]
@@ -54,7 +48,7 @@ fn test_global_defaults_creation_capabilities_parses_from_toml() {
     let capabilities = defaults.creation_capabilities.expect("set");
 
     let fork = capabilities.fork_enabled.unwrap();
-    assert_eq!(fork.value, true);
+    assert!(fork.value);
     assert!(!fork.override_allowed);
 }
 
@@ -75,9 +69,8 @@ fn test_global_defaults_creation_capabilities_does_not_affect_other_settings() {
         ..Default::default()
     };
 
-    assert_eq!(
-        defaults.repository.unwrap().wiki.unwrap().value,
-        false,
+    assert!(
+        !defaults.repository.unwrap().wiki.unwrap().value,
         "repository settings must be unaffected by creation_capabilities"
     );
 }

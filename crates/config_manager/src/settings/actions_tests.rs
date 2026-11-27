@@ -106,10 +106,7 @@ fn test_can_approve_pull_request_reviews_holds_true() {
         ..Default::default()
     };
 
-    assert_eq!(
-        settings.can_approve_pull_request_reviews.unwrap().value,
-        true
-    );
+    assert!(settings.can_approve_pull_request_reviews.unwrap().value);
 }
 
 #[test]
@@ -119,10 +116,7 @@ fn test_can_approve_pull_request_reviews_holds_false() {
         ..Default::default()
     };
 
-    assert_eq!(
-        settings.can_approve_pull_request_reviews.unwrap().value,
-        false
-    );
+    assert!(!settings.can_approve_pull_request_reviews.unwrap().value);
 }
 
 #[test]
@@ -175,10 +169,10 @@ fn test_setting_new_fields_does_not_disturb_pre_existing_fields() {
         access_level: Some(OverridableValue::allowed("organization".to_string())),
     };
 
-    assert_eq!(settings.enabled.as_ref().unwrap().value, true);
+    assert!(settings.enabled.as_ref().unwrap().value);
     assert_eq!(settings.allowed_actions.as_ref().unwrap().value, "selected");
-    assert_eq!(settings.github_owned_allowed.as_ref().unwrap().value, true);
-    assert_eq!(settings.verified_allowed.as_ref().unwrap().value, false);
+    assert!(settings.github_owned_allowed.as_ref().unwrap().value);
+    assert!(!settings.verified_allowed.as_ref().unwrap().value);
     assert_eq!(
         settings.patterns_allowed.as_ref().unwrap(),
         &vec!["actions/checkout@*".to_string()]
@@ -191,13 +185,12 @@ fn test_setting_new_fields_does_not_disturb_pre_existing_fields() {
             .value,
         "write"
     );
-    assert_eq!(
+    assert!(
         settings
             .can_approve_pull_request_reviews
             .as_ref()
             .unwrap()
-            .value,
-        true
+            .value
     );
     assert_eq!(
         settings.access_level.as_ref().unwrap().value,
@@ -302,7 +295,7 @@ fn test_toml_simple_value_auto_wraps_can_approve_pull_request_reviews() {
         .can_approve_pull_request_reviews
         .expect("can_approve_pull_request_reviews set");
 
-    assert_eq!(value.value, true);
+    assert!(value.value);
     assert!(value.override_allowed);
 }
 
@@ -347,7 +340,7 @@ fn test_toml_explicit_format_for_can_approve_pull_request_reviews_preserves_over
         .can_approve_pull_request_reviews
         .expect("can_approve_pull_request_reviews set");
 
-    assert_eq!(value.value, true);
+    assert!(value.value);
     assert!(!value.override_allowed);
 }
 

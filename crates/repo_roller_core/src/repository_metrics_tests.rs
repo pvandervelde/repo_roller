@@ -610,7 +610,7 @@ mod noop_tests {
     #[test]
     fn test_noop_metrics_default_constructs_identically_to_new() {
         let a = NoOpRepositoryCreationMetrics::new();
-        let b = NoOpRepositoryCreationMetrics::default();
+        let b = NoOpRepositoryCreationMetrics;
         a.record_request();
         b.record_request();
     }

@@ -307,8 +307,10 @@ fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
         .as_secs() as usize;
 
     // Decode without expiry validation so we can read the raw claims.
-    let mut validation = Validation::default();
-    validation.validate_exp = false;
+    let validation = Validation {
+        validate_exp: false,
+        ..Validation::default()
+    };
     let data = jsonwebtoken::decode::<Claims>(
         &token,
         &DecodingKey::from_secret(secret.as_bytes()).expect("decoding key must build"),

@@ -109,7 +109,11 @@ async fn assert_never_limited(method: Method) {
         );
     }
     assert_eq!(hits.load(Ordering::SeqCst), 6);
-    assert_eq!(limiter.tracked_keys(), 0, "{method} must not consume budget");
+    assert_eq!(
+        limiter.tracked_keys(),
+        0,
+        "{method} must not consume budget"
+    );
     // The full budget is still available to a non-safe request.
     assert_eq!(st(&router, &Method::POST).await, StatusCode::OK);
 }
@@ -186,7 +190,7 @@ async fn unsafe_methods_are_counted_in_the_user_rejection_metric() {
     );
     st(&router, &Method::DELETE).await;
     st(&router, &Method::DELETE).await;
-    assert_eq!(metrics.with_label_values(&[SCOPE_USER]).get() as u64, 1);
+    assert_eq!(metrics.with_label_values(&[SCOPE_USER]).get(), 1);
 }
 
 #[tokio::test]
@@ -267,7 +271,7 @@ async fn missing_principal_rejection_does_not_count_as_a_rate_limit_rejection() 
     let router = any_router(state, Some(ctx_none()), Arc::new(AtomicUsize::new(0)));
     st(&router, &Method::POST).await;
     st(&router, &Method::POST).await;
-    assert_eq!(metrics.with_label_values(&[SCOPE_USER]).get() as u64, 0);
+    assert_eq!(metrics.with_label_values(&[SCOPE_USER]).get(), 0);
 }
 
 #[tokio::test]

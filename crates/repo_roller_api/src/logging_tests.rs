@@ -544,9 +544,9 @@ fn test_configured_subscriber_output_is_valid_json_per_line() {
     }
 }
 
-/// Adversarial: does not over-redact -- an event with NO sensitive fields at
-/// all must produce output identical in content to what an unsanitized JSON
-/// subscriber would produce (message + non-sensitive fields all present).
+// Adversarial: does not over-redact -- an event with NO sensitive fields at
+// all must produce output identical in content to what an unsanitized JSON
+// subscriber would produce (message + non-sensitive fields all present).
 // ─────────────────────────────────────────────────────────────────────────
 // QA adversarial pass (manual — no fuzz harness exists for this crate; see
 // audit report). Findings pinned as regression tests below.
@@ -1294,6 +1294,7 @@ fn test_configured_subscriber_redacts_secret_shaped_value_inside_formatted_debug
         // Mirrors the vulnerable call site's idiom: a struct's Debug output
         // interpolated directly into a free-text message.
         #[derive(Debug)]
+        #[allow(dead_code)] // read only through the derived `Debug` output
         struct FakeTemplateConfig<'a> {
             token: &'a str,
         }

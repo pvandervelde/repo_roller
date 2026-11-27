@@ -66,13 +66,12 @@ fn test_template_config_creation_capabilities_roundtrips_through_json() {
     let json = serde_json::to_string(&config).expect("serialize");
     let roundtripped: TemplateConfig = serde_json::from_str(&json).expect("deserialize");
 
-    assert_eq!(
+    assert!(
         roundtripped
             .creation_capabilities
             .unwrap()
             .fork_enabled
             .unwrap()
-            .value,
-        true
+            .value
     );
 }

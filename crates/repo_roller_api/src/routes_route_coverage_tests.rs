@@ -65,8 +65,16 @@ fn route_table() -> Vec<Entry> {
             User,
         ),
         e(Method::GET, "/api/v1/orgs/{org}/defaults", User),
-        e(Method::POST, "/api/v1/orgs/{org}/configuration/preview", User),
-        e(Method::GET, "/api/v1/orgs/{org}/creation-capabilities", User),
+        e(
+            Method::POST,
+            "/api/v1/orgs/{org}/configuration/preview",
+            User,
+        ),
+        e(
+            Method::GET,
+            "/api/v1/orgs/{org}/creation-capabilities",
+            User,
+        ),
         e(Method::POST, "/api/v1/orgs/{org}/validate", User),
         e(Method::GET, "/api/v1/orgs/{org}/teams", User),
         e(Method::POST, "/api/v1/auth/token", PublicIpLimited),
@@ -137,7 +145,9 @@ fn table_has_no_duplicate_method_path_pairs() {
 #[test]
 fn table_declares_at_least_one_limited_route_of_each_kind() {
     let t = route_table();
-    assert!(t.iter().any(|x| x.auth == Auth::User && !is_safe(&x.method)));
+    assert!(t
+        .iter()
+        .any(|x| x.auth == Auth::User && !is_safe(&x.method)));
     assert!(t.iter().any(|x| x.auth == Auth::PublicIpLimited));
     assert!(t.iter().any(|x| is_safe(&x.method)));
 }
@@ -211,8 +221,7 @@ async fn every_public_ip_limited_route_is_limited_after_n_plus_one_calls() {
 #[tokio::test]
 async fn safe_method_routes_never_consume_user_budget() {
     let limiter = Arc::new(RateLimiter::new(RateLimitConfig::new(true, 1, 60)));
-    let (router, _mock) =
-        router_for(AppState::default().with_rate_limiter(limiter.clone())).await;
+    let (router, _mock) = router_for(AppState::default().with_rate_limiter(limiter.clone())).await;
     let t = token("route-cov-safe");
     for entry in route_table().iter().filter(|x| is_safe(&x.method)) {
         let auth = (entry.auth == Auth::User).then_some(t.as_str());
@@ -386,7 +395,11 @@ async fn principalless_token_is_rejected_on_safe_routes_too() {
     let router = create_router(AppState::default());
     let resp = router
         .clone()
-        .oneshot(request(&Method::GET, "/api/v1/orgs/{org}/teams", Some(&tok)))
+        .oneshot(request(
+            &Method::GET,
+            "/api/v1/orgs/{org}/teams",
+            Some(&tok),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);

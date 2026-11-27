@@ -25,14 +25,13 @@ fn test_repository_type_config_creation_capabilities_roundtrips_through_json() {
     let json = serde_json::to_string(&config).expect("serialize");
     let roundtripped: RepositoryTypeConfig = serde_json::from_str(&json).expect("deserialize");
 
-    assert_eq!(
+    assert!(
         roundtripped
             .creation_capabilities
             .unwrap()
             .source_only_mirror_enabled
             .unwrap()
-            .value,
-        true
+            .value
     );
 }
 
@@ -46,6 +45,6 @@ fn test_repository_type_config_creation_capabilities_parses_simple_toml() {
     let config: RepositoryTypeConfig = toml::from_str(toml).expect("parse");
     let capabilities = config.creation_capabilities.expect("set");
     let fork = capabilities.fork_enabled.expect("fork_enabled set");
-    assert_eq!(fork.value, true);
+    assert!(fork.value);
     assert!(fork.override_allowed);
 }
