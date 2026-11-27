@@ -1518,3 +1518,7 @@ mod tests;
 #[cfg(test)]
 #[path = "creation_capabilities_tests.rs"]
 mod creation_capabilities_tests;
+
+#[cfg(test)]
+#[path = "handlers_exchange_tests.rs"]
+mod exchange_tests;

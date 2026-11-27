@@ -433,6 +433,15 @@ impl RateLimiter {
         self.lock().reclaim_expired(now, self.config.window).0
     }
 
+    /// Test hook: whether the state lock is currently held (by any thread).
+    #[cfg(test)]
+    pub(crate) fn state_is_locked(&self) -> bool {
+        matches!(
+            self.state.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        )
+    }
+
     /// Number of keys currently tracked.
     pub fn tracked_keys(&self) -> usize {
         self.lock().windows.len()
@@ -588,3 +597,7 @@ mod cap_tests;
 #[cfg(test)]
 #[path = "rate_limit_scope_tests.rs"]
 mod scope_tests;
+
+#[cfg(test)]
+#[path = "rate_limit_clock_order_tests.rs"]
+mod clock_order_tests;
