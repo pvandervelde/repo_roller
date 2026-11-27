@@ -28,6 +28,7 @@ mod http_metrics;
 mod logging;
 mod middleware;
 mod models;
+mod rate_limit;
 mod routes;
 mod sanitizing_writer;
 mod server;
@@ -54,6 +55,8 @@ struct MetricsBundle {
         std::sync::Arc<dyn repo_roller_core::repository_metrics::RepositoryCreationMetrics>,
     http_metrics: std::sync::Arc<dyn crate::http_metrics::HttpMetrics>,
     github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics>,
+    rate_limit_rejections: prometheus::IntCounterVec,
+    rate_limit_tracked_keys: prometheus::IntGaugeVec,
 }
 
 impl MetricsBundle {
@@ -81,12 +84,55 @@ impl MetricsBundle {
         let github_api_metrics: std::sync::Arc<dyn github_client::GitHubApiMetrics> =
             std::sync::Arc::new(github_client::PrometheusGitHubApiMetrics::new(&registry));
 
+        // Labelled by `scope` only (a closed set: "user", "auth_ip"); never by
+        // user identity or client address, which would be unbounded.
+        let rate_limit_rejections = prometheus::IntCounterVec::new(
+            prometheus::Opts::new(
+                "rate_limit_rejections_total",
+                "Total requests rejected by the application-level rate limiters",
+            ),
+            &["scope"],
+        )
+        .expect("Failed to create rate limit rejections counter");
+        registry
+            .register(Box::new(rate_limit_rejections.clone()))
+            .expect("Failed to register rate limit rejections counter");
+        // Pre-seed both scopes so each series is exported at 0 from startup.
+        for scope in [
+            crate::rate_limit::SCOPE_USER,
+            crate::rate_limit::SCOPE_AUTH_IP,
+        ] {
+            rate_limit_rejections.with_label_values(&[scope]);
+        }
+
+        // Current number of keys each limiter tracks (bounded by the key cap).
+        // Labelled by `scope` only; never exposes identities or addresses.
+        let rate_limit_tracked_keys = prometheus::IntGaugeVec::new(
+            prometheus::Opts::new(
+                "rate_limit_tracked_keys",
+                "Number of keys currently tracked by the application-level rate limiters",
+            ),
+            &["scope"],
+        )
+        .expect("Failed to create rate limit tracked keys gauge");
+        registry
+            .register(Box::new(rate_limit_tracked_keys.clone()))
+            .expect("Failed to register rate limit tracked keys gauge");
+        for scope in [
+            crate::rate_limit::SCOPE_USER,
+            crate::rate_limit::SCOPE_AUTH_IP,
+        ] {
+            rate_limit_tracked_keys.with_label_values(&[scope]).set(0);
+        }
+
         Self {
             registry: std::sync::Arc::new(registry),
             event_metrics,
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
+            rate_limit_rejections,
+            rate_limit_tracked_keys,
         }
     }
 }
@@ -155,6 +201,16 @@ pub struct AppState {
     /// Loaded from the `JWT_SECRET` environment variable at startup.
     /// Must be at least 32 bytes.  Never logged.
     pub(crate) jwt_secret: secrecy::SecretString,
+    /// Per-user rate limiter shared by all requests (Task #284).
+    pub(crate) rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    /// Per-client-address limiter for the public token-exchange endpoint.
+    pub(crate) auth_rate_limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    /// Counter of requests rejected by the rate limiter, registered against
+    /// `metrics_registry` as `rate_limit_rejections_total`.
+    pub(crate) rate_limit_rejections: prometheus::IntCounterVec,
+    /// Gauge of keys tracked per limiter scope, refreshed at scrape time and
+    /// registered as `rate_limit_tracked_keys`.
+    pub(crate) rate_limit_tracked_keys: prometheus::IntGaugeVec,
     /// Pre-minted token injected in tests to bypass `GitHubAuthService`.
     ///
     /// When `Some`, `get_installation_token` returns this value without calling
@@ -183,6 +239,8 @@ impl AppState {
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
+            rate_limit_rejections,
+            rate_limit_tracked_keys,
         } = MetricsBundle::new();
         Self {
             metadata_repository_name: metadata_repository_name.into(),
@@ -197,9 +255,66 @@ impl AppState {
                 github_app_private_key,
             )),
             jwt_secret: secrecy::SecretString::from(jwt_secret.into()),
+            rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+                crate::rate_limit::RateLimitConfig::from_env(),
+            )),
+            auth_rate_limiter: std::sync::Arc::new(
+                crate::rate_limit::RateLimiter::new_fail_closed(
+                    crate::rate_limit::RateLimitConfig::auth_from_env(),
+                ),
+            ),
+            rate_limit_rejections,
+            rate_limit_tracked_keys,
             #[cfg(test)]
             mock_installation_token: None,
         }
+    }
+
+    /// Replace the token-exchange limiter's configuration (fresh limiter).
+    ///
+    /// The token-exchange limiter fails closed when its key cap is reached.
+    pub fn with_auth_rate_limit_config(self, config: crate::rate_limit::RateLimitConfig) -> Self {
+        self.with_auth_rate_limiter(std::sync::Arc::new(
+            crate::rate_limit::RateLimiter::new_fail_closed(config),
+        ))
+    }
+
+    /// Replace the token-exchange limiter (e.g. one with an injected clock).
+    pub fn with_auth_rate_limiter(
+        mut self,
+        limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    ) -> Self {
+        self.auth_rate_limiter = limiter;
+        self
+    }
+
+    /// Replace the rate limiter's configuration (fresh, empty limiter).
+    pub fn with_rate_limit_config(self, config: crate::rate_limit::RateLimitConfig) -> Self {
+        self.with_rate_limiter(std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+            config,
+        )))
+    }
+
+    /// Copy each limiter's current key count into the
+    /// `rate_limit_tracked_keys{scope}` gauge.
+    pub(crate) fn update_rate_limit_tracked_keys(&self) {
+        for (scope, limiter) in [
+            (crate::rate_limit::SCOPE_USER, &self.rate_limiter),
+            (crate::rate_limit::SCOPE_AUTH_IP, &self.auth_rate_limiter),
+        ] {
+            self.rate_limit_tracked_keys
+                .with_label_values(&[scope])
+                .set(i64::try_from(limiter.tracked_keys()).unwrap_or(i64::MAX));
+        }
+    }
+
+    /// Replace the rate limiter (e.g. one with an injected clock).
+    pub fn with_rate_limiter(
+        mut self,
+        limiter: std::sync::Arc<crate::rate_limit::RateLimiter>,
+    ) -> Self {
+        self.rate_limiter = limiter;
+        self
     }
 
     /// Override the GitHub API base URL.
@@ -267,6 +382,8 @@ impl Default for AppState {
             repository_creation_metrics,
             http_metrics,
             github_api_metrics,
+            rate_limit_rejections,
+            rate_limit_tracked_keys,
         } = MetricsBundle::new();
         Self {
             metadata_repository_name: ".reporoller".to_string(),
@@ -278,6 +395,20 @@ impl Default for AppState {
             github_api_base_url: None,
             auth_service: std::sync::Arc::new(auth_handler::GitHubAuthService::new(0u64, "")),
             jwt_secret: secrecy::SecretString::from(TEST_JWT_SECRET.to_string()),
+            rate_limiter: std::sync::Arc::new(crate::rate_limit::RateLimiter::new(
+                crate::rate_limit::RateLimitConfig::default(),
+            )),
+            auth_rate_limiter: std::sync::Arc::new(
+                crate::rate_limit::RateLimiter::new_fail_closed(
+                    crate::rate_limit::RateLimitConfig::new(
+                        true,
+                        crate::rate_limit::DEFAULT_AUTH_MAX_REQUESTS,
+                        crate::rate_limit::DEFAULT_AUTH_WINDOW_SECS,
+                    ),
+                ),
+            ),
+            rate_limit_rejections,
+            rate_limit_tracked_keys,
             mock_installation_token: None,
         }
     }

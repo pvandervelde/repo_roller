@@ -9,6 +9,12 @@ type: "reference"
 
 ## Backend (`repo_roller_api`)
 
+> **Warning: the `/auth/token` rate-limit budget is shared by all users.** The frontend is the only
+> caller of `POST /api/v1/auth/token`, so the backend sees a single client IP for every user and
+> they all draw on one `RATE_LIMIT_AUTH_REQUESTS` budget (default 20 per 60 seconds). Raise
+> `RATE_LIMIT_AUTH_REQUESTS` to match your expected sign-in rate, or sign-ins will start returning
+> `429`. A reverse proxy has the same effect: its address becomes the single key.
+
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `GITHUB_APP_ID` | Yes | — | Numeric App ID from the GitHub App settings page |
@@ -22,6 +28,24 @@ type: "reference"
 | `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off: only the case-insensitive literal values `true` or `1` enable export; any other value (unset, empty, `false`, `0`, garbage) leaves tracing disabled with no background exporter and no network I/O. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint spans are exported to when tracing is enabled. Use an `https://` URL to export over TLS (supported via the `tls-aws-lc` exporter feature). Ignored when `OTEL_TRACES_ENABLED` is not `true`/`1`. |
 | `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to every exported span's resource attributes. Set a distinct value per environment (e.g. `repo-roller-api-staging`) when multiple deployments share one tracing backend. |
+| `RATE_LIMIT_ENABLED` | No | `true` | Enables rate limiting of every method except `GET`/`HEAD`/`OPTIONS` on authenticated routes, plus the `POST /auth/token` per-IP limiter: both the per-user limiter and the `POST /auth/token` per-IP limiter. Set to `false` or `0` to disable both. |
+| `RATE_LIMIT_REQUESTS` | No | `10` | Maximum requests (all methods except `GET`/`HEAD`/`OPTIONS`) each authenticated user may make per window. Invalid values fall back to the default. |
+| `RATE_LIMIT_WINDOW_SECS` | No | `60` | Length of the per-user rate-limit window in seconds. Invalid values fall back to the default. |
+| `RATE_LIMIT_AUTH_REQUESTS` | No | `20` | Shared by all frontend users (single caller IP): raise it. Maximum `POST /api/v1/auth/token` requests each client IP may make per window. Invalid values fall back to the default. |
+| `RATE_LIMIT_AUTH_WINDOW_SECS` | No | `60` | Length of the token-endpoint rate-limit window in seconds. Invalid values fall back to the default. |
+
+Rate limiting covers every method except `GET`, `HEAD` and `OPTIONS`. For loginless (installation
+token) callers the limit is per token, because the principal id is a digest of the token.
+Rate-limit state is held in memory per process. With multiple replicas each replica enforces the
+limit independently (the effective limit is roughly `RATE_LIMIT_REQUESTS` times the replica count),
+and counters reset when a replica restarts. Each limiter tracks at most 10,000 keys: the per-user
+limiter evicts the oldest key at the cap, while the token-endpoint limiter fails closed (new client
+addresses get `429` until a window expires, so once the cap is reached, for example by a botnet or
+many IPv6 /64 prefixes, it acts as a login lockout for new addresses: alert on
+`rate_limit_tracked_keys{scope="auth_ip"}` approaching 10,000). The token-endpoint limiter keys on the connection
+address (IPv6 by /64 prefix) and ignores `X-Forwarded-*` headers, so behind a reverse proxy all clients share the proxy
+IP's bucket: raise `RATE_LIMIT_AUTH_REQUESTS` accordingly. See
+[Rate limiting](../reference/api/index.md#rate-limiting).
 
 ### Secret resolver variables
 

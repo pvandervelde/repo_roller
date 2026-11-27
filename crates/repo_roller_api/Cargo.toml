@@ -35,6 +35,10 @@ anyhow.workspace = true
 jsonwebtoken.workspace = true
 secrecy.workspace = true
 
+# Stable opaque principal ids (digest of installation tokens)
+sha2.workspace = true
+hex.workspace = true
+
 # Logging and tracing
 tracing.workspace = true
 tracing-subscriber.workspace = true

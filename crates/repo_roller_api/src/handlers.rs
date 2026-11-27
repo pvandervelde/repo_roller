@@ -1372,8 +1372,8 @@ pub async fn exchange_github_token(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<TokenExchangeResponse>, crate::middleware::AuthError> {
     use crate::middleware::{
-        extract_bearer_token, generate_backend_jwt, try_get_user_login, validate_github_token,
-        JWT_EXPIRY_SECS,
+        extract_bearer_token, generate_backend_jwt, generate_loginless_backend_jwt,
+        principal_id_for_token, try_get_user_login, validate_github_token, JWT_EXPIRY_SECS,
     };
     use secrecy::ExposeSecret;
 
@@ -1386,24 +1386,34 @@ pub async fn exchange_github_token(
     let github_token = extract_bearer_token(auth_header)?;
 
     // Validate the GitHub token \u2014 the one and only place we call GitHub for auth.
-    validate_github_token(&github_token).await?;
+    validate_github_token(&github_token, state.github_api_base_url.as_deref()).await?;
 
-    // Resolve the user's GitHub login (best-effort; falls back to "unknown").
+    // Resolve the user's GitHub login (best-effort).
     //
     // GET /user is not available for GitHub App installation tokens, which are
-    // not scoped to a user. Falling back to "unknown" preserves compatibility
-    // with installation-token callers while still issuing a valid JWT. For
-    // PAT/OAuth callers (the normal frontend path), GET /user succeeds because
-    // validate_github_token (GET /rate_limit) ran first and would have rejected
-    // any expired token, making a transient failure here very unlikely.
-    let user_login = try_get_user_login(&github_token)
-        .await
-        .unwrap_or_else(|| "unknown".to_string());
-
-    tracing::info!(user_login = %user_login, "Issuing backend JWT after GitHub token exchange");
-
-    // Sign a backend JWT.
-    let token = generate_backend_jwt(&user_login, state.jwt_secret.expose_secret())?;
+    // not scoped to a user. Such principals still get a valid JWT, but one
+    // carrying a stable opaque `pid` (a digest of the GitHub token, never the
+    // token itself) instead of a login, so the per-user rate limiter keys each
+    // of them separately rather than pooling them. For PAT/OAuth callers (the
+    // normal frontend path), GET /user succeeds because validate_github_token
+    // (GET /rate_limit) ran first and would have rejected any expired token,
+    // making a transient failure here very unlikely.
+    let token = match try_get_user_login(&github_token, state.github_api_base_url.as_deref()).await
+    {
+        Some(user_login) => {
+            tracing::info!(user_login = %user_login, "Issuing backend JWT after GitHub token exchange");
+            generate_backend_jwt(&user_login, state.jwt_secret.expose_secret())?
+        }
+        None => {
+            tracing::info!(
+                "Issuing loginless backend JWT after GitHub token exchange (login not resolvable)"
+            );
+            generate_loginless_backend_jwt(
+                &principal_id_for_token(&github_token),
+                state.jwt_secret.expose_secret(),
+            )?
+        }
+    };
 
     Ok(Json(TokenExchangeResponse {
         token,
@@ -1460,6 +1470,9 @@ pub async fn metrics_handler(
     use axum::response::IntoResponse;
     use prometheus::{Encoder, TextEncoder};
 
+    // Refresh the tracked-key gauges so the scrape reflects current state.
+    state.update_rate_limit_tracked_keys();
+
     let metric_families = state.metrics_registry.gather();
     let encoder = TextEncoder::new();
     let mut buffer = Vec::new();
@@ -1506,3 +1519,7 @@ mod tests;
 #[cfg(test)]
 #[path = "creation_capabilities_tests.rs"]
 mod creation_capabilities_tests;
+
+#[cfg(test)]
+#[path = "handlers_exchange_tests.rs"]
+mod exchange_tests;

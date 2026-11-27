@@ -125,7 +125,7 @@ fn test_business_context_attributes_redacts_secret_shaped_requestor() {
 
 #[test]
 fn test_business_context_attributes_bounds_pathologically_long_template_name() {
-    let huge_template: String = std::iter::repeat('a').take(10_000).collect();
+    let huge_template: String = std::iter::repeat_n('a', 10_000).collect();
     let attrs = business_context_attributes("my-org", Some(&huge_template), "alice");
     let template_value = attrs
         .iter()

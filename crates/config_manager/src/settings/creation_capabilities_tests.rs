@@ -30,7 +30,7 @@ fn test_creation_capabilities_settings_fork_enabled_roundtrips_through_json() {
     let json = serde_json::to_string(&settings).expect("serialize");
     let roundtripped: CreationCapabilitiesSettings =
         serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(roundtripped.fork_enabled.unwrap().value, true);
+    assert!(roundtripped.fork_enabled.unwrap().value);
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn test_creation_capabilities_settings_source_history_mirror_enabled_roundtrips(
     let roundtripped: CreationCapabilitiesSettings =
         serde_json::from_str(&json).expect("deserialize");
     let value = roundtripped.source_history_mirror_enabled.unwrap();
-    assert_eq!(value.value, false);
+    assert!(!value.value);
     assert!(!value.override_allowed);
 }
 
@@ -56,7 +56,7 @@ fn test_creation_capabilities_settings_source_only_mirror_enabled_roundtrips() {
     let json = serde_json::to_string(&settings).expect("serialize");
     let roundtripped: CreationCapabilitiesSettings =
         serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(roundtripped.source_only_mirror_enabled.unwrap().value, true);
+    assert!(roundtripped.source_only_mirror_enabled.unwrap().value);
 }
 
 /// Simple TOML scalar format (`fork_enabled = true`) must auto-wrap with
@@ -72,7 +72,7 @@ fn test_creation_capabilities_settings_parses_simple_toml_scalar() {
     let settings: CreationCapabilitiesSettings = toml::from_str(toml).expect("parse");
 
     let fork = settings.fork_enabled.expect("fork_enabled set");
-    assert_eq!(fork.value, true);
+    assert!(fork.value);
     assert!(
         fork.override_allowed,
         "simple scalar form implies override_allowed=true"
@@ -81,7 +81,7 @@ fn test_creation_capabilities_settings_parses_simple_toml_scalar() {
     let history_mirror = settings
         .source_history_mirror_enabled
         .expect("source_history_mirror_enabled set");
-    assert_eq!(history_mirror.value, false);
+    assert!(!history_mirror.value);
     assert!(history_mirror.override_allowed);
 }
 
@@ -92,7 +92,7 @@ fn test_creation_capabilities_settings_parses_explicit_toml_table() {
     "#;
     let settings: CreationCapabilitiesSettings = toml::from_str(toml).expect("parse");
     let value = settings.source_only_mirror_enabled.expect("set");
-    assert_eq!(value.value, true);
+    assert!(value.value);
     assert!(!value.override_allowed);
 }
 
@@ -193,9 +193,9 @@ fn test_creation_capabilities_fields_are_independent() {
         allowed_source_owners: None,
     };
 
-    assert_eq!(settings.fork_enabled.unwrap().value, true);
+    assert!(settings.fork_enabled.unwrap().value);
     assert!(settings.source_history_mirror_enabled.is_none());
-    assert_eq!(settings.source_only_mirror_enabled.unwrap().value, false);
+    assert!(!settings.source_only_mirror_enabled.unwrap().value);
     assert!(settings.allowed_source_owners.is_none());
 }
 
@@ -239,7 +239,7 @@ fn test_creation_capabilities_allowed_source_owners_is_independent_of_enabled_fl
         source_only_mirror_enabled: None,
         allowed_source_owners: None,
     };
-    assert_eq!(settings.fork_enabled.unwrap().value, true);
+    assert!(settings.fork_enabled.unwrap().value);
     assert!(
         settings.allowed_source_owners.is_none(),
         "enabling a capability must not implicitly populate the allow-list"

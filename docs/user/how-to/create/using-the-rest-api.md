@@ -152,7 +152,7 @@ All errors follow the same format:
 | 401 | Invalid or missing token |
 | 404 | Template or organisation not found |
 | 409 | Repository already exists |
-| 429 | Rate limit from GitHub API |
+| 429 | Rate limit exceeded: either RepoRoller's per-user `POST` limit (`RateLimitExceeded`, with a `Retry-After` header) or the GitHub API limit |
 | 502 | GitHub API error |
 
 ## Related reference

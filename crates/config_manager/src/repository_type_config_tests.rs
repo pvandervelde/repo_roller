@@ -397,7 +397,7 @@ fn test_repository_type_config_actions_parses_simple_toml_for_new_fields() {
     let can_approve = actions
         .can_approve_pull_request_reviews
         .expect("can_approve_pull_request_reviews set");
-    assert_eq!(can_approve.value, true);
+    assert!(can_approve.value);
     assert!(can_approve.override_allowed);
 
     let access_level = actions.access_level.expect("access_level set");
@@ -434,7 +434,7 @@ fn test_repository_type_config_actions_preserves_pre_existing_field_when_new_fie
     let config: RepositoryTypeConfig = toml::from_str(toml).expect("parse");
     let actions = config.actions.expect("actions set");
 
-    assert_eq!(actions.enabled.expect("enabled set").value, true);
+    assert!(actions.enabled.expect("enabled set").value);
     assert_eq!(
         actions.access_level.expect("access_level set").value,
         "organization"

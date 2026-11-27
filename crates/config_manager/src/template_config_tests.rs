@@ -1197,10 +1197,7 @@ fn test_template_config_actions_roundtrips_through_json() {
     let roundtripped: TemplateConfig = serde_json::from_str(&json).expect("deserialize");
 
     let actions = roundtripped.actions.expect("actions set");
-    assert_eq!(
-        actions.can_approve_pull_request_reviews.unwrap().value,
-        true
-    );
+    assert!(actions.can_approve_pull_request_reviews.unwrap().value);
     assert_eq!(actions.access_level.unwrap().value, "enterprise");
 }
 
@@ -1254,7 +1251,7 @@ fn test_template_config_actions_parses_explicit_toml_format() {
         .can_approve_pull_request_reviews
         .expect("can_approve_pull_request_reviews set");
 
-    assert_eq!(value.value, false);
+    assert!(!value.value);
     assert!(!value.override_allowed);
 }
 
@@ -1281,5 +1278,5 @@ fn test_template_config_actions_coexists_with_repository_section() {
     let config: TemplateConfig = toml::from_str(toml).expect("parse");
     assert!(config.repository.is_some());
     let actions = config.actions.expect("actions set");
-    assert_eq!(actions.enabled.expect("enabled set").value, true);
+    assert!(actions.enabled.expect("enabled set").value);
 }

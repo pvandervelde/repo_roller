@@ -194,7 +194,8 @@ async fn test_expired_jwt_rejected() {
     // 1_000_000 seconds after the Unix epoch = 1970-01-12 13:46:40 UTC.
     let past = 1_000_000usize;
     let claims = Claims {
-        sub: "alice".to_string(),
+        sub: Some("alice".to_string()),
+        pid: None,
         iat: past,
         exp: past + 3600,
     };
@@ -224,14 +225,12 @@ async fn test_expired_jwt_rejected() {
     );
 }
 
-/// Test that a JWT signed with an empty sub claim is accepted at the JWT level
-/// (the claim is structurally valid) and the empty login propagates into AuthContext.
-///
-/// The middleware does not reject empty sub — that is a business-level concern
-/// handled by downstream handlers. This test pins the current behaviour so any
-/// future change to add sub-validation is made explicitly.
+/// A validly signed JWT with an empty `sub` and no `pid` identifies nobody and
+/// must be rejected with 401 (`MissingPrincipal`), not accepted with an empty
+/// login. (Changed from "accepted": an unidentifiable principal can neither be
+/// rate limited fairly nor attributed.)
 #[tokio::test]
-async fn test_jwt_with_empty_sub_is_accepted_by_middleware() {
+async fn test_jwt_with_empty_sub_and_no_pid_is_rejected_by_middleware() {
     // generate_backend_jwt accepts any &str including "".
     let token =
         generate_backend_jwt("", crate::TEST_JWT_SECRET).expect("JWT generation must succeed");
@@ -248,12 +247,10 @@ async fn test_jwt_with_empty_sub_is_accepted_by_middleware() {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    // The middleware validates the JWT signature and expiry only; an empty sub is
-    // structurally valid and must not be rejected at this layer.
     assert_eq!(
         response.status(),
-        StatusCode::OK,
-        "A structurally valid JWT with an empty sub should pass middleware validation"
+        StatusCode::UNAUTHORIZED,
+        "A JWT with neither a usable login nor a pid must be rejected"
     );
 }
 
@@ -310,8 +307,10 @@ fn test_generate_backend_jwt_exp_is_iat_plus_expiry() {
         .as_secs() as usize;
 
     // Decode without expiry validation so we can read the raw claims.
-    let mut validation = Validation::default();
-    validation.validate_exp = false;
+    let validation = Validation {
+        validate_exp: false,
+        ..Validation::default()
+    };
     let data = jsonwebtoken::decode::<Claims>(
         &token,
         &DecodingKey::from_secret(secret.as_bytes()).expect("decoding key must build"),

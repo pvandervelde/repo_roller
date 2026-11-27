@@ -461,17 +461,16 @@ fn test_translation_rejects_fork_source_repo_name_empty_string() {
 
 #[test]
 fn test_translation_rejects_mirror_source_owner_containing_spaces() {
-    let json = format!(
-        r#"{{
+    let json = r#"{
             "organization": "myorg",
             "name": "my-repo",
-            "creationMode": {{
+            "creationMode": {
                 "type": "mirror",
-                "source": {{ "owner": "invalid owner", "name": "some-repo" }},
+                "source": { "owner": "invalid owner", "name": "some-repo" },
                 "preserveHistory": true
-            }}
-        }}"#
-    );
+            }
+        }"#
+    .to_string();
     let http_req: CreateRepositoryRequest =
         serde_json::from_str(&json).expect("deserializes at JSON layer");
 

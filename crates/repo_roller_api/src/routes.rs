@@ -33,10 +33,29 @@ use std::time::Duration;
 use tower_http::{
     cors::CorsLayer,
     timeout::TimeoutLayer,
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    trace::{DefaultOnResponse, TraceLayer},
 };
 
 use crate::{handlers, middleware as api_middleware, AppState};
+
+/// Builds the per-request tracing span: method, full request path (the
+/// pre-`nest` path via `OriginalUri`, so `/api/v1/...` rather than the stripped
+/// route) and HTTP version.
+///
+/// Neither headers nor the query string are recorded: headers carry
+/// `Authorization`/`Cookie` values and query strings can carry credentials.
+fn request_span<B>(request: &axum::http::Request<B>) -> tracing::Span {
+    let path = request
+        .extensions()
+        .get::<axum::extract::OriginalUri>()
+        .map_or_else(|| request.uri().path(), |original| original.0.path());
+    tracing::debug_span!(
+        "request",
+        method = %request.method(),
+        uri = %path,
+        version = ?request.version(),
+    )
+}
 
 /// Build a CORS layer restricted to the origin specified by the `FRONTEND_ORIGIN`
 /// environment variable.
@@ -93,9 +112,11 @@ pub fn create_router(state: AppState) -> Router {
     let cors = build_cors_layer();
 
     // Configure request tracing
+    // Headers are deliberately NOT recorded: they carry Authorization and
+    // Cookie values that must never reach the logs.
     let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().include_headers(true))
-        .on_response(DefaultOnResponse::new().include_headers(true));
+        .make_span_with(request_span::<axum::body::Body>)
+        .on_response(DefaultOnResponse::new());
 
     // Configure request timeout (30 seconds)
     let timeout_layer =
@@ -115,6 +136,13 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Organization-specific routes
         .nest("/orgs/{org}", organization_routes())
+        // Rate limiting is added first so it sits *inside* auth (the last
+        // route_layer is outermost): it runs only for authenticated requests
+        // and can key on `AuthContext`.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::rate_limit::rate_limit_middleware,
+        ))
         // Auth middleware reads jwt_secret from AppState; from_fn_with_state
         // supplies the state to the middleware function.
         .route_layer(middleware::from_fn_with_state(
@@ -126,7 +154,15 @@ pub fn create_router(state: AppState) -> Router {
     let api_v1 = Router::new()
         .merge(protected_routes)
         // Public routes (no authentication required)
-        .route("/auth/token", post(handlers::exchange_github_token))
+        // Per-client-IP limiter: this route is unauthenticated, so the
+        // per-user limiter cannot protect it.
+        .route(
+            "/auth/token",
+            post(handlers::exchange_github_token).route_layer(middleware::from_fn_with_state(
+                state.clone(),
+                crate::rate_limit::auth_rate_limit_middleware,
+            )),
+        )
         .route("/health", get(handlers::health_check))
         // Add remaining middleware layers
         .layer(middleware::from_fn(api_middleware::tracing_middleware))
@@ -226,7 +262,7 @@ pub fn create_router_without_auth(state: AppState) -> Router {
     use tower_http::{
         cors::CorsLayer,
         timeout::TimeoutLayer,
-        trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+        trace::{DefaultOnResponse, TraceLayer},
     };
 
     // Test router: CORS wildcard is acceptable here because this router is
@@ -245,9 +281,11 @@ pub fn create_router_without_auth(state: AppState) -> Router {
         .max_age(Duration::from_secs(3600));
 
     // Configure request tracing
+    // Headers are deliberately NOT recorded: they carry Authorization and
+    // Cookie values that must never reach the logs.
     let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().include_headers(true))
-        .on_response(DefaultOnResponse::new().include_headers(true));
+        .make_span_with(request_span::<axum::body::Body>)
+        .on_response(DefaultOnResponse::new());
 
     // Configure request timeout (30 seconds)
     let timeout_layer =
@@ -317,3 +355,19 @@ fn organization_routes_without_auth() -> Router<AppState> {
 #[cfg(test)]
 #[path = "routes_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "routes_rate_limit_tests.rs"]
+mod rate_limit_tests;
+
+#[cfg(test)]
+#[path = "routes_auth_rate_limit_tests.rs"]
+mod auth_rate_limit_tests;
+
+#[cfg(test)]
+#[path = "routes_hardening_tests.rs"]
+mod hardening_tests;
+
+#[cfg(test)]
+#[path = "routes_route_coverage_tests.rs"]
+mod route_coverage_tests;

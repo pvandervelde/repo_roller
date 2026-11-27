@@ -48,9 +48,11 @@ All error responses use a consistent JSON structure:
 
 ```json
 {
-  "error": "Human-readable error description",
-  "code": "MACHINE_READABLE_ERROR_CODE",
-  "details": "Additional context (optional)"
+  "error": {
+    "code": "MachineReadableErrorCode",
+    "message": "Human-readable error description",
+    "details": "Additional context (optional, omitted when absent; type varies by error)"
+  }
 }
 ```
 
@@ -66,6 +68,8 @@ Common error codes:
 | `TEMPLATE_NOT_FOUND` | 404 | Template repository not found or not accessible |
 | `CONFIGURATION_ERROR` | 400/500 | Problem loading or parsing configuration |
 | `GITHUB_API_ERROR` | 502 | GitHub API returned an unexpected error |
+| `MissingPrincipal` | 401 | The token is validly signed but identifies no principal (neither a login nor a principal id). Obtain a new token via `POST /auth/token`. |
+| `RateLimitExceeded` | 429 | A rate limit was exceeded: per user on authenticated endpoints, or per client IP on `POST /auth/token`. See [Rate limiting](#rate-limiting). |
 
 <!-- TODO(docs-owner): the error codes in this table use a mix of conventions —
 some (`INVALID_REQUEST`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `TEMPLATE_NOT_FOUND`,
@@ -78,6 +82,62 @@ SCREAMING_SNAKE_CASE entries in this table predate that task and were not touche
 flagging so the docs owner can decide whether to correct them for the whole table in a
 follow-up, and so client code is not implemented against a code string that does not
 actually appear on the wire. -->
+
+## Rate limiting
+
+Two independent fixed-window limiters apply to every request method except `GET`, `HEAD` and
+`OPTIONS` (the token endpoint is limited on `POST`):
+
+| Scope | Applies to | Keyed by | Default |
+|---|---|---|---|
+| `user` | Requests other than `GET`/`HEAD`/`OPTIONS` to authenticated endpoints | The authenticated principal: `login:<lowercased login>`, or `sub:<pid>` for tokens whose login could not be resolved. Tokens with neither receive `401` with code `MissingPrincipal`. | 10 requests per 60 seconds |
+| `auth_ip` | The public `POST /api/v1/auth/token` | The client IP address of the connection; IPv6 clients are keyed by their /64 prefix (`X-Forwarded-*` headers are ignored) | 20 requests per 60 seconds |
+
+Each principal has an independent budget; keys are namespaced so they cannot collide with client IP
+keys. `GET`, `HEAD` and `OPTIONS` requests, `/health` and `/metrics` are not limited.
+
+For loginless callers (for example GitHub App installation tokens, whose login cannot be
+resolved) "per principal" means **per token**: the principal id is a digest of the GitHub token,
+so it changes whenever the caller exchanges a different token and gets a fresh budget.
+
+When the limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header
+(whole seconds until the window resets) and the standard error body:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+Content-Type: application/json
+
+{"error":{"code":"RateLimitExceeded","message":"Too many requests. Retry after 42 seconds."}}
+```
+
+Clients should wait at least `Retry-After` seconds before retrying. Operators configure the limits
+with `RATE_LIMIT_ENABLED` (governs both limiters), `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS`,
+`RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS` (see
+[Environment variables](../environment-variables.md)). Rejections are logged at WARN
+("Rate limit exceeded", without the user identity) and counted by the Prometheus counter
+`rate_limit_rejections_total`, labelled `scope` = `user` or `auth_ip`; the gauge
+`rate_limit_tracked_keys{scope}` reports how many keys each limiter currently tracks.
+
+Each limiter tracks at most 10,000 keys. If that cap is reached and no expired key can be
+reclaimed, the `user` limiter evicts the key with the oldest window (that user gets a fresh budget)
+while the `auth_ip` limiter fails closed: requests from new client addresses receive `429` until a
+window expires, and clients already tracked keep their budgets.
+
+## Known limitations
+
+- Every method except `GET`, `HEAD` and `OPTIONS` is limited (and counts against one shared per-principal budget); those three methods never consume budget.
+- Loginless callers (installation tokens) are limited per token, not per underlying identity.
+- The `/auth/token` limiter is shared by every frontend user: the frontend is the only caller, so the backend sees a single IP. Raise `RATE_LIMIT_AUTH_REQUESTS`.
+- The window is fixed, not sliding: a client can send up to twice the limit in a short burst that
+  straddles a window boundary (the end of one window and the start of the next).
+- State is in memory per process, so effective limits scale with the number of replicas and reset
+  on restart.
+- The `POST /auth/token` limiter keys on the connection address only and ignores `X-Forwarded-For`
+  and other `X-Forwarded-*` headers. Behind a reverse proxy or load balancer all clients share the
+  proxy's bucket; raise `RATE_LIMIT_AUTH_REQUESTS` accordingly.
+- IPv6 clients share one budget per /64 prefix, so hosts in the same /64 are limited together.
+- Request headers (including `Authorization` and `Cookie`) are not written to server logs.
 
 ## Request tracing
 
@@ -131,7 +191,7 @@ attributes.
 ## Metrics
 
 `GET /metrics` returns Prometheus-format metrics (request rates, latencies, repository-creation
-outcomes, GitHub API call counts). It is mounted at the server root — **not** under `/api/v1` —
+outcomes, GitHub API call counts, and `rate_limit_rejections_total{scope}` for requests rejected by rate limiting). It is mounted at the server root — **not** under `/api/v1` —
 and is unauthenticated, intended for scraping by a Prometheus server on a private network. See
 [Deploy with Docker Compose: Metrics (Prometheus)](../../how-to/deploy/deploy-with-docker.md#metrics-prometheus)
 for scrape configuration and the operator security note.

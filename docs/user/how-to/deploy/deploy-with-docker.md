@@ -87,6 +87,24 @@ networks:
 | `OTEL_TRACES_ENABLED` | No | `false` | Enables OpenTelemetry span export over OTLP. Fail-safe-off — only `true`/`1` enables it. See [Distributed Tracing](#distributed-tracing-jaeger) below. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4317` | OTLP/gRPC collector endpoint. Use `https://` for TLS. |
 | `OTEL_SERVICE_NAME` | No | `repo-roller-api` | Service name attached to exported spans' resource attributes. |
+| `RATE_LIMIT_ENABLED` | No | `true` | Enables rate limiting of `POST` requests (per-user and `POST /auth/token` per-IP limiters). `false` or `0` disables both. |
+| `RATE_LIMIT_REQUESTS` | No | `10` | Maximum `POST` requests per user per window. |
+| `RATE_LIMIT_WINDOW_SECS` | No | `60` | Per-user window length in seconds. |
+| `RATE_LIMIT_AUTH_REQUESTS` | No | `20` | Maximum `POST /api/v1/auth/token` requests per client IP per window. Behind a reverse proxy all clients share the proxy IP's bucket, so raise this. |
+| `RATE_LIMIT_AUTH_WINDOW_SECS` | No | `60` | Token-endpoint window length in seconds. |
+
+### Rate limiting
+
+> **Warning: the `/auth/token` rate-limit budget is shared by all users.** The frontend is the only
+> caller of `POST /api/v1/auth/token`, so the backend sees a single client IP for every user and
+> they all draw on one `RATE_LIMIT_AUTH_REQUESTS` budget (default 20 per 60 seconds). Raise
+> `RATE_LIMIT_AUTH_REQUESTS` to match your expected sign-in rate, or sign-ins will start returning
+> `429`. A reverse proxy has the same effect: its address becomes the single key.
+
+Per-user limiting applies to every method except `GET`, `HEAD` and `OPTIONS`; state is in memory
+per process, so limits scale with replicas and reset on restart. See
+[Rate limiting](../../reference/api/index.md#rate-limiting) and
+[Environment variables](../../reference/environment-variables.md).
 
 ### Frontend environment variables
 
@@ -217,9 +235,17 @@ curl http://backend:8080/metrics
 ```
 
 You should see Prometheus text-format output, including families such as
-`repository_creation_requests_total`, `github_api_calls_total`, and `http_requests_total`. See
+`repository_creation_requests_total`, `github_api_calls_total`, `http_requests_total`, and
+`rate_limit_rejections_total` (count of requests rejected with 429 by rate limiting, labelled `scope` = `user` or `auth_ip`). See
 the [`repo_roller_api` crate README](../../../../crates/repo_roller_api/README.md#metrics) for
 the full list of exposed metrics and their labels.
+
+**Alert on the token-endpoint limiter filling up.** The `auth_ip` limiter tracks at most 10,000
+client addresses and fails closed. If the cap is reached (for example by a botnet or by traffic from
+many IPv6 /64 prefixes) it acts as a login lockout: new client addresses, including legitimate
+users, receive `429` on `POST /api/v1/auth/token` until a window expires. Alert when
+`rate_limit_tracked_keys{scope="auth_ip"}` approaches 10,000 (for example above 8,000) so you can
+react before sign-in is affected.
 
 ## Distributed tracing (Jaeger)
 

@@ -39,8 +39,15 @@ pub(crate) const JWT_EXPIRY_SECS: u64 = 8 * 3600; // 8 hours
 /// Claims embedded in a backend-issued JWT.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Claims {
-    /// GitHub login of the authenticated user.
-    pub sub: String,
+    /// GitHub login of the authenticated user. Absent (not serialized) for
+    /// loginless principals, which are identified solely by `pid`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
+    /// Stable opaque principal identifier, present only for principals with
+    /// no resolvable GitHub login (e.g. installation tokens). Absent for
+    /// ordinary user tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<String>,
     /// Issued-at timestamp (seconds since UNIX epoch).
     pub iat: usize,
     /// Expiry timestamp (seconds since UNIX epoch).
@@ -57,13 +64,37 @@ pub(crate) struct Claims {
 ///
 /// Returns `AuthError` if JWT encoding fails (e.g. invalid secret).
 pub(crate) fn generate_backend_jwt(user_login: &str, secret: &str) -> Result<String, AuthError> {
+    sign_claims(Some(user_login), None, secret)
+}
+
+/// Issue a backend JWT for a principal with no resolvable login (for example a
+/// GitHub App installation token).
+///
+/// The token carries `principal_id` in the `pid` claim. `auth_middleware`
+/// then exposes an `AuthContext` with no `user_login` and
+/// `principal_id = Some(principal_id)`, which the rate limiter keys on so
+/// distinct principals never share a bucket.
+///
+/// # Errors
+///
+/// Returns `AuthError` if JWT encoding fails (e.g. invalid secret).
+pub(crate) fn generate_loginless_backend_jwt(
+    principal_id: &str,
+    secret: &str,
+) -> Result<String, AuthError> {
+    sign_claims(None, Some(principal_id), secret)
+}
+
+/// Sign HS256 claims for `sub` and the optional `pid`.
+fn sign_claims(sub: Option<&str>, pid: Option<&str>, secret: &str) -> Result<String, AuthError> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
     let claims = Claims {
-        sub: user_login.to_string(),
+        sub: sub.map(str::to_string),
+        pid: pid.map(str::to_string),
         iat: now as usize,
         exp: (now + JWT_EXPIRY_SECS) as usize,
     };
@@ -125,6 +156,19 @@ pub struct AuthContext {
     /// `None` only when the JWT was issued without a resolvable GitHub login
     /// (e.g. the GitHub `/user` call failed during token exchange).
     pub user_login: Option<String>,
+    /// Stable opaque principal identifier from the validated JWT `pid` claim.
+    /// `Some` only for loginless principals.
+    pub principal_id: Option<String>,
+}
+
+/// Derive a stable opaque principal id from a GitHub token.
+///
+/// Returns the lowercase hex SHA-256 digest of the token. The digest is
+/// one-way, so the id never embeds or reveals the token, yet is identical for
+/// every request made with the same token.
+pub(crate) fn principal_id_for_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 impl AuthContext {
@@ -134,7 +178,10 @@ impl AuthContext {
     /// inside `auth_middleware` after JWT validation.
     #[cfg(test)]
     pub fn new() -> Self {
-        Self { user_login: None }
+        Self {
+            user_login: None,
+            principal_id: None,
+        }
     }
 }
 
@@ -149,6 +196,7 @@ impl AuthContext {
 /// - Header format is not `Bearer <token>`
 /// - JWT signature is invalid
 /// - JWT is expired
+/// - JWT carries neither a non-empty `pid` nor a non-empty `sub` (code `MissingPrincipal`)
 ///
 /// # Example
 ///
@@ -177,10 +225,24 @@ pub async fn auth_middleware(
     // Validate the backend JWT locally — no network call.
     let claims = validate_backend_jwt(&token, state.jwt_secret.expose_secret())?;
 
-    tracing::debug!(user_login = %claims.sub, "Backend JWT validated");
+    tracing::debug!("Backend JWT validated");
 
-    let auth_context = AuthContext {
-        user_login: Some(claims.sub),
+    // Precedence: a non-empty `pid` claim (loginless principal) wins over
+    // `sub`. A token with neither a usable `pid` nor a usable `sub` identifies
+    // no principal and is rejected.
+    let auth_context = match (
+        claims.pid.filter(|p| !p.is_empty()),
+        claims.sub.filter(|s| !s.is_empty()),
+    ) {
+        (Some(pid), _) => AuthContext {
+            user_login: None,
+            principal_id: Some(pid),
+        },
+        (None, Some(login)) => AuthContext {
+            user_login: Some(login),
+            principal_id: None,
+        },
+        (None, None) => return Err(AuthError::MissingPrincipalIdentifier),
     };
 
     request.extensions_mut().insert(auth_context);
@@ -210,12 +272,17 @@ pub(crate) fn extract_bearer_token(auth_header: &str) -> Result<String, AuthErro
 /// tokens — to confirm the token has not been revoked or expired.
 ///
 /// Used only by the token exchange endpoint (`POST /api/v1/auth/token`).
+/// `base_url` overrides the GitHub API base URL (`None` means
+/// `https://api.github.com`).
 ///
 /// # Errors
 ///
 /// Returns `AuthError` if the GitHub API call fails (401, 403, network error).
-pub(crate) async fn validate_github_token(token: &str) -> Result<(), AuthError> {
-    let octocrab = github_client::create_token_client(token).map_err(|e| {
+pub(crate) async fn validate_github_token(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<(), AuthError> {
+    let octocrab = github_client::create_no_retry_client(token, base_url).map_err(|e| {
         tracing::warn!("Failed to create GitHub client with token: {}", e);
         AuthError::from(AuthenticationError::InvalidToken)
     })?;
@@ -234,9 +301,10 @@ pub(crate) async fn validate_github_token(token: &str) -> Result<(), AuthError> 
 ///
 /// Calls `GET /user`.  Succeeds for PAT and OAuth tokens; fails silently for
 /// installation tokens (which are not scoped to a user).  Failure is
-/// non-fatal — the exchange endpoint falls back to `"unknown"`.
-pub(crate) async fn try_get_user_login(token: &str) -> Option<String> {
-    let octocrab = github_client::create_token_client(token).ok()?;
+/// non-fatal — the exchange endpoint then issues a loginless token that
+/// carries only a `pid` claim.
+pub(crate) async fn try_get_user_login(token: &str, base_url: Option<&str>) -> Option<String> {
+    let octocrab = github_client::create_no_retry_client(token, base_url).ok()?;
     match octocrab.current().user().await {
         Ok(user) => Some(user.login.clone()),
         Err(e) => {
@@ -411,6 +479,10 @@ pub enum AuthError {
     /// Backend JWT has expired; the client must re-authenticate via `/auth/token`
     TokenExpired,
 
+    /// The token is valid but identifies no principal: it carries neither a
+    /// usable login (`sub`) nor a principal id (`pid`).
+    MissingPrincipalIdentifier,
+
     /// Domain authentication error
     Authentication(AuthenticationError),
 }
@@ -424,6 +496,13 @@ impl From<AuthenticationError> for AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, code, message, details) = match self {
+            AuthError::MissingPrincipalIdentifier => (
+                StatusCode::UNAUTHORIZED,
+                "MissingPrincipal",
+                "The token does not identify a principal; re-authenticate via POST /api/v1/auth/token."
+                    .to_string(),
+                None,
+            ),
             AuthError::MissingToken => (
                 StatusCode::UNAUTHORIZED,
                 "AuthenticationError",
@@ -485,6 +564,10 @@ impl IntoResponse for AuthError {
 #[cfg(test)]
 #[path = "middleware_test_support.rs"]
 mod test_support;
+
+#[cfg(test)]
+#[path = "middleware_principal_tests.rs"]
+mod principal_tests;
 
 #[cfg(test)]
 #[path = "middleware_tests.rs"]

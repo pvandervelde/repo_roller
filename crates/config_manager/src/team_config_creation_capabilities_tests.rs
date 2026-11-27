@@ -25,14 +25,13 @@ fn test_team_config_creation_capabilities_roundtrips_through_json() {
     let json = serde_json::to_string(&config).expect("serialize");
     let roundtripped: TeamConfig = serde_json::from_str(&json).expect("deserialize");
 
-    assert_eq!(
+    assert!(
         roundtripped
             .creation_capabilities
             .unwrap()
             .source_history_mirror_enabled
             .unwrap()
-            .value,
-        true
+            .value
     );
 }
 
@@ -48,6 +47,6 @@ fn test_team_config_creation_capabilities_parses_simple_toml() {
     let value = capabilities
         .source_only_mirror_enabled
         .expect("source_only_mirror_enabled set");
-    assert_eq!(value.value, false);
+    assert!(!value.value);
     assert!(value.override_allowed);
 }

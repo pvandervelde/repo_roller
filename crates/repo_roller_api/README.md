@@ -806,6 +806,8 @@ http_requests_total{method="POST",route="/api/v1/repositories",status_code="201"
 | `github_api_calls_total` | Counter | `operation` | `github_client::api_metrics` |
 | `github_api_errors_total` | Counter | `operation`, `status_category` | `github_client::api_metrics` |
 | `github_api_rate_limit_remaining` | Gauge | - | `github_client::api_metrics` |
+| `rate_limit_rejections_total` | Counter | `scope` (`user`, `auth_ip`) | `rate_limit` middleware |
+| `rate_limit_tracked_keys` | Gauge | `scope` (`user`, `auth_ip`) | `rate_limit` (refreshed at scrape) |
 | `http_requests_total` | Counter | `method`, `route`, `status_code` | `http_metrics` middleware |
 | `http_request_duration_seconds` | Histogram | `method`, `route` | `http_metrics` middleware |
 
@@ -1199,6 +1201,11 @@ FROM alpine:3.20
 - `METADATA_REPOSITORY_NAME` - Metadata repo name (default: ".reporoller")
 - `OTEL_TRACES_ENABLED` - Enable OpenTelemetry span export (default: `false`, fail-safe-off; set to `true` or `1`)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP collector endpoint (default: `http://localhost:4317`; use `https://` for TLS)
+- `RATE_LIMIT_ENABLED` - Enable rate limiting of unsafe (non-`GET`/`HEAD`/`OPTIONS`) requests for both limiters (default: `true`; `false`/`0` disables)
+- `RATE_LIMIT_REQUESTS` - Per-user requests (all methods except `GET`/`HEAD`/`OPTIONS`) per window (default: 10)
+- `RATE_LIMIT_WINDOW_SECS` - Per-user window length in seconds (default: 60)
+- `RATE_LIMIT_AUTH_REQUESTS` - `POST /api/v1/auth/token` requests per client IP per window (default: 20)
+- `RATE_LIMIT_AUTH_WINDOW_SECS` - Token-endpoint window length in seconds (default: 60)
 - `OTEL_SERVICE_NAME` - Service name on exported span resource attributes (default: `repo-roller-api`)
 
 **Health Check**:
@@ -1390,11 +1397,46 @@ CorsLayer::new()
     .allow_credentials(true)
 ```
 
-### Rate Limiting (Future)
+### Rate Limiting
+
+Two independent fixed-window limiters apply to every method except `GET`, `HEAD` and `OPTIONS`
+(the token endpoint limiter applies to its `POST`); exceeding either returns `429 Too
+Many Requests` with a `Retry-After` header and error code `RateLimitExceeded`.
+
+- **`user` scope** - authenticated routes, keyed by the lowercased login (`login:<lowercased>`) or,
+  for tokens whose login could not be resolved (e.g. installation tokens), by the signed `pid`
+  claim (`sub:<pid>`). For these loginless callers "per principal" means **per token**: the `pid`
+  is a SHA-256 digest of the GitHub token, so it rotates with the token. Tokens carrying neither a
+  login nor a `pid` get `401` with code `MissingPrincipal`. Defaults: 10 requests per 60 seconds.
+- **`auth_ip` scope** - the public `POST /api/v1/auth/token`, keyed by the client connection
+  address (`X-Forwarded-*` is ignored); IPv6 clients are keyed by their /64 prefix, since one
+  subscriber typically controls a whole /64. Defaults: 20 requests per 60 seconds.
+
+Each limiter tracks at most 10,000 keys. Expired keys are reclaimed incrementally. When the cap
+is reached with no expired key to reclaim, the `user` limiter evicts the key whose window started
+earliest (that user simply gets a fresh budget), while the `auth_ip` limiter **fails closed**:
+new client addresses receive `429` until a window expires, and existing clients' budgets are never
+disturbed by a flood of new addresses. The consequence is that once the cap is reached (a botnet,
+or many IPv6 /64 prefixes) the `auth_ip` limiter acts as a login lockout for new addresses until a
+window expires. Alert on `rate_limit_tracked_keys{scope="auth_ip"}` approaching 10,000.
+
+Configure with `RATE_LIMIT_ENABLED` (governs both), `RATE_LIMIT_REQUESTS`,
+`RATE_LIMIT_WINDOW_SECS`, `RATE_LIMIT_AUTH_REQUESTS` and `RATE_LIMIT_AUTH_WINDOW_SECS`.
+Rejections increment `rate_limit_rejections_total{scope}`; `rate_limit_tracked_keys{scope}` reports
+how many keys each limiter currently tracks.
+
+**Known limitations**: every method except `GET`/`HEAD`/`OPTIONS` is limited (those three never
+consume budget); loginless callers are limited per token, not per underlying identity; the fixed window allows up to 2x the limit in a
+burst at a window boundary; state is in memory per process (scales with replicas, resets on
+restart); behind a reverse proxy all clients share the proxy IP's token-endpoint bucket, so raise
+`RATE_LIMIT_AUTH_REQUESTS`. The `/auth/token` budget is also shared by every user of the
+frontend, which is the only caller and so appears to the backend as a single IP: raise
+`RATE_LIMIT_AUTH_REQUESTS` for any real deployment.
+
+Design rationale: [ADR-011](../../docs/adr/ADR-011-in-process-api-rate-limiting.md).
 
 **Planned**:
 
-- Per-IP rate limiting
 - Per-organization rate limiting
 - GitHub API rate limit awareness
 - Backoff and retry logic

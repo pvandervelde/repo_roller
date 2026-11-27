@@ -293,7 +293,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
             MockCreateOrgRepositoryBehavior::Success => {
                 Ok(self.create_successful_repository(payload))
             }
-            MockCreateOrgRepositoryBehavior::Error(kind) => Err(kind.clone().into_error()),
+            MockCreateOrgRepositoryBehavior::Error(kind) => Err((*kind).into_error()),
         }
     }
 
@@ -551,7 +551,7 @@ impl RepositoryClient for ConfigurableMockRepoClient {
                     false,
                 ))
             }
-            MockCreateForkBehavior::Error(kind) => Err(kind.clone().into_error()),
+            MockCreateForkBehavior::Error(kind) => Err((*kind).into_error()),
         }
     }
 

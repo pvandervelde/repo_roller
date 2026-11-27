@@ -210,6 +210,7 @@ pub const SENSITIVE_FIELD_NAMES: &[&str] = &[
     "github_token",
     "jwt",
     "api_key",
+    "cookie",
 ];
 
 /// Fixed replacement value written in place of a redacted field's value.
