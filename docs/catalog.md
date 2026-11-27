@@ -627,13 +627,13 @@ Add to this whenever a reusable component becomes "the standard way".
 - **`repo_roller_api::rate_limit::Clock`** — monotonic time source trait (`SystemClock` in production)
   Use when: Injecting deterministic time in tests via `RateLimiter::with_clock`
 - **`repo_roller_api::rate_limit::RateLimitDecision`** — `Allowed { remaining }` / `Limited { retry_after_secs }`
-- **`repo_roller_api::rate_limit::rate_limit_middleware`** — axum middleware; POST only, keyed by `principal_key(&AuthContext)`, returns 429 + `Retry-After` + `ErrorResponse` code `RateLimitExceeded`; rejects 401 when the context has no identifier (never pooled)
+- **`repo_roller_api::rate_limit::rate_limit_middleware`** — axum middleware; limits every method except GET/HEAD/OPTIONS, keyed by `principal_key(&AuthContext)`, returns 429 + `Retry-After` + `ErrorResponse` code `RateLimitExceeded`; rejects 401 `MissingPrincipal` (`AuthError::MissingPrincipalIdentifier`) when the context has no identifier (never pooled), plain 401 when no `AuthContext` is present
 - **`repo_roller_api::rate_limit::principal_key`** — `Option<String>` limiter key: `login:<lowercased>` / `sub:<principal id>`; `None` when no identifier
   Use when: Keying any per-principal limiter; namespaces prevent login/pid collisions
 - **`repo_roller_api::rate_limit::auth_rate_limit_middleware`** — axum middleware for the public `POST /api/v1/auth/token`; own limiter (`AppState.auth_rate_limiter`) keyed by `client_key`; 429 counted under `scope="auth_ip"`
 - **`repo_roller_api::rate_limit::client_key`** — limiter key from `ConnectInfo<SocketAddr>` peer IP only: IPv4 `ip:a.b.c.d` (IPv4-mapped IPv6 canonicalised), IPv6 by /64 prefix `addr:v6/<16 hex digits>`; forwarding headers ignored; missing ConnectInfo -> `NO_CLIENT_ADDR_KEY` (`addr:none`)
 - **`RateLimitConfig::auth_from_env_vars` / `auth_from_env`** — token-endpoint limiter config from `RATE_LIMIT_ENABLED`, `RATE_LIMIT_AUTH_REQUESTS`, `RATE_LIMIT_AUTH_WINDOW_SECS` (defaults 20 / 60s)
-- **`repo_roller_api::middleware::generate_loginless_backend_jwt` / `principal_id_for_token`** — issue a JWT with a `pid` claim for principals with no resolvable login; `principal_id_for_token` = SHA-256 hex of the GitHub token (never embeds it). `AuthContext.principal_id` carries it
+- **`repo_roller_api::middleware::generate_loginless_backend_jwt` / `principal_id_for_token`** — issue a JWT with a `pid` claim for principals with no resolvable login; `principal_id_for_token` = SHA-256 hex of the GitHub token (never embeds it). `AuthContext.principal_id` carries it. Loginless tokens carry `pid` only (`Claims.sub` is `Option`); precedence `pid` > `sub`; for these callers rate limiting is per token (the digest rotates with the token)
 - **`ApiServer::serve_with_listener`** — serves with `into_make_service_with_connect_info::<SocketAddr>()` so `ConnectInfo` is available; `serve` delegates to it
   Notes: Layered inside `auth_middleware` in `routes::create_router`
 - **`AppState.rate_limiter`** — `Arc<RateLimiter>` shared state; override with `AppState::with_rate_limit_config` / `with_rate_limiter`

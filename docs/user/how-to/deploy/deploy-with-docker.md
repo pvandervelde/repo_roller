@@ -93,6 +93,19 @@ networks:
 | `RATE_LIMIT_AUTH_REQUESTS` | No | `20` | Maximum `POST /api/v1/auth/token` requests per client IP per window. Behind a reverse proxy all clients share the proxy IP's bucket, so raise this. |
 | `RATE_LIMIT_AUTH_WINDOW_SECS` | No | `60` | Token-endpoint window length in seconds. |
 
+### Rate limiting
+
+> **Warning: the `/auth/token` rate-limit budget is shared by all users.** The frontend is the only
+> caller of `POST /api/v1/auth/token`, so the backend sees a single client IP for every user and
+> they all draw on one `RATE_LIMIT_AUTH_REQUESTS` budget (default 20 per 60 seconds). Raise
+> `RATE_LIMIT_AUTH_REQUESTS` to match your expected sign-in rate, or sign-ins will start returning
+> `429`. A reverse proxy has the same effect: its address becomes the single key.
+
+Per-user limiting applies to every method except `GET`, `HEAD` and `OPTIONS`; state is in memory
+per process, so limits scale with replicas and reset on restart. See
+[Rate limiting](../../reference/api/index.md#rate-limiting) and
+[Environment variables](../../reference/environment-variables.md).
+
 ### Frontend environment variables
 
 | Variable | Required | Default | Description |

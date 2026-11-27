@@ -265,10 +265,13 @@ GET  /api/v1/user/permissions      # User permission information
 
 - **Authentication Middleware**: Token validation and user context
 - **Rate Limiting** (implemented, #284): Two fixed-window limiters in `repo_roller_api::rate_limit`,
-  both applied to `POST` requests only
+  the `user` limiter applies to every method except `GET`/`HEAD`/`OPTIONS`; the `auth_ip` limiter to
+  `POST /auth/token` (see ADR-011)
   - `user` scope: protected routes, applied after authentication. Key is the namespaced principal:
-    the lowercased login, or the stable principal id for tokens whose login could not be resolved;
-    tokens with no identifier are rejected with `401`. Each principal has an independent budget.
+    `login:<lowercased login>`, or `sub:<pid>` from the signed `pid` claim for tokens whose login could
+    not be resolved. For loginless (installation token) callers "per principal" means per token: the
+    `pid` is a digest of the token and rotates with it. Tokens with neither are rejected with `401`
+    code `MissingPrincipal`. Each principal has an independent budget.
     Defaults: 10 requests per 60 seconds (`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECS`)
   - `auth_ip` scope: the public `POST /api/v1/auth/token`. Key is the client connection address
     only (IPv6 keyed by /64 prefix, `addr:v6/<16 hex>`); `X-Forwarded-*` headers are ignored, so behind a reverse proxy all clients share the
@@ -282,10 +285,11 @@ GET  /api/v1/user/permissions      # User permission information
   - Rejection: `429 Too Many Requests` with a `Retry-After` header (seconds) and JSON error code
     `RateLimitExceeded`; logged at WARN ("Rate limit exceeded", without user identity) and counted in
     the Prometheus counter `rate_limit_rejections_total` with label `scope` in `{user, auth_ip}`
-  - Not limited: `GET` and other non-`POST` methods, health, `/metrics`
+  - Not limited: `GET`, `HEAD` and `OPTIONS`, health, `/metrics`
   - Known limitations: the fixed window allows up to 2x the limit in a burst straddling a window
     boundary; state is in-memory and per process, so effective limits scale with the number of
-    replicas and reset on restart.
+    replicas and reset on restart. The `/auth/token` budget is shared by all frontend users (the
+    frontend is the only caller, so the backend sees one IP); raise `RATE_LIMIT_AUTH_REQUESTS`.
 - **Request Logging**: Comprehensive request/response logging; request headers and query strings are
   never recorded (the trace span carries method, path and version only) and `cookie` is on the
   log-redaction deny-list

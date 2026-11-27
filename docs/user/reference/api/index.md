@@ -68,7 +68,8 @@ Common error codes:
 | `TEMPLATE_NOT_FOUND` | 404 | Template repository not found or not accessible |
 | `CONFIGURATION_ERROR` | 400/500 | Problem loading or parsing configuration |
 | `GITHUB_API_ERROR` | 502 | GitHub API returned an unexpected error |
-| `RateLimitExceeded` | 429 | A `POST` rate limit was exceeded: per user on authenticated endpoints, or per client IP on `POST /auth/token`. See [Rate limiting](#rate-limiting). |
+| `MissingPrincipal` | 401 | The token is validly signed but identifies no principal (neither a login nor a principal id). Obtain a new token via `POST /auth/token`. |
+| `RateLimitExceeded` | 429 | A rate limit was exceeded: per user on authenticated endpoints, or per client IP on `POST /auth/token`. See [Rate limiting](#rate-limiting). |
 
 <!-- TODO(docs-owner): the error codes in this table use a mix of conventions —
 some (`INVALID_REQUEST`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `TEMPLATE_NOT_FOUND`,
@@ -84,15 +85,20 @@ actually appear on the wire. -->
 
 ## Rate limiting
 
-Two independent fixed-window limiters apply to `POST` requests:
+Two independent fixed-window limiters apply to every request method except `GET`, `HEAD` and
+`OPTIONS` (the token endpoint is limited on `POST`):
 
 | Scope | Applies to | Keyed by | Default |
 |---|---|---|---|
-| `user` | `POST` requests to authenticated endpoints | The authenticated user: the lowercased login, or a stable principal id for tokens whose login could not be resolved. Tokens with no identifier at all receive `401`. | 10 requests per 60 seconds |
+| `user` | Requests other than `GET`/`HEAD`/`OPTIONS` to authenticated endpoints | The authenticated principal: `login:<lowercased login>`, or `sub:<pid>` for tokens whose login could not be resolved. Tokens with neither receive `401` with code `MissingPrincipal`. | 10 requests per 60 seconds |
 | `auth_ip` | The public `POST /api/v1/auth/token` | The client IP address of the connection; IPv6 clients are keyed by their /64 prefix (`X-Forwarded-*` headers are ignored) | 20 requests per 60 seconds |
 
-Each user has an independent budget; user keys are namespaced so they cannot collide with client IP
-keys. `GET` requests, `/health` and `/metrics` are not limited.
+Each principal has an independent budget; keys are namespaced so they cannot collide with client IP
+keys. `GET`, `HEAD` and `OPTIONS` requests, `/health` and `/metrics` are not limited.
+
+For loginless callers (for example GitHub App installation tokens, whose login cannot be
+resolved) "per principal" means **per token**: the principal id is a digest of the GitHub token,
+so it changes whenever the caller exchanges a different token and gets a fresh budget.
 
 When the limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header
 (whole seconds until the window resets) and the standard error body:
@@ -120,7 +126,9 @@ window expires, and clients already tracked keep their budgets.
 
 ## Known limitations
 
-- Only `POST` requests are limited; `GET` and other methods are not.
+- Every method except `GET`, `HEAD` and `OPTIONS` is limited (and counts against one shared per-principal budget); those three methods never consume budget.
+- Loginless callers (installation tokens) are limited per token, not per underlying identity.
+- The `/auth/token` limiter is shared by every frontend user: the frontend is the only caller, so the backend sees a single IP. Raise `RATE_LIMIT_AUTH_REQUESTS`.
 - The window is fixed, not sliding: a client can send up to twice the limit in a short burst that
   straddles a window boundary (the end of one window and the start of the next).
 - State is in memory per process, so effective limits scale with the number of replicas and reset

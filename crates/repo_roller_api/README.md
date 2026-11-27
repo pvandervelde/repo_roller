@@ -1201,8 +1201,8 @@ FROM alpine:3.20
 - `METADATA_REPOSITORY_NAME` - Metadata repo name (default: ".reporoller")
 - `OTEL_TRACES_ENABLED` - Enable OpenTelemetry span export (default: `false`, fail-safe-off; set to `true` or `1`)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP collector endpoint (default: `http://localhost:4317`; use `https://` for TLS)
-- `RATE_LIMIT_ENABLED` - Enable `POST` rate limiting for both limiters (default: `true`; `false`/`0` disables)
-- `RATE_LIMIT_REQUESTS` - Per-user `POST` requests per window (default: 10)
+- `RATE_LIMIT_ENABLED` - Enable rate limiting of unsafe (non-`GET`/`HEAD`/`OPTIONS`) requests for both limiters (default: `true`; `false`/`0` disables)
+- `RATE_LIMIT_REQUESTS` - Per-user requests (all methods except `GET`/`HEAD`/`OPTIONS`) per window (default: 10)
 - `RATE_LIMIT_WINDOW_SECS` - Per-user window length in seconds (default: 60)
 - `RATE_LIMIT_AUTH_REQUESTS` - `POST /api/v1/auth/token` requests per client IP per window (default: 20)
 - `RATE_LIMIT_AUTH_WINDOW_SECS` - Token-endpoint window length in seconds (default: 60)
@@ -1399,12 +1399,15 @@ CorsLayer::new()
 
 ### Rate Limiting
 
-Two independent fixed-window limiters apply to `POST` requests; exceeding either returns `429 Too
+Two independent fixed-window limiters apply to every method except `GET`, `HEAD` and `OPTIONS`
+(the token endpoint limiter applies to its `POST`); exceeding either returns `429 Too
 Many Requests` with a `Retry-After` header and error code `RateLimitExceeded`.
 
-- **`user` scope** - authenticated routes, keyed by the lowercased login (or a stable principal id
-  for tokens whose login could not be resolved; tokens with no identifier get `401`). Defaults:
-  10 requests per 60 seconds.
+- **`user` scope** - authenticated routes, keyed by the lowercased login (`login:<lowercased>`) or,
+  for tokens whose login could not be resolved (e.g. installation tokens), by the signed `pid`
+  claim (`sub:<pid>`). For these loginless callers "per principal" means **per token**: the `pid`
+  is a SHA-256 digest of the GitHub token, so it rotates with the token. Tokens carrying neither a
+  login nor a `pid` get `401` with code `MissingPrincipal`. Defaults: 10 requests per 60 seconds.
 - **`auth_ip` scope** - the public `POST /api/v1/auth/token`, keyed by the client connection
   address (`X-Forwarded-*` is ignored); IPv6 clients are keyed by their /64 prefix, since one
   subscriber typically controls a whole /64. Defaults: 20 requests per 60 seconds.
@@ -1420,10 +1423,15 @@ Configure with `RATE_LIMIT_ENABLED` (governs both), `RATE_LIMIT_REQUESTS`,
 Rejections increment `rate_limit_rejections_total{scope}`; `rate_limit_tracked_keys{scope}` reports
 how many keys each limiter currently tracks.
 
-**Known limitations**: only `POST` is limited; the fixed window allows up to 2x the limit in a
+**Known limitations**: every method except `GET`/`HEAD`/`OPTIONS` is limited (those three never
+consume budget); loginless callers are limited per token, not per underlying identity; the fixed window allows up to 2x the limit in a
 burst at a window boundary; state is in memory per process (scales with replicas, resets on
 restart); behind a reverse proxy all clients share the proxy IP's token-endpoint bucket, so raise
-`RATE_LIMIT_AUTH_REQUESTS`.
+`RATE_LIMIT_AUTH_REQUESTS`. The `/auth/token` budget is also shared by every user of the
+frontend, which is the only caller and so appears to the backend as a single IP: raise
+`RATE_LIMIT_AUTH_REQUESTS` for any real deployment.
+
+Design rationale: [ADR-011](../../docs/adr/ADR-011-in-process-api-rate-limiting.md).
 
 **Planned**:
 

@@ -4,15 +4,18 @@
 
 Add per-user rate limiting to the REST API (#284).
 
-Authenticated `POST` requests are now limited per user using a fixed window, 10 requests per 60
-seconds by default. Per-user keys are namespaced: the lowercased login, or a stable principal id
-for tokens whose login could not be resolved; tokens with no identifier get `401`. The public
+Authenticated requests using any method except `GET`, `HEAD` and `OPTIONS` are now limited per principal using a fixed window, 10 requests per 60
+seconds by default. Keys are namespaced (`login:<lowercased>` or `sub:<pid>`). Tokens whose login could not be resolved
+(installation tokens) carry only a signed `pid` claim, so for them the limit is per token; a token
+with neither login nor `pid` gets `401` with code `MissingPrincipal`. The public
 `POST /api/v1/auth/token` is also limited per client IP (connection address only, `X-Forwarded-*`
 ignored, so behind a reverse proxy all clients share the proxy IP's bucket and operators should
 raise the limit), 20 requests per 60 seconds by default. Requests over a limit receive `429 Too
 Many Requests` with a `Retry-After` header and error code `RateLimitExceeded`, are logged at WARN,
 and increment the new `rate_limit_rejections_total` Prometheus counter, labelled `scope` (`user`
-or `auth_ip`). `GET` requests, health and metrics endpoints are not limited.
+or `auth_ip`). `GET`, `HEAD` and `OPTIONS` requests, health and metrics endpoints are not limited. The frontend is
+the only caller of `/auth/token`, so the backend sees one IP and all users share that budget: raise
+`RATE_LIMIT_AUTH_REQUESTS`. See ADR-011.
 
 Each limiter tracks at most 10,000 keys (new `rate_limit_tracked_keys{scope}` gauge). At the cap the
 per-user limiter evicts the key with the oldest window; the token-endpoint limiter fails closed,

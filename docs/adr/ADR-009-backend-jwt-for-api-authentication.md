@@ -114,7 +114,8 @@ complexity is not warranted.  HS256 is sufficient.
 - `auth_middleware` now takes `State<AppState>` and is registered with
   `middleware::from_fn_with_state` so it can read `jwt_secret` without a
   global.
-- JWT claims: `sub` (GitHub login), `iat` (issued-at), `exp` (expiry).
+- JWT claims: `sub` (GitHub login; omitted for loginless principals), `pid` (opaque principal id,
+  loginless principals only; see ADR-011), `iat` (issued-at), `exp` (expiry).
 - `generate_backend_jwt` and `validate_github_token` are `pub(crate)` for use
   by the exchange handler.
 - The exchange endpoint (`/auth/token`) is outside `protected_routes` and does
