@@ -39,11 +39,13 @@ pub(crate) const JWT_EXPIRY_SECS: u64 = 8 * 3600; // 8 hours
 /// Claims embedded in a backend-issued JWT.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Claims {
-    /// GitHub login of the authenticated user.
-    pub sub: String,
+    /// GitHub login of the authenticated user. Absent (not serialized) for
+    /// loginless principals, which are identified solely by `pid`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
     /// Stable opaque principal identifier, present only for principals with
     /// no resolvable GitHub login (e.g. installation tokens). Absent for
-    /// ordinary user tokens and for tokens issued before this claim existed.
+    /// ordinary user tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<String>,
     /// Issued-at timestamp (seconds since UNIX epoch).
@@ -62,12 +64,8 @@ pub(crate) struct Claims {
 ///
 /// Returns `AuthError` if JWT encoding fails (e.g. invalid secret).
 pub(crate) fn generate_backend_jwt(user_login: &str, secret: &str) -> Result<String, AuthError> {
-    sign_claims(user_login, None, secret)
+    sign_claims(Some(user_login), None, secret)
 }
-
-/// Placeholder `sub` for loginless principals. Never interpreted as a login:
-/// `auth_middleware` ignores `sub` whenever a `pid` claim is present.
-const LOGINLESS_SUBJECT: &str = "unknown";
 
 /// Issue a backend JWT for a principal with no resolvable login (for example a
 /// GitHub App installation token).
@@ -84,18 +82,18 @@ pub(crate) fn generate_loginless_backend_jwt(
     principal_id: &str,
     secret: &str,
 ) -> Result<String, AuthError> {
-    sign_claims(LOGINLESS_SUBJECT, Some(principal_id), secret)
+    sign_claims(None, Some(principal_id), secret)
 }
 
 /// Sign HS256 claims for `sub` and the optional `pid`.
-fn sign_claims(sub: &str, pid: Option<&str>, secret: &str) -> Result<String, AuthError> {
+fn sign_claims(sub: Option<&str>, pid: Option<&str>, secret: &str) -> Result<String, AuthError> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
     let claims = Claims {
-        sub: sub.to_string(),
+        sub: sub.map(str::to_string),
         pid: pid.map(str::to_string),
         iat: now as usize,
         exp: (now + JWT_EXPIRY_SECS) as usize,
@@ -226,7 +224,7 @@ pub async fn auth_middleware(
     // Validate the backend JWT locally — no network call.
     let claims = validate_backend_jwt(&token, state.jwt_secret.expose_secret())?;
 
-    tracing::debug!(user_login = %claims.sub, "Backend JWT validated");
+    tracing::debug!("Backend JWT validated");
 
     // A `pid` claim marks a loginless principal: `sub` is then only a
     // placeholder and must not be mistaken for a real GitHub login.
@@ -236,7 +234,7 @@ pub async fn auth_middleware(
             principal_id: Some(pid),
         },
         None => AuthContext {
-            user_login: Some(claims.sub),
+            user_login: Some(claims.sub.ok_or(AuthError::MissingToken)?),
             principal_id: None,
         },
     };
@@ -469,6 +467,10 @@ pub enum AuthError {
     /// Backend JWT has expired; the client must re-authenticate via `/auth/token`
     TokenExpired,
 
+    /// The token is valid but identifies no principal: it carries neither a
+    /// usable login (`sub`) nor a principal id (`pid`).
+    MissingPrincipalIdentifier,
+
     /// Domain authentication error
     Authentication(AuthenticationError),
 }
@@ -482,7 +484,7 @@ impl From<AuthenticationError> for AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, code, message, details) = match self {
-            AuthError::MissingToken => (
+            AuthError::MissingToken | AuthError::MissingPrincipalIdentifier => (
                 StatusCode::UNAUTHORIZED,
                 "AuthenticationError",
                 "Authentication required. Provide a valid Bearer token in the Authorization header."

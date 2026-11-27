@@ -577,3 +577,7 @@ mod proptests;
 #[cfg(test)]
 #[path = "rate_limit_cap_tests.rs"]
 mod cap_tests;
+
+#[cfg(test)]
+#[path = "rate_limit_scope_tests.rs"]
+mod scope_tests;

@@ -367,3 +367,7 @@ mod auth_rate_limit_tests;
 #[cfg(test)]
 #[path = "routes_hardening_tests.rs"]
 mod hardening_tests;
+
+#[cfg(test)]
+#[path = "routes_route_coverage_tests.rs"]
+mod route_coverage_tests;
