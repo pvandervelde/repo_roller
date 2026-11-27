@@ -266,6 +266,25 @@ pub(crate) fn extract_bearer_token(auth_header: &str) -> Result<String, AuthErro
     Ok(parts[1].to_string())
 }
 
+/// Build the GitHub client used by the token exchange endpoint.
+///
+/// `base_url` overrides the API base URL (`None` means `https://api.github.com`).
+/// Automatic retries are disabled: this endpoint is public and unauthenticated
+/// at the backend, so retrying 5xx responses would multiply upstream calls and
+/// latency per request. A failed validation is reported to the caller instead.
+fn exchange_client(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<octocrab::Octocrab, octocrab::Error> {
+    let mut builder = octocrab::Octocrab::builder()
+        .personal_token(token.to_string())
+        .add_retry_config(octocrab::service::middleware::retry::RetryConfig::None);
+    if let Some(url) = base_url {
+        builder = builder.base_uri(url)?;
+    }
+    builder.build()
+}
+
 /// Validate a GitHub user token against the GitHub API.
 ///
 /// Calls `GET /rate_limit` — a lightweight endpoint accessible to all valid
@@ -282,7 +301,7 @@ pub(crate) async fn validate_github_token(
     token: &str,
     base_url: Option<&str>,
 ) -> Result<(), AuthError> {
-    let octocrab = github_client::create_octocrab_client(token, base_url).map_err(|e| {
+    let octocrab = exchange_client(token, base_url).map_err(|e| {
         tracing::warn!("Failed to create GitHub client with token: {}", e);
         AuthError::from(AuthenticationError::InvalidToken)
     })?;
@@ -304,7 +323,7 @@ pub(crate) async fn validate_github_token(
 /// non-fatal — the exchange endpoint then issues a loginless token that
 /// carries only a `pid` claim.
 pub(crate) async fn try_get_user_login(token: &str, base_url: Option<&str>) -> Option<String> {
-    let octocrab = github_client::create_octocrab_client(token, base_url).ok()?;
+    let octocrab = exchange_client(token, base_url).ok()?;
     match octocrab.current().user().await {
         Ok(user) => Some(user.login.clone()),
         Err(e) => {
