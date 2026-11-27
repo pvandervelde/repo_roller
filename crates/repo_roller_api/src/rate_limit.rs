@@ -364,8 +364,10 @@ impl RateLimiter {
                 remaining: self.config.max_requests,
             };
         }
-        let now = self.clock.now();
+        // Lock first, then read the clock once: the expiry queue stays ordered
+        // by window start only if timestamps are taken under the lock.
         let mut st = self.lock();
+        let now = self.clock.now();
 
         // One unit for the map lookup, plus queue entries visited.
         let (_, reclaimed_visits) = st.reclaim_expired(now, self.config.window);
@@ -429,8 +431,9 @@ impl RateLimiter {
 
     /// Drop every key whose window has ended. Returns number removed.
     pub fn evict_expired(&self) -> usize {
+        let mut st = self.lock();
         let now = self.clock.now();
-        self.lock().reclaim_expired(now, self.config.window).0
+        st.reclaim_expired(now, self.config.window).0
     }
 
     /// Test hook: whether the state lock is currently held (by any thread).

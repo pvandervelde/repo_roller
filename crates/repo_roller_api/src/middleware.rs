@@ -272,12 +272,17 @@ pub(crate) fn extract_bearer_token(auth_header: &str) -> Result<String, AuthErro
 /// tokens — to confirm the token has not been revoked or expired.
 ///
 /// Used only by the token exchange endpoint (`POST /api/v1/auth/token`).
+/// `base_url` overrides the GitHub API base URL (`None` means
+/// `https://api.github.com`).
 ///
 /// # Errors
 ///
 /// Returns `AuthError` if the GitHub API call fails (401, 403, network error).
-pub(crate) async fn validate_github_token(token: &str) -> Result<(), AuthError> {
-    let octocrab = github_client::create_token_client(token).map_err(|e| {
+pub(crate) async fn validate_github_token(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<(), AuthError> {
+    let octocrab = github_client::create_octocrab_client(token, base_url).map_err(|e| {
         tracing::warn!("Failed to create GitHub client with token: {}", e);
         AuthError::from(AuthenticationError::InvalidToken)
     })?;
@@ -298,8 +303,8 @@ pub(crate) async fn validate_github_token(token: &str) -> Result<(), AuthError> 
 /// installation tokens (which are not scoped to a user).  Failure is
 /// non-fatal — the exchange endpoint then issues a loginless token that
 /// carries only a `pid` claim.
-pub(crate) async fn try_get_user_login(token: &str) -> Option<String> {
-    let octocrab = github_client::create_token_client(token).ok()?;
+pub(crate) async fn try_get_user_login(token: &str, base_url: Option<&str>) -> Option<String> {
+    let octocrab = github_client::create_octocrab_client(token, base_url).ok()?;
     match octocrab.current().user().await {
         Ok(user) => Some(user.login.clone()),
         Err(e) => {

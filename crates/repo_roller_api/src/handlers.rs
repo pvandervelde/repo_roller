@@ -1386,7 +1386,7 @@ pub async fn exchange_github_token(
     let github_token = extract_bearer_token(auth_header)?;
 
     // Validate the GitHub token \u2014 the one and only place we call GitHub for auth.
-    validate_github_token(&github_token).await?;
+    validate_github_token(&github_token, state.github_api_base_url.as_deref()).await?;
 
     // Resolve the user's GitHub login (best-effort).
     //
@@ -1398,7 +1398,8 @@ pub async fn exchange_github_token(
     // normal frontend path), GET /user succeeds because validate_github_token
     // (GET /rate_limit) ran first and would have rejected any expired token,
     // making a transient failure here very unlikely.
-    let token = match try_get_user_login(&github_token).await {
+    let token = match try_get_user_login(&github_token, state.github_api_base_url.as_deref()).await
+    {
         Some(user_login) => {
             tracing::info!(user_login = %user_login, "Issuing backend JWT after GitHub token exchange");
             generate_backend_jwt(&user_login, state.jwt_secret.expose_secret())?
