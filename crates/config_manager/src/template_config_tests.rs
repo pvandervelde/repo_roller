@@ -1280,3 +1280,69 @@ fn test_template_config_actions_coexists_with_repository_section() {
     let actions = config.actions.expect("actions set");
     assert!(actions.enabled.expect("enabled set").value);
 }
+
+// ============================================================================
+// TemplateMetadata: author and tags are required (#288 docs alignment)
+// ============================================================================
+
+#[test]
+fn test_template_metadata_missing_author_is_a_parse_error() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        tags = ["x"]
+    "#;
+    let result: Result<TemplateConfig, _> = toml::from_str(toml);
+    assert!(result.is_err(), "author must be required");
+}
+
+#[test]
+fn test_template_metadata_missing_tags_is_a_parse_error() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+    "#;
+    let result: Result<TemplateConfig, _> = toml::from_str(toml);
+    assert!(result.is_err(), "tags must be required");
+}
+
+#[test]
+fn test_template_metadata_missing_author_error_names_the_field() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        tags = []
+    "#;
+    let err = toml::from_str::<TemplateConfig>(toml).unwrap_err();
+    assert!(err.to_string().contains("author"), "got: {err}");
+}
+
+#[test]
+fn test_template_metadata_missing_tags_error_names_the_field() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+    "#;
+    let err = toml::from_str::<TemplateConfig>(toml).unwrap_err();
+    assert!(err.to_string().contains("tags"), "got: {err}");
+}
+
+#[test]
+fn test_template_metadata_with_author_and_empty_tags_parses() {
+    let toml = r#"
+        [template]
+        name = "t"
+        description = "d"
+        author = "a"
+        tags = []
+    "#;
+    let config: TemplateConfig = toml::from_str(toml).expect("should parse");
+    assert_eq!(config.template.author, "a");
+    assert!(config.template.tags.is_empty());
+}

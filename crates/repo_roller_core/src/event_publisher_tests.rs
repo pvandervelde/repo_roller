@@ -259,6 +259,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -314,6 +315,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -366,6 +368,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -419,6 +422,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -478,6 +482,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -520,6 +525,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -584,6 +590,7 @@ mod event_construction_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         };
 
@@ -1304,6 +1311,7 @@ mod publish_workflow_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         }
     }
@@ -1555,6 +1563,7 @@ mod http_delivery_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         }
     }
@@ -2440,6 +2449,7 @@ mod logging_tests {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: "test-user".to_string(),
+            repository_type: None,
             creation_mode: CreationMode::Standard,
         }
     }

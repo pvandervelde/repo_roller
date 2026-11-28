@@ -339,6 +339,11 @@ mod span_tests;
 #[path = "fork_target_name_proptests.rs"]
 mod fork_target_name_proptests;
 
+// Tests for server-side repository type policy enforcement (#288).
+#[cfg(test)]
+#[path = "repository_type_policy_tests.rs"]
+mod repository_type_policy_tests;
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /// GitHub clients created during the authentication step.
@@ -470,6 +475,18 @@ async fn load_creation_config(
     };
 
     Ok((merged_config, template))
+}
+
+/// Resolves the final repository type for a creation request by enforcing
+/// the template's `[repository_type]` policy (`fixed` / `preferable`).
+///
+/// RED-phase stub: the Coder must implement this (see #288).
+#[allow(dead_code, unused_variables)]
+pub(crate) fn resolve_repository_type_policy(
+    request_override: Option<&str>,
+    template: Option<&config_manager::TemplateConfig>,
+) -> RepoRollerResult<Option<config_manager::RepositoryTypeName>> {
+    Ok(None)
 }
 
 /// Maps a request's `CreationMode` to the `TemplateDesignation`

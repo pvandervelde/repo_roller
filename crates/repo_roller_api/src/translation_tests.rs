@@ -797,3 +797,137 @@ fn test_http_to_domain_teams_all_valid_access_levels() {
     );
     assert_eq!(domain_req.teams.get("t-admin"), Some(&AccessLevel::Admin));
 }
+
+// ============================================================================
+// repository_type propagation and validation (#288)
+// ============================================================================
+
+fn http_req_with_repository_type(repository_type: Option<&str>) -> CreateRepositoryRequest {
+    use repo_roller_core::ContentStrategy;
+
+    CreateRepositoryRequest {
+        organization: "myorg".to_string(),
+        name: "my-repo".to_string(),
+        template: Some("rust-library".to_string()),
+        visibility: None,
+        team: None,
+        repository_type: repository_type.map(|s| s.to_string()),
+        variables: HashMap::new(),
+        content_strategy: ContentStrategy::Template,
+        teams: HashMap::new(),
+        collaborators: HashMap::new(),
+        creation_mode: None,
+    }
+}
+
+#[test]
+fn test_http_to_domain_repository_type_is_propagated() {
+    let domain = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("service")),
+        "actor".to_string(),
+    )
+    .unwrap();
+    assert_eq!(domain.repository_type.as_deref(), Some("service"));
+}
+
+#[test]
+fn test_http_to_domain_repository_type_distinct_value_is_propagated() {
+    let domain = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("library")),
+        "actor".to_string(),
+    )
+    .unwrap();
+    assert_eq!(domain.repository_type.as_deref(), Some("library"));
+}
+
+#[test]
+fn test_http_to_domain_absent_repository_type_is_none() {
+    let domain = http_create_repository_request_to_domain(
+        http_req_with_repository_type(None),
+        "actor".to_string(),
+    )
+    .unwrap();
+    assert_eq!(domain.repository_type, None);
+}
+
+#[test]
+fn test_http_to_domain_repository_type_with_uppercase_is_rejected() {
+    let result = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("Service")),
+        "actor".to_string(),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_http_to_domain_repository_type_with_spaces_is_rejected() {
+    let result = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("my type!")),
+        "actor".to_string(),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_http_to_domain_empty_repository_type_is_rejected() {
+    let result = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("")),
+        "actor".to_string(),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_http_to_domain_overlong_repository_type_is_rejected() {
+    let long = "a".repeat(51);
+    let result = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some(&long)),
+        "actor".to_string(),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_http_to_domain_invalid_repository_type_error_names_the_field() {
+    let err = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("Bad Type")),
+        "actor".to_string(),
+    )
+    .unwrap_err();
+    assert!(
+        format!("{:?}", err).contains("repository_type"),
+        "error should name field repository_type: {:?}",
+        err
+    );
+}
+
+#[test]
+fn test_http_to_domain_invalid_repository_type_maps_to_400() {
+    use axum::response::IntoResponse;
+    let err = http_create_repository_request_to_domain(
+        http_req_with_repository_type(Some("Bad Type")),
+        "actor".to_string(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.into_response().status(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
+}
+
+#[test]
+fn test_fixed_policy_violation_error_maps_to_4xx_not_500() {
+    use axum::response::IntoResponse;
+    use config_manager::ConfigurationError;
+    use repo_roller_core::RepoRollerError;
+
+    let err = ApiError::from(RepoRollerError::Configuration(
+        ConfigurationError::InvalidConfiguration {
+            field: "repository_type".to_string(),
+            reason: "Repository type 'service' is fixed by template and cannot be overridden"
+                .to_string(),
+        },
+    ));
+    let status = err.into_response().status();
+    assert!(status.is_client_error(), "expected 4xx, got {status}");
+}

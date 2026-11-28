@@ -26,6 +26,7 @@ fn test_repository_creation_request_creation() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -52,6 +53,7 @@ fn test_repository_creation_request_with_variables() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -73,6 +75,7 @@ fn test_repository_creation_request_clone() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -98,6 +101,7 @@ fn test_repository_creation_request_debug() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -127,6 +131,7 @@ fn test_repository_creation_request_type_safety() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -149,6 +154,7 @@ fn test_repository_creation_request_empty_variables() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -178,6 +184,7 @@ fn test_repository_creation_request_validates_names() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -775,6 +782,7 @@ fn test_request_empty_strategy_validation() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -798,6 +806,7 @@ fn test_request_custom_init_strategy_validation() {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     };
 
@@ -997,4 +1006,61 @@ fn test_request_with_teams_and_collaborators_is_cloneable() {
     let cloned = request.clone();
     assert_eq!(cloned.teams.len(), 1);
     assert_eq!(cloned.teams.get("platform"), Some(&AccessLevel::Write));
+}
+
+// ============================================================================
+// repository_type override (#288)
+// ============================================================================
+
+fn repo_type_builder() -> RepositoryCreationRequestBuilder {
+    RepositoryCreationRequestBuilder::new(
+        RepositoryName::new("my-repo").unwrap(),
+        OrganizationName::new("my-org").unwrap(),
+    )
+    .content_strategy(ContentStrategy::Empty)
+}
+
+#[test]
+fn test_builder_repository_type_defaults_to_none() {
+    assert_eq!(repo_type_builder().build().repository_type, None);
+}
+
+#[test]
+fn test_builder_repository_type_is_propagated_verbatim() {
+    let request = repo_type_builder().repository_type("service").build();
+    assert_eq!(request.repository_type, Some("service".to_string()));
+}
+
+#[test]
+fn test_builder_repository_type_accepts_owned_string() {
+    let request = repo_type_builder()
+        .repository_type(String::from("library"))
+        .build();
+    assert_eq!(request.repository_type.as_deref(), Some("library"));
+}
+
+#[test]
+fn test_builder_repository_type_last_call_wins() {
+    let request = repo_type_builder()
+        .repository_type("first")
+        .repository_type("second")
+        .build();
+    assert_eq!(request.repository_type.as_deref(), Some("second"));
+}
+
+#[test]
+fn test_builder_repository_type_does_not_alter_other_fields() {
+    let request = repo_type_builder()
+        .variable("k", "v")
+        .repository_type("service")
+        .build();
+    assert_eq!(request.variables.get("k"), Some(&"v".to_string()));
+    assert_eq!(request.actor_login, "reporoller");
+}
+
+#[test]
+fn test_builder_repository_type_is_not_validated_by_builder() {
+    // Raw string; validation happens at the API boundary and in core policy.
+    let request = repo_type_builder().repository_type("Not Valid!").build();
+    assert_eq!(request.repository_type.as_deref(), Some("Not Valid!"));
 }
