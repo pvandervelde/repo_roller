@@ -104,7 +104,12 @@ pub struct CreateRepositoryRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team: Option<String>,
 
-    /// Repository type override (optional, template may specify)
+    /// Repository type override (optional, template may specify).
+    ///
+    /// Enforced server-side: when the template's `[repository_type]` policy is
+    /// `fixed`, any override is rejected with HTTP 400; when `preferable`, the
+    /// override takes precedence over the template's type. Must be a valid
+    /// repository type name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_type: Option<String>,
 

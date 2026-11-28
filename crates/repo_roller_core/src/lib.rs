@@ -480,13 +480,62 @@ async fn load_creation_config(
 /// Resolves the final repository type for a creation request by enforcing
 /// the template's `[repository_type]` policy (`fixed` / `preferable`).
 ///
-/// RED-phase stub: the Coder must implement this (see #288).
-#[allow(dead_code, unused_variables)]
+/// Behaviour:
+///
+/// - Template declares no `[repository_type]` section: no policy applies and
+///   `Ok(None)` is returned (any request override is ignored here; it is not
+///   a policy decision).
+/// - Template declares a `[repository_type]` section: the override (if any)
+///   is parsed as a [`config_manager::RepositoryTypeName`] and checked with
+///   [`config_manager::RepositoryTypeValidator::validate_type_policy`].
+///   With policy `fixed`, any override (even one equal to the template's
+///   type) is rejected. With `preferable`, the override wins when present,
+///   otherwise the template's type is used.
+///
+/// # Errors
+///
+/// Returns [`RepoRollerError::Configuration`] when the override is not a
+/// valid repository type name, or when the template policy is `fixed` and an
+/// override was supplied (`ConfigurationError::InvalidConfiguration`, which
+/// the API maps to HTTP 400).
 pub(crate) fn resolve_repository_type_policy(
     request_override: Option<&str>,
     template: Option<&config_manager::TemplateConfig>,
 ) -> RepoRollerResult<Option<config_manager::RepositoryTypeName>> {
-    Ok(None)
+    let Some(spec) = template.and_then(|t| t.repository_type.as_ref()) else {
+        debug!("Template declares no repository_type policy; nothing to enforce");
+        return Ok(None);
+    };
+
+    let parsed_override = request_override
+        .map(config_manager::RepositoryTypeName::try_new)
+        .transpose()
+        .map_err(|e| {
+            warn!(
+                "Rejected invalid repository_type override '{}': {}",
+                request_override.unwrap_or_default(),
+                e
+            );
+            RepoRollerError::Configuration(e)
+        })?;
+
+    let resolved = config_manager::RepositoryTypeValidator::new()
+        .validate_type_policy(spec, parsed_override.as_ref())
+        .map_err(|e| {
+            warn!(
+                "Repository type policy {:?} rejected override {:?}: {}",
+                spec.policy, request_override, e
+            );
+            RepoRollerError::Configuration(e)
+        })?;
+
+    info!(
+        "Resolved repository type '{}' (policy {:?}, override supplied: {})",
+        resolved.as_str(),
+        spec.policy,
+        request_override.is_some()
+    );
+    Ok(Some(resolved))
 }
 
 /// Maps a request's `CreationMode` to the `TemplateDesignation`
@@ -1438,6 +1487,14 @@ async fn create_repository_inner(
         observability::SPAN_CONFIGURATION_RESOLUTION
     ))
     .await?;
+
+    // Step 4a: Enforce the template's repository_type policy (fixed/preferable)
+    // server-side, before any other gate or mutating call (#288).
+    let resolved_repository_type =
+        resolve_repository_type_policy(request.repository_type.as_deref(), template.as_ref())?;
+    if let Some(ref repo_type) = resolved_repository_type {
+        info!("Repository type resolved to '{}'", repo_type.as_str());
+    }
 
     // Step 4b: Validate the repository name against configured naming rules.
     RepositoryNamingValidator::new()
