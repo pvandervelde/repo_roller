@@ -7,7 +7,7 @@ type: "reference"
 
 # Template manifest reference
 
-A fully annotated `.reporoller/template.toml` showing every available field. Fields that are commented out are optional. Remove the `#` to activate them.
+A fully annotated `.reporoller/template.toml` showing every available field. Fields that are commented out are optional; `name`, `description`, `author` and `tags` in `[template]` are required. Remove the `#` to activate them.
 
 For a field-by-field description of each section see [template-config.md](../configuration/template-config.md).
 
@@ -20,8 +20,8 @@ For a field-by-field description of each section see [template-config.md](../con
 [template]
 name        = "your-template-name"           # Required. Unique within the org.
 description = "What this template provides"  # Shown in web UI and CLI.
-# author    = "Platform Team"
-# tags      = ["language", "type"]          # Helps with discoverability.
+author      = "Platform Team"             # Required.
+tags        = ["language", "type"]        # Required. Use [] when no tags are needed.
 
 # ── Repository settings ────────────────────────────────────────────────────────
 # Overrides global and type defaults. Use sparse tables — only set what differs.
