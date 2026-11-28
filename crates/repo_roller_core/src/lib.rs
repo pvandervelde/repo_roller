@@ -482,11 +482,14 @@ async fn load_creation_config(
 ///
 /// Behaviour:
 ///
+/// - The override (if any) is always parsed as a
+///   [`config_manager::RepositoryTypeName`], whether or not the template
+///   declares a policy, so a malformed name is rejected consistently.
 /// - Template declares no `[repository_type]` section: no policy applies and
-///   `Ok(None)` is returned (any request override is ignored here; it is not
-///   a policy decision).
+///   `Ok(None)` is returned (a well-formed override is ignored; it is not a
+///   policy decision).
 /// - Template declares a `[repository_type]` section: the override (if any)
-///   is parsed as a [`config_manager::RepositoryTypeName`] and checked with
+///   is checked with
 ///   [`config_manager::RepositoryTypeValidator::validate_type_policy`].
 ///   With policy `fixed`, any override (even one equal to the template's
 ///   type) is rejected. With `preferable`, the override wins when present,
@@ -502,38 +505,42 @@ pub(crate) fn resolve_repository_type_policy(
     request_override: Option<&str>,
     template: Option<&config_manager::TemplateConfig>,
 ) -> RepoRollerResult<Option<config_manager::RepositoryTypeName>> {
-    let Some(spec) = template.and_then(|t| t.repository_type.as_ref()) else {
-        debug!("Template declares no repository_type policy; nothing to enforce");
-        return Ok(None);
-    };
-
+    // Validate the override's format unconditionally so behaviour does not
+    // depend on whether the template declares a policy.
     let parsed_override = request_override
         .map(config_manager::RepositoryTypeName::try_new)
         .transpose()
         .map_err(|e| {
             warn!(
-                "Rejected invalid repository_type override '{}': {}",
-                request_override.unwrap_or_default(),
-                e
+                repository_type = request_override.unwrap_or_default(),
+                error = %e,
+                "Rejected invalid repository_type override"
             );
             RepoRollerError::Configuration(e)
         })?;
+
+    let Some(spec) = template.and_then(|t| t.repository_type.as_ref()) else {
+        debug!("Template declares no repository_type policy; nothing to enforce");
+        return Ok(None);
+    };
 
     let resolved = config_manager::RepositoryTypeValidator::new()
         .validate_type_policy(spec, parsed_override.as_ref())
         .map_err(|e| {
             warn!(
-                "Repository type policy {:?} rejected override {:?}: {}",
-                spec.policy, request_override, e
+                policy = ?spec.policy,
+                repository_type = ?request_override,
+                error = %e,
+                "Repository type policy rejected override"
             );
             RepoRollerError::Configuration(e)
         })?;
 
     info!(
-        "Resolved repository type '{}' (policy {:?}, override supplied: {})",
-        resolved.as_str(),
-        spec.policy,
-        request_override.is_some()
+        repository_type = resolved.as_str(),
+        policy = ?spec.policy,
+        override_supplied = request_override.is_some(),
+        "Resolved repository type"
     );
     Ok(Some(resolved))
 }
@@ -1490,11 +1497,11 @@ async fn create_repository_inner(
 
     // Step 4a: Enforce the template's repository_type policy (fixed/preferable)
     // server-side, before any other gate or mutating call (#288).
-    let resolved_repository_type =
+    // The resolved type is not yet applied (e.g. as a GitHub custom property);
+    // that is deliberately out of scope here. Enforcement is the purpose.
+    // `resolve_repository_type_policy` already logs the resolution.
+    let _resolved_repository_type =
         resolve_repository_type_policy(request.repository_type.as_deref(), template.as_ref())?;
-    if let Some(ref repo_type) = resolved_repository_type {
-        info!("Repository type resolved to '{}'", repo_type.as_str());
-    }
 
     // Step 4b: Validate the repository name against configured naming rules.
     RepositoryNamingValidator::new()

@@ -475,7 +475,9 @@
       name: repoName,
       visibility,
       team: selectedTeamName ?? undefined,
-      repositoryType: selectedTypeName ?? undefined,
+      // Backend rejects any override for a fixed-policy template (#288), so
+      // never send one, even if a stale selection survives a template switch.
+      repositoryType: templateTypePolicy === 'fixed' ? undefined : (selectedTypeName ?? undefined),
     };
 
     if (creationModeChoice === 'fork' && parsedSource !== null) {

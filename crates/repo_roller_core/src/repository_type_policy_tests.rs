@@ -110,6 +110,17 @@ fn no_template_with_override_yields_none_not_enforced() {
 }
 
 #[test]
+fn no_template_with_invalid_override_name_is_rejected() {
+    assert!(resolve_repository_type_policy(Some("Not Valid!"), None).is_err());
+}
+
+#[test]
+fn template_without_spec_with_invalid_override_name_is_rejected() {
+    let tpl = template_with(None);
+    assert!(resolve_repository_type_policy(Some("Not Valid!"), Some(&tpl)).is_err());
+}
+
+#[test]
 fn template_without_repository_type_section_yields_none_for_no_override() {
     let tpl = template_with(None);
     assert_eq!(name(resolve_repository_type_policy(None, Some(&tpl))), None);
