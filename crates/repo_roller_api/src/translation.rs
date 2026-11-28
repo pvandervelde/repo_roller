@@ -69,6 +69,7 @@ fn revalidate_source_repository_reference(
 /// - Repository name is invalid
 /// - Organization name is invalid
 /// - Template name is invalid (when provided)
+/// - Repository type is not a valid repository type name (when provided)
 /// - Template strategy is used without template name
 pub fn http_create_repository_request_to_domain(
     http_req: CreateRepositoryRequest,
@@ -91,6 +92,16 @@ pub fn http_create_repository_request_to_domain(
     } else {
         None
     };
+
+    // Repository type override is optional - validate format only. Policy
+    // (fixed/preferable) is enforced server-side during creation.
+    let repository_type = http_req
+        .repository_type
+        .map(config_manager::RepositoryTypeName::try_new)
+        .transpose()
+        .map_err(|e| {
+            ApiError::validation_error("repository_type", format!("Invalid repository type: {}", e))
+        })?;
 
     use repo_roller_core::ContentStrategy;
 
@@ -210,6 +221,11 @@ pub fn http_create_repository_request_to_domain(
     // Fork/Mirror, so this can never trigger the builder's panic guard.
     builder = builder.content_strategy(http_req.content_strategy);
     builder = builder.creation_mode(creation_mode);
+
+    // Add repository type override if provided (policy enforced in core)
+    if let Some(repo_type) = repository_type {
+        builder = builder.repository_type(repo_type.as_str());
+    }
 
     // Add visibility if provided
     if let Some(vis) = visibility {

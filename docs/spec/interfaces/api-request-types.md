@@ -72,7 +72,7 @@ pub struct CreateRepositoryRequest {
 - `template`: Non-empty, must exist in organization's metadata repository
 - `visibility`: If provided, must be "public" or "private"
 - `team`: If provided, must exist in organization
-- `repository_type`: If provided, must be defined in organization configuration
+- `repository_type`: If provided, must be a valid repository type name. Enforced server-side against the template's `[repository_type]` policy: with `policy = "fixed"` any value (even one equal to the template's type) is rejected with HTTP 400; with `policy = "preferable"` the value overrides the template default; templates without a policy ignore a well-formed value
 - `variables`: Keys must match template's required variables
 
 **Translation to Domain**:

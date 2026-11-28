@@ -245,6 +245,12 @@ Add to this whenever a reusable component becomes "the standard way".
   `create_standard_repository`, `create_fork_repository`,
   `create_history_mirror_repository`, `create_source_only_mirror_repository`
   Location: `repo_roller_core/src/lib.rs`
+  Pattern: `resolve_repository_type_policy` (#288, `pub(crate)`) runs right
+  after `load_creation_config`: enforces the template `[repository_type]`
+  policy via `RepositoryTypeValidator::validate_type_policy` (fixed + any
+  override => `ConfigurationError::InvalidConfiguration`, HTTP 400). The API
+  translation layer validates the override format with
+  `RepositoryTypeName::try_new`.
   Pattern: `validate_creation_mode_capability` (capability + designation gate,
   RCF-005/RCF-006) runs once, before the dispatch, for every non-`Standard`
   mode — before any GitHub-mutating call. Immediately after it,

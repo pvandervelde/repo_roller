@@ -67,7 +67,7 @@ Repository type policies:
 
 | Policy | Description |
 |---|---|
-| `fixed` | Repositories created from this template always use this type. Users cannot override it. |
+| `fixed` | Repositories created from this template always use this type. Users cannot override it: the API rejects a `repositoryType`/`repository_type` override with a 400 error, even if it equals the template type. |
 | `preferable` | This type is pre-selected but users can choose another type during creation. |
 
 Omit the entire `[repository_type]` section to place no restriction on repository type.

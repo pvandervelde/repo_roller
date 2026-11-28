@@ -33,6 +33,7 @@ fn create_test_request() -> RepositoryCreationRequest {
         teams: HashMap::new(),
         collaborators: HashMap::new(),
         actor_login: "test-user".to_string(),
+        repository_type: None,
         creation_mode: CreationMode::Standard,
     }
 }

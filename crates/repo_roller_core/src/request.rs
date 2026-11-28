@@ -145,6 +145,7 @@ pub enum CreationMode {
 ///     teams: HashMap::new(),
 ///     collaborators: HashMap::new(),
 ///     actor_login: "alice".to_string(),
+///     repository_type: None,
 /// };
 ///
 /// // Empty repository with team permissions
@@ -161,6 +162,7 @@ pub enum CreationMode {
 ///     teams,
 ///     collaborators: HashMap::new(),
 ///     actor_login: "bob".to_string(),
+///     repository_type: None,
 /// };
 /// ```
 ///
@@ -228,6 +230,10 @@ pub struct RepositoryCreationRequest {
     /// available, or the app installation slug as a fallback.
     /// For CLI requests this is `"reporoller-cli"`.
     pub actor_login: String,
+
+    /// Caller-requested repository type override (raw, validated during
+    /// creation against the template's `[repository_type]` policy).
+    pub repository_type: Option<String>,
 }
 
 /// Result of a successful repository creation operation.
@@ -319,6 +325,7 @@ pub struct RepositoryCreationRequestBuilder {
     teams: HashMap<String, AccessLevel>,
     collaborators: HashMap<String, AccessLevel>,
     actor_login: Option<String>,
+    repository_type: Option<String>,
 }
 
 impl RepositoryCreationRequestBuilder {
@@ -348,6 +355,7 @@ impl RepositoryCreationRequestBuilder {
             teams: HashMap::new(),
             collaborators: HashMap::new(),
             actor_login: None,
+            repository_type: None,
         }
     }
 
@@ -543,6 +551,12 @@ impl RepositoryCreationRequestBuilder {
         self
     }
 
+    /// Set the caller-requested repository type override.
+    pub fn repository_type(mut self, repository_type: impl Into<String>) -> Self {
+        self.repository_type = Some(repository_type.into());
+        self
+    }
+
     /// Build the final RepositoryCreationRequest.
     ///
     /// # Panics
@@ -590,6 +604,7 @@ impl RepositoryCreationRequestBuilder {
             teams: self.teams,
             collaborators: self.collaborators,
             actor_login: self.actor_login.unwrap_or_else(|| "reporoller".to_string()),
+            repository_type: self.repository_type,
         }
     }
 }
